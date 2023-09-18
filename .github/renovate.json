@@ -32,11 +32,5 @@
                 "schedule:weekly"
             ]
         }
-    ],
-    "lockFileMaintenance": {
-        "enabled": true,
-        "extends": [
-            "schedule:monthly"
-        ]
-    }
+    ]
 }
