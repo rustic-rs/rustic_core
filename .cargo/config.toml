@@ -1,0 +1,7 @@
+[build]
+rustdocflags = ["--document-private-items"]
+# rustflags = "-C target-cpu=native -D warnings"
+# incremental = true
+
+[target.x86_64-pc-windows-msvc]
+linker = "rust-lld.exe"

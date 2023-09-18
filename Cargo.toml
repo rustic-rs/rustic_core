@@ -1,0 +1,177 @@
+[package]
+name = "rustic_core"
+version = "0.6.0"
+authors = ["Alexander Weiss"]
+categories = [
+  "Algorithms",
+  "Command line utilities",
+  "Compression",
+  "Cryptography",
+  "Data structures",
+  "Filesystem",
+]
+edition = "2021"
+homepage = "https://rustic.cli.rs/"
+include = ["src/**/*", "LICENSE-*", "README.md", "examples/**/*"]
+keywords = ["backup", "restic", "deduplication", "encryption", "library"]
+license = "Apache-2.0 OR MIT"
+publish = false # Don't publish until we fix/stabilize public api!!!
+readme = "README.md"
+repository = "https://github.com/rustic-rs/rustic_core"
+resolver = "2"
+rust-version = "1.66.1"
+description = """
+rustic_core - fast, encrypted, deduplicated backups that power rustic-rs
+"""
+
+[lib]
+path = "src/lib.rs"
+name = "rustic_core"
+test = true
+doctest = true
+bench = true
+doc = true
+harness = true
+edition = "2021"
+
+[features]
+default = []
+cli = ["merge", "clap"]
+merge = ["dep:merge"]
+clap = ["dep:clap"]
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--document-private-items"]
+
+[dependencies]
+# errors
+displaydoc = "0.2.4"
+thiserror = "1.0.48"
+
+# macros
+derivative = "2.2.0"
+derive_more = "0.99.17"
+derive_setters = "0.1.6"
+
+# logging
+log = "0.4.20"
+
+# parallelize
+crossbeam-channel = "0.5.8"
+pariter = "0.5.1"
+rayon = "1.7.0"
+
+# crypto
+aes256ctr_poly1305aes = "0.1.1"
+rand = "0.8.5"
+scrypt = { version = "0.11.0", default-features = false }
+
+# chunker / packer
+integer-sqrt = "0.1.5"
+
+# serialization
+binrw = "0.11.2"
+hex = { version = "0.4.3", features = ["serde"] }
+serde = { version = "1.0.188" }
+serde-aux = "4.2.0"
+serde_derive = "1.0.188"
+serde_json = "1.0.107"
+serde_with = { version = "3.3.0", features = ["base64"] }
+
+# other dependencies
+bytes = "1.5.0"
+chrono = { version = "0.4.31", default-features = false, features = ["clock", "serde"] }
+enum-map = "2.6.3"
+enum-map-derive = "0.14.0"
+zstd = "0.12.4"
+
+# local backend
+aho-corasick = "1.1.0"
+cached = { version = "0.45.1", default-features = false, features = ["proc_macro"] }
+filetime = "0.2.22"
+ignore = "0.4.20"
+nix = { version = "0.27.1", default-features = false, features = ["user", "fs"] }
+walkdir = "2.4.0"
+
+# rest backend
+backoff = "0.4.0"
+reqwest = { version = "0.11.20", default-features = false, features = ["json", "rustls-tls-native-roots", "stream", "blocking"] }
+url = "2.4.1"
+
+# rclone backend
+semver = "1.0.18"
+
+# cache
+cachedir = "0.3.0"
+dirs = "5.0.1"
+
+# cli
+clap = { version = "4.4.3", optional = true, features = ["derive", "env", "wrap_help"] }
+
+bytesize = "1.3.0"
+directories = "5.0.1"
+dunce = "1.0.4"
+gethostname = "0.4.3"
+humantime = "2.1.0"
+itertools = "0.11.0"
+merge = { version = "0.1.0", optional = true }
+path-dedot = "3.1.1"
+shell-words = "1.1.0"
+
+[target.'cfg(not(windows))'.dependencies]
+sha2 = { version = "0.10", features = ["asm"] }
+
+[target.'cfg(windows)'.dependencies]
+# unfortunately, the asm extensions do not build on MSVC, see https://github.com/RustCrypto/asm-hashes/issues/17
+sha2 = "0.10"
+
+[target.'cfg(not(any(windows, target_os="openbsd")))'.dependencies]
+xattr = "1"
+
+[dev-dependencies]
+expect-test = "1.4.1"
+pretty_assertions = "1.2.1"
+public-api = "0.32.0"
+quickcheck = "1.0.3"
+quickcheck_macros = "1.0.0"
+rstest = "0.18.2"
+rustdoc-json = "0.8.7"
+rustup-toolchain = "0.1.5"
+simplelog = "0.12.1"
+tempfile = "3.8.0"
+
+# see: https://nnethercote.github.io/perf-book/build-configuration.html
+[profile.dev]
+opt-level = 0
+debug = true
+rpath = false
+lto = false
+debug-assertions = true
+codegen-units = 4
+
+[profile.release]
+opt-level = 3
+debug = false # true for profiling
+rpath = false
+lto = "fat"
+debug-assertions = false
+codegen-units = 1
+strip = true
+panic = "abort"
+
+[profile.test]
+opt-level = 1
+debug = true
+rpath = false
+lto = false
+debug-assertions = true
+codegen-units = 4
+
+[profile.bench]
+opt-level = 3
+debug = true # true for profiling
+rpath = false
+lto = true
+debug-assertions = false
+codegen-units = 1
