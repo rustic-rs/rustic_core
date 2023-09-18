@@ -7,6 +7,11 @@ permissions:
 
 on:
   workflow_dispatch:
+    inputs:
+      pr_branch:
+        description: PR branch to push to
+        required: true
+        type: string
 
 env:
   UPDATE_EXPECT: 1
@@ -25,6 +30,8 @@ jobs:
           - os: windows-latest
     steps:
       - uses: actions/checkout@3df4ab11eba7bda6032a0b82a6bb43b11571feac # v4
+        with:
+          ref: refs/heads/${{ inputs.pr_branch }}
 
       - uses: actions-rs/toolchain@16499b5e05bf2e26879000db0c1d13f7e13fa3af # v1
         with:
@@ -36,13 +43,10 @@ jobs:
         with:
           command: test
           args: -r --test public_api -- --ignored
-      - name: Create Pull Request
-        uses: peter-evans/create-pull-request@v5
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          add-paths: "tests/public_api_fixtures"
-          commit-message: "Update Public API fixtures"
-          branch: "update-public-api-fixtures"
-          delete-branch: true
-          base: "main"
-          title: "Update Public API fixtures"
+      - name: Push fixtures to branch
+        run: |
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+          git add tests/public_api_fixtures/*
+          git commit -m "Generated: Update Public API fixtures"
+          git push
