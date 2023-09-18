@@ -30,9 +30,12 @@ fn public_api() {
 
     // Assert that the public API looks correct
     #[cfg(target_os = "windows")]
-    expect_test::expect_file!["public_api_data/public-api_win.txt"]
+    expect_test::expect_file!["public_api_fixtures/public-api_win.txt"]
         .assert_eq(&public_api.to_string());
-    #[cfg(not(target_os = "windows"))]
-    expect_test::expect_file!["public_api_data/public-api_linux.txt"]
+    #[cfg(target_os = "unix")]
+    expect_test::expect_file!["public_api_fixtures/public-api_linux.txt"]
+        .assert_eq(&public_api.to_string());
+    #[cfg(target_os = "macos")]
+    expect_test::expect_file!["public_api_fixtures/public-api_macos.txt"]
         .assert_eq(&public_api.to_string());
 }

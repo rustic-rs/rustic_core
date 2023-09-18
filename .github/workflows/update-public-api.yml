@@ -1,0 +1,48 @@
+name: Check release
+
+permissions:
+  id-token: write # Enable OIDC
+  pull-requests: write
+  contents: write
+
+on:
+  workflow_dispatch:
+
+env:
+  UPDATE_EXPECT: 1
+
+jobs:
+  update-fixtures:
+    name: Update Public API fixtures
+    runs-on: ${{ matrix.job.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        rust: [stable]
+        job:
+          - os: macos-latest
+          - os: ubuntu-latest
+          - os: windows-latest
+    steps:
+      - uses: actions/checkout@3df4ab11eba7bda6032a0b82a6bb43b11571feac # v4
+
+      - uses: actions-rs/toolchain@16499b5e05bf2e26879000db0c1d13f7e13fa3af # v1
+        with:
+          profile: minimal
+          toolchain: stable
+          override: true
+      - uses: Swatinem/rust-cache@a95ba195448af2da9b00fb742d14ffaaf3c21f43 # v2
+      - uses: actions-rs/cargo@844f36862e911db73fe0815f00a4a2602c279505 # v1
+        with:
+          command: test
+          args: -r --test public_api -- --ignored
+      - name: Create Pull Request
+        uses: peter-evans/create-pull-request@v5
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          add-paths: "tests/public_api_fixtures"
+          commit-message: "Update Public API fixtures"
+          branch: "update-public-api-fixtures"
+          delete-branch: true
+          base: "main"
+          title: "Update Public API fixtures"
