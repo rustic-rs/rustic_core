@@ -70,7 +70,6 @@ All notable changes to this project will be documented in this file.
 ### Rustic_core
 
 - Add NoProgress and NoProgressBars (e.g. for examples)
-- Prepare v0.1.1
 
 ## [0.1.0] - 2023-08-11
 
