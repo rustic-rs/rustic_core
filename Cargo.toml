@@ -121,7 +121,7 @@ cachedir = "0.3.0"
 dirs = "5.0.1"
 
 # cli
-clap = { version = "4.4.3", optional = true, features = [
+clap = { version = "4.4.4", optional = true, features = [
   "derive",
   "env",
   "wrap_help",
@@ -149,7 +149,7 @@ xattr = "1"
 
 [dev-dependencies]
 expect-test = "1.4.1"
-pretty_assertions = "1.2.1"
+pretty_assertions = "1.4.0"
 public-api = "0.32.0"
 quickcheck = "1.0.3"
 quickcheck_macros = "1.0.0"
