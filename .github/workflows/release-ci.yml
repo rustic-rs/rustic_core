@@ -38,7 +38,7 @@ jobs:
       matrix:
         rust: [stable]
         job:
-          # - os: macos-latest # Need to generate API fixtures
+          - os: macos-latest
           - os: ubuntu-latest
           - os: windows-latest
     steps:
