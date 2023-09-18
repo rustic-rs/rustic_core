@@ -1,4 +1,4 @@
-name: Check release
+name: Update Public API fixtures
 
 permissions:
   id-token: write # Enable OIDC
