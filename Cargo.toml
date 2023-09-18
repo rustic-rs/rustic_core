@@ -10,6 +10,7 @@ categories = [
   "Data structures",
   "Filesystem",
 ]
+documentation = "https://docs.rs/rustic_core"
 edition = "2021"
 homepage = "https://rustic.cli.rs/"
 include = ["src/**/*", "LICENSE-*", "README.md", "examples/**/*"]
