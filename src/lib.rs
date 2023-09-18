@@ -127,6 +127,7 @@ This crate exposes a few features for controlling dependency usage.
 #![allow(clippy::missing_const_for_fn)]
 // We run rustdoc with `--document-private-items` so we can document private items
 #![allow(rustdoc::private_intra_doc_links)]
+#![allow(clippy::needless_raw_string_hashes)]
 
 pub(crate) mod archiver;
 pub(crate) mod backend;
