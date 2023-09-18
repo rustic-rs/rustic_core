@@ -77,7 +77,7 @@ pub enum NodeType {
         /// # Warning
         ///
         /// This contains the target only if it is a valid unicode target.
-        /// Dont't access this field directly, use the [`NodeType::to_link()`] method instead!
+        /// Don't access this field directly, use the [`NodeType::to_link()`] method instead!
         linktarget: String,
         #[serde_as(as = "Option<Base64>")]
         #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -124,7 +124,7 @@ impl NodeType {
     }
 
     #[cfg(windows)]
-    // Windows doen't support non-unicode link targets, so we assume unicode here.
+    // Windows doesn't support non-unicode link targets, so we assume unicode here.
     // TODO: Test and check this!
     /// Get a [`NodeType`] from a linktarget path
     pub fn from_link(target: &Path) -> Self {

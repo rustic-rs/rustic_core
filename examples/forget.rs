@@ -13,7 +13,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         .password("test");
     let repo = Repository::new(&repo_opts)?.open()?;
 
-    // Check respository with standard options
+    // Check repository with standard options
     let group_by = SnapshotGroupCriterion::default();
     let keep = KeepOptions::default().keep_daily(5).keep_weekly(10);
     let snaps = repo.get_forget_snapshots(&keep, group_by, |_| true)?;
