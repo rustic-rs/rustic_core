@@ -1870,7 +1870,7 @@ dependencies = [
 
 [[package]]
 name = "rustic_core"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "aes256ctr_poly1305aes",
  "aho-corasick 1.1.0",
