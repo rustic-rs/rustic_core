@@ -1,3 +1,3 @@
 # Documentation
 
-Our documentation can be found at: <https://rustic.cli.rs/docs>
+Our documentation can be found at: <https://rustic.cli.rs/dev-docs>

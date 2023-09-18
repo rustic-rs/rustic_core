@@ -5,7 +5,7 @@
 <p align="center">
 <a href="https://crates.io/crates/rustic_core"><img src="https://img.shields.io/crates/v/rustic_core.svg" /></a>
 <a href="https://docs.rs/rustic_core/"><img src="https://img.shields.io/docsrs/rustic_core?style=flat&amp;labelColor=1c1d42&amp;color=4f396a&amp;logo=Rust&amp;logoColor=white" /></a>
-<a href="https://github.com/rustic-rs/rustic/blob/main/crates/rustic_core/"><img src="https://img.shields.io/badge/license-Apache2.0/MIT-blue.svg" /></a>
+<a href="https://github.com/rustic-rs/rustic_core/blob/main/"><img src="https://img.shields.io/badge/license-Apache2.0/MIT-blue.svg" /></a>
 <a href="https://crates.io/crates/rustic_core"><img src="https://img.shields.io/crates/d/rustic_core.svg" /></a>
 <p>
 
@@ -16,6 +16,11 @@ backup tool that provides fast, encrypted, deduplicated backups. It reads and
 writes the `restic` repository format, which is described in their design
 document.
 
+**Note**: `rustic_core` is in an early development stage and its API is subject
+to change in the next releases. If you want to give feedback on that, please
+open a thread in our
+[discussions](https://github.com/rustic-rs/rustic/discussions).
+
 ## Contact
 
 You can ask questions in the
@@ -24,7 +29,7 @@ the [FAQ](https://rustic.cli.rs/docs/FAQ.html).
 
 | Contact       | Where?                                                                                                          |
 | ------------- | --------------------------------------------------------------------------------------------------------------- |
-| Issue Tracker | [GitHub Issues](https://github.com/rustic-rs/rustic/issues)                                                     |
+| Issue Tracker | [GitHub Issues](https://github.com/rustic-rs/rustic_core/issues/choose)                                         |
 | Discord       | [![Discord](https://dcbadge.vercel.app/api/server/WRUWENZnzQ?style=flat-square)](https://discord.gg/WRUWENZnzQ) |
 | Discussions   | [GitHub Discussions](https://github.com/rustic-rs/rustic/discussions)                                           |
 
@@ -168,6 +173,19 @@ fn main() -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 ```
+
+## Contributing
+
+Found a bug?
+[Open an issue!](https://github.com/rustic-rs/rustic_core/issues/choose)
+
+Got an idea for an improvement? Don't keep it to yourself!
+
+- [Contribute fixes](https://github.com/rustic-rs/rustic_core/contribute) or new
+  features via a pull requests!
+
+Please make sure, that you read the
+[contribution guide](https://rustic.cli.rs/docs/contributing-to-rustic.html).
 
 ## Minimum Rust version policy
 
