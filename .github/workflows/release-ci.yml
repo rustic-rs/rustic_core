@@ -34,11 +34,12 @@ jobs:
     name: Check for breaking Public API changes
     runs-on: ${{ matrix.job.os }}
     strategy:
+      fail-fast: false
       matrix:
         rust: [stable]
         job:
-          - os: macos-latest
-          # - os: ubuntu-latest # Need to generate API fixtures
+          # - os: macos-latest # Need to generate API fixtures
+          - os: ubuntu-latest
           - os: windows-latest
     steps:
       - uses: actions/checkout@3df4ab11eba7bda6032a0b82a6bb43b11571feac # v4
