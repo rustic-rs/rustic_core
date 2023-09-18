@@ -23,8 +23,11 @@ jobs:
         rust: [stable]
         job:
           - os: macos-latest
+            system: macos
           - os: ubuntu-latest
+            system: linux
           - os: windows-latest
+            system: windows
     steps:
       - uses: actions/checkout@3df4ab11eba7bda6032a0b82a6bb43b11571feac # v4
         with:
@@ -48,6 +51,6 @@ jobs:
           git config user.name github-actions
           git config user.email github-actions@github.com
           git add tests/public_api_fixtures/*
-          git commit -m "Generated: Update Public API fixtures"
+          git commit -m "Generated: Updated Public API fixtures for ${{ matrix.job.system }}"
           git pull --rebase
           git push
