@@ -181,7 +181,8 @@ Found a bug?
 
 Got an idea for an improvement? Don't keep it to yourself!
 
-- [Contribute fixes](https://github.com/rustic-rs/rustic_core/contribute) or new features via a pull requests!
+- [Contribute fixes](https://github.com/rustic-rs/rustic_core/contribute) or new
+  features via a pull requests!
 
 Please make sure, that you read the
 [contribution guide](https://rustic.cli.rs/docs/contributing-to-rustic.html).
