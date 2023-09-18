@@ -32,7 +32,7 @@ fn public_api() {
     #[cfg(target_os = "windows")]
     expect_test::expect_file!["public_api_fixtures/public-api_win.txt"]
         .assert_eq(&public_api.to_string());
-    #[cfg(target_os = "unix")]
+    #[cfg(target_os = "linux")]
     expect_test::expect_file!["public_api_fixtures/public-api_linux.txt"]
         .assert_eq(&public_api.to_string());
     #[cfg(target_os = "macos")]
