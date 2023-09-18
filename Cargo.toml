@@ -81,35 +81,22 @@ serde_with = { version = "3.3.0", features = ["base64"] }
 
 # other dependencies
 bytes = "1.5.0"
-chrono = { version = "0.4.31", default-features = false, features = [
-  "clock",
-  "serde",
-] }
+chrono = { version = "0.4.31", default-features = false, features = ["clock", "serde"] }
 enum-map = "2.6.3"
 enum-map-derive = "0.14.0"
 zstd = "0.12.4"
 
 # local backend
 aho-corasick = "1.1.0"
-cached = { version = "0.45.1", default-features = false, features = [
-  "proc_macro",
-] }
+cached = { version = "0.45.1", default-features = false, features = ["proc_macro"] }
 filetime = "0.2.22"
 ignore = "0.4.20"
-nix = { version = "0.27.1", default-features = false, features = [
-  "user",
-  "fs",
-] }
+nix = { version = "0.27.1", default-features = false, features = ["user", "fs"] }
 walkdir = "2.4.0"
 
 # rest backend
 backoff = "0.4.0"
-reqwest = { version = "0.11.20", default-features = false, features = [
-  "json",
-  "rustls-tls-native-roots",
-  "stream",
-  "blocking",
-] }
+reqwest = { version = "0.11.20", default-features = false, features = ["json", "rustls-tls-native-roots", "stream", "blocking"] }
 url = "2.4.1"
 
 # rclone backend
@@ -120,11 +107,7 @@ cachedir = "0.3.0"
 dirs = "5.0.1"
 
 # cli
-clap = { version = "4.4.4", optional = true, features = [
-  "derive",
-  "env",
-  "wrap_help",
-] }
+clap = { version = "4.4.4", optional = true, features = ["derive", "env", "wrap_help"] }
 
 bytesize = "1.3.0"
 directories = "5.0.1"
@@ -169,7 +152,7 @@ codegen-units = 4
 
 [profile.release]
 opt-level = 3
-debug = false            # true for profiling
+debug = false # true for profiling
 rpath = false
 lto = "fat"
 debug-assertions = false
@@ -187,7 +170,7 @@ codegen-units = 4
 
 [profile.bench]
 opt-level = 3
-debug = true             # true for profiling
+debug = true # true for profiling
 rpath = false
 lto = true
 debug-assertions = false
