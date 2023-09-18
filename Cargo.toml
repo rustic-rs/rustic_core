@@ -20,7 +20,7 @@ publish = false # Don't publish until we fix/stabilize public api!!!
 readme = "README.md"
 repository = "https://github.com/rustic-rs/rustic_core"
 resolver = "2"
-rust-version = "1.66.1"
+rust-version = "1.68.2"
 description = """
 rustic_core - fast, encrypted, deduplicated backups that power rustic-rs
 """

@@ -171,7 +171,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
 ## Minimum Rust version policy
 
-This crate's minimum supported `rustc` version is `1.66.1`.
+This crate's minimum supported `rustc` version is `1.68.2`.
 
 The current policy is that the minimum Rust version required to use this crate
 can be increased in minor version updates. For example, if `crate 1.0` requires
