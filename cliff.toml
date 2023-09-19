@@ -34,7 +34,7 @@ footer = """
 """
 # postprocessors
 postprocessors = [
-  { pattern = '<REPO>', replace = "https://github.com/rustic-rs/rustic" },
+  { pattern = '<REPO>', replace = "https://github.com/rustic-rs/rustic_core" },
 ]
 [git]
 # parse the commits based on https://www.conventionalcommits.org
