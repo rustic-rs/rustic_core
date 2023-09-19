@@ -72,7 +72,7 @@ implement [`serde::Serialize`] and [`serde::Deserialize`].
 This crate exposes a few features for controlling dependency usage.
 
 *   **clap** -
-    Enables a dependency on the `clap` and `clap_complete` crate and enables
+    Enables a dependency on the `clap` crate and enables
     parsing from the commandline. This feature is disabled by default.
 *   **cli** -
     Enables support for CLI features by enabling `merg` and `clap` features.

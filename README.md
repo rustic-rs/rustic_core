@@ -52,8 +52,8 @@ This crate exposes a few features for controlling dependency usage:
   enables the `merge` dependency. This is needed for parsing commandline
   arguments and merging them into one (e.g. `config`). *This feature is disabled
   by default*.
-- **clap** - Enables a dependency on the `clap` and `clap_complete` crate and
-  enables parsing from the commandline. *This feature is disabled by default*.
+- **clap** - Enables a dependency on the `clap` crate and enables parsing from
+  the commandline. *This feature is disabled by default*.
 
 ## Examples
 
