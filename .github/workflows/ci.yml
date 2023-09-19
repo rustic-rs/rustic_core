@@ -75,12 +75,13 @@ jobs:
       - uses: actions-rs/toolchain@16499b5e05bf2e26879000db0c1d13f7e13fa3af # v1
         with:
           profile: minimal
-          toolchain: stable
+          toolchain: ${{ matrix.rust }}
           override: true
       - uses: Swatinem/rust-cache@a95ba195448af2da9b00fb742d14ffaaf3c21f43 # v2
       - uses: actions-rs/cargo@844f36862e911db73fe0815f00a4a2602c279505 # v1
         with:
           command: test
+          toolchain: ${{ matrix.rust }}
           args: -r --all-targets --all-features --workspace
 
   docs:
@@ -108,12 +109,13 @@ jobs:
       - uses: actions-rs/toolchain@16499b5e05bf2e26879000db0c1d13f7e13fa3af # v1
         with:
           profile: minimal
-          toolchain: stable
+          toolchain: ${{ matrix.rust }}
           override: true
       - uses: Swatinem/rust-cache@a95ba195448af2da9b00fb742d14ffaaf3c21f43 # v2
       - uses: actions-rs/cargo@844f36862e911db73fe0815f00a4a2602c279505 # v1
         with:
           command: doc
+          toolchain: ${{ matrix.rust }}
           args: --no-deps --all-features --workspace --examples
 
   careful:
@@ -121,7 +123,7 @@ jobs:
     runs-on: ${{ matrix.job.os }}
     strategy:
       matrix:
-        rust: [nightly]
+        rust: [nightly] # runs on nightly only
         job:
           - os: macos-latest
           - os: ubuntu-latest
@@ -150,7 +152,7 @@ jobs:
       - uses: Swatinem/rust-cache@a95ba195448af2da9b00fb742d14ffaaf3c21f43 # v2
       - uses: actions-rs/cargo@844f36862e911db73fe0815f00a4a2602c279505 # v1
         with:
-          toolchain: nightly
+          toolchain: ${{ matrix.rust }}
           command: careful
           args: test
 

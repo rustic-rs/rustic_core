@@ -25,7 +25,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        rust: [stable]
+        rust: [stable, beta]
         job:
           - os: windows-latest
             os-name: windows
