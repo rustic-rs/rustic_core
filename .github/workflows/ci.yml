@@ -181,7 +181,7 @@ jobs:
           profile: minimal
           toolchain: stable
           override: true
-      - name: install cargo-careful
+      - name: install cargo-hack
         uses: taiki-e/install-action@2358ab643982f73276ef3aef08759c6cc3693530 # v2
         with:
           tool: cargo-hack
