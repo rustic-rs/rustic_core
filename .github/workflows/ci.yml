@@ -232,7 +232,7 @@ jobs:
         run: |
           # Account for sha256_compress not being interpreted by miri
           # https://github.com/rust-lang/miri/issues/3066
-          sed 's/^sha2 = { version.*/sha2 = "0"/' Cargo.toml
+          sed -i 's/^sha2 = { version.*/sha2 = "0"/' Cargo.toml
       - uses: actions-rs/cargo@844f36862e911db73fe0815f00a4a2602c279505 # v1
         with:
           toolchain: ${{ matrix.rust }}
