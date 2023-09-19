@@ -19,7 +19,7 @@ defaults:
     shell: bash
 
 jobs:
-  publish:
+  cross-check:
     name: Cross checking ${{ matrix.job.target }}
     runs-on: ${{ matrix.job.os }}
     strategy:
