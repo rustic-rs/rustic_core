@@ -13,7 +13,8 @@ use derive_setters::Setters;
 use ignore::overrides::{Override, OverrideBuilder};
 use ignore::Match;
 
-use serde::{Deserialize, Deserializer, Serialize};
+use serde::{Deserialize, Deserializer};
+use serde_derive::Serialize;
 
 use crate::{
     backend::{node::Metadata, node::Node, node::NodeType},

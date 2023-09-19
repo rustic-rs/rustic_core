@@ -2,7 +2,7 @@ use std::{cmp::Ordering, num::NonZeroU32};
 
 use chrono::{DateTime, Local};
 
-use serde::{Deserialize, Serialize};
+use serde_derive::{Deserialize, Serialize};
 
 use crate::{
     backend::FileType, blob::BlobType, id::Id, repofile::packfile::PackHeaderRef,

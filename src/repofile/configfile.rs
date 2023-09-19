@@ -1,4 +1,4 @@
-use serde::{Deserialize, Serialize};
+use serde_derive::{Deserialize, Serialize};
 
 use crate::{
     backend::FileType, blob::BlobType, error::ConfigFileErrorKind, id::Id, repofile::RepoFile,

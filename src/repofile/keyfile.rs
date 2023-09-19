@@ -1,7 +1,7 @@
 use chrono::{DateTime, Local};
 use rand::{thread_rng, RngCore};
 use scrypt::Params;
-use serde::{Deserialize, Serialize};
+use serde_derive::{Deserialize, Serialize};
 use serde_with::{base64::Base64, serde_as};
 
 use crate::{

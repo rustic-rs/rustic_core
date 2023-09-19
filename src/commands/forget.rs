@@ -3,7 +3,7 @@
 use chrono::{DateTime, Datelike, Duration, Local, Timelike};
 use derivative::Derivative;
 use derive_setters::Setters;
-use serde::{Deserialize, Serialize};
+use serde_derive::{Deserialize, Serialize};
 use serde_with::{serde_as, DisplayFromStr};
 
 use crate::{

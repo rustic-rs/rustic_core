@@ -9,7 +9,7 @@ use reqwest::{
     header::{HeaderMap, HeaderValue},
     Url,
 };
-use serde::Deserialize;
+use serde_derive::Deserialize;
 
 use crate::{
     backend::{FileType, ReadBackend, WriteBackend},

@@ -3,7 +3,7 @@ use std::{fmt, io::Read, ops::Deref, path::Path};
 use binrw::{BinRead, BinWrite};
 use derive_more::{Constructor, Display};
 use rand::{thread_rng, RngCore};
-use serde::{Deserialize, Serialize};
+use serde_derive::{Deserialize, Serialize};
 
 use crate::{crypto::hasher::hash, error::IdErrorKind, RusticResult};
 

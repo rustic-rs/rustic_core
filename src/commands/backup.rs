@@ -5,7 +5,7 @@ use log::info;
 use std::path::PathBuf;
 
 use path_dedot::ParseDot;
-use serde::{Deserialize, Serialize};
+use serde_derive::{Deserialize, Serialize};
 use serde_with::{serde_as, DisplayFromStr};
 
 use crate::{

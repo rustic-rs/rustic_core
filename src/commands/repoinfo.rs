@@ -1,4 +1,4 @@
-use serde::{Deserialize, Serialize};
+use serde_derive::{Deserialize, Serialize};
 
 use crate::{
     backend::{decrypt::DecryptReadBackend, FileType, ReadBackend, ALL_FILE_TYPES},

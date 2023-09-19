@@ -16,8 +16,9 @@ use crate::RusticResult;
 
 use chrono::{DateTime, Local};
 use derive_more::Constructor;
-use serde::{Deserialize, Deserializer, Serialize};
+use serde::Deserializer;
 use serde_aux::prelude::*;
+use serde_derive::{Deserialize, Serialize};
 use serde_with::{
     base64::{Base64, Standard},
     formats::Padded,

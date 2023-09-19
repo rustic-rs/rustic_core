@@ -13,7 +13,7 @@ use gethostname::gethostname;
 use itertools::Itertools;
 use log::info;
 use path_dedot::ParseDot;
-use serde::{Deserialize, Serialize};
+use serde_derive::{Deserialize, Serialize};
 use serde_with::{serde_as, DisplayFromStr};
 use shell_words::split;
 

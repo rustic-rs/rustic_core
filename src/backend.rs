@@ -14,7 +14,7 @@ use std::{io::Read, path::PathBuf};
 
 use bytes::Bytes;
 use log::trace;
-use serde::{Deserialize, Serialize};
+use serde_derive::{Deserialize, Serialize};
 
 use crate::{backend::node::Node, error::BackendErrorKind, error::RusticResult, id::Id};
 

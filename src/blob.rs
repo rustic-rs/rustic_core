@@ -3,7 +3,7 @@ pub(crate) mod tree;
 
 use derive_more::Constructor;
 use enum_map::{Enum, EnumMap};
-use serde::{Deserialize, Serialize};
+use serde_derive::{Deserialize, Serialize};
 
 use crate::id::Id;
 
