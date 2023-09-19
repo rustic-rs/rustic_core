@@ -231,4 +231,9 @@ jobs:
         with:
           toolchain: ${{ matrix.rust }}
           command: miri
+          args: setup # keep output clean
+      - uses: actions-rs/cargo@844f36862e911db73fe0815f00a4a2602c279505 # v1
+        with:
+          toolchain: ${{ matrix.rust }}
+          command: miri
           args: test
