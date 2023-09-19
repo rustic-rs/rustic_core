@@ -1,6 +1,6 @@
 use crate::cdc::polynom::{Polynom, Polynom64};
 
-/// A rolling hash implementataion for 64 bit polynoms.
+/// A rolling hash implementation for 64 bit polynoms.
 pub(crate) trait RollingHash64 {
     /// Resets the rolling hash.
     fn reset(&mut self);
@@ -34,7 +34,7 @@ pub(crate) trait RollingHash64 {
     fn get_hash(&self) -> &Polynom64;
 }
 
-/// A rolling hash implementataion for 64 bit polynoms from Rabin.
+/// A rolling hash implementation for 64 bit polynoms from Rabin.
 #[derive(Clone)]
 pub(crate) struct Rabin64 {
     // Configuration

@@ -14,7 +14,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         .password("test");
     let repo = Repository::new(&repo_opts)?.open()?;
 
-    // Set tag "test" to all snapshots, filtering out unchanged (i.e. tag was aready preset) snapshots
+    // Set tag "test" to all snapshots, filtering out unchanged (i.e. tag was already preset) snapshots
     let snaps = repo.get_all_snapshots()?;
     let tags = vec![StringList::from_str("test")?];
     let snaps: Vec<_> = snaps

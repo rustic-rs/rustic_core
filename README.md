@@ -167,7 +167,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         .password("test");
     let repo = Repository::new(&repo_opts)?.open()?;
 
-    // Check respository with standard options but omitting cache checks
+    // Check repository with standard options but omitting cache checks
     let opts = CheckOptions::default().trust_cache(true);
     repo.check(opts)?;
     Ok(())
