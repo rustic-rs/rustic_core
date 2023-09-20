@@ -244,4 +244,4 @@ jobs:
         with:
           toolchain: ${{ matrix.rust }}
           command: miri
-          args: test
+          args: test -- --nocapture
