@@ -198,6 +198,7 @@ jobs:
     name: Miri Test
     runs-on: ${{ matrix.job.os }}
     strategy:
+      fail-fast: false
       matrix:
         rust: [nightly] # runs on nightly only
         job:
