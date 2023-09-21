@@ -87,7 +87,7 @@ enum-map-derive = "0.14.0"
 zstd = "0.12.4"
 
 # local backend
-aho-corasick = "1.1.0"
+aho-corasick = "1.1.1"
 cached = { version = "0.45.1", default-features = false, features = ["proc_macro"] }
 filetime = "0.2.22"
 ignore = "0.4.20"
