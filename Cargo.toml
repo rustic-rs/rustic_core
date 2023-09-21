@@ -60,7 +60,7 @@ log = "0.4.20"
 # parallelize
 crossbeam-channel = "0.5.8"
 pariter = "0.5.1"
-rayon = "1.7.0"
+rayon = "1.8.0"
 
 # crypto
 aes256ctr_poly1305aes = "0.1.1"
