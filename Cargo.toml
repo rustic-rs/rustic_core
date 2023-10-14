@@ -102,6 +102,9 @@ url = "2.4.1"
 # rclone backend
 # semver = "1.0.18" # FIXME: unused, remove?
 
+# s3 backend
+rust-s3 = { version = "0.33.0", features = ["sync-rustls-tls"], default-features = false }
+
 # cache
 cachedir = "0.3.0"
 dirs = "5.0.1"
