@@ -776,7 +776,7 @@ impl Eq for SnapshotFile {}
 
 impl PartialOrd for SnapshotFile {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        self.time.partial_cmp(&other.time)
+        Some(self.cmp(other))
     }
 }
 impl Ord for SnapshotFile {
