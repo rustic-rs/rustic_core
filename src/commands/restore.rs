@@ -684,7 +684,7 @@ impl RestorePlan {
                 .as_mut()
                 .map_or(false, |file| id.blob_matches_reader(length as usize, file));
 
-            let blob_location = self.r.entry((ie.pack, bl)).or_insert_with(Vec::new);
+            let blob_location = self.r.entry((ie.pack, bl)).or_default();
             blob_location.push(FileLocation {
                 file_idx,
                 file_start: file_pos,

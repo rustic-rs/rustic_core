@@ -596,10 +596,7 @@ pub(crate) fn merge_trees(
     }
     impl PartialOrd for SortedNode {
         fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-            self.0
-                .name
-                .partial_cmp(&other.0.name)
-                .map(std::cmp::Ordering::reverse)
+            Some(self.cmp(other))
         }
     }
     impl Eq for SortedNode {}
