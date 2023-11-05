@@ -82,7 +82,7 @@ serde_with = { version = "3.3.0", features = ["base64"] }
 # other dependencies
 bytes = "1.5.0"
 chrono = { version = "0.4.31", default-features = false, features = ["clock", "serde"] }
-enum-map = "2.6.3"
+enum-map = "2.7.0"
 enum-map-derive = "0.14.0"
 zstd = "0.12.4"
 
