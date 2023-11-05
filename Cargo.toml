@@ -142,7 +142,7 @@ rstest = "0.18.2"
 rustdoc-json = "0.8.7"
 rustup-toolchain = "0.1.5"
 simplelog = "0.12.1"
-tempfile = "3.8.0"
+tempfile = "3.8.1"
 
 # see: https://nnethercote.github.io/perf-book/build-configuration.html
 [profile.dev]
