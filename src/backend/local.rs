@@ -10,6 +10,7 @@ use std::{
 
 use aho_corasick::AhoCorasick;
 use bytes::Bytes;
+use cached::proc_macro::cached;
 use filetime::{set_symlink_file_times, FileTime};
 use log::{debug, trace, warn};
 #[cfg(not(windows))]
@@ -469,6 +470,20 @@ pub struct LocalDestination {
     is_file: bool,
 }
 
+// Helper function to cache mapping user name -> uid
+#[cfg(not(windows))]
+#[cached]
+fn uid_from_name(name: String) -> Option<Uid> {
+    User::from_name(&name).unwrap().map(|u| u.uid)
+}
+
+// Helper function to cache mapping group name -> gid
+#[cfg(not(windows))]
+#[cached]
+fn gid_from_name(name: String) -> Option<Gid> {
+    Group::from_name(&name).unwrap().map(|g| g.gid)
+}
+
 impl LocalDestination {
     /// Create a new [`LocalDestination`]
     ///
@@ -648,20 +663,14 @@ impl LocalDestination {
     pub fn set_user_group(&self, item: impl AsRef<Path>, meta: &Metadata) -> RusticResult<()> {
         let filename = self.path(item);
 
-        let user = meta
-            .user
-            .as_ref()
-            .and_then(|name| User::from_name(name).unwrap());
-
+        let user = meta.user.clone().and_then(uid_from_name);
         // use uid from user if valid, else from saved uid (if saved)
-        let uid = user.map(|u| u.uid).or_else(|| meta.uid.map(Uid::from_raw));
+        let uid = user.or_else(|| meta.uid.map(Uid::from_raw));
 
-        let group = meta
-            .group
-            .as_ref()
-            .and_then(|name| Group::from_name(name).unwrap());
+        let group = meta.group.clone().and_then(gid_from_name);
         // use gid from group if valid, else from saved gid (if saved)
-        let gid = group.map(|g| g.gid).or_else(|| meta.gid.map(Gid::from_raw));
+        let gid = group.or_else(|| meta.gid.map(Gid::from_raw));
+
         fchownat(None, &filename, uid, gid, FchownatFlags::NoFollowSymlink)
             .map_err(LocalErrorKind::FromErrnoError)?;
         Ok(())
