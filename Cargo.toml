@@ -73,9 +73,9 @@ integer-sqrt = "0.1.5"
 # serialization
 binrw = "0.13.1"
 hex = { version = "0.4.3", features = ["serde"] }
-serde = { version = "1.0.190" }
+serde = { version = "1.0.192" }
 serde-aux = "4.2.0"
-serde_derive = "1.0.190"
+serde_derive = "1.0.192"
 serde_json = "1.0.108"
 serde_with = { version = "3.4.0", features = ["base64"] }
 
