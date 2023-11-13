@@ -1,5 +1,5 @@
 use aes256ctr_poly1305aes::{
-    aead::{self, Aead, AeadInPlace, NewAead},
+    aead::{self, Aead, AeadInPlace},
     Aes256CtrPoly1305Aes,
 };
 use rand::{thread_rng, RngCore};
@@ -7,7 +7,7 @@ use rand::{thread_rng, RngCore};
 use crate::{crypto::CryptoKey, error::CryptoErrorKind, error::RusticResult};
 
 pub(crate) type Nonce = aead::Nonce<Aes256CtrPoly1305Aes>;
-pub(crate) type AeadKey = aead::Key<Aes256CtrPoly1305Aes>;
+pub(crate) type AeadKey = aes256ctr_poly1305aes::Key;
 
 /// The `Key` is used to encrypt/MAC and check/decrypt data.
 ///
