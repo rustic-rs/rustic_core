@@ -7,27 +7,48 @@ All notable changes to this project will be documented in this file.
 ### Bug Fixes
 
 - Allow clippy::needless_raw_string_hashes,
-- Update rust crate aho-corasick to 1.1.1 ([#23](https://github.com/rustic-rs/rustic_core/issues/23))
-- Update rust crate rayon to 1.8.0 ([#24](https://github.com/rustic-rs/rustic_core/issues/24))
-- Update rust crate binrw to 0.13.0 ([#25](https://github.com/rustic-rs/rustic_core/issues/25))
-- Update rust crate aho-corasick to 1.1.2 ([#36](https://github.com/rustic-rs/rustic_core/issues/36))
-- Update rust crate clap to 4.4.7 ([#37](https://github.com/rustic-rs/rustic_core/issues/37))
-- Update rust crate reqwest to 0.11.22 ([#38](https://github.com/rustic-rs/rustic_core/issues/38))
-- Update rust crate serde_json to 1.0.108 ([#39](https://github.com/rustic-rs/rustic_core/issues/39))
-- Update rust crate thiserror to 1.0.50 ([#40](https://github.com/rustic-rs/rustic_core/issues/40))
-- Update rust crate enum-map to 2.7.0 ([#43](https://github.com/rustic-rs/rustic_core/issues/43))
-- Update serde monorepo to 1.0.190 ([#41](https://github.com/rustic-rs/rustic_core/issues/41))
-- Update rust crate cached to 0.46.0 ([#42](https://github.com/rustic-rs/rustic_core/issues/42))
-- Update rust crate serde_with to 3.4.0 ([#44](https://github.com/rustic-rs/rustic_core/issues/44))
-- Update rust crate zstd to 0.13.0 ([#45](https://github.com/rustic-rs/rustic_core/issues/45))
-- Update rust crate binrw to 0.13.1 ([#46](https://github.com/rustic-rs/rustic_core/issues/46))
-- Update rust crate cached to 0.46.1 ([#47](https://github.com/rustic-rs/rustic_core/issues/47))
-- Update rust crate enum-map to 2.7.1 ([#49](https://github.com/rustic-rs/rustic_core/issues/49))
-- Update serde monorepo to 1.0.192 ([#50](https://github.com/rustic-rs/rustic_core/issues/50))
-- Update rust crate enum-map-derive to 0.15.0 ([#51](https://github.com/rustic-rs/rustic_core/issues/51))
-- Update rust crate clap to 4.4.8 ([#52](https://github.com/rustic-rs/rustic_core/issues/52))
-- Update rust crate aes256ctr_poly1305aes to 0.2.0 ([#54](https://github.com/rustic-rs/rustic_core/issues/54))
-- Temporarily allow unused import for `cached` proc macro to fix lint warning when not on *nix systems
+- Update rust crate aho-corasick to 1.1.1
+  ([#23](https://github.com/rustic-rs/rustic_core/issues/23))
+- Update rust crate rayon to 1.8.0
+  ([#24](https://github.com/rustic-rs/rustic_core/issues/24))
+- Update rust crate binrw to 0.13.0
+  ([#25](https://github.com/rustic-rs/rustic_core/issues/25))
+- Update rust crate aho-corasick to 1.1.2
+  ([#36](https://github.com/rustic-rs/rustic_core/issues/36))
+- Update rust crate clap to 4.4.7
+  ([#37](https://github.com/rustic-rs/rustic_core/issues/37))
+- Update rust crate reqwest to 0.11.22
+  ([#38](https://github.com/rustic-rs/rustic_core/issues/38))
+- Update rust crate serde_json to 1.0.108
+  ([#39](https://github.com/rustic-rs/rustic_core/issues/39))
+- Update rust crate thiserror to 1.0.50
+  ([#40](https://github.com/rustic-rs/rustic_core/issues/40))
+- Update rust crate enum-map to 2.7.0
+  ([#43](https://github.com/rustic-rs/rustic_core/issues/43))
+- Update serde monorepo to 1.0.190
+  ([#41](https://github.com/rustic-rs/rustic_core/issues/41))
+- Update rust crate cached to 0.46.0
+  ([#42](https://github.com/rustic-rs/rustic_core/issues/42))
+- Update rust crate serde_with to 3.4.0
+  ([#44](https://github.com/rustic-rs/rustic_core/issues/44))
+- Update rust crate zstd to 0.13.0
+  ([#45](https://github.com/rustic-rs/rustic_core/issues/45))
+- Update rust crate binrw to 0.13.1
+  ([#46](https://github.com/rustic-rs/rustic_core/issues/46))
+- Update rust crate cached to 0.46.1
+  ([#47](https://github.com/rustic-rs/rustic_core/issues/47))
+- Update rust crate enum-map to 2.7.1
+  ([#49](https://github.com/rustic-rs/rustic_core/issues/49))
+- Update serde monorepo to 1.0.192
+  ([#50](https://github.com/rustic-rs/rustic_core/issues/50))
+- Update rust crate enum-map-derive to 0.15.0
+  ([#51](https://github.com/rustic-rs/rustic_core/issues/51))
+- Update rust crate clap to 4.4.8
+  ([#52](https://github.com/rustic-rs/rustic_core/issues/52))
+- Update rust crate aes256ctr_poly1305aes to 0.2.0
+  ([#54](https://github.com/rustic-rs/rustic_core/issues/54))
+- Temporarily allow unused import for `cached` proc macro to fix lint warning
+  when not on *nix systems
 
 ### Documentation
 
@@ -88,8 +109,8 @@ All notable changes to this project will be documented in this file.
 
 ### Restore
 
-- Add caching for user/group names ([#33](https://github.com/rustic-rs/rustic_core/issues/33))
-
+- Add caching for user/group names
+  ([#33](https://github.com/rustic-rs/rustic_core/issues/33))
 
 ## [0.1.1] - 2023-09-18
 
