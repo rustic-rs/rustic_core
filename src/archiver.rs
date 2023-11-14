@@ -104,6 +104,7 @@ impl<BE: DecryptWriteBackend, I: IndexedBackend> Archiver<BE, I> {
     /// * `src` - The source to archive.
     /// * `backup_path` - The path to the backup.
     /// * `as_path` - The path to archive the backup as.
+    /// * `skip_identical_parent` - skip saving of snapshot if tree is identical to parent tree.
     /// * `p` - The progress bar.
     ///
     /// # Errors
@@ -121,6 +122,7 @@ impl<BE: DecryptWriteBackend, I: IndexedBackend> Archiver<BE, I> {
         src: R,
         backup_path: &Path,
         as_path: Option<&PathBuf>,
+        skip_identical_parent: bool,
         p: &impl Progress,
     ) -> RusticResult<SnapshotFile>
     where
@@ -199,8 +201,10 @@ impl<BE: DecryptWriteBackend, I: IndexedBackend> Archiver<BE, I> {
         summary.finalize(self.snap.time)?;
         self.snap.summary = Some(summary);
 
-        let id = self.be.save_file(&self.snap)?;
-        self.snap.id = id;
+        if !skip_identical_parent || Some(self.snap.tree) != self.parent.tree_id() {
+            let id = self.be.save_file(&self.snap)?;
+            self.snap.id = id;
+        }
 
         p.finish();
         Ok(self.snap)

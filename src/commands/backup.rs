@@ -136,6 +136,11 @@ pub struct BackupOptions {
     #[cfg_attr(feature = "merge", merge(strategy = merge::bool::overwrite_false))]
     pub dry_run: bool,
 
+    /// Skip writing of snapshot if nothing changed w.r.t. the parent snapshot.
+    #[cfg_attr(feature = "clap", clap(long))]
+    #[cfg_attr(feature = "merge", merge(strategy = merge::bool::overwrite_false))]
+    pub skip_identical_parent: bool,
+
     #[cfg_attr(feature = "clap", clap(flatten))]
     #[serde(flatten)]
     /// Options how to use a parent snapshot
@@ -228,14 +233,28 @@ pub(crate) fn backup<P: ProgressBars, S: IndexedIds>(
     let snap = if backup_stdin {
         let path = &backup_path[0];
         let src = StdinSource::new(path.clone())?;
-        archiver.archive(repo.index(), src, path, as_path.as_ref(), &p)?
+        archiver.archive(
+            repo.index(),
+            src,
+            path,
+            as_path.as_ref(),
+            opts.skip_identical_parent,
+            &p,
+        )?
     } else {
         let src = LocalSource::new(
             opts.ignore_save_opts,
             &opts.ignore_filter_opts,
             &backup_path,
         )?;
-        archiver.archive(repo.index(), src, &backup_path[0], as_path.as_ref(), &p)?
+        archiver.archive(
+            repo.index(),
+            src,
+            &backup_path[0],
+            as_path.as_ref(),
+            opts.skip_identical_parent,
+            &p,
+        )?
     };
 
     Ok(snap)
