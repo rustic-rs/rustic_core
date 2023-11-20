@@ -92,6 +92,14 @@ pub struct PruneOptions {
     #[cfg_attr(feature = "clap", clap(long))]
     pub instant_delete: bool,
 
+    /// Delete index files early. This allows to run prune if there is few or no space left.
+    ///
+    /// # Warning
+    ///
+    /// If prune aborts, this can lead to a (partly) missing index which must be repaired!
+    #[cfg_attr(feature = "clap", clap(long))]
+    pub early_delete_index: bool,
+
     /// Simply copy blobs when repacking instead of decrypting; possibly compressing; encrypting
     #[cfg_attr(feature = "clap", clap(long))]
     pub fast_repack: bool,
@@ -133,6 +141,7 @@ impl Default for PruneOptions {
             keep_pack: std::time::Duration::from_secs(0).into(),
             keep_delete: std::time::Duration::from_secs(82800).into(), // = 23h
             instant_delete: false,
+            early_delete_index: false,
             fast_repack: false,
             repack_uncompressed: false,
             repack_all: false,
@@ -1092,6 +1101,13 @@ impl PrunePlan {
             .flat_map(|index| index.packs)
             .collect();
 
+        // remove old index files early if requested
+        if !indexes_remove.is_empty() && opts.early_delete_index {
+            let p = pb.progress_counter("removing old index files...");
+            be.delete_list(FileType::Index, true, indexes_remove.iter(), p)?;
+        }
+
+        // write new pack files and index files
         packs
             .into_par_iter()
             .try_for_each(|pack| -> RusticResult<_> {
@@ -1164,7 +1180,7 @@ impl PrunePlan {
         p.finish();
 
         // remove old index files first as they may reference pack files which are removed soon.
-        if !indexes_remove.is_empty() {
+        if !indexes_remove.is_empty() && !opts.early_delete_index {
             let p = pb.progress_counter("removing old index files...");
             be.delete_list(FileType::Index, true, indexes_remove.iter(), p)?;
         }
