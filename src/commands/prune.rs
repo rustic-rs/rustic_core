@@ -57,7 +57,7 @@ pub struct PruneOptions {
     /// Define maximum data to repack in % of reposize or as size (e.g. '5b', '2 kB', '3M', '4TiB') or 'unlimited'
     #[cfg_attr(
         feature = "clap",
-        clap(long, value_name = "LIMIT", default_value = "unlimited")
+        clap(long, value_name = "LIMIT", default_value = "10%")
     )]
     pub max_repack: LimitOption,
 
@@ -136,7 +136,7 @@ pub struct PruneOptions {
 impl Default for PruneOptions {
     fn default() -> Self {
         Self {
-            max_repack: LimitOption::Unlimited,
+            max_repack: LimitOption::Percentage(10),
             max_unused: LimitOption::Percentage(5),
             keep_pack: std::time::Duration::from_secs(0).into(),
             keep_delete: std::time::Duration::from_secs(82800).into(), // = 23h
