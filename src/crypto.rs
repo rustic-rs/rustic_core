@@ -1,10 +1,11 @@
 use crate::RusticResult;
+use downcast_rs::Downcast;
 
 pub(crate) mod aespoly1305;
 pub(crate) mod hasher;
 
 /// A trait for encrypting and decrypting data.
-pub trait CryptoKey: Clone + Sized + Send + Sync + 'static {
+pub trait CryptoKey: Clone + Copy + Sized + Send + Sync + 'static + Downcast {
     /// Decrypt the given data.
     ///
     /// # Arguments

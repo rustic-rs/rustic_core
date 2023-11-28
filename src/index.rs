@@ -162,15 +162,6 @@ pub trait ReadIndex {
     fn has_data(&self, id: &Id) -> bool {
         self.has(BlobType::Data, id)
     }
-}
-
-/// A trait for backends with an index
-pub trait IndexedBackend: ReadIndex + Clone + Sync + Send + 'static {
-    /// The backend type
-    type Backend: DecryptReadBackend;
-
-    /// Get a reference to the backend
-    fn be(&self) -> &Self::Backend;
 
     /// Get a blob from the backend
     ///
@@ -181,28 +172,33 @@ pub trait IndexedBackend: ReadIndex + Clone + Sync + Send + 'static {
     ///
     /// # Errors
     ///
-    /// If the blob could not be found in the backend
+    /// * [`IndexErrorKind::BlobInIndexNotFound`] - If the blob could not be found in the index
     ///
-    /// # Returns
-    ///
-    /// The data of the blob
-    fn blob_from_backend(&self, tpe: BlobType, id: &Id) -> RusticResult<Bytes>;
+    /// [`IndexErrorKind::BlobInIndexNotFound`]: crate::error::IndexErrorKind::BlobInIndexNotFound
+    fn blob_from_backend(
+        &self,
+        be: &impl DecryptReadBackend,
+        tpe: BlobType,
+        id: &Id,
+    ) -> RusticResult<Bytes> {
+        self.get_id(tpe, id).map_or_else(
+            || Err(IndexErrorKind::BlobInIndexNotFound.into()),
+            |ie| ie.read_data(be),
+        )
+    }
 }
 
-/// A backend with an index
-///
-/// # Type Parameters
-///
-/// * `BE` - The backend type
+/// A trait for a global index
+pub trait ReadGlobalIndex: ReadIndex + Clone + Sync + Send + 'static {}
+
+/// A global index
 #[derive(Clone, Debug)]
-pub struct IndexBackend<BE: DecryptReadBackend> {
-    /// The backend to read from.
-    be: BE,
+pub struct GlobalIndex {
     /// The atomic reference counted, sharable index.
     index: Arc<Index>,
 }
 
-impl<BE: DecryptReadBackend> ReadIndex for IndexBackend<BE> {
+impl ReadIndex for GlobalIndex {
     /// Get an [`IndexEntry`] from the index
     ///
     /// # Arguments
@@ -241,7 +237,7 @@ impl<BE: DecryptReadBackend> ReadIndex for IndexBackend<BE> {
     }
 }
 
-impl<BE: DecryptReadBackend> IndexBackend<BE> {
+impl GlobalIndex {
     /// Create a new [`IndexBackend`] from an [`Index`]
     ///
     /// # Type Parameters
@@ -252,18 +248,13 @@ impl<BE: DecryptReadBackend> IndexBackend<BE> {
     ///
     /// * `be` - The backend to read from
     /// * `index` - The index to use
-    pub fn new_from_index(be: &BE, index: Index) -> Self {
+    pub fn new_from_index(index: Index) -> Self {
         Self {
-            be: be.clone(),
             index: Arc::new(index),
         }
     }
 
     /// Create a new [`IndexBackend`] from an [`IndexCollector`]
-    ///
-    /// # Type Parameters
-    ///
-    /// * `BE` - The backend type
     ///
     /// # Arguments
     ///
@@ -275,7 +266,7 @@ impl<BE: DecryptReadBackend> IndexBackend<BE> {
     ///
     /// If the index could not be read
     fn new_from_collector(
-        be: &BE,
+        be: &impl DecryptReadBackend,
         p: &impl Progress,
         mut collector: IndexCollector,
     ) -> RusticResult<Self> {
@@ -286,28 +277,20 @@ impl<BE: DecryptReadBackend> IndexBackend<BE> {
 
         p.finish();
 
-        Ok(Self::new_from_index(be, collector.into_index()))
+        Ok(Self::new_from_index(collector.into_index()))
     }
 
     /// Create a new [`IndexBackend`]
-    ///
-    /// # Type Parameters
-    ///
-    /// * `BE` - The backend type
     ///
     /// # Arguments
     ///
     /// * `be` - The backend to read from
     /// * `p` - The progress tracker
-    pub fn new(be: &BE, p: &impl Progress) -> RusticResult<Self> {
+    pub fn new(be: &impl DecryptReadBackend, p: &impl Progress) -> RusticResult<Self> {
         Self::new_from_collector(be, p, IndexCollector::new(IndexType::Full))
     }
 
     /// Create a new [`IndexBackend`] with only full trees
-    ///
-    /// # Type Parameters
-    ///
-    /// * `BE` - The backend type
     ///
     /// # Arguments
     ///
@@ -317,7 +300,7 @@ impl<BE: DecryptReadBackend> IndexBackend<BE> {
     /// # Errors
     ///
     /// If the index could not be read
-    pub fn only_full_trees(be: &BE, p: &impl Progress) -> RusticResult<Self> {
+    pub fn only_full_trees(be: &impl DecryptReadBackend, p: &impl Progress) -> RusticResult<Self> {
         Self::new_from_collector(be, p, IndexCollector::new(IndexType::DataIds))
     }
 
@@ -335,30 +318,4 @@ impl<BE: DecryptReadBackend> IndexBackend<BE> {
     }
 }
 
-impl<BE: DecryptReadBackend> IndexedBackend for IndexBackend<BE> {
-    type Backend = BE;
-
-    /// Get a reference to the backend
-    fn be(&self) -> &Self::Backend {
-        &self.be
-    }
-
-    /// Get a blob from the backend
-    ///
-    /// # Arguments
-    ///
-    /// * `tpe` - The type of the blob
-    /// * `id` - The id of the blob
-    ///
-    /// # Errors
-    ///
-    /// * [`IndexErrorKind::BlobInIndexNotFound`] - If the blob could not be found in the index
-    ///
-    /// [`IndexErrorKind::BlobInIndexNotFound`]: crate::error::IndexErrorKind::BlobInIndexNotFound
-    fn blob_from_backend(&self, tpe: BlobType, id: &Id) -> RusticResult<Bytes> {
-        self.get_id(tpe, id).map_or_else(
-            || Err(IndexErrorKind::BlobInIndexNotFound.into()),
-            |ie| ie.read_data(self.be()),
-        )
-    }
-}
+impl ReadGlobalIndex for GlobalIndex {}

@@ -18,7 +18,7 @@ use serde_with::{serde_as, DisplayFromStr};
 use shell_words::split;
 
 use crate::{
-    backend::{decrypt::DecryptReadBackend, FileType},
+    backend::{decrypt::DecryptReadBackend, FileType, FindInBackend},
     error::SnapshotFileErrorKind,
     error::{RusticError, RusticResult},
     id::Id,

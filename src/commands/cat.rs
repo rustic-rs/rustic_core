@@ -3,12 +3,12 @@ use std::path::Path;
 use bytes::Bytes;
 
 use crate::{
-    backend::{decrypt::DecryptReadBackend, FileType, ReadBackend},
+    backend::{decrypt::DecryptReadBackend, FileType, FindInBackend},
     blob::{tree::Tree, BlobType},
     error::CommandErrorKind,
     error::RusticResult,
     id::Id,
-    index::IndexedBackend,
+    index::ReadIndex,
     progress::ProgressBars,
     repofile::SnapshotFile,
     repository::{IndexedFull, IndexedTree, Open, Repository},
@@ -74,7 +74,7 @@ pub(crate) fn cat_blob<P, S: IndexedFull>(
     id: &str,
 ) -> RusticResult<Bytes> {
     let id = Id::from_hex(id)?;
-    let data = repo.index().blob_from_backend(tpe, &id)?;
+    let data = repo.index().blob_from_backend(repo.dbe(), tpe, &id)?;
 
     Ok(data)
 }
@@ -113,10 +113,12 @@ pub(crate) fn cat_tree<P: ProgressBars, S: IndexedTree>(
         sn_filter,
         &repo.pb.progress_counter("getting snapshot..."),
     )?;
-    let node = Tree::node_from_path(repo.index(), snap.tree, Path::new(path))?;
+    let node = Tree::node_from_path(repo.dbe(), repo.index(), snap.tree, Path::new(path))?;
     let id = node
         .subtree
         .ok_or_else(|| CommandErrorKind::PathIsNoDir(path.to_string()))?;
-    let data = repo.index().blob_from_backend(BlobType::Tree, &id)?;
+    let data = repo
+        .index()
+        .blob_from_backend(repo.dbe(), BlobType::Tree, &id)?;
     Ok(data)
 }

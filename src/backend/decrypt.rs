@@ -1,4 +1,4 @@
-use std::num::NonZeroU32;
+use std::{num::NonZeroU32, sync::Arc};
 
 use bytes::Bytes;
 use crossbeam_channel::{unbounded, Receiver};
@@ -31,7 +31,7 @@ pub trait DecryptFullBackend: DecryptWriteBackend + DecryptReadBackend {}
 
 impl<T: DecryptWriteBackend + DecryptReadBackend> DecryptFullBackend for T {}
 
-pub trait DecryptReadBackend: ReadBackend {
+pub trait DecryptReadBackend: ReadBackend + Clone + 'static {
     /// Decrypts the given data.
     ///
     /// # Arguments
@@ -174,7 +174,7 @@ pub trait DecryptReadBackend: ReadBackend {
     }
 }
 
-pub trait DecryptWriteBackend: WriteBackend {
+pub trait DecryptWriteBackend: WriteBackend + Clone + 'static {
     /// The type of the key.
     type Key: CryptoKey;
 
@@ -194,9 +194,29 @@ pub trait DecryptWriteBackend: WriteBackend {
     ///
     /// # Returns
     ///
-    /// The id of the data. (TODO: Check if this is correct)
+    /// The hash of the written data.
     fn hash_write_full(&self, tpe: FileType, data: &[u8]) -> RusticResult<Id>;
 
+    /// Writes the given data to the backend without compression and returns the id of the data.
+    ///
+    /// # Arguments
+    ///
+    /// * `tpe` - The type of the file.
+    /// * `data` - The data to write.
+    ///
+    /// # Errors
+    ///
+    /// If the data could not be written.
+    ///
+    /// # Returns
+    ///
+    /// The hash of the written data.
+    fn hash_write_full_uncompressed(&self, tpe: FileType, data: &[u8]) -> RusticResult<Id> {
+        let data = self.key().encrypt_data(data)?;
+        let id = hash(&data);
+        self.write_bytes(tpe, &id, false, data.into())?;
+        Ok(id)
+    }
     /// Saves the given file.
     ///
     /// # Arguments
@@ -216,6 +236,27 @@ pub trait DecryptWriteBackend: WriteBackend {
         let data = serde_json::to_vec(file)
             .map_err(CryptBackendErrorKind::SerializingToJsonByteVectorFailed)?;
         self.hash_write_full(F::TYPE, &data)
+    }
+
+    /// Saves the given file uncompressed.
+    ///
+    /// # Arguments
+    ///
+    /// * `file` - The file to save.
+    ///
+    /// # Errors
+    ///
+    /// * [`CryptBackendErrorKind::SerializingToJsonByteVectorFailed`] - If the file could not be serialized to json.
+    ///
+    /// # Returns
+    ///
+    /// The id of the file.
+    ///
+    /// [`CryptBackendErrorKind::SerializingToJsonByteVectorFailed`]: crate::error::CryptBackendErrorKind::SerializingToJsonByteVectorFailed
+    fn save_file_uncompressed<F: RepoFile>(&self, file: &F) -> RusticResult<Id> {
+        let data = serde_json::to_vec(file)
+            .map_err(CryptBackendErrorKind::SerializingToJsonByteVectorFailed)?;
+        self.hash_write_full_uncompressed(F::TYPE, &data)
     }
 
     /// Saves the given list of files.
@@ -281,24 +322,22 @@ pub trait DecryptWriteBackend: WriteBackend {
 ///
 /// # Type Parameters
 ///
-/// * `R` - The type of the backend to decrypt.
 /// * `C` - The type of the key to decrypt the backend with.
-#[derive(Clone, Debug)]
-pub struct DecryptBackend<R, C> {
+#[derive(Debug)]
+pub struct DecryptBackend<C: CryptoKey> {
     /// The backend to decrypt.
-    backend: R,
+    be: Arc<dyn WriteBackend>,
     /// The key to decrypt the backend with.
     key: C,
     /// The compression level to use for zstd.
     zstd: Option<i32>,
 }
 
-impl<R: ReadBackend, C: CryptoKey> DecryptBackend<R, C> {
+impl<C: CryptoKey> DecryptBackend<C> {
     /// Creates a new decrypt backend.
     ///
     /// # Type Parameters
     ///
-    /// * `R` - The type of the backend to decrypt.
     /// * `C` - The type of the key to decrypt the backend with.
     ///
     /// # Arguments
@@ -309,16 +348,16 @@ impl<R: ReadBackend, C: CryptoKey> DecryptBackend<R, C> {
     /// # Returns
     ///
     /// The new decrypt backend.
-    pub fn new(be: &R, key: C) -> Self {
+    pub fn new(be: Arc<dyn WriteBackend>, key: C) -> Self {
         Self {
-            backend: be.clone(),
+            be,
             key,
             zstd: None,
         }
     }
 }
 
-impl<R: WriteBackend, C: CryptoKey> DecryptWriteBackend for DecryptBackend<R, C> {
+impl<C: CryptoKey> DecryptWriteBackend for DecryptBackend<C> {
     /// The type of the key.
     type Key = C;
 
@@ -368,7 +407,17 @@ impl<R: WriteBackend, C: CryptoKey> DecryptWriteBackend for DecryptBackend<R, C>
     }
 }
 
-impl<R: ReadBackend, C: CryptoKey> DecryptReadBackend for DecryptBackend<R, C> {
+impl<C: CryptoKey> Clone for DecryptBackend<C> {
+    fn clone(&self) -> Self {
+        Self {
+            be: self.be.clone(),
+            key: self.key,
+            zstd: self.zstd,
+        }
+    }
+}
+
+impl<C: CryptoKey> DecryptReadBackend for DecryptBackend<C> {
     /// Decrypts the given data.
     ///
     /// # Arguments
@@ -408,25 +457,21 @@ impl<R: ReadBackend, C: CryptoKey> DecryptReadBackend for DecryptBackend<R, C> {
     }
 }
 
-impl<R: ReadBackend, C: CryptoKey> ReadBackend for DecryptBackend<R, C> {
+impl<C: CryptoKey> ReadBackend for DecryptBackend<C> {
     fn location(&self) -> String {
-        self.backend.location()
-    }
-
-    fn set_option(&mut self, option: &str, value: &str) -> RusticResult<()> {
-        self.backend.set_option(option, value)
+        self.be.location()
     }
 
     fn list(&self, tpe: FileType) -> RusticResult<Vec<Id>> {
-        self.backend.list(tpe)
+        self.be.list(tpe)
     }
 
     fn list_with_size(&self, tpe: FileType) -> RusticResult<Vec<(Id, u32)>> {
-        self.backend.list_with_size(tpe)
+        self.be.list_with_size(tpe)
     }
 
     fn read_full(&self, tpe: FileType, id: &Id) -> RusticResult<Bytes> {
-        self.backend.read_full(tpe, id)
+        self.be.read_full(tpe, id)
     }
 
     fn read_partial(
@@ -437,21 +482,20 @@ impl<R: ReadBackend, C: CryptoKey> ReadBackend for DecryptBackend<R, C> {
         offset: u32,
         length: u32,
     ) -> RusticResult<Bytes> {
-        self.backend
-            .read_partial(tpe, id, cacheable, offset, length)
+        self.be.read_partial(tpe, id, cacheable, offset, length)
     }
 }
 
-impl<R: WriteBackend, C: CryptoKey> WriteBackend for DecryptBackend<R, C> {
+impl<C: CryptoKey> WriteBackend for DecryptBackend<C> {
     fn create(&self) -> RusticResult<()> {
-        self.backend.create()
+        self.be.create()
     }
 
     fn write_bytes(&self, tpe: FileType, id: &Id, cacheable: bool, buf: Bytes) -> RusticResult<()> {
-        self.backend.write_bytes(tpe, id, cacheable, buf)
+        self.be.write_bytes(tpe, id, cacheable, buf)
     }
 
     fn remove(&self, tpe: FileType, id: &Id, cacheable: bool) -> RusticResult<()> {
-        self.backend.remove(tpe, id, cacheable)
+        self.be.remove(tpe, id, cacheable)
     }
 }

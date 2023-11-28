@@ -9,10 +9,12 @@ pub(crate) mod node;
 pub(crate) mod rclone;
 pub(crate) mod rest;
 pub(crate) mod stdin;
+pub(crate) mod warm_up;
 
-use std::{io::Read, path::PathBuf};
+use std::{io::Read, ops::Deref, path::PathBuf, sync::Arc};
 
 use bytes::Bytes;
+use downcast_rs::{impl_downcast, Downcast};
 use log::trace;
 use serde_derive::{Deserialize, Serialize};
 
@@ -69,21 +71,9 @@ impl FileType {
 /// Trait for backends that can read.
 ///
 /// This trait is implemented by all backends that can read data.
-pub trait ReadBackend: Clone + Send + Sync + 'static {
+pub trait ReadBackend: Send + Sync + 'static + Downcast {
     /// Returns the location of the backend.
     fn location(&self) -> String;
-
-    /// Sets an option of the backend.
-    ///
-    /// # Arguments
-    ///
-    /// * `option` - The option to set.
-    /// * `value` - The value to set the option to.
-    ///
-    /// # Errors
-    ///
-    /// If the option is not supported.
-    fn set_option(&mut self, option: &str, value: &str) -> RusticResult<()>;
 
     /// Lists all files with their size of the given type.
     ///
@@ -147,6 +137,27 @@ pub trait ReadBackend: Clone + Send + Sync + 'static {
         length: u32,
     ) -> RusticResult<Bytes>;
 
+    /// Specify if the backend needs a warming-up of files before accessing them.
+    fn needs_warm_up(&self) -> bool {
+        false
+    }
+
+    /// Warm-up the given file.
+    ///
+    /// # Arguments
+    ///
+    /// * `tpe` - The type of the file.
+    /// * `id` - The id of the file.
+    ///
+    /// # Errors
+    ///
+    /// If the file could not be read.
+    fn warm_up(&self, _tpe: FileType, _id: &Id) -> RusticResult<()> {
+        Ok(())
+    }
+}
+
+pub trait FindInBackend: ReadBackend {
     /// Finds the id of the file starting with the given string.
     ///
     /// # Type Parameters
@@ -256,6 +267,8 @@ pub trait ReadBackend: Clone + Send + Sync + 'static {
     }
 }
 
+impl<T: ReadBackend> FindInBackend for T {}
+
 /// Trait for backends that can write.
 /// This trait is implemented by all backends that can write data.
 pub trait WriteBackend: ReadBackend {
@@ -280,6 +293,13 @@ pub trait WriteBackend: ReadBackend {
     /// * `id` - The id of the file.
     /// * `cacheable` - Whether the file is cacheable.
     fn remove(&self, tpe: FileType, id: &Id, cacheable: bool) -> RusticResult<()>;
+}
+impl_downcast!(WriteBackend);
+
+impl std::fmt::Debug for dyn WriteBackend {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "WriteBackend{{{}}}", self.location())
+    }
 }
 
 /// Information about an entry to be able to open it.
@@ -362,4 +382,42 @@ pub trait WriteSource: Clone {
     /// * `offset` - The offset to write at.
     /// * `data` - The data to write.
     fn write_at<P: Into<PathBuf>>(&self, path: P, offset: u64, data: Bytes);
+}
+
+impl WriteBackend for Arc<dyn WriteBackend> {
+    fn create(&self) -> RusticResult<()> {
+        self.deref().create()
+    }
+    fn write_bytes(&self, tpe: FileType, id: &Id, cacheable: bool, buf: Bytes) -> RusticResult<()> {
+        self.deref().write_bytes(tpe, id, cacheable, buf)
+    }
+    fn remove(&self, tpe: FileType, id: &Id, cacheable: bool) -> RusticResult<()> {
+        self.deref().remove(tpe, id, cacheable)
+    }
+}
+
+impl ReadBackend for Arc<dyn WriteBackend> {
+    fn location(&self) -> String {
+        self.deref().location()
+    }
+    fn list_with_size(&self, tpe: FileType) -> RusticResult<Vec<(Id, u32)>> {
+        self.deref().list_with_size(tpe)
+    }
+    fn list(&self, tpe: FileType) -> RusticResult<Vec<Id>> {
+        self.deref().list(tpe)
+    }
+    fn read_full(&self, tpe: FileType, id: &Id) -> RusticResult<Bytes> {
+        self.deref().read_full(tpe, id)
+    }
+    fn read_partial(
+        &self,
+        tpe: FileType,
+        id: &Id,
+        cacheable: bool,
+        offset: u32,
+        length: u32,
+    ) -> RusticResult<Bytes> {
+        self.deref()
+            .read_partial(tpe, id, cacheable, offset, length)
+    }
 }

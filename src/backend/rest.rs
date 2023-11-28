@@ -131,7 +131,10 @@ impl RestBackend {
     ///
     /// [`RestErrorKind::UrlParsingFailed`]: crate::error::RestErrorKind::UrlParsingFailed
     /// [`RestErrorKind::BuildingClientFailed`]: crate::error::RestErrorKind::BuildingClientFailed
-    pub fn new(url: &str) -> RusticResult<Self> {
+    pub fn new(
+        url: &str,
+        options: impl IntoIterator<Item = (String, String)>,
+    ) -> RusticResult<Self> {
         let url = if url.ends_with('/') {
             Url::parse(url).map_err(RestErrorKind::UrlParsingFailed)?
         } else {
@@ -144,16 +147,38 @@ impl RestBackend {
         let mut headers = HeaderMap::new();
         _ = headers.insert("User-Agent", HeaderValue::from_static("rustic"));
 
-        let client = ClientBuilder::new()
+        let mut client = ClientBuilder::new()
             .default_headers(headers)
             .timeout(Duration::from_secs(600)) // set default timeout to 10 minutes (we can have *large* packfiles)
             .build()
             .map_err(RestErrorKind::BuildingClientFailed)?;
+        let mut backoff = LimitRetryBackoff::default();
+
+        for (option, value) in options {
+            if option == "retry" {
+                let max_retries = match value.as_str() {
+                    "false" | "off" => 0,
+                    "default" => consts::DEFAULT_RETRY,
+                    _ => usize::from_str(&value)
+                        .map_err(|_| RestErrorKind::NotSupportedForRetry(value))?,
+                };
+                backoff.max_retries = max_retries;
+            } else if option == "timeout" {
+                let timeout = match humantime::Duration::from_str(&value) {
+                    Ok(val) => val,
+                    Err(e) => return Err(RestErrorKind::CouldNotParseDuration(e).into()),
+                };
+                client = match ClientBuilder::new().timeout(*timeout).build() {
+                    Ok(val) => val,
+                    Err(err) => return Err(RestErrorKind::BuildingClientFailed(err).into()),
+                };
+            }
+        }
 
         Ok(Self {
             url,
             client,
-            backoff: LimitRetryBackoff::default(),
+            backoff,
         })
     }
 
@@ -194,44 +219,6 @@ impl ReadBackend for RestBackend {
         }
         location.push_str(url.as_str());
         location
-    }
-
-    /// Sets an option of the backend.
-    ///
-    /// # Arguments
-    ///
-    /// * `option` - The option to set.
-    /// * `value` - The value to set the option to.
-    ///
-    /// # Errors
-    ///
-    /// If the option is not supported.
-    ///
-    /// # Notes
-    ///
-    /// Currently supported options:
-    /// * `retry` - The number of retries to use for transient errors. Default is 5. Set to 0 to disable retries.
-    /// * `timeout` - The timeout to use for requests. Default is 10 minutes. Format is described in [humantime](https://docs.rs/humantime/2.1.0/humantime/fn.parse_duration.html).
-    fn set_option(&mut self, option: &str, value: &str) -> RusticResult<()> {
-        if option == "retry" {
-            let max_retries = match value {
-                "false" | "off" => 0,
-                "default" => consts::DEFAULT_RETRY,
-                _ => usize::from_str(value)
-                    .map_err(|_| RestErrorKind::NotSupportedForRetry(value.into()))?,
-            };
-            self.backoff.max_retries = max_retries;
-        } else if option == "timeout" {
-            let timeout = match humantime::Duration::from_str(value) {
-                Ok(val) => val,
-                Err(e) => return Err(RestErrorKind::CouldNotParseDuration(e).into()),
-            };
-            self.client = match ClientBuilder::new().timeout(*timeout).build() {
-                Ok(val) => val,
-                Err(err) => return Err(RestErrorKind::BuildingClientFailed(err).into()),
-            };
-        }
-        Ok(())
     }
 
     /// Returns a list of all files of a given type with their size.
