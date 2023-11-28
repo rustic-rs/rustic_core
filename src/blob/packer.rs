@@ -171,7 +171,7 @@ impl<BE: DecryptWriteBackend> Packer<BE> {
         config: &ConfigFile,
         total_size: u64,
     ) -> RusticResult<Self> {
-        let key = be.key().clone();
+        let key = *be.key();
         let raw_packer = Arc::new(RwLock::new(RawPacker::new(
             be,
             blob_type,

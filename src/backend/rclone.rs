@@ -111,7 +111,10 @@ impl RcloneBackend {
     /// [`ProviderErrorKind::UrlNotStartingWithHttp`]: crate::error::ProviderErrorKind::UrlNotStartingWithHttp
     /// [`RestErrorKind::UrlParsingFailed`]: crate::error::RestErrorKind::UrlParsingFailed
     /// [`RestErrorKind::BuildingClientFailed`]: crate::error::RestErrorKind::BuildingClientFailed
-    pub fn new(url: &str) -> RusticResult<Self> {
+    pub fn new(
+        url: &str,
+        options: impl IntoIterator<Item = (String, String)>,
+    ) -> RusticResult<Self> {
         match rclone_version() {
             Ok((major, minor, patch)) => {
                 if major
@@ -192,7 +195,7 @@ impl RcloneBackend {
             "http://".to_string() + user.as_str() + ":" + password.as_str() + "@" + &rest_url[7..];
 
         debug!("using REST backend with url {url}.");
-        let rest = RestBackend::new(&rest_url)?;
+        let rest = RestBackend::new(&rest_url, options)?;
         Ok(Self {
             _child_data: Arc::new(ChildToKill(child)),
             url: url.to_string(),
@@ -207,20 +210,6 @@ impl ReadBackend for RcloneBackend {
         let mut location = "rclone:".to_string();
         location.push_str(&self.url);
         location
-    }
-
-    /// Sets an option of the backend.
-    ///
-    /// # Arguments
-    ///
-    /// * `option` - The option to set.
-    /// * `value` - The value to set the option to.
-    ///
-    /// # Errors
-    ///
-    /// If the option is not supported.
-    fn set_option(&mut self, option: &str, value: &str) -> RusticResult<()> {
-        self.rest.set_option(option, value)
     }
 
     /// Returns the size of the given file.

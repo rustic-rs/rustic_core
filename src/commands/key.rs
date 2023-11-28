@@ -2,7 +2,7 @@
 use derive_setters::Setters;
 
 use crate::{
-    backend::{FileType, WriteBackend},
+    backend::{decrypt::DecryptWriteBackend, FileType, WriteBackend},
     crypto::aespoly1305::Key,
     crypto::hasher::hash,
     error::CommandErrorKind,
@@ -57,7 +57,7 @@ impl KeyOptions {
         repo: &Repository<P, S>,
         pass: &str,
     ) -> RusticResult<Id> {
-        let key = repo.key();
+        let key = repo.dbe().key();
         self.add(repo, pass, *key)
     }
 

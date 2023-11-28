@@ -87,13 +87,31 @@ impl LocalBackend {
     ///
     /// [`LocalErrorKind::DirectoryCreationFailed`]: crate::error::LocalErrorKind::DirectoryCreationFailed
     // TODO: We should use `impl Into<Path/PathBuf>` here. we even use it in the body!
-    pub fn new(path: &str) -> RusticResult<Self> {
+    pub fn new(
+        path: &str,
+        options: impl IntoIterator<Item = (String, String)>,
+    ) -> RusticResult<Self> {
         let path = path.into();
         fs::create_dir_all(&path).map_err(LocalErrorKind::DirectoryCreationFailed)?;
+        let mut post_create_command = None;
+        let mut post_delete_command = None;
+        for (option, value) in options {
+            match option.as_str() {
+                "post-create-command" => {
+                    post_create_command = Some(value);
+                }
+                "post-delete-command" => {
+                    post_delete_command = Some(value);
+                }
+                opt => {
+                    warn!("Option {opt} is not supported! Ignoring it.");
+                }
+            }
+        }
         Ok(Self {
             path,
-            post_create_command: None,
-            post_delete_command: None,
+            post_create_command,
+            post_delete_command,
         })
     }
 
@@ -178,33 +196,6 @@ impl ReadBackend for LocalBackend {
         let mut location = "local:".to_string();
         location.push_str(&self.path.to_string_lossy());
         location
-    }
-
-    /// Sets an option of the backend.
-    ///
-    /// # Arguments
-    ///
-    /// * `option` - The option to set.
-    /// * `value` - The value to set the option to.
-    ///
-    /// # Notes
-    ///
-    /// The following options are supported:
-    /// * `post-create-command` - The command to call after a file was created.
-    /// * `post-delete-command` - The command to call after a file was deleted.
-    fn set_option(&mut self, option: &str, value: &str) -> RusticResult<()> {
-        match option {
-            "post-create-command" => {
-                self.post_create_command = Some(value.to_string());
-            }
-            "post-delete-command" => {
-                self.post_delete_command = Some(value.to_string());
-            }
-            opt => {
-                warn!("Option {opt} is not supported! Ignoring it.");
-            }
-        }
-        Ok(())
     }
 
     /// Lists all files of the given type.

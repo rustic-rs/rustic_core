@@ -75,10 +75,6 @@ impl<BE: DecryptFullBackend> ReadBackend for DryRunBackend<BE> {
         self.be.location()
     }
 
-    fn set_option(&mut self, option: &str, value: &str) -> RusticResult<()> {
-        self.be.set_option(option, value)
-    }
-
     fn list_with_size(&self, tpe: FileType) -> RusticResult<Vec<(Id, u32)>> {
         self.be.list_with_size(tpe)
     }

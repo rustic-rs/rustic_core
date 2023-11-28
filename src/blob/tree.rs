@@ -17,12 +17,12 @@ use serde::{Deserialize, Deserializer};
 use serde_derive::Serialize;
 
 use crate::{
-    backend::{node::Metadata, node::Node, node::NodeType},
+    backend::{decrypt::DecryptReadBackend, node::Metadata, node::Node, node::NodeType},
     crypto::hasher::hash,
     error::RusticResult,
     error::TreeErrorKind,
     id::Id,
-    index::IndexedBackend,
+    index::ReadGlobalIndex,
     progress::Progress,
     repofile::snapshotfile::SnapshotSummary,
 };
@@ -101,11 +101,15 @@ impl Tree {
     ///
     /// [`TreeErrorKind::BlobIdNotFound`]: crate::error::TreeErrorKind::BlobIdNotFound
     /// [`TreeErrorKind::DeserializingTreeFailed`]: crate::error::TreeErrorKind::DeserializingTreeFailed
-    pub(crate) fn from_backend(be: &impl IndexedBackend, id: Id) -> RusticResult<Self> {
-        let data = be
+    pub(crate) fn from_backend(
+        be: &impl DecryptReadBackend,
+        index: &impl ReadGlobalIndex,
+        id: Id,
+    ) -> RusticResult<Self> {
+        let data = index
             .get_tree(&id)
             .ok_or_else(|| TreeErrorKind::BlobIdNotFound(id))?
-            .read_data(be.be())?;
+            .read_data(be)?;
 
         Ok(serde_json::from_slice(&data).map_err(TreeErrorKind::DeserializingTreeFailed)?)
     }
@@ -128,7 +132,8 @@ impl Tree {
     /// [`TreeErrorKind::PathNotFound`]: crate::error::TreeErrorKind::PathNotFound
     /// [`TreeErrorKind::PathIsNotUtf8Conform`]: crate::error::TreeErrorKind::PathIsNotUtf8Conform
     pub(crate) fn node_from_path(
-        be: &impl IndexedBackend,
+        be: &impl DecryptReadBackend,
+        index: &impl ReadGlobalIndex,
         id: Id,
         path: &Path,
     ) -> RusticResult<Node> {
@@ -140,7 +145,7 @@ impl Tree {
                 let id = node
                     .subtree
                     .ok_or_else(|| TreeErrorKind::NotADirectory(p.clone()))?;
-                let tree = Self::from_backend(be, id)?;
+                let tree = Self::from_backend(be, index, id)?;
                 node = tree
                     .nodes
                     .into_iter()
@@ -231,9 +236,10 @@ pub struct TreeStreamerOptions {
 
 /// [`NodeStreamer`] recursively streams all nodes of a given tree including all subtrees in-order
 #[derive(Debug, Clone)]
-pub struct NodeStreamer<BE>
+pub struct NodeStreamer<'a, BE, I>
 where
-    BE: IndexedBackend,
+    BE: DecryptReadBackend,
+    I: ReadGlobalIndex,
 {
     /// The open iterators for subtrees
     open_iterators: Vec<std::vec::IntoIter<Node>>,
@@ -243,15 +249,18 @@ where
     path: PathBuf,
     /// The backend to read from
     be: BE,
+    /// index
+    index: &'a I,
     /// The glob overrides
     overrides: Option<Override>,
     /// Whether to stream recursively
     recursive: bool,
 }
 
-impl<BE> NodeStreamer<BE>
+impl<'a, BE, I> NodeStreamer<'a, BE, I>
 where
-    BE: IndexedBackend,
+    BE: DecryptReadBackend,
+    I: ReadGlobalIndex,
 {
     /// Creates a new `NodeStreamer`.
     ///
@@ -268,8 +277,8 @@ where
     /// [`TreeErrorKind::BlobIdNotFound`]: crate::error::TreeErrorKind::BlobIdNotFound
     /// [`TreeErrorKind::DeserializingTreeFailed`]: crate::error::TreeErrorKind::DeserializingTreeFailed
     #[allow(unused)]
-    pub fn new(be: BE, node: &Node) -> RusticResult<Self> {
-        Self::new_streamer(be, node, None, true)
+    pub fn new(be: BE, index: &'a I, node: &Node) -> RusticResult<Self> {
+        Self::new_streamer(be, index, node, None, true)
     }
 
     /// Creates a new `NodeStreamer`.
@@ -290,12 +299,13 @@ where
     /// [`TreeErrorKind::DeserializingTreeFailed`]: crate::error::TreeErrorKind::DeserializingTreeFailed
     fn new_streamer(
         be: BE,
+        index: &'a I,
         node: &Node,
         overrides: Option<Override>,
         recursive: bool,
     ) -> RusticResult<Self> {
         let inner = if node.is_dir() {
-            Tree::from_backend(&be, node.subtree.unwrap())?
+            Tree::from_backend(&be, index, node.subtree.unwrap())?
                 .nodes
                 .into_iter()
         } else {
@@ -306,6 +316,7 @@ where
             open_iterators: Vec::new(),
             path: PathBuf::new(),
             be,
+            index,
             overrides,
             recursive,
         })
@@ -326,7 +337,12 @@ where
     ///
     /// [`TreeErrorKind::BuildingNodeStreamerFailed`]: crate::error::TreeErrorKind::BuildingNodeStreamerFailed
     /// [`TreeErrorKind::ReadingFileStringFromGlobsFailed`]: crate::error::TreeErrorKind::ReadingFileStringFromGlobsFailed
-    pub fn new_with_glob(be: BE, node: &Node, opts: &TreeStreamerOptions) -> RusticResult<Self> {
+    pub fn new_with_glob(
+        be: BE,
+        index: &'a I,
+        node: &Node,
+        opts: &TreeStreamerOptions,
+    ) -> RusticResult<Self> {
         let mut override_builder = OverrideBuilder::new("");
 
         for g in &opts.glob {
@@ -369,14 +385,15 @@ where
             .build()
             .map_err(TreeErrorKind::BuildingNodeStreamerFailed)?;
 
-        Self::new_streamer(be, node, Some(overrides), opts.recursive)
+        Self::new_streamer(be, index, node, Some(overrides), opts.recursive)
     }
 }
 
 // TODO: This is not parallel at the moment...
-impl<BE> Iterator for NodeStreamer<BE>
+impl<'a, BE, I> Iterator for NodeStreamer<'a, BE, I>
 where
-    BE: IndexedBackend,
+    BE: DecryptReadBackend,
+    I: ReadGlobalIndex,
 {
     type Item = NodeStreamItem;
 
@@ -389,7 +406,7 @@ where
                         if let Some(id) = node.subtree {
                             self.path.push(node.name());
                             let be = self.be.clone();
-                            let tree = match Tree::from_backend(&be, id) {
+                            let tree = match Tree::from_backend(&be, self.index, id) {
                                 Ok(tree) => tree,
                                 Err(err) => return Some(Err(err)),
                             };
@@ -458,7 +475,12 @@ impl<P: Progress> TreeStreamerOnce<P> {
     /// * [`TreeErrorKind::SendingCrossbeamMessageFailed`] - If sending the message fails.
     ///
     /// [`TreeErrorKind::SendingCrossbeamMessageFailed`]: crate::error::TreeErrorKind::SendingCrossbeamMessageFailed
-    pub fn new<BE: IndexedBackend>(be: BE, ids: Vec<Id>, p: P) -> RusticResult<Self> {
+    pub fn new<BE: DecryptReadBackend, I: ReadGlobalIndex>(
+        be: BE,
+        index: &I,
+        ids: Vec<Id>,
+        p: P,
+    ) -> RusticResult<Self> {
         p.set_length(ids.len() as u64);
 
         let (out_tx, out_rx) = bounded(constants::MAX_TREE_LOADER);
@@ -466,12 +488,13 @@ impl<P: Progress> TreeStreamerOnce<P> {
 
         for _ in 0..constants::MAX_TREE_LOADER {
             let be = be.clone();
+            let index = index.clone();
             let in_rx = in_rx.clone();
             let out_tx = out_tx.clone();
             let _join_handle = std::thread::spawn(move || {
                 for (path, id, count) in in_rx {
                     out_tx
-                        .send(Tree::from_backend(&be, id).map(|tree| (path, tree, count)))
+                        .send(Tree::from_backend(&be, &index, id).map(|tree| (path, tree, count)))
                         .unwrap();
                 }
             });
@@ -581,7 +604,8 @@ impl<P: Progress> Iterator for TreeStreamerOnce<P> {
 ///
 // TODO!: add errors
 pub(crate) fn merge_trees(
-    be: &impl IndexedBackend,
+    be: &impl DecryptReadBackend,
+    index: &impl ReadGlobalIndex,
     trees: &[Id],
     cmp: &impl Fn(&Node, &Node) -> Ordering,
     save: &impl Fn(Tree) -> RusticResult<(Id, u64)>,
@@ -608,7 +632,7 @@ pub(crate) fn merge_trees(
 
     let mut tree_iters: Vec<_> = trees
         .iter()
-        .map(|id| Tree::from_backend(be, *id).map(std::iter::IntoIterator::into_iter))
+        .map(|id| Tree::from_backend(be, index, *id).map(std::iter::IntoIterator::into_iter))
         .collect::<RusticResult<_>>()?;
 
     // fill Heap with first elements from all trees
@@ -643,14 +667,14 @@ pub(crate) fn merge_trees(
                 // Add node to nodes list
                 nodes.push(node);
                 // no node left to proceed, merge nodes and quit
-                tree.add(merge_nodes(be, nodes, cmp, save, summary)?);
+                tree.add(merge_nodes(be, index, nodes, cmp, save, summary)?);
                 break;
             }
             Some(SortedNode(new_node, new_num)) if node.name != new_node.name => {
                 // Add node to nodes list
                 nodes.push(node);
                 // next node has other name; merge present nodes
-                tree.add(merge_nodes(be, nodes, cmp, save, summary)?);
+                tree.add(merge_nodes(be, index, nodes, cmp, save, summary)?);
                 nodes = Vec::new();
                 // use this node as new node
                 (node, num) = (new_node, new_num);
@@ -688,7 +712,8 @@ pub(crate) fn merge_trees(
 ///
 // TODO: add errors
 pub(crate) fn merge_nodes(
-    be: &impl IndexedBackend,
+    be: &impl DecryptReadBackend,
+    index: &impl ReadGlobalIndex,
     nodes: Vec<Node>,
     cmp: &impl Fn(&Node, &Node) -> Ordering,
     save: &impl Fn(Tree) -> RusticResult<(Id, u64)>,
@@ -704,7 +729,7 @@ pub(crate) fn merge_nodes(
 
     // if this is a dir, merge with all other dirs
     if node.is_dir() {
-        node.subtree = Some(merge_trees(be, &trees, cmp, save, summary)?);
+        node.subtree = Some(merge_trees(be, index, &trees, cmp, save, summary)?);
     } else {
         summary.files_unmodified += 1;
         summary.total_files_processed += 1;

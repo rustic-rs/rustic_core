@@ -65,8 +65,8 @@ pub(crate) fn warm_up<P: ProgressBars, S>(
 ) -> RusticResult<()> {
     if let Some(command) = &repo.opts.warm_up_command {
         warm_up_command(packs, command, &repo.pb)?;
-    } else if repo.opts.warm_up {
-        warm_up_access(repo, packs)?;
+    } else if repo.be.needs_warm_up() {
+        warm_up_repo(repo, packs)?;
     }
     Ok(())
 }
@@ -104,7 +104,7 @@ fn warm_up_command<P: ProgressBars>(
     Ok(())
 }
 
-/// Warm up the repository using access.
+/// Warm up the repository.
 ///
 /// # Arguments
 ///
@@ -116,13 +116,10 @@ fn warm_up_command<P: ProgressBars>(
 /// * [`RepositoryErrorKind::FromThreadPoolbilderError`] - If the thread pool could not be created.
 ///
 /// [`RepositoryErrorKind::FromThreadPoolbilderError`]: crate::error::RepositoryErrorKind::FromThreadPoolbilderError
-fn warm_up_access<P: ProgressBars, S>(
+fn warm_up_repo<P: ProgressBars, S>(
     repo: &Repository<P, S>,
     packs: impl ExactSizeIterator<Item = Id>,
 ) -> RusticResult<()> {
-    let mut be = repo.be.clone();
-    be.set_option("retry", "false")?;
-
     let p = repo.pb.progress_counter("warming up packs...");
     p.set_length(packs.len() as u64);
 
@@ -131,12 +128,12 @@ fn warm_up_access<P: ProgressBars, S>(
         .build()
         .map_err(RepositoryErrorKind::FromThreadPoolbilderError)?;
     let p = &p;
-    let be = &be;
+    let be = &repo.be;
     pool.in_place_scope(|s| {
         for pack in packs {
             s.spawn(move |_| {
                 // ignore errors as they are expected from the warm-up
-                _ = be.read_partial(FileType::Pack, &pack, false, 0, 1);
+                be.warm_up(FileType::Pack, &pack).unwrap();
                 p.inc(1);
             });
         }

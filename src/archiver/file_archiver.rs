@@ -20,7 +20,7 @@ use crate::{
     crypto::hasher::hash,
     error::ArchiverErrorKind,
     error::RusticResult,
-    index::{indexer::SharedIndexer, IndexedBackend},
+    index::{indexer::SharedIndexer, ReadGlobalIndex},
     progress::Progress,
     repofile::configfile::ConfigFile,
 };
@@ -33,13 +33,13 @@ use crate::{
 /// * `BE` - The backend type.
 /// * `I` - The index to read from.
 #[derive(Clone)]
-pub(crate) struct FileArchiver<BE: DecryptWriteBackend, I: IndexedBackend> {
-    index: I,
+pub(crate) struct FileArchiver<'a, BE: DecryptWriteBackend, I: ReadGlobalIndex> {
+    index: &'a I,
     data_packer: Packer<BE>,
     rabin: Rabin64,
 }
 
-impl<BE: DecryptWriteBackend, I: IndexedBackend> FileArchiver<BE, I> {
+impl<'a, BE: DecryptWriteBackend, I: ReadGlobalIndex> FileArchiver<'a, BE, I> {
     /// Creates a new `FileArchiver`.
     ///
     /// # Type Parameters
@@ -63,7 +63,7 @@ impl<BE: DecryptWriteBackend, I: IndexedBackend> FileArchiver<BE, I> {
     /// [`PackerErrorKind::IntConversionFailed`]: crate::error::PackerErrorKind::IntConversionFailed
     pub(crate) fn new(
         be: BE,
-        index: I,
+        index: &'a I,
         indexer: SharedIndexer<BE>,
         config: &ConfigFile,
     ) -> RusticResult<Self> {

@@ -107,6 +107,7 @@ impl ParentOptions {
         (
             parent_id,
             Parent::new(
+                repo.dbe(),
                 repo.index(),
                 parent_tree,
                 self.ignore_ctime,
@@ -227,14 +228,13 @@ pub(crate) fn backup<P: ProgressBars, S: IndexedIds>(
 
     let be = DryRunBackend::new(repo.dbe().clone(), opts.dry_run);
     info!("starting to backup {source}...");
-    let archiver = Archiver::new(be, index.clone(), repo.config(), parent, snap)?;
+    let archiver = Archiver::new(be, index, repo.config(), parent, snap)?;
     let p = repo.pb.progress_bytes("determining size...");
 
     let snap = if backup_stdin {
         let path = &backup_path[0];
         let src = StdinSource::new(path.clone())?;
         archiver.archive(
-            repo.index(),
             src,
             path,
             as_path.as_ref(),
@@ -248,7 +248,6 @@ pub(crate) fn backup<P: ProgressBars, S: IndexedIds>(
             &backup_path,
         )?;
         archiver.archive(
-            repo.index(),
             src,
             &backup_path[0],
             as_path.as_ref(),

@@ -36,7 +36,7 @@ use crate::{
     index::{
         binarysorted::{IndexCollector, IndexType},
         indexer::Indexer,
-        IndexBackend, IndexedBackend, ReadIndex,
+        GlobalIndex, ReadGlobalIndex, ReadIndex,
     },
     progress::{Progress, ProgressBars},
     repofile::{HeaderEntry, IndexBlob, IndexFile, IndexPack, SnapshotFile},
@@ -199,10 +199,9 @@ impl PruneOptions {
         p.finish();
 
         let (used_ids, total_size) = {
-            let index = index_collector.into_index();
+            let index = GlobalIndex::new_from_index(index_collector.into_index());
             let total_size = BlobTypeMap::init(|blob_type| index.total_size(blob_type));
-            let indexed_be = IndexBackend::new_from_index(&be.clone(), index);
-            let used_ids = find_used_blobs(&indexed_be, &self.ignore_snaps, pb)?;
+            let used_ids = find_used_blobs(be, &index, &self.ignore_snaps, pb)?;
             (used_ids, total_size)
         };
 
@@ -1331,21 +1330,20 @@ impl PackInfo {
 ///
 // TODO!: add errors!
 fn find_used_blobs(
-    index: &impl IndexedBackend,
+    be: &impl DecryptReadBackend,
+    index: &impl ReadGlobalIndex,
     ignore_snaps: &[Id],
     pb: &impl ProgressBars,
 ) -> RusticResult<HashMap<Id, u8>> {
     let ignore_snaps: HashSet<_> = ignore_snaps.iter().collect();
 
     let p = pb.progress_counter("reading snapshots...");
-    let list = index
-        .be()
+    let list = be
         .list(FileType::Snapshot)?
         .into_iter()
         .filter(|id| !ignore_snaps.contains(id))
         .collect();
-    let snap_trees: Vec<_> = index
-        .be()
+    let snap_trees: Vec<_> = be
         .stream_list::<SnapshotFile>(list, &p)?
         .into_iter()
         .map_ok(|(_, snap)| snap.tree)
@@ -1355,7 +1353,7 @@ fn find_used_blobs(
     let mut ids: HashMap<_, _> = snap_trees.iter().map(|id| (*id, 0)).collect();
     let p = pb.progress_counter("finding used blobs...");
 
-    let mut tree_streamer = TreeStreamerOnce::new(index.clone(), snap_trees, p)?;
+    let mut tree_streamer = TreeStreamerOnce::new(be.clone(), index, snap_trees, p)?;
     while let Some(item) = tree_streamer.next().transpose()? {
         let (_, tree) = item;
         for node in tree.nodes {

@@ -4,7 +4,7 @@ use derive_setters::Setters;
 
 use crate::{
     backend::decrypt::{DecryptBackend, DecryptWriteBackend},
-    crypto::aespoly1305::Key,
+    crypto::CryptoKey,
     error::CommandErrorKind,
     error::RusticResult,
     repofile::ConfigFile,
@@ -55,7 +55,7 @@ pub(crate) fn apply_config<P, S: Open>(
     if &new_config == repo.config() {
         Ok(false)
     } else {
-        save_config(repo, new_config, *repo.key())?;
+        save_config(repo, new_config, *repo.dbe().key())?;
         Ok(true)
     }
 }
@@ -81,22 +81,18 @@ pub(crate) fn apply_config<P, S: Open>(
 pub(crate) fn save_config<P, S>(
     repo: &Repository<P, S>,
     mut new_config: ConfigFile,
-    key: Key,
+    key: impl CryptoKey,
 ) -> RusticResult<()> {
     new_config.is_hot = None;
-    // don't compress the config file
-    let mut dbe = DecryptBackend::new(&repo.be, key);
-    dbe.set_zstd(None);
+    let dbe = DecryptBackend::new(repo.be.clone(), key);
     // for hot/cold backend, this only saves the config to the cold repo.
-    _ = dbe.save_file(&new_config)?;
+    _ = dbe.save_file_uncompressed(&new_config)?;
 
     if let Some(hot_be) = repo.be_hot.clone() {
         // save config to hot repo
-        let mut dbe = DecryptBackend::new(&hot_be, key);
-        // don't compress the config file
-        dbe.set_zstd(None);
+        let dbe = DecryptBackend::new(hot_be, key);
         new_config.is_hot = Some(true);
-        _ = dbe.save_file(&new_config)?;
+        _ = dbe.save_file_uncompressed(&new_config)?;
     }
     Ok(())
 }

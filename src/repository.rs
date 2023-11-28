@@ -5,6 +5,7 @@ use std::{
     io::{BufRead, BufReader, Write},
     path::{Path, PathBuf},
     process::{Command, Stdio},
+    sync::Arc,
 };
 
 use bytes::Bytes;
@@ -17,12 +18,13 @@ use crate::{
     backend::{
         cache::Cache,
         cache::CachedBackend,
-        choose::ChooseBackend,
-        decrypt::{DecryptBackend, DecryptFullBackend, DecryptReadBackend, DecryptWriteBackend},
+        choose::choose_from_url,
+        decrypt::{DecryptBackend, DecryptReadBackend, DecryptWriteBackend},
         hotcold::HotColdBackend,
         local::LocalDestination,
         node::Node,
-        FileType, ReadBackend,
+        warm_up::WarmUpAccessBackend,
+        FileType, ReadBackend, WriteBackend,
     },
     blob::{
         tree::{NodeStreamer, TreeStreamerOptions as LsOptions},
@@ -45,7 +47,7 @@ use crate::{
     error::RusticResult,
     error::{KeyFileErrorKind, RepositoryErrorKind, RusticErrorKind},
     id::Id,
-    index::{IndexBackend, IndexEntry, IndexedBackend, ReadIndex},
+    index::{GlobalIndex, IndexEntry, ReadGlobalIndex, ReadIndex},
     progress::{NoProgressBars, ProgressBars},
     repofile::{
         keyfile::find_key_in_backend,
@@ -236,10 +238,10 @@ pub struct Repository<P, S> {
     pub name: String,
 
     /// The HotColdBackend to use for this repository
-    pub(crate) be: HotColdBackend<ChooseBackend>,
+    pub(crate) be: Arc<dyn WriteBackend>,
 
     /// The Backende to use for hot files
-    pub(crate) be_hot: Option<ChooseBackend>,
+    pub(crate) be_hot: Option<Arc<dyn WriteBackend>>,
 
     /// The options used for this repository
     opts: RepositoryOptions,
@@ -306,8 +308,8 @@ impl<P> Repository<P, ()> {
     /// [`RestErrorKind::UrlParsingFailed`]: crate::error::RestErrorKind::UrlParsingFailed
     /// [`RestErrorKind::BuildingClientFailed`]: crate::error::RestErrorKind::BuildingClientFailed
     pub fn new_with_progress(opts: &RepositoryOptions, pb: P) -> RusticResult<Self> {
-        let be = match &opts.repository {
-            Some(repo) => ChooseBackend::from_url(repo)?,
+        let mut be = match &opts.repository {
+            Some(repo) => choose_from_url(repo, opts.options.clone())?,
             None => return Err(RepositoryErrorKind::NoRepositoryGiven.into()),
         };
 
@@ -318,16 +320,18 @@ impl<P> Repository<P, ()> {
             info!("using warm-up command {command}");
         }
 
+        if opts.warm_up {
+            be = WarmUpAccessBackend::new(be);
+        }
+
         let be_hot = opts
             .repo_hot
             .as_ref()
-            .map(|repo| ChooseBackend::from_url(repo))
+            .map(|repo| choose_from_url(repo, opts.options.clone()))
             .transpose()?;
 
-        let mut be = HotColdBackend::new(be, be_hot.clone());
-        for (opt, value) in &opts.options {
-            be.set_option(opt, value)?;
-        }
+        let be = HotColdBackend::new(be, be_hot.clone());
+
         let mut name = be.location();
         if let Some(be_hot) = &be_hot {
             name.push('#');
@@ -527,7 +531,7 @@ impl<P, S> Repository<P, S> {
             }
         })?;
         info!("repository {}: password is correct.", self.name);
-        let dbe = DecryptBackend::new(&self.be, key);
+        let dbe = DecryptBackend::new(self.be.clone(), key);
         let config: ConfigFile = dbe.get_file(&config_id)?;
         self.open_raw(key, config)
     }
@@ -662,17 +666,12 @@ impl<P, S> Repository<P, S> {
             || info!("using no cache"),
             |cache| info!("using cache at {}", cache.location()),
         );
-        let be_cached = CachedBackend::new(self.be.clone(), cache.clone());
-        let mut dbe = DecryptBackend::new(&be_cached, key);
+        let be_cached = Arc::new(CachedBackend::new(self.be.clone(), cache.clone()));
+        let mut dbe = DecryptBackend::new(be_cached, key);
         let zstd = config.zstd()?;
         dbe.set_zstd(zstd);
 
-        let open = OpenStatus {
-            key,
-            dbe,
-            cache,
-            config,
-        };
+        let open = OpenStatus { dbe, cache, config };
 
         Ok(Repository {
             name: self.name,
@@ -736,38 +735,24 @@ impl<P: ProgressBars, S> Repository<P, S> {
 
 /// A repository which is open, i.e. the password has been checked and the decryption key is available.
 pub trait Open {
-    /// The [`DecryptBackend`] used by this repository
-    type DBE: DecryptFullBackend;
-
-    /// Get the decryption key
-    fn key(&self) -> &Key;
-
     /// Get the cache
     fn cache(&self) -> Option<&Cache>;
 
     /// Get the [`DecryptBackend`]
-    fn dbe(&self) -> &Self::DBE;
+    fn dbe(&self) -> &DecryptBackend<Key>;
 
     /// Get the [`ConfigFile`]
     fn config(&self) -> &ConfigFile;
 }
 
 impl<P, S: Open> Open for Repository<P, S> {
-    /// The [`DecryptBackend`] used by this repository
-    type DBE = S::DBE;
-
-    /// Get the decryption key
-    fn key(&self) -> &Key {
-        self.status.key()
-    }
-
     /// Get the cache
     fn cache(&self) -> Option<&Cache> {
         self.status.cache()
     }
 
     /// Get the [`DecryptBackend`]
-    fn dbe(&self) -> &Self::DBE {
+    fn dbe(&self) -> &DecryptBackend<Key> {
         self.status.dbe()
     }
 
@@ -777,35 +762,25 @@ impl<P, S: Open> Open for Repository<P, S> {
     }
 }
 
-#[derive(Debug)]
 /// Open Status: This repository is open, i.e. the password has been checked and the decryption key is available.
+#[derive(Debug)]
 pub struct OpenStatus {
-    /// The decryption key
-    key: Key,
     /// The cache
     cache: Option<Cache>,
     /// The [`DecryptBackend`]
-    dbe: DecryptBackend<CachedBackend<HotColdBackend<ChooseBackend>>, Key>,
+    dbe: DecryptBackend<Key>,
     /// The [`ConfigFile`]
     config: ConfigFile,
 }
 
 impl Open for OpenStatus {
-    /// The [`DecryptBackend`] used by this repository
-    type DBE = DecryptBackend<CachedBackend<HotColdBackend<ChooseBackend>>, Key>;
-
-    /// Get the decryption key
-    fn key(&self) -> &Key {
-        &self.key
-    }
-
     /// Get the cache
     fn cache(&self) -> Option<&Cache> {
         self.cache.as_ref()
     }
 
     /// Get the [`DecryptBackend`]
-    fn dbe(&self) -> &Self::DBE {
+    fn dbe(&self) -> &DecryptBackend<Key> {
         &self.dbe
     }
 
@@ -887,7 +862,7 @@ impl<P, S: Open> Repository<P, S> {
     }
 
     // TODO: add documentation!
-    pub(crate) fn dbe(&self) -> &S::DBE {
+    pub(crate) fn dbe(&self) -> &DecryptBackend<Key> {
         self.status.dbe()
     }
 }
@@ -1078,7 +1053,7 @@ impl<P: ProgressBars, S: Open> Repository<P, S> {
     ///
     /// This saves the full index in memory which can be quite memory-consuming!
     pub fn to_indexed(self) -> RusticResult<Repository<P, IndexedStatus<FullIndex, S>>> {
-        let index = IndexBackend::new(self.dbe(), &self.pb.progress_counter(""))?;
+        let index = GlobalIndex::new(self.dbe(), &self.pb.progress_counter(""))?;
         let status = IndexedStatus {
             open: self.status,
             index,
@@ -1099,7 +1074,7 @@ impl<P: ProgressBars, S: Open> Repository<P, S> {
     /// This saves only the `Id`s for data blobs. Therefore, not all operations are possible on the repository.
     /// However, operations which add data are fully functional.
     pub fn to_indexed_ids(self) -> RusticResult<Repository<P, IndexedStatus<IdIndex, S>>> {
-        let index = IndexBackend::only_full_trees(self.dbe(), &self.pb.progress_counter(""))?;
+        let index = GlobalIndex::only_full_trees(self.dbe(), &self.pb.progress_counter(""))?;
         let status = IndexedStatus {
             open: self.status,
             index,
@@ -1148,7 +1123,7 @@ impl<P: ProgressBars, S: Open> Repository<P, S> {
 
 /// A repository which is indexed such that all tree blobs are contained in the index.
 pub trait IndexedTree: Open {
-    type I: IndexedBackend;
+    type I: ReadGlobalIndex;
     fn index(&self) -> &Self::I;
 }
 
@@ -1177,7 +1152,7 @@ pub struct IndexedStatus<T, S: Open> {
     /// The open status
     open: S,
     /// The index backend
-    index: IndexBackend<S::DBE>,
+    index: GlobalIndex,
     /// The marker for the type of index
     marker: std::marker::PhantomData<T>,
 }
@@ -1189,7 +1164,7 @@ pub struct IdIndex {}
 pub struct FullIndex {}
 
 impl<T, S: Open> IndexedTree for IndexedStatus<T, S> {
-    type I = IndexBackend<S::DBE>;
+    type I = GlobalIndex;
 
     fn index(&self) -> &Self::I {
         &self.index
@@ -1201,15 +1176,10 @@ impl<S: Open> IndexedIds for IndexedStatus<FullIndex, S> {}
 impl<S: Open> IndexedFull for IndexedStatus<FullIndex, S> {}
 
 impl<T, S: Open> Open for IndexedStatus<T, S> {
-    type DBE = S::DBE;
-
-    fn key(&self) -> &Key {
-        self.open.key()
-    }
     fn cache(&self) -> Option<&Cache> {
         self.open.cache()
     }
-    fn dbe(&self) -> &Self::DBE {
+    fn dbe(&self) -> &DecryptBackend<Key> {
         self.open.dbe()
     }
     fn config(&self) -> &ConfigFile {
@@ -1268,7 +1238,7 @@ impl<P: ProgressBars, S: IndexedTree> Repository<P, S> {
         let p = &self.pb.progress_counter("getting snapshot...");
         let snap = SnapshotFile::from_str(self.dbe(), id, filter, p)?;
 
-        Tree::node_from_path(self.index(), snap.tree, Path::new(path))
+        Tree::node_from_path(self.dbe(), self.index(), snap.tree, Path::new(path))
     }
 
     /// Get a [`Node`] from a [`SnapshotFile`] and a `path`
@@ -1284,7 +1254,7 @@ impl<P: ProgressBars, S: IndexedTree> Repository<P, S> {
         snap: &SnapshotFile,
         path: &str,
     ) -> RusticResult<Node> {
-        Tree::node_from_path(self.index(), snap.tree, Path::new(path))
+        Tree::node_from_path(self.dbe(), self.index(), snap.tree, Path::new(path))
     }
 
     /// Reads a raw tree from a "SNAP\[:PATH\]" syntax
@@ -1318,12 +1288,12 @@ impl<P: ProgressBars, S: IndexedTree> Repository<P, S> {
     /// # Note
     ///
     /// The `PathBuf` returned will be relative to the given `node`.
-    pub fn ls(
-        &self,
-        node: &Node,
-        ls_opts: &LsOptions,
-    ) -> RusticResult<impl Iterator<Item = RusticResult<(PathBuf, Node)>> + Clone> {
-        NodeStreamer::new_with_glob(self.index().clone(), node, ls_opts)
+    pub fn ls<'a>(
+        &'a self,
+        node: &'a Node,
+        ls_opts: &'a LsOptions,
+    ) -> RusticResult<impl Iterator<Item = RusticResult<(PathBuf, Node)>> + Clone + 'a> {
+        NodeStreamer::new_with_glob(self.dbe().clone(), self.index(), node, ls_opts)
     }
 
     /// Restore a given [`RestorePlan`] to a local destination

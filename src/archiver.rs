@@ -14,9 +14,9 @@ use crate::{
         file_archiver::FileArchiver, parent::Parent, tree::TreeIterator,
         tree_archiver::TreeArchiver,
     },
-    backend::{decrypt::DecryptWriteBackend, ReadSource, ReadSourceEntry},
+    backend::{decrypt::DecryptFullBackend, ReadSource, ReadSourceEntry},
     blob::BlobType,
-    index::{indexer::Indexer, indexer::SharedIndexer, IndexedBackend},
+    index::{indexer::Indexer, indexer::SharedIndexer, ReadGlobalIndex},
     repofile::{configfile::ConfigFile, snapshotfile::SnapshotFile},
     Progress, RusticResult,
 };
@@ -29,12 +29,12 @@ use crate::{
 /// * `BE` - The backend type.
 /// * `I` - The index to read from.
 #[allow(missing_debug_implementations)]
-pub struct Archiver<BE: DecryptWriteBackend, I: IndexedBackend> {
+pub struct Archiver<'a, BE: DecryptFullBackend, I: ReadGlobalIndex> {
     /// The `FileArchiver` is responsible for archiving files.
-    file_archiver: FileArchiver<BE, I>,
+    file_archiver: FileArchiver<'a, BE, I>,
 
     /// The `TreeArchiver` is responsible for archiving trees.
-    tree_archiver: TreeArchiver<BE, I>,
+    tree_archiver: TreeArchiver<'a, BE, I>,
 
     /// The parent snapshot to use.
     parent: Parent,
@@ -45,11 +45,14 @@ pub struct Archiver<BE: DecryptWriteBackend, I: IndexedBackend> {
     /// The backend to write to.
     be: BE,
 
+    /// The backend to write to.
+    index: &'a I,
+
     /// The SnapshotFile to write to.
     snap: SnapshotFile,
 }
 
-impl<BE: DecryptWriteBackend, I: IndexedBackend> Archiver<BE, I> {
+impl<'a, BE: DecryptFullBackend, I: ReadGlobalIndex> Archiver<'a, BE, I> {
     /// Creates a new `Archiver`.
     ///
     /// # Arguments
@@ -69,7 +72,7 @@ impl<BE: DecryptWriteBackend, I: IndexedBackend> Archiver<BE, I> {
     /// [`PackerErrorKind::IntConversionFailed`]: crate::error::PackerErrorKind::IntConversionFailed
     pub fn new(
         be: BE,
-        index: I,
+        index: &'a I,
         config: &ConfigFile,
         parent: Parent,
         mut snap: SnapshotFile,
@@ -78,7 +81,7 @@ impl<BE: DecryptWriteBackend, I: IndexedBackend> Archiver<BE, I> {
         let mut summary = snap.summary.take().unwrap_or_default();
         summary.backup_start = Local::now();
 
-        let file_archiver = FileArchiver::new(be.clone(), index.clone(), indexer.clone(), config)?;
+        let file_archiver = FileArchiver::new(be.clone(), index, indexer.clone(), config)?;
         let tree_archiver = TreeArchiver::new(be.clone(), index, indexer.clone(), config, summary)?;
         Ok(Self {
             file_archiver,
@@ -86,6 +89,7 @@ impl<BE: DecryptWriteBackend, I: IndexedBackend> Archiver<BE, I> {
             parent,
             indexer,
             be,
+            index,
             snap,
         })
     }
@@ -118,7 +122,6 @@ impl<BE: DecryptWriteBackend, I: IndexedBackend> Archiver<BE, I> {
     /// [`SnapshotFileErrorKind::OutOfRange`]: crate::error::SnapshotFileErrorKind::OutOfRange
     pub fn archive<R>(
         mut self,
-        index: &I,
         src: R,
         backup_path: &Path,
         as_path: Option<&PathBuf>,
@@ -170,13 +173,15 @@ impl<BE: DecryptWriteBackend, I: IndexedBackend> Archiver<BE, I> {
 
         scope(|scope| -> RusticResult<_> {
             // use parent snapshot
-            iter.filter_map(|item| match self.parent.process(index, item) {
-                Ok(item) => Some(item),
-                Err(err) => {
-                    warn!("ignoring error reading parent snapshot: {err:?}");
-                    None
-                }
-            })
+            iter.filter_map(
+                |item| match self.parent.process(&self.be, self.index, item) {
+                    Ok(item) => Some(item),
+                    Err(err) => {
+                        warn!("ignoring error reading parent snapshot: {err:?}");
+                        None
+                    }
+                },
+            )
             // archive files in parallel
             .parallel_map_scoped(scope, |item| self.file_archiver.process(item, p))
             .readahead_scoped(scope)
