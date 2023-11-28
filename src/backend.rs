@@ -14,7 +14,6 @@ pub(crate) mod warm_up;
 use std::{io::Read, ops::Deref, path::PathBuf, sync::Arc};
 
 use bytes::Bytes;
-use downcast_rs::{impl_downcast, Downcast};
 use log::trace;
 use serde_derive::{Deserialize, Serialize};
 
@@ -71,7 +70,7 @@ impl FileType {
 /// Trait for backends that can read.
 ///
 /// This trait is implemented by all backends that can read data.
-pub trait ReadBackend: Send + Sync + 'static + Downcast {
+pub trait ReadBackend: Send + Sync + 'static {
     /// Returns the location of the backend.
     fn location(&self) -> String;
 
@@ -294,7 +293,6 @@ pub trait WriteBackend: ReadBackend {
     /// * `cacheable` - Whether the file is cacheable.
     fn remove(&self, tpe: FileType, id: &Id, cacheable: bool) -> RusticResult<()>;
 }
-impl_downcast!(WriteBackend);
 
 impl std::fmt::Debug for dyn WriteBackend {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
