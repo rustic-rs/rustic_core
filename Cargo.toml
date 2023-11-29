@@ -71,7 +71,7 @@ scrypt = { version = "0.11.0", default-features = false }
 integer-sqrt = "0.1.5"
 
 # serialization
-binrw = "0.13.2"
+binrw = "0.13.3"
 hex = { version = "0.4.3", features = ["serde"] }
 serde = { version = "1.0.193" }
 serde-aux = "4.2.0"
@@ -95,7 +95,7 @@ cached = { version = "0.46.1", default-features = false, features = [
   "proc_macro",
 ] }
 filetime = "0.2.22"
-ignore = "0.4.20"
+ignore = "0.4.21"
 nix = { version = "0.27.1", default-features = false, features = [
   "user",
   "fs",
@@ -120,7 +120,7 @@ cachedir = "0.3.0"
 dirs = "5.0.1"
 
 # cli
-clap = { version = "4.4.8", optional = true, features = [
+clap = { version = "4.4.10", optional = true, features = [
   "derive",
   "env",
   "wrap_help",
@@ -156,8 +156,8 @@ public-api = "0.32.0"
 quickcheck = "1.0.3"
 quickcheck_macros = "1.0.0"
 rstest = "0.18.2"
-rustdoc-json = "0.8.7"
-rustup-toolchain = "0.1.5"
+rustdoc-json = "0.8.8"
+rustup-toolchain = "0.1.6"
 simplelog = "0.12.1"
 tempfile = "3.8.1"
 
