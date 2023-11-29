@@ -152,7 +152,7 @@ xattr = "1"
 [dev-dependencies]
 expect-test = "1.4.1"
 pretty_assertions = "1.4.0"
-public-api = "0.32.0"
+public-api = "0.33.0"
 quickcheck = "1.0.3"
 quickcheck_macros = "1.0.0"
 rstest = "0.18.2"
