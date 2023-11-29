@@ -21,14 +21,12 @@ jobs:
     steps:
       - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4
       - name: Install cargo-hack
-        uses: taiki-e/install-action@b61491983a082ef851796e8c4feac004b49da5be # v2
+        uses: taiki-e/install-action@f7c663c03b51ed0d93e9cec22a575d3f02175989 # v2
         with:
           tool: cargo-hack
 
-      - uses: actions-rs/cargo@844f36862e911db73fe0815f00a4a2602c279505 # v1
-        with:
-          command: hack
-          args: check --rust-version
+      - name: Run Cargo Hack
+        run: cargo hack check --rust-version
 
   result:
     name: Result (MSRV)

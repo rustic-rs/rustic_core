@@ -20,16 +20,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4
-      - uses: actions-rs/toolchain@16499b5e05bf2e26879000db0c1d13f7e13fa3af # v1
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@1482605bfc5719782e1267fd0c0cc350fe7646b8 # v1
         with:
-          profile: minimal
           toolchain: stable
-          override: true
       - run: rustup component add rustfmt
-      - uses: actions-rs/cargo@844f36862e911db73fe0815f00a4a2602c279505 # v1
-        with:
-          command: fmt
-          args: --all -- --check
+      - name: Run Cargo Fmt
+        run: cargo fmt --all -- --check
 
   clippy:
     name: Clippy
@@ -37,17 +34,14 @@ jobs:
 
     steps:
       - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4
-      - uses: actions-rs/toolchain@16499b5e05bf2e26879000db0c1d13f7e13fa3af # v1
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@1482605bfc5719782e1267fd0c0cc350fe7646b8 # v1
         with:
           toolchain: stable
           components: clippy
-          override: true
       - uses: Swatinem/rust-cache@a95ba195448af2da9b00fb742d14ffaaf3c21f43 # v2
-      - uses: actions-rs/clippy-check@b5b5f21f4797c02da247df37026fcd0a5024aa4d # v1
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          args: --all-targets --all-features -- -D warnings
-          name: Clippy Output
+      - name: Run clippy
+        run: cargo clippy --all-targets --all-features -- -D warnings
 
   test:
     name: Test
@@ -71,17 +65,13 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
 
-      - uses: actions-rs/toolchain@16499b5e05bf2e26879000db0c1d13f7e13fa3af # v1
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@1482605bfc5719782e1267fd0c0cc350fe7646b8 # v1
         with:
-          profile: minimal
           toolchain: ${{ matrix.rust }}
-          override: true
       - uses: Swatinem/rust-cache@a95ba195448af2da9b00fb742d14ffaaf3c21f43 # v2
-      - uses: actions-rs/cargo@844f36862e911db73fe0815f00a4a2602c279505 # v1
-        with:
-          command: test
-          toolchain: ${{ matrix.rust }}
-          args: -r --all-targets --all-features --workspace
+      - name: Run Cargo Test
+        run: cargo +${{ matrix.rust }} test -r --all-targets --all-features --workspace
 
   docs:
     name: Build docs
@@ -105,17 +95,13 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
 
-      - uses: actions-rs/toolchain@16499b5e05bf2e26879000db0c1d13f7e13fa3af # v1
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@1482605bfc5719782e1267fd0c0cc350fe7646b8 # v1
         with:
-          profile: minimal
           toolchain: ${{ matrix.rust }}
-          override: true
       - uses: Swatinem/rust-cache@a95ba195448af2da9b00fb742d14ffaaf3c21f43 # v2
-      - uses: actions-rs/cargo@844f36862e911db73fe0815f00a4a2602c279505 # v1
-        with:
-          command: doc
-          toolchain: ${{ matrix.rust }}
-          args: --no-deps --all-features --workspace --examples
+      - name: Run Cargo Doc
+        run: cargo +${{ matrix.rust }} doc --no-deps --all-features --workspace --examples
 
   powerset:
     name: Check Powerset of Features
@@ -139,21 +125,17 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
 
-      - uses: actions-rs/toolchain@16499b5e05bf2e26879000db0c1d13f7e13fa3af # v1
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@1482605bfc5719782e1267fd0c0cc350fe7646b8 # v1
         with:
-          profile: minimal
           toolchain: ${{ matrix.rust }}
-          override: true
       - name: install cargo-hack
-        uses: taiki-e/install-action@b61491983a082ef851796e8c4feac004b49da5be # v2
+        uses: taiki-e/install-action@f7c663c03b51ed0d93e9cec22a575d3f02175989 # v2
         with:
           tool: cargo-hack
       - uses: Swatinem/rust-cache@a95ba195448af2da9b00fb742d14ffaaf3c21f43 # v2
-      - uses: actions-rs/cargo@844f36862e911db73fe0815f00a4a2602c279505 # v1
-        with:
-          command: hack
-          toolchain: ${{ matrix.rust }}
-          args: check --feature-powerset --no-dev-deps
+      - name: Run Cargo Hack
+        run: cargo +${{ matrix.rust }} hack check --feature-powerset --no-dev-deps
 
   result:
     name: Result (CI)
