@@ -100,6 +100,11 @@ pub struct LocalSourceFilterOptions {
     #[cfg_attr(feature = "merge", merge(strategy = merge::bool::overwrite_false))]
     pub no_require_git: bool,
 
+    /// Treat the provided filename like a .gitignore file (can be specified multiple times)
+    #[cfg_attr(feature = "clap", clap(long, value_name = "FILE"))]
+    #[cfg_attr(feature = "merge", merge(strategy = merge::vec::overwrite_empty))]
+    pub ignore_file: Vec<String>,
+
     /// Exclude contents of directories containing this filename (can be specified multiple times)
     #[cfg_attr(feature = "clap", clap(long, value_name = "FILE"))]
     #[cfg_attr(feature = "merge", merge(strategy = merge::vec::overwrite_empty))]
@@ -184,6 +189,10 @@ impl LocalSource {
                     .add(line)
                     .map_err(IgnoreErrorKind::GenericError)?;
             }
+        }
+
+        for file in &filter_opts.ignore_file {
+            _ = walk_builder.add_custom_ignore_filename(file);
         }
 
         _ = walk_builder
