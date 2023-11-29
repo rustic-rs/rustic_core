@@ -28,21 +28,18 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
 
-      - uses: actions-rs/toolchain@16499b5e05bf2e26879000db0c1d13f7e13fa3af # v1
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@439cf607258077187679211f12aa6f19af4a0af7 # v1
         with:
-          profile: minimal
           toolchain: ${{ matrix.rust }}
-          override: true
       - name: install cargo-careful
         uses: taiki-e/install-action@b61491983a082ef851796e8c4feac004b49da5be # v2
         with:
           tool: cargo-careful
       - uses: Swatinem/rust-cache@a95ba195448af2da9b00fb742d14ffaaf3c21f43 # v2
-      - uses: actions-rs/cargo@844f36862e911db73fe0815f00a4a2602c279505 # v1
-        with:
-          toolchain: ${{ matrix.rust }}
-          command: careful
-          args: test
+
+      - name: Run Cargo Careful
+        run: cargo +${{ matrix.rust }} careful test
 
   miri:
     name: Miri Test
@@ -67,35 +64,29 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
 
-      - uses: actions-rs/toolchain@16499b5e05bf2e26879000db0c1d13f7e13fa3af # v1
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@439cf607258077187679211f12aa6f19af4a0af7 # v1
         with:
-          profile: minimal
           toolchain: ${{ matrix.rust }}
           components: miri
-          override: true
       - uses: Swatinem/rust-cache@a95ba195448af2da9b00fb742d14ffaaf3c21f43 # v2
-      - uses: actions-rs/cargo@844f36862e911db73fe0815f00a4a2602c279505 # v1
-        with:
-          toolchain: ${{ matrix.rust }}
-          command: clean # miri needs clean builds
+
+      - name: Run Cargo Clean
+        run: cargo +${{ matrix.rust }} clean # miri needs clean builds
+
       - name: Patch Cargo.toml
         shell: bash
         run: |
           # Account for sha256_compress not being interpreted by miri
           # https://github.com/rust-lang/miri/issues/3066
           sed -i -e 's/^sha2 = { version.*/sha2 = "0"/g' ./Cargo.toml
-      - uses: actions-rs/cargo@844f36862e911db73fe0815f00a4a2602c279505 # v1
-        with:
-          toolchain: ${{ matrix.rust }}
-          command: miri
-          args: setup # keep output clean
-      - uses: actions-rs/cargo@844f36862e911db73fe0815f00a4a2602c279505 # v1
+      - name: Run Cargo Miri Setup
+        run: cargo +${{ matrix.rust }} miri setup # keep output clean
+
+      - name: Run Cargo Miri
         env:
           MIRIFLAGS: -Zmiri-disable-isolation
-        with:
-          toolchain: ${{ matrix.rust }}
-          command: miri
-          args: test -- --nocapture
+        run: cargo +${{ matrix.rust }} miri test -- --nocapture
 
   result:
     name: Result (Careful CI)
