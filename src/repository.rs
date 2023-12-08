@@ -323,7 +323,7 @@ impl<P> Repository<P, ()> {
                 let mut options = opts.options.clone();
                 options.extend(opts.options_cold.clone());
                 let (tpe, path) = url_to_type_and_path(repo);
-                get_backend(tpe, path, opts.options.clone())
+                get_backend(tpe, path, options)
                     .map_err(|err| BackendAccessErrorKind::BackendLoadError(tpe.to_string(), err))?
             }
             None => return Err(RepositoryErrorKind::NoRepositoryGiven.into()),
@@ -337,7 +337,7 @@ impl<P> Repository<P, ()> {
         }
 
         if opts.warm_up {
-            be = WarmUpAccessBackend::new(be);
+            be = WarmUpAccessBackend::new_warm_up(be);
         }
 
         let be_hot = opts
@@ -354,7 +354,7 @@ impl<P> Repository<P, ()> {
 
         let mut name = be.location();
         if let Some(be_hot) = &be_hot {
-            be = HotColdBackend::new(be, be_hot.clone());
+            be = HotColdBackend::new_hotcold(be, be_hot.clone());
             name.push('#');
             name.push_str(&be_hot.location());
         }
@@ -692,7 +692,7 @@ impl<P, S> Repository<P, S> {
             || info!("using no cache"),
             |cache| info!("using cache at {}", cache.location()),
         );
-        let be_cached = Arc::new(CachedBackend::new(self.be.clone(), cache.clone()));
+        let be_cached = Arc::new(CachedBackend::new_cache(self.be.clone(), cache.clone()));
         let mut dbe = DecryptBackend::new(be_cached, key);
         let zstd = config.zstd()?;
         dbe.set_zstd(zstd);

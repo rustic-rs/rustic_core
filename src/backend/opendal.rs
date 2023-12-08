@@ -54,7 +54,7 @@ impl ReadBackend for OpenDALBackend {
     /// This is `local:<path>`.
     fn location(&self) -> String {
         let mut location = "opendal:".to_string();
-        location.push_str(&self.operator.info().name());
+        location.push_str(self.operator.info().name());
         location
     }
 
@@ -90,7 +90,7 @@ impl ReadBackend for OpenDALBackend {
             .call()?
             .into_iter()
             .filter(|e| e.metadata().is_file())
-            .map(|e| Id::from_hex(&e.name()))
+            .map(|e| Id::from_hex(e.name()))
             .filter_map(Result::ok)
             .collect())
     }
@@ -132,7 +132,7 @@ impl ReadBackend for OpenDALBackend {
             .filter(|e| e.metadata().is_file())
             .map(|e| -> Result<(Id, u32)> {
                 Ok((
-                    Id::from_hex(&e.name())?,
+                    Id::from_hex(e.name())?,
                     e.metadata().content_length().try_into()?,
                 ))
             })
@@ -155,7 +155,7 @@ impl ReadBackend for OpenDALBackend {
         length: u32,
     ) -> Result<Bytes> {
         trace!("reading tpe: {tpe:?}, id: {id}, offset: {offset}, length: {length}");
-        let range = offset as u64..(offset + length) as u64;
+        let range = u64::from(offset)..u64::from(offset + length);
         Ok(self
             .operator
             .read_with(&self.path(tpe, id))

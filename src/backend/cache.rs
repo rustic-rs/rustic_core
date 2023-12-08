@@ -41,7 +41,7 @@ impl CachedBackend {
     /// # Type Parameters
     ///
     /// * `BE` - The backend to cache.
-    pub fn new(be: Arc<dyn WriteBackend>, cache: Option<Cache>) -> Arc<dyn WriteBackend> {
+    pub fn new_cache(be: Arc<dyn WriteBackend>, cache: Option<Cache>) -> Arc<dyn WriteBackend> {
         if let Some(cache) = cache {
             Arc::new(Self { be, cache })
         } else {

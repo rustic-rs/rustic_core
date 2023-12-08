@@ -18,7 +18,7 @@ impl WarmUpAccessBackend {
     /// # Arguments
     ///
     /// * `be` - The backend to use.
-    pub fn new(be: Arc<dyn WriteBackend>) -> Arc<dyn WriteBackend> {
+    pub fn new_warm_up(be: Arc<dyn WriteBackend>) -> Arc<dyn WriteBackend> {
         Arc::new(Self { be })
     }
 }
