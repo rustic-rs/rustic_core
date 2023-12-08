@@ -1,3 +1,4 @@
+use anyhow::Result;
 use bytes::Bytes;
 use zstd::decode_all;
 
@@ -6,7 +7,7 @@ use crate::{
         decrypt::DecryptFullBackend, decrypt::DecryptReadBackend, decrypt::DecryptWriteBackend,
         FileType, ReadBackend, WriteBackend,
     },
-    error::{CryptBackendErrorKind, RusticResult},
+    error::{CryptBackendErrorKind, RusticErrorKind, RusticResult},
     id::Id,
 };
 
@@ -59,7 +60,8 @@ impl<BE: DecryptFullBackend> DecryptReadBackend for DryRunBackend<BE> {
     /// [`CryptBackendErrorKind::DecryptionNotSupportedForBackend`]: crate::error::CryptBackendErrorKind::DecryptionNotSupportedForBackend
     /// [`CryptBackendErrorKind::DecodingZstdCompressedDataFailed`]: crate::error::CryptBackendErrorKind::DecodingZstdCompressedDataFailed
     fn read_encrypted_full(&self, tpe: FileType, id: &Id) -> RusticResult<Bytes> {
-        let decrypted = self.decrypt(&self.read_full(tpe, id)?)?;
+        let decrypted =
+            self.decrypt(&self.read_full(tpe, id).map_err(RusticErrorKind::Backend)?)?;
         Ok(match decrypted.first() {
             Some(b'{' | b'[') => decrypted, // not compressed
             Some(2) => decode_all(&decrypted[1..])
@@ -75,11 +77,11 @@ impl<BE: DecryptFullBackend> ReadBackend for DryRunBackend<BE> {
         self.be.location()
     }
 
-    fn list_with_size(&self, tpe: FileType) -> RusticResult<Vec<(Id, u32)>> {
+    fn list_with_size(&self, tpe: FileType) -> Result<Vec<(Id, u32)>> {
         self.be.list_with_size(tpe)
     }
 
-    fn read_full(&self, tpe: FileType, id: &Id) -> RusticResult<Bytes> {
+    fn read_full(&self, tpe: FileType, id: &Id) -> Result<Bytes> {
         self.be.read_full(tpe, id)
     }
 
@@ -90,7 +92,7 @@ impl<BE: DecryptFullBackend> ReadBackend for DryRunBackend<BE> {
         cacheable: bool,
         offset: u32,
         length: u32,
-    ) -> RusticResult<Bytes> {
+    ) -> Result<Bytes> {
         self.be.read_partial(tpe, id, cacheable, offset, length)
     }
 }
@@ -118,7 +120,7 @@ impl<BE: DecryptFullBackend> DecryptWriteBackend for DryRunBackend<BE> {
 }
 
 impl<BE: DecryptFullBackend> WriteBackend for DryRunBackend<BE> {
-    fn create(&self) -> RusticResult<()> {
+    fn create(&self) -> Result<()> {
         if self.dry_run {
             Ok(())
         } else {
@@ -126,7 +128,7 @@ impl<BE: DecryptFullBackend> WriteBackend for DryRunBackend<BE> {
         }
     }
 
-    fn write_bytes(&self, tpe: FileType, id: &Id, cacheable: bool, buf: Bytes) -> RusticResult<()> {
+    fn write_bytes(&self, tpe: FileType, id: &Id, cacheable: bool, buf: Bytes) -> Result<()> {
         if self.dry_run {
             Ok(())
         } else {
@@ -134,7 +136,7 @@ impl<BE: DecryptFullBackend> WriteBackend for DryRunBackend<BE> {
         }
     }
 
-    fn remove(&self, tpe: FileType, id: &Id, cacheable: bool) -> RusticResult<()> {
+    fn remove(&self, tpe: FileType, id: &Id, cacheable: bool) -> Result<()> {
         if self.dry_run {
             Ok(())
         } else {

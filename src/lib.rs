@@ -159,9 +159,9 @@ pub use crate::{
     backend::{
         decrypt::{compression_level_range, max_compression_level},
         ignore::{LocalSource, LocalSourceFilterOptions, LocalSourceSaveOptions},
-        local::LocalDestination,
+        local_destination::LocalDestination,
         node::last_modified_node,
-        ReadSourceEntry,
+        FileType, ReadBackend, ReadSourceEntry, WriteBackend,
     },
     blob::tree::TreeStreamerOptions as LsOptions,
     commands::{

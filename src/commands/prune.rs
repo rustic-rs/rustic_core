@@ -30,8 +30,8 @@ use crate::{
         tree::TreeStreamerOnce,
         BlobType, BlobTypeMap, Initialize,
     },
-    error::CommandErrorKind,
     error::RusticResult,
+    error::{CommandErrorKind, RusticErrorKind},
     id::Id,
     index::{
         binarysorted::{IndexCollector, IndexType},
@@ -207,8 +207,11 @@ impl PruneOptions {
 
         // list existing pack files
         let p = pb.progress_spinner("getting packs from repository...");
-        let existing_packs: HashMap<_, _> =
-            be.list_with_size(FileType::Pack)?.into_iter().collect();
+        let existing_packs: HashMap<_, _> = be
+            .list_with_size(FileType::Pack)
+            .map_err(RusticErrorKind::Backend)?
+            .into_iter()
+            .collect();
         p.finish();
 
         let mut pruner = PrunePlan::new(used_ids, existing_packs, index_files);
@@ -1339,7 +1342,8 @@ fn find_used_blobs(
 
     let p = pb.progress_counter("reading snapshots...");
     let list = be
-        .list(FileType::Snapshot)?
+        .list(FileType::Snapshot)
+        .map_err(RusticErrorKind::Backend)?
         .into_iter()
         .filter(|id| !ignore_snaps.contains(id))
         .collect();

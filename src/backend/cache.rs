@@ -6,6 +6,7 @@ use std::{
     sync::Arc,
 };
 
+use anyhow::Result;
 use bytes::Bytes;
 use dirs::cache_dir;
 use log::{trace, warn};
@@ -68,7 +69,7 @@ impl ReadBackend for CachedBackend {
     /// # Returns
     ///
     /// A vector of tuples containing the id and size of the files.
-    fn list_with_size(&self, tpe: FileType) -> RusticResult<Vec<(Id, u32)>> {
+    fn list_with_size(&self, tpe: FileType) -> Result<Vec<(Id, u32)>> {
         let list = self.be.list_with_size(tpe)?;
 
         if tpe.is_cacheable() {
@@ -94,7 +95,7 @@ impl ReadBackend for CachedBackend {
     /// The data read.
     ///
     /// [`CacheBackendErrorKind::FromIoError`]: crate::error::CacheBackendErrorKind::FromIoError
-    fn read_full(&self, tpe: FileType, id: &Id) -> RusticResult<Bytes> {
+    fn read_full(&self, tpe: FileType, id: &Id) -> Result<Bytes> {
         if tpe.is_cacheable() {
             self.cache.read_full(tpe, id).map_or_else(
                 |err| {
@@ -138,7 +139,7 @@ impl ReadBackend for CachedBackend {
         cacheable: bool,
         offset: u32,
         length: u32,
-    ) -> RusticResult<Bytes> {
+    ) -> Result<Bytes> {
         if cacheable || tpe.is_cacheable() {
             self.cache
                 .read_partial(tpe, id, offset, length)
@@ -165,14 +166,14 @@ impl ReadBackend for CachedBackend {
         self.be.needs_warm_up()
     }
 
-    fn warm_up(&self, tpe: FileType, id: &Id) -> RusticResult<()> {
+    fn warm_up(&self, tpe: FileType, id: &Id) -> Result<()> {
         self.be.warm_up(tpe, id)
     }
 }
 
 impl WriteBackend for CachedBackend {
     /// Creates the backend.
-    fn create(&self) -> RusticResult<()> {
+    fn create(&self) -> Result<()> {
         self.be.create()
     }
 
@@ -186,7 +187,7 @@ impl WriteBackend for CachedBackend {
     /// * `id` - The id of the file.
     /// * `cacheable` - Whether the file is cacheable.
     /// * `buf` - The data to write.
-    fn write_bytes(&self, tpe: FileType, id: &Id, cacheable: bool, buf: Bytes) -> RusticResult<()> {
+    fn write_bytes(&self, tpe: FileType, id: &Id, cacheable: bool, buf: Bytes) -> Result<()> {
         if cacheable || tpe.is_cacheable() {
             _ = self.cache.write_bytes(tpe, id, buf.clone());
         }
@@ -201,7 +202,7 @@ impl WriteBackend for CachedBackend {
     ///
     /// * `tpe` - The type of the file.
     /// * `id` - The id of the file.
-    fn remove(&self, tpe: FileType, id: &Id, cacheable: bool) -> RusticResult<()> {
+    fn remove(&self, tpe: FileType, id: &Id, cacheable: bool) -> Result<()> {
         if cacheable || tpe.is_cacheable() {
             _ = self.cache.remove(tpe, id);
         }

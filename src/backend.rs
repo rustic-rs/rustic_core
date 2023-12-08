@@ -5,7 +5,9 @@ pub(crate) mod dry_run;
 pub(crate) mod hotcold;
 pub(crate) mod ignore;
 pub(crate) mod local;
+pub(crate) mod local_destination;
 pub(crate) mod node;
+pub(crate) mod opendal;
 pub(crate) mod rclone;
 pub(crate) mod rest;
 pub(crate) mod stdin;
@@ -13,11 +15,17 @@ pub(crate) mod warm_up;
 
 use std::{io::Read, ops::Deref, path::PathBuf, sync::Arc};
 
+use anyhow::Result;
 use bytes::Bytes;
 use log::trace;
 use serde_derive::{Deserialize, Serialize};
 
-use crate::{backend::node::Node, error::BackendErrorKind, error::RusticResult, id::Id};
+use crate::{
+    backend::node::Node,
+    error::BackendAccessErrorKind,
+    error::{RusticErrorKind, RusticResult},
+    id::Id,
+};
 
 /// All [`FileType`]s which are located in separated directories
 pub const ALL_FILE_TYPES: [FileType; 4] = [
@@ -83,7 +91,7 @@ pub trait ReadBackend: Send + Sync + 'static {
     /// # Errors
     ///
     /// If the files could not be listed.
-    fn list_with_size(&self, tpe: FileType) -> RusticResult<Vec<(Id, u32)>>;
+    fn list_with_size(&self, tpe: FileType) -> Result<Vec<(Id, u32)>>;
 
     /// Lists all files of the given type.
     ///
@@ -94,7 +102,7 @@ pub trait ReadBackend: Send + Sync + 'static {
     /// # Errors
     ///
     /// If the files could not be listed.
-    fn list(&self, tpe: FileType) -> RusticResult<Vec<Id>> {
+    fn list(&self, tpe: FileType) -> Result<Vec<Id>> {
         Ok(self
             .list_with_size(tpe)?
             .into_iter()
@@ -112,7 +120,7 @@ pub trait ReadBackend: Send + Sync + 'static {
     /// # Errors
     ///
     /// If the file could not be read.
-    fn read_full(&self, tpe: FileType, id: &Id) -> RusticResult<Bytes>;
+    fn read_full(&self, tpe: FileType, id: &Id) -> Result<Bytes>;
 
     /// Reads partial data of the given file.
     ///
@@ -134,7 +142,7 @@ pub trait ReadBackend: Send + Sync + 'static {
         cacheable: bool,
         offset: u32,
         length: u32,
-    ) -> RusticResult<Bytes>;
+    ) -> Result<Bytes>;
 
     /// Specify if the backend needs a warming-up of files before accessing them.
     fn needs_warm_up(&self) -> bool {
@@ -151,7 +159,7 @@ pub trait ReadBackend: Send + Sync + 'static {
     /// # Errors
     ///
     /// If the file could not be read.
-    fn warm_up(&self, _tpe: FileType, _id: &Id) -> RusticResult<()> {
+    fn warm_up(&self, _tpe: FileType, _id: &Id) -> Result<()> {
         Ok(())
     }
 }
@@ -188,7 +196,7 @@ pub trait FindInBackend: ReadBackend {
             NonUnique,
         }
         let mut results = vec![MapResult::None; vec.len()];
-        for id in self.list(tpe)? {
+        for id in self.list(tpe).map_err(RusticErrorKind::Backend)? {
             let id_hex = id.to_hex();
             for (i, v) in vec.iter().enumerate() {
                 if id_hex.starts_with(v.as_ref()) {
@@ -206,11 +214,12 @@ pub trait FindInBackend: ReadBackend {
             .enumerate()
             .map(|(i, id)| match id {
                 MapResult::Some(id) => Ok(id),
-                MapResult::None => {
-                    Err(BackendErrorKind::NoSuitableIdFound((vec[i]).as_ref().to_string()).into())
-                }
+                MapResult::None => Err(BackendAccessErrorKind::NoSuitableIdFound(
+                    (vec[i]).as_ref().to_string(),
+                )
+                .into()),
                 MapResult::NonUnique => {
-                    Err(BackendErrorKind::IdNotUnique((vec[i]).as_ref().to_string()).into())
+                    Err(BackendAccessErrorKind::IdNotUnique((vec[i]).as_ref().to_string()).into())
                 }
             })
             .collect()
@@ -232,7 +241,7 @@ pub trait FindInBackend: ReadBackend {
     /// [`IdErrorKind::HexError`]: crate::error::IdErrorKind::HexError
     /// [`BackendErrorKind::NoSuitableIdFound`]: crate::error::BackendErrorKind::NoSuitableIdFound
     /// [`BackendErrorKind::IdNotUnique`]: crate::error::BackendErrorKind::IdNotUnique
-    fn find_id(&self, tpe: FileType, id: &str) -> RusticResult<Id> {
+    fn find_id(&self, tpe: FileType, id: &str) -> Result<Id> {
         Ok(self.find_ids(tpe, &[id.to_string()])?.remove(0))
     }
 
@@ -272,7 +281,7 @@ impl<T: ReadBackend> FindInBackend for T {}
 /// This trait is implemented by all backends that can write data.
 pub trait WriteBackend: ReadBackend {
     /// Creates a new backend.
-    fn create(&self) -> RusticResult<()>;
+    fn create(&self) -> Result<()>;
 
     /// Writes bytes to the given file.
     ///
@@ -280,9 +289,9 @@ pub trait WriteBackend: ReadBackend {
     ///
     /// * `tpe` - The type of the file.
     /// * `id` - The id of the file.
-    /// * `cacheable` - Whether the data should be cached.
+    /// * `cacheable` - Whether the data can be cached.
     /// * `buf` - The data to write.
-    fn write_bytes(&self, tpe: FileType, id: &Id, cacheable: bool, buf: Bytes) -> RusticResult<()>;
+    fn write_bytes(&self, tpe: FileType, id: &Id, cacheable: bool, buf: Bytes) -> Result<()>;
 
     /// Removes the given file.
     ///
@@ -291,7 +300,7 @@ pub trait WriteBackend: ReadBackend {
     /// * `tpe` - The type of the file.
     /// * `id` - The id of the file.
     /// * `cacheable` - Whether the file is cacheable.
-    fn remove(&self, tpe: FileType, id: &Id, cacheable: bool) -> RusticResult<()>;
+    fn remove(&self, tpe: FileType, id: &Id, cacheable: bool) -> Result<()>;
 }
 
 impl std::fmt::Debug for dyn WriteBackend {
@@ -383,13 +392,13 @@ pub trait WriteSource: Clone {
 }
 
 impl WriteBackend for Arc<dyn WriteBackend> {
-    fn create(&self) -> RusticResult<()> {
+    fn create(&self) -> Result<()> {
         self.deref().create()
     }
-    fn write_bytes(&self, tpe: FileType, id: &Id, cacheable: bool, buf: Bytes) -> RusticResult<()> {
+    fn write_bytes(&self, tpe: FileType, id: &Id, cacheable: bool, buf: Bytes) -> Result<()> {
         self.deref().write_bytes(tpe, id, cacheable, buf)
     }
-    fn remove(&self, tpe: FileType, id: &Id, cacheable: bool) -> RusticResult<()> {
+    fn remove(&self, tpe: FileType, id: &Id, cacheable: bool) -> Result<()> {
         self.deref().remove(tpe, id, cacheable)
     }
 }
@@ -398,13 +407,13 @@ impl ReadBackend for Arc<dyn WriteBackend> {
     fn location(&self) -> String {
         self.deref().location()
     }
-    fn list_with_size(&self, tpe: FileType) -> RusticResult<Vec<(Id, u32)>> {
+    fn list_with_size(&self, tpe: FileType) -> Result<Vec<(Id, u32)>> {
         self.deref().list_with_size(tpe)
     }
-    fn list(&self, tpe: FileType) -> RusticResult<Vec<Id>> {
+    fn list(&self, tpe: FileType) -> Result<Vec<Id>> {
         self.deref().list(tpe)
     }
-    fn read_full(&self, tpe: FileType, id: &Id) -> RusticResult<Bytes> {
+    fn read_full(&self, tpe: FileType, id: &Id) -> Result<Bytes> {
         self.deref().read_full(tpe, id)
     }
     fn read_partial(
@@ -414,7 +423,7 @@ impl ReadBackend for Arc<dyn WriteBackend> {
         cacheable: bool,
         offset: u32,
         length: u32,
-    ) -> RusticResult<Bytes> {
+    ) -> Result<Bytes> {
         self.deref()
             .read_partial(tpe, id, cacheable, offset, length)
     }

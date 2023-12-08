@@ -17,7 +17,7 @@ use crate::{
     blob::BlobType,
     crypto::{hasher::hash, CryptoKey},
     error::PackerErrorKind,
-    error::RusticResult,
+    error::{RusticErrorKind, RusticResult},
     id::Id,
     index::indexer::SharedIndexer,
     repofile::{
@@ -613,7 +613,8 @@ impl<BE: DecryptWriteBackend> FileWriterHandle<BE> {
         let (file, id, mut index) = load;
         index.id = id;
         self.be
-            .write_bytes(FileType::Pack, &id, self.cacheable, file)?;
+            .write_bytes(FileType::Pack, &id, self.cacheable, file)
+            .map_err(RusticErrorKind::Backend)?;
         index.time = Some(Local::now());
         Ok(index)
     }
@@ -769,13 +770,16 @@ impl<BE: DecryptFullBackend> Repacker<BE> {
     /// If the blob could not be added
     /// If reading the blob from the backend fails
     pub fn add_fast(&self, pack_id: &Id, blob: &IndexBlob) -> RusticResult<()> {
-        let data = self.be.read_partial(
-            FileType::Pack,
-            pack_id,
-            blob.tpe.is_cacheable(),
-            blob.offset,
-            blob.length,
-        )?;
+        let data = self
+            .be
+            .read_partial(
+                FileType::Pack,
+                pack_id,
+                blob.tpe.is_cacheable(),
+                blob.offset,
+                blob.length,
+            )
+            .map_err(RusticErrorKind::Backend)?;
         self.packer.add_raw(
             &data,
             &blob.id,

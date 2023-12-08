@@ -1,0 +1,243 @@
+use std::{path::PathBuf, str::FromStr};
+
+use anyhow::Result;
+use bytes::Bytes;
+#[allow(unused_imports)]
+use cached::proc_macro::cached;
+use log::trace;
+use once_cell::sync::Lazy;
+use opendal::{layers::BlockingLayer, BlockingOperator, ErrorKind, Metakey, Operator, Scheme};
+
+use crate::{
+    backend::{FileType, ReadBackend, WriteBackend, ALL_FILE_TYPES},
+    id::Id,
+};
+
+#[derive(Clone, Debug)]
+pub struct OpenDALBackend {
+    operator: BlockingOperator,
+}
+
+static RUNTIME: Lazy<tokio::runtime::Runtime> = Lazy::new(|| {
+    tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .unwrap()
+});
+
+impl OpenDALBackend {
+    pub fn new(path: &str, options: impl IntoIterator<Item = (String, String)>) -> Result<Self> {
+        let map = options.into_iter().collect();
+        let schema = Scheme::from_str(path)?;
+        let _guard = RUNTIME.enter();
+        let operator = Operator::via_map(schema, map)?
+            .layer(BlockingLayer::create()?)
+            .blocking();
+        Ok(Self { operator })
+    }
+
+    fn path(&self, tpe: FileType, id: &Id) -> String {
+        let hex_id = id.to_hex();
+        match tpe {
+            FileType::Config => PathBuf::from("config"),
+            FileType::Pack => PathBuf::from("data").join(&hex_id[0..2]).join(hex_id),
+            _ => PathBuf::from(tpe.dirname()).join(hex_id),
+        }
+        .to_string_lossy()
+        .to_string()
+    }
+}
+
+impl ReadBackend for OpenDALBackend {
+    /// Returns the location of the backend.
+    ///
+    /// This is `local:<path>`.
+    fn location(&self) -> String {
+        let mut location = "opendal:".to_string();
+        location.push_str(&self.operator.info().name());
+        location
+    }
+
+    /// Lists all files of the given type.
+    ///
+    /// # Arguments
+    ///
+    /// * `tpe` - The type of the files to list.
+    ///
+    /// # Errors
+    ///
+    /// * [`IdErrorKind::HexError`] - If the string is not a valid hexadecimal string
+    ///
+    /// # Notes
+    ///
+    /// If the file type is `FileType::Config`, this will return a list with a single default id.
+    ///
+    /// [`IdErrorKind::HexError`]: crate::error::IdErrorKind::HexError
+    fn list(&self, tpe: FileType) -> Result<Vec<Id>> {
+        trace!("listing tpe: {tpe:?}");
+        if tpe == FileType::Config {
+            return Ok(if self.operator.is_exist("config")? {
+                vec![Id::default()]
+            } else {
+                Vec::new()
+            });
+        }
+
+        Ok(self
+            .operator
+            .list_with(&(tpe.dirname().to_string() + "/"))
+            .delimiter("")
+            .call()?
+            .into_iter()
+            .filter(|e| e.metadata().is_file())
+            .map(|e| Id::from_hex(&e.name()))
+            .filter_map(Result::ok)
+            .collect())
+    }
+
+    /// Lists all files with their size of the given type.
+    ///
+    /// # Arguments
+    ///
+    /// * `tpe` - The type of the files to list.
+    ///
+    /// # Errors
+    ///
+    /// * [`LocalErrorKind::QueryingMetadataFailed`] - If the metadata of the file could not be queried.
+    /// * [`LocalErrorKind::FromTryIntError`] - If the length of the file could not be converted to u32.
+    /// * [`LocalErrorKind::QueryingWalkDirMetadataFailed`] - If the metadata of the file could not be queried.
+    /// * [`IdErrorKind::HexError`] - If the string is not a valid hexadecimal string
+    ///
+    /// [`LocalErrorKind::QueryingMetadataFailed`]: crate::error::LocalErrorKind::QueryingMetadataFailed
+    /// [`LocalErrorKind::FromTryIntError`]: crate::error::LocalErrorKind::FromTryIntError
+    /// [`LocalErrorKind::QueryingWalkDirMetadataFailed`]: crate::error::LocalErrorKind::QueryingWalkDirMetadataFailed
+    /// [`IdErrorKind::HexError`]: crate::error::IdErrorKind::HexError
+    fn list_with_size(&self, tpe: FileType) -> Result<Vec<(Id, u32)>> {
+        trace!("listing tpe: {tpe:?}");
+        if tpe == FileType::Config {
+            return match self.operator.stat("config") {
+                Ok(entry) => Ok(vec![(Id::default(), entry.content_length().try_into()?)]),
+                Err(err) if err.kind() == ErrorKind::NotFound => Ok(Vec::new()),
+                Err(err) => Err(err.into()),
+            };
+        }
+
+        Ok(self
+            .operator
+            .list_with(&(tpe.dirname().to_string() + "/"))
+            .delimiter("")
+            .metakey(Metakey::ContentLength)
+            .call()?
+            .into_iter()
+            .filter(|e| e.metadata().is_file())
+            .map(|e| -> Result<(Id, u32)> {
+                Ok((
+                    Id::from_hex(&e.name())?,
+                    e.metadata().content_length().try_into()?,
+                ))
+            })
+            .filter_map(Result::ok)
+            .collect())
+    }
+
+    fn read_full(&self, tpe: FileType, id: &Id) -> Result<Bytes> {
+        trace!("reading tpe: {tpe:?}, id: {id}");
+
+        Ok(self.operator.read(&self.path(tpe, id))?.into())
+    }
+
+    fn read_partial(
+        &self,
+        tpe: FileType,
+        id: &Id,
+        _cacheable: bool,
+        offset: u32,
+        length: u32,
+    ) -> Result<Bytes> {
+        trace!("reading tpe: {tpe:?}, id: {id}, offset: {offset}, length: {length}");
+        let range = offset as u64..(offset + length) as u64;
+        Ok(self
+            .operator
+            .read_with(&self.path(tpe, id))
+            .range(range)
+            .call()?
+            .into())
+    }
+}
+
+impl WriteBackend for OpenDALBackend {
+    /// Create a repository on the backend.
+    ///
+    /// # Errors
+    ///
+    /// * [`LocalErrorKind::DirectoryCreationFailed`] - If the directory could not be created.
+    ///
+    /// [`LocalErrorKind::DirectoryCreationFailed`]: crate::error::LocalErrorKind::DirectoryCreationFailed
+    fn create(&self) -> Result<()> {
+        trace!("creating repo at {:?}", self.location());
+
+        for tpe in ALL_FILE_TYPES {
+            self.operator
+                .create_dir(&(tpe.dirname().to_string() + "/"))?;
+        }
+        for i in 0u8..=255 {
+            self.operator.create_dir(
+                &(PathBuf::from("data")
+                    .join(hex::encode([i]))
+                    .to_string_lossy()
+                    .to_string()
+                    + "/"),
+            )?;
+        }
+        Ok(())
+    }
+
+    /// Write the given bytes to the given file.
+    ///
+    /// # Arguments
+    ///
+    /// * `tpe` - The type of the file.
+    /// * `id` - The id of the file.
+    /// * `cacheable` - Whether the file is cacheable.
+    /// * `buf` - The bytes to write.
+    ///
+    /// # Errors
+    ///
+    /// * [`LocalErrorKind::OpeningFileFailed`] - If the file could not be opened.
+    /// * [`LocalErrorKind::FromTryIntError`] - If the length of the bytes could not be converted to u64.
+    /// * [`LocalErrorKind::SettingFileLengthFailed`] - If the length of the file could not be set.
+    /// * [`LocalErrorKind::CouldNotWriteToBuffer`] - If the bytes could not be written to the file.
+    /// * [`LocalErrorKind::SyncingOfOsMetadataFailed`] - If the metadata of the file could not be synced.
+    ///
+    /// [`LocalErrorKind::OpeningFileFailed`]: crate::error::LocalErrorKind::OpeningFileFailed
+    /// [`LocalErrorKind::FromTryIntError`]: crate::error::LocalErrorKind::FromTryIntError
+    /// [`LocalErrorKind::SettingFileLengthFailed`]: crate::error::LocalErrorKind::SettingFileLengthFailed
+    /// [`LocalErrorKind::CouldNotWriteToBuffer`]: crate::error::LocalErrorKind::CouldNotWriteToBuffer
+    /// [`LocalErrorKind::SyncingOfOsMetadataFailed`]: crate::error::LocalErrorKind::SyncingOfOsMetadataFailed
+    fn write_bytes(&self, tpe: FileType, id: &Id, _cacheable: bool, buf: Bytes) -> Result<()> {
+        trace!("writing tpe: {:?}, id: {}", &tpe, &id);
+        let filename = self.path(tpe, id);
+        self.operator.write(&filename, buf)?;
+        Ok(())
+    }
+
+    /// Remove the given file.
+    ///
+    /// # Arguments
+    ///
+    /// * `tpe` - The type of the file.
+    /// * `id` - The id of the file.
+    /// * `cacheable` - Whether the file is cacheable.
+    ///
+    /// # Errors
+    ///
+    /// * [`LocalErrorKind::FileRemovalFailed`] - If the file could not be removed.
+    ///
+    /// [`LocalErrorKind::FileRemovalFailed`]: crate::error::LocalErrorKind::FileRemovalFailed
+    fn remove(&self, tpe: FileType, id: &Id, _cacheable: bool) -> Result<()> {
+        trace!("removing tpe: {:?}, id: {}", &tpe, &id);
+        let filename = self.path(tpe, id);
+        self.operator.delete(&filename)?;
+        Ok(())
+    }
+}
