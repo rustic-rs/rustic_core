@@ -6,7 +6,7 @@ use log::trace;
 use crate::{
     backend::{decrypt::DecryptReadBackend, FileType},
     blob::BlobType,
-    error::PackFileErrorKind,
+    error::{PackFileErrorKind, RusticErrorKind},
     id::Id,
     repofile::indexfile::{IndexBlob, IndexPack},
     RusticResult,
@@ -271,7 +271,9 @@ impl PackHeader {
         // read (guessed) header + length field
         let read_size = size_guess + constants::LENGTH_LEN;
         let offset = pack_size - read_size;
-        let mut data = be.read_partial(FileType::Pack, &id, false, offset, read_size)?;
+        let mut data = be
+            .read_partial(FileType::Pack, &id, false, offset, read_size)
+            .map_err(RusticErrorKind::Backend)?;
 
         // get header length from the file
         let size_real =
@@ -293,7 +295,8 @@ impl PackHeader {
         } else {
             // size_guess was too small; we have to read again
             let offset = pack_size - size_real - constants::LENGTH_LEN;
-            be.read_partial(FileType::Pack, &id, false, offset, size_real)?
+            be.read_partial(FileType::Pack, &id, false, offset, size_real)
+                .map_err(RusticErrorKind::Backend)?
         };
 
         let header = Self::from_binary(&be.decrypt(&data)?)?;

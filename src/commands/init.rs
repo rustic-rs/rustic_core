@@ -8,7 +8,7 @@ use crate::{
     commands::config::{save_config, ConfigOptions},
     commands::key::KeyOptions,
     crypto::aespoly1305::Key,
-    error::RusticResult,
+    error::{RusticErrorKind, RusticResult},
     id::Id,
     repofile::ConfigFile,
     repository::Repository,
@@ -83,7 +83,7 @@ pub(crate) fn init_with_config<P, S>(
     key_opts: &KeyOptions,
     config: &ConfigFile,
 ) -> RusticResult<Key> {
-    repo.be.create()?;
+    repo.be.create().map_err(RusticErrorKind::Backend)?;
     let (key, id) = key_opts.init_key(repo, pass)?;
     info!("key {id} successfully added.");
     save_config(repo, config.clone(), key)?;

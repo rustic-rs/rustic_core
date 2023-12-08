@@ -85,7 +85,11 @@ pub enum RusticErrorKind {
 
     /// [`BackendErrorKind`] describes the errors that can be returned by the various Backends
     #[error(transparent)]
-    Backend(#[from] BackendErrorKind),
+    Backend(#[from] anyhow::Error),
+
+    /// [`BackendErrorKind`] describes the errors that can be returned by the various Backends
+    #[error(transparent)]
+    BackendAccess(#[from] BackendAccessErrorKind),
 
     /// [`ConfigFileErrorKind`] describes the errors that can be returned for `ConfigFile`s
     #[error(transparent)]
@@ -127,9 +131,9 @@ pub enum RusticErrorKind {
     #[error(transparent)]
     Ignore(#[from] IgnoreErrorKind),
 
-    /// [`LocalErrorKind`] describes the errors that can be returned by an action on the filesystem in Backends
+    /// [`LocalErrorKind`] describes the errors that can be returned by an action on the local filesystem as Destination
     #[error(transparent)]
-    Local(#[from] LocalErrorKind),
+    LocalDestination(#[from] LocalDestinationErrorKind),
 
     /// [`NodeErrorKind`] describes the errors that can be returned by an action utilizing a node in Backends
     #[error(transparent)]
@@ -307,13 +311,15 @@ pub enum IndexErrorKind {
 
 /// [`BackendErrorKind`] describes the errors that can be returned by the various Backends
 #[derive(Error, Debug, Display)]
-pub enum BackendErrorKind {
+pub enum BackendAccessErrorKind {
+    /// backend {0:?} is not supported!
+    BackendNotSupported(String),
+    /// backend {0} cannot be loaded: {1:?}
+    BackendLoadError(String, anyhow::Error),
     /// no suitable id found for {0}
     NoSuitableIdFound(String),
     /// id {0} is not unique
     IdNotUnique(String),
-    /// backend {0:?} is not supported!
-    BackendNotSupported(String),
     /// Rest API threw an error: `{0:?}`
     RestApiError(#[from] RestErrorKind),
     /// building REST client failed: `{0:?}`
@@ -337,7 +343,7 @@ pub enum BackendErrorKind {
     FromTryIntError(#[from] TryFromIntError),
     /// {0:?}
     #[error(transparent)]
-    FromLocalError(#[from] LocalErrorKind),
+    FromLocalError(#[from] LocalDestinationErrorKind),
     /// {0:?}
     #[error(transparent)]
     FromProviderError(#[from] ProviderErrorKind),
@@ -412,7 +418,7 @@ pub enum PackFileErrorKind {
     /// pack size computed from header doesn't match real pack isch! Computed: {size_computed}, real: {size_real}
     HeaderPackSizeComputedDoesNotMatchRealPackFile { size_real: u32, size_computed: u32 },
     /// partially reading the pack header from packfile failed: `{0:?}`
-    ListingKeyFilesFailed(#[from] BackendErrorKind),
+    ListingKeyFilesFailed(#[from] BackendAccessErrorKind),
     /// decrypting from binary failed
     BinaryDecryptionFailed,
     /// Partial read of PackFile failed
@@ -480,7 +486,7 @@ pub enum PackerErrorKind {
     /// couldn't create binary representation for pack header: `{0:?}`
     CouldNotCreateBinaryRepresentationForHeader(#[from] PackFileErrorKind),
     /// failed to write bytes in backend: `{0:?}`
-    WritingBytesFailedInBackend(#[from] BackendErrorKind),
+    WritingBytesFailedInBackend(#[from] BackendAccessErrorKind),
     /// failed to write bytes for PackFile: `{0:?}`
     WritingBytesFailedForPackFile(PackFileErrorKind),
     /// failed to read partially encrypted data: `{0:?}`
@@ -603,28 +609,11 @@ pub enum IgnoreErrorKind {
 
 /// [`LocalErrorKind`] describes the errors that can be returned by an action on the filesystem in Backends
 #[derive(Error, Debug, Display)]
-pub enum LocalErrorKind {
+pub enum LocalDestinationErrorKind {
     /// directory creation failed: `{0:?}`
     DirectoryCreationFailed(#[from] std::io::Error),
-    /// querying metadata failed: `{0:?}`
-    QueryingMetadataFailed(std::io::Error),
-    /// querying WalkDir metadata failed: `{0:?}`
-    QueryingWalkDirMetadataFailed(walkdir::Error),
-    /// executtion of command failed: `{0:?}`
-    CommandExecutionFailed(std::io::Error),
-    /// command was not successful for filename {file_name}, type {file_type}, id {id}: {status}
-    CommandNotSuccessful {
-        file_name: String,
-        file_type: String,
-        id: String,
-        status: ExitStatus,
-    },
     /// file `{0:?}` should have a parent
     FileDoesNotHaveParent(PathBuf),
-    /// error building automaton `{0:?}`
-    FromAhoCorasick(#[from] aho_corasick::BuildError),
-    /// {0:?}
-    FromSplitError(#[from] shell_words::ParseError),
     /// {0:?}
     #[error(transparent)]
     FromTryIntError(#[from] TryFromIntError),
@@ -671,12 +660,8 @@ pub enum LocalErrorKind {
     CouldNotSeekToPositionInFile(std::io::Error),
     /// couldn't write to buffer: `{0:?}`
     CouldNotWriteToBuffer(std::io::Error),
-    /// reading file contents failed: `{0:?}`
-    ReadingContentsOfFileFailed(std::io::Error),
     /// reading exact length of file contents failed: `{0:?}`
     ReadingExactLengthOfFileFailed(std::io::Error),
-    /// failed to sync OS Metadata to disk: `{0:?}`
-    SyncingOfOsMetadataFailed(std::io::Error),
     /// setting file permissions failed: `{0:?}`
     #[cfg(not(windows))]
     SettingFilePermissionsFailed(std::io::Error),
@@ -767,7 +752,7 @@ pub enum ArchiverErrorKind {
     /// option should contain a value, but contained `None`
     UnpackingTreeTypeOptionalFailed,
     /// couldn't get size for archive: `{0:?}`
-    CouldNotGetSizeForArchive(#[from] BackendErrorKind),
+    CouldNotGetSizeForArchive(#[from] BackendAccessErrorKind),
     /// couldn't determine size for item in Archiver
     CouldNotDetermineSize,
     /// failed to save index: `{0:?}`
@@ -802,7 +787,7 @@ impl RusticErrorMarker for PolynomialErrorKind {}
 impl RusticErrorMarker for IdErrorKind {}
 impl RusticErrorMarker for RepositoryErrorKind {}
 impl RusticErrorMarker for IndexErrorKind {}
-impl RusticErrorMarker for BackendErrorKind {}
+impl RusticErrorMarker for BackendAccessErrorKind {}
 impl RusticErrorMarker for ConfigFileErrorKind {}
 impl RusticErrorMarker for KeyFileErrorKind {}
 impl RusticErrorMarker for PackFileErrorKind {}
@@ -813,7 +798,7 @@ impl RusticErrorMarker for TreeErrorKind {}
 impl RusticErrorMarker for CacheBackendErrorKind {}
 impl RusticErrorMarker for CryptBackendErrorKind {}
 impl RusticErrorMarker for IgnoreErrorKind {}
-impl RusticErrorMarker for LocalErrorKind {}
+impl RusticErrorMarker for LocalDestinationErrorKind {}
 impl RusticErrorMarker for NodeErrorKind {}
 impl RusticErrorMarker for ProviderErrorKind {}
 impl RusticErrorMarker for RestErrorKind {}

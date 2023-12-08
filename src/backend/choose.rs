@@ -1,8 +1,12 @@
+use anyhow::Result;
 use std::sync::Arc;
 
 use crate::{
-    backend::{local::LocalBackend, rclone::RcloneBackend, rest::RestBackend, WriteBackend},
-    error::{BackendErrorKind, RusticResult},
+    backend::{
+        local::LocalBackend, opendal::OpenDALBackend, rclone::RcloneBackend, rest::RestBackend,
+        WriteBackend,
+    },
+    error::BackendAccessErrorKind,
 };
 
 /// Choose the suitable backend from a given url.
@@ -14,27 +18,29 @@ use crate::{
 /// # Errors
 ///
 /// * [`BackendErrorKind::BackendNotSupported`] - If the backend is not supported.
-/// * [`LocalErrorKind::DirectoryCreationFailed`] - If the directory could not be created.
-/// * [`RestErrorKind::UrlParsingFailed`] - If the url could not be parsed.
-/// * [`RestErrorKind::BuildingClientFailed`] - If the client could not be built.
 ///
 /// [`BackendErrorKind::BackendNotSupported`]: crate::error::BackendErrorKind::BackendNotSupported
-/// [`LocalErrorKind::DirectoryCreationFailed`]: crate::error::LocalErrorKind::DirectoryCreationFailed
-/// [`RestErrorKind::UrlParsingFailed`]: crate::error::RestErrorKind::UrlParsingFailed
-/// [`RestErrorKind::BuildingClientFailed`]: crate::error::RestErrorKind::BuildingClientFailed
-pub fn choose_from_url(
-    url: &str,
+pub fn get_backend(
+    tpe: &str,
+    path: &str,
     options: impl IntoIterator<Item = (String, String)>,
-) -> RusticResult<Arc<dyn WriteBackend>> {
-    Ok(match url.split_once(':') {
-        #[cfg(windows)]
-        Some((drive, _)) if drive.len() == 1 => Arc::new(LocalBackend::new(url, options)?),
-        Some(("rclone", path)) => Arc::new(RcloneBackend::new(path, options)?),
-        Some(("rest", path)) => Arc::new(RestBackend::new(path, options)?),
-        Some(("local", path)) => Arc::new(LocalBackend::new(path, options)?),
-        Some((backend, _)) => {
-            return Err(BackendErrorKind::BackendNotSupported(backend.to_owned()).into())
+) -> Result<Arc<dyn WriteBackend>> {
+    Ok(match tpe {
+        "local" => Arc::new(LocalBackend::new(path, options)?),
+        "rclone" => Arc::new(RcloneBackend::new(path, options)?),
+        "rest" => Arc::new(RestBackend::new(path, options)?),
+        "opendal" => Arc::new(OpenDALBackend::new(path, options)?),
+        backend => {
+            return Err(BackendAccessErrorKind::BackendNotSupported(backend.to_owned()).into())
         }
-        None => Arc::new(LocalBackend::new(url, options)?),
     })
+}
+
+pub fn url_to_type_and_path(url: &str) -> (&str, &str) {
+    match url.split_once(':') {
+        #[cfg(windows)]
+        Some((drive, _)) if drive.len() == 1 => ("local", url),
+        Some((tpe, path)) => (tpe, path),
+        None => ("local", url),
+    }
 }

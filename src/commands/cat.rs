@@ -5,8 +5,8 @@ use bytes::Bytes;
 use crate::{
     backend::{decrypt::DecryptReadBackend, FileType, FindInBackend},
     blob::{tree::Tree, BlobType},
-    error::CommandErrorKind,
     error::RusticResult,
+    error::{CommandErrorKind, RusticErrorKind},
     id::Id,
     index::ReadIndex,
     progress::ProgressBars,
@@ -45,7 +45,10 @@ pub(crate) fn cat_file<P, S: Open>(
     tpe: FileType,
     id: &str,
 ) -> RusticResult<Bytes> {
-    let id = repo.dbe().find_id(tpe, id)?;
+    let id = repo
+        .dbe()
+        .find_id(tpe, id)
+        .map_err(RusticErrorKind::Backend)?;
     let data = repo.dbe().read_encrypted_full(tpe, &id)?;
     Ok(data)
 }

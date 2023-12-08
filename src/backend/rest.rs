@@ -1,6 +1,7 @@
 use std::str::FromStr;
 use std::time::Duration;
 
+use anyhow::Result;
 use backoff::{backoff::Backoff, Error, ExponentialBackoff, ExponentialBackoffBuilder};
 use bytes::Bytes;
 use log::{trace, warn};
@@ -244,7 +245,7 @@ impl ReadBackend for RestBackend {
     /// [`RestErrorKind::JoiningUrlFailed`]: crate::error::RestErrorKind::JoiningUrlFailed
     /// [`RestErrorKind::BackoffError`]: crate::error::RestErrorKind::BackoffError
     /// [`IdErrorKind::HexError`]: crate::error::IdErrorKind::HexError
-    fn list_with_size(&self, tpe: FileType) -> RusticResult<Vec<(Id, u32)>> {
+    fn list_with_size(&self, tpe: FileType) -> Result<Vec<(Id, u32)>> {
         trace!("listing tpe: {tpe:?}");
         let url = if tpe == FileType::Config {
             self.url
@@ -314,7 +315,7 @@ impl ReadBackend for RestBackend {
     /// * [`RestErrorKind::BackoffError`] - If the backoff failed.
     ///
     /// [`RestErrorKind::BackoffError`]: crate::error::RestErrorKind::BackoffError
-    fn read_full(&self, tpe: FileType, id: &Id) -> RusticResult<Bytes> {
+    fn read_full(&self, tpe: FileType, id: &Id) -> Result<Bytes> {
         trace!("reading tpe: {tpe:?}, id: {id}");
         let url = self.url(tpe, id)?;
         Ok(backoff::retry_notify(
@@ -354,7 +355,7 @@ impl ReadBackend for RestBackend {
         _cacheable: bool,
         offset: u32,
         length: u32,
-    ) -> RusticResult<Bytes> {
+    ) -> Result<Bytes> {
         trace!("reading tpe: {tpe:?}, id: {id}, offset: {offset}, length: {length}");
         let offset2 = offset + length - 1;
         let header_value = format!("bytes={offset}-{offset2}");
@@ -384,7 +385,7 @@ impl WriteBackend for RestBackend {
     /// * [`RestErrorKind::BackoffError`] - If the backoff failed.
     ///
     /// [`RestErrorKind::BackoffError`]: crate::error::RestErrorKind::BackoffError
-    fn create(&self) -> RusticResult<()> {
+    fn create(&self) -> Result<()> {
         let url = self
             .url
             .join("?create=true")
@@ -415,13 +416,7 @@ impl WriteBackend for RestBackend {
     ///
     /// [`RestErrorKind::BackoffError`]: crate::error::RestErrorKind::BackoffError
     // TODO: If the file is not cacheable, the bytes could be written to a temporary file and then moved to the final location.
-    fn write_bytes(
-        &self,
-        tpe: FileType,
-        id: &Id,
-        _cacheable: bool,
-        buf: Bytes,
-    ) -> RusticResult<()> {
+    fn write_bytes(&self, tpe: FileType, id: &Id, _cacheable: bool, buf: Bytes) -> Result<()> {
         trace!("writing tpe: {:?}, id: {}", &tpe, &id);
         let req_builder = self.client.post(self.url(tpe, id)?).body(buf);
         Ok(backoff::retry_notify(
@@ -449,7 +444,7 @@ impl WriteBackend for RestBackend {
     /// * [`RestErrorKind::BackoffError`] - If the backoff failed.
     ///
     /// [`RestErrorKind::BackoffError`]: crate::error::RestErrorKind::BackoffError
-    fn remove(&self, tpe: FileType, id: &Id, _cacheable: bool) -> RusticResult<()> {
+    fn remove(&self, tpe: FileType, id: &Id, _cacheable: bool) -> Result<()> {
         trace!("removing tpe: {:?}, id: {}", &tpe, &id);
         let url = self.url(tpe, id)?;
         Ok(backoff::retry_notify(

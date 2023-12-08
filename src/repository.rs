@@ -18,10 +18,10 @@ use crate::{
     backend::{
         cache::Cache,
         cache::CachedBackend,
-        choose::choose_from_url,
+        choose::{get_backend, url_to_type_and_path},
         decrypt::{DecryptBackend, DecryptReadBackend, DecryptWriteBackend},
         hotcold::HotColdBackend,
-        local::LocalDestination,
+        local_destination::LocalDestination,
         node::Node,
         warm_up::WarmUpAccessBackend,
         FileType, ReadBackend, WriteBackend,
@@ -45,7 +45,7 @@ use crate::{
     },
     crypto::aespoly1305::Key,
     error::RusticResult,
-    error::{KeyFileErrorKind, RepositoryErrorKind, RusticErrorKind},
+    error::{BackendAccessErrorKind, KeyFileErrorKind, RepositoryErrorKind, RusticErrorKind},
     id::Id,
     index::{GlobalIndex, IndexEntry, ReadGlobalIndex, ReadIndex},
     progress::{NoProgressBars, ProgressBars},
@@ -146,10 +146,20 @@ pub struct RepositoryOptions {
     #[serde_as(as = "Option<DisplayFromStr>")]
     pub warm_up_wait: Option<humantime::Duration>,
 
-    /// Other options for this repository
+    /// Other options for this repository (hot and cold part)
     #[cfg_attr(feature = "clap", clap(skip))]
     #[cfg_attr(feature = "merge", merge(strategy = overwrite))]
     pub options: HashMap<String, String>,
+
+    /// Other options for the hot repository
+    #[cfg_attr(feature = "clap", clap(skip))]
+    #[cfg_attr(feature = "merge", merge(strategy = overwrite))]
+    pub options_hot: HashMap<String, String>,
+
+    /// Other options for the cold repository
+    #[cfg_attr(feature = "clap", clap(skip))]
+    #[cfg_attr(feature = "merge", merge(strategy = overwrite))]
+    pub options_cold: HashMap<String, String>,
 }
 
 /// Overwrite the left value with the right value
@@ -309,7 +319,13 @@ impl<P> Repository<P, ()> {
     /// [`RestErrorKind::BuildingClientFailed`]: crate::error::RestErrorKind::BuildingClientFailed
     pub fn new_with_progress(opts: &RepositoryOptions, pb: P) -> RusticResult<Self> {
         let mut be = match &opts.repository {
-            Some(repo) => choose_from_url(repo, opts.options.clone())?,
+            Some(repo) => {
+                let mut options = opts.options.clone();
+                options.extend(opts.options_cold.clone());
+                let (tpe, path) = url_to_type_and_path(repo);
+                get_backend(tpe, path, opts.options.clone())
+                    .map_err(|err| BackendAccessErrorKind::BackendLoadError(tpe.to_string(), err))?
+            }
             None => return Err(RepositoryErrorKind::NoRepositoryGiven.into()),
         };
 
@@ -327,13 +343,18 @@ impl<P> Repository<P, ()> {
         let be_hot = opts
             .repo_hot
             .as_ref()
-            .map(|repo| choose_from_url(repo, opts.options.clone()))
+            .map(|repo| {
+                let mut options = opts.options.clone();
+                options.extend(opts.options_hot.clone());
+                let (tpe, path) = url_to_type_and_path(repo);
+                get_backend(tpe, path, options)
+                    .map_err(|err| BackendAccessErrorKind::BackendLoadError(tpe.to_string(), err))
+            })
             .transpose()?;
-
-        let be = HotColdBackend::new(be, be_hot.clone());
 
         let mut name = be.location();
         if let Some(be_hot) = &be_hot {
+            be = HotColdBackend::new(be, be_hot.clone());
             name.push('#');
             name.push_str(&be_hot.location());
         }
@@ -513,9 +534,14 @@ impl<P, S> Repository<P, S> {
             ))?;
 
         if let Some(be_hot) = &self.be_hot {
-            let mut keys = self.be.list_with_size(FileType::Key)?;
+            let mut keys = self
+                .be
+                .list_with_size(FileType::Key)
+                .map_err(RusticErrorKind::Backend)?;
             keys.sort_unstable_by_key(|key| key.0);
-            let mut hot_keys = be_hot.list_with_size(FileType::Key)?;
+            let mut hot_keys = be_hot
+                .list_with_size(FileType::Key)
+                .map_err(RusticErrorKind::Backend)?;
             hot_keys.sort_unstable_by_key(|key| key.0);
             if keys != hot_keys {
                 return Err(RepositoryErrorKind::KeysDontMatchForRepositories(self.name).into());
@@ -689,7 +715,11 @@ impl<P, S> Repository<P, S> {
     ///
     /// * `tpe` - The type of the files to list
     pub fn list(&self, tpe: FileType) -> RusticResult<impl Iterator<Item = Id>> {
-        Ok(self.be.list(tpe)?.into_iter())
+        Ok(self
+            .be
+            .list(tpe)
+            .map_err(RusticErrorKind::Backend)?
+            .into_iter())
     }
 }
 

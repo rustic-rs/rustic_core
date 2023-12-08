@@ -9,7 +9,7 @@ use crate::{
         decrypt::{DecryptReadBackend, DecryptWriteBackend},
         FileType, ReadBackend, WriteBackend,
     },
-    error::{CommandErrorKind, RusticResult},
+    error::{CommandErrorKind, RusticErrorKind, RusticResult},
     index::indexer::Indexer,
     progress::{Progress, ProgressBars},
     repofile::{IndexFile, IndexPack, PackHeader, PackHeaderRef},
@@ -46,7 +46,11 @@ impl RepairIndexOptions {
     ) -> RusticResult<()> {
         let be = repo.dbe();
         let p = repo.pb.progress_spinner("listing packs...");
-        let mut packs: HashMap<_, _> = be.list_with_size(FileType::Pack)?.into_iter().collect();
+        let mut packs: HashMap<_, _> = be
+            .list_with_size(FileType::Pack)
+            .map_err(RusticErrorKind::Backend)?
+            .into_iter()
+            .collect();
         p.finish();
 
         let mut pack_read_header = Vec::new();
@@ -100,7 +104,8 @@ impl RepairIndexOptions {
                     if !new_index.packs.is_empty() || !new_index.packs_to_delete.is_empty() {
                         _ = be.save_file(&new_index)?;
                     }
-                    be.remove(FileType::Index, &index_id, true)?;
+                    be.remove(FileType::Index, &index_id, true)
+                        .map_err(RusticErrorKind::Backend)?;
                 }
                 (false, _) => {} // nothing to do
             }

@@ -19,7 +19,7 @@ use rayon::ThreadPoolBuilder;
 use crate::{
     backend::{
         decrypt::DecryptReadBackend,
-        local::LocalDestination,
+        local_destination::LocalDestination,
         node::{Node, NodeType},
         FileType, ReadBackend,
     },

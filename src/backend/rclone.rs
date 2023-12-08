@@ -5,6 +5,7 @@ use std::{
     sync::Arc,
 };
 
+use anyhow::Result;
 use bytes::Bytes;
 use log::{debug, info, warn};
 use rand::{
@@ -221,7 +222,7 @@ impl ReadBackend for RcloneBackend {
     /// # Errors
     ///
     /// If the size could not be determined.
-    fn list_with_size(&self, tpe: FileType) -> RusticResult<Vec<(Id, u32)>> {
+    fn list_with_size(&self, tpe: FileType) -> Result<Vec<(Id, u32)>> {
         self.rest.list_with_size(tpe)
     }
 
@@ -241,7 +242,7 @@ impl ReadBackend for RcloneBackend {
     /// The data read.
     ///
     /// [`RestErrorKind::BackoffError`]: crate::error::RestErrorKind::BackoffError
-    fn read_full(&self, tpe: FileType, id: &Id) -> RusticResult<Bytes> {
+    fn read_full(&self, tpe: FileType, id: &Id) -> Result<Bytes> {
         self.rest.read_full(tpe, id)
     }
 
@@ -271,7 +272,7 @@ impl ReadBackend for RcloneBackend {
         cacheable: bool,
         offset: u32,
         length: u32,
-    ) -> RusticResult<Bytes> {
+    ) -> Result<Bytes> {
         self.rest.read_partial(tpe, id, cacheable, offset, length)
     }
 }
@@ -284,7 +285,7 @@ impl WriteBackend for RcloneBackend {
     /// * [`RestErrorKind::BackoffError`] - If the backoff failed.
     ///
     /// [`RestErrorKind::BackoffError`]: crate::error::RestErrorKind::BackoffError
-    fn create(&self) -> RusticResult<()> {
+    fn create(&self) -> Result<()> {
         self.rest.create()
     }
 
@@ -302,7 +303,7 @@ impl WriteBackend for RcloneBackend {
     /// * [`RestErrorKind::BackoffError`] - If the backoff failed.
     ///
     /// [`RestErrorKind::BackoffError`]: crate::error::RestErrorKind::BackoffError
-    fn write_bytes(&self, tpe: FileType, id: &Id, cacheable: bool, buf: Bytes) -> RusticResult<()> {
+    fn write_bytes(&self, tpe: FileType, id: &Id, cacheable: bool, buf: Bytes) -> Result<()> {
         self.rest.write_bytes(tpe, id, cacheable, buf)
     }
 
@@ -319,7 +320,7 @@ impl WriteBackend for RcloneBackend {
     /// * [`RestErrorKind::BackoffError`] - If the backoff failed.
     ///
     /// [`RestErrorKind::BackoffError`]: crate::error::RestErrorKind::BackoffError
-    fn remove(&self, tpe: FileType, id: &Id, cacheable: bool) -> RusticResult<()> {
+    fn remove(&self, tpe: FileType, id: &Id, cacheable: bool) -> Result<()> {
         self.rest.remove(tpe, id, cacheable)
     }
 }

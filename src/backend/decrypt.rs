@@ -1,5 +1,6 @@
 use std::{num::NonZeroU32, sync::Arc};
 
+use anyhow::Result;
 use bytes::Bytes;
 use crossbeam_channel::{unbounded, Receiver};
 use rayon::prelude::*;
@@ -17,7 +18,7 @@ use crate::{
     backend::ReadBackend,
     backend::WriteBackend,
     crypto::{hasher::hash, CryptoKey},
-    error::CryptBackendErrorKind,
+    error::{CryptBackendErrorKind, RusticErrorKind},
     id::Id,
     repofile::RepoFile,
     Progress, RusticResult,
@@ -109,7 +110,9 @@ pub trait DecryptReadBackend: ReadBackend + Clone + 'static {
         uncompressed_length: Option<NonZeroU32>,
     ) -> RusticResult<Bytes> {
         self.read_encrypted_from_partial(
-            &self.read_partial(tpe, id, cacheable, offset, length)?,
+            &self
+                .read_partial(tpe, id, cacheable, offset, length)
+                .map_err(RusticErrorKind::Backend)?,
             uncompressed_length,
         )
     }
@@ -142,7 +145,7 @@ pub trait DecryptReadBackend: ReadBackend + Clone + 'static {
         &self,
         p: &impl Progress,
     ) -> RusticResult<Receiver<RusticResult<(Id, F)>>> {
-        let list = self.list(F::TYPE)?;
+        let list = self.list(F::TYPE).map_err(RusticErrorKind::Backend)?;
         self.stream_list(list, p)
     }
 
@@ -214,7 +217,8 @@ pub trait DecryptWriteBackend: WriteBackend + Clone + 'static {
     fn hash_write_full_uncompressed(&self, tpe: FileType, data: &[u8]) -> RusticResult<Id> {
         let data = self.key().encrypt_data(data)?;
         let id = hash(&data);
-        self.write_bytes(tpe, &id, false, data.into())?;
+        self.write_bytes(tpe, &id, false, data.into())
+            .map_err(RusticErrorKind::Backend)?;
         Ok(id)
     }
     /// Saves the given file.
@@ -393,7 +397,8 @@ impl<C: CryptoKey> DecryptWriteBackend for DecryptBackend<C> {
             None => self.key().encrypt_data(data)?,
         };
         let id = hash(&data);
-        self.write_bytes(tpe, &id, false, data.into())?;
+        self.write_bytes(tpe, &id, false, data.into())
+            .map_err(RusticErrorKind::Backend)?;
         Ok(id)
     }
 
@@ -446,7 +451,8 @@ impl<C: CryptoKey> DecryptReadBackend for DecryptBackend<C> {
     /// [`CryptBackendErrorKind::DecryptionNotSupportedForBackend`]: crate::error::CryptBackendErrorKind::DecryptionNotSupportedForBackend
     /// [`CryptBackendErrorKind::DecodingZstdCompressedDataFailed`]: crate::error::CryptBackendErrorKind::DecodingZstdCompressedDataFailed
     fn read_encrypted_full(&self, tpe: FileType, id: &Id) -> RusticResult<Bytes> {
-        let decrypted = self.decrypt(&self.read_full(tpe, id)?)?;
+        let decrypted =
+            self.decrypt(&self.read_full(tpe, id).map_err(RusticErrorKind::Backend)?)?;
         Ok(match decrypted.first() {
             Some(b'{' | b'[') => decrypted, // not compressed
             Some(2) => decode_all(&decrypted[1..])
@@ -462,15 +468,15 @@ impl<C: CryptoKey> ReadBackend for DecryptBackend<C> {
         self.be.location()
     }
 
-    fn list(&self, tpe: FileType) -> RusticResult<Vec<Id>> {
+    fn list(&self, tpe: FileType) -> Result<Vec<Id>> {
         self.be.list(tpe)
     }
 
-    fn list_with_size(&self, tpe: FileType) -> RusticResult<Vec<(Id, u32)>> {
+    fn list_with_size(&self, tpe: FileType) -> Result<Vec<(Id, u32)>> {
         self.be.list_with_size(tpe)
     }
 
-    fn read_full(&self, tpe: FileType, id: &Id) -> RusticResult<Bytes> {
+    fn read_full(&self, tpe: FileType, id: &Id) -> Result<Bytes> {
         self.be.read_full(tpe, id)
     }
 
@@ -481,21 +487,21 @@ impl<C: CryptoKey> ReadBackend for DecryptBackend<C> {
         cacheable: bool,
         offset: u32,
         length: u32,
-    ) -> RusticResult<Bytes> {
+    ) -> Result<Bytes> {
         self.be.read_partial(tpe, id, cacheable, offset, length)
     }
 }
 
 impl<C: CryptoKey> WriteBackend for DecryptBackend<C> {
-    fn create(&self) -> RusticResult<()> {
+    fn create(&self) -> Result<()> {
         self.be.create()
     }
 
-    fn write_bytes(&self, tpe: FileType, id: &Id, cacheable: bool, buf: Bytes) -> RusticResult<()> {
+    fn write_bytes(&self, tpe: FileType, id: &Id, cacheable: bool, buf: Bytes) -> Result<()> {
         self.be.write_bytes(tpe, id, cacheable, buf)
     }
 
-    fn remove(&self, tpe: FileType, id: &Id, cacheable: bool) -> RusticResult<()> {
+    fn remove(&self, tpe: FileType, id: &Id, cacheable: bool) -> Result<()> {
         self.be.remove(tpe, id, cacheable)
     }
 }

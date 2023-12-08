@@ -12,7 +12,7 @@ use crate::{
     backend::{cache::Cache, decrypt::DecryptReadBackend, node::NodeType, FileType, ReadBackend},
     blob::{tree::TreeStreamerOnce, BlobType},
     crypto::hasher::hash,
-    error::RusticResult,
+    error::{RusticErrorKind, RusticResult},
     id::Id,
     index::{
         binarysorted::{IndexCollector, IndexType},
@@ -66,7 +66,9 @@ impl CheckOptions {
                     //
                     // This lists files here and later when reading index / checking snapshots
                     // TODO: Only list the files once...
-                    _ = be.list_with_size(file_type)?;
+                    _ = be
+                        .list_with_size(file_type)
+                        .map_err(RusticErrorKind::Backend)?;
 
                     let p = pb.progress_bytes(format!("checking {file_type:?} in cache..."));
                     // TODO: Make concurrency (20) customizable
@@ -152,11 +154,14 @@ fn check_hot_files(
 ) -> RusticResult<()> {
     let p = pb.progress_spinner(format!("checking {file_type:?} in hot repo..."));
     let mut files = be
-        .list_with_size(file_type)?
+        .list_with_size(file_type)
+        .map_err(RusticErrorKind::Backend)?
         .into_iter()
         .collect::<HashMap<_, _>>();
 
-    let files_hot = be_hot.list_with_size(file_type)?;
+    let files_hot = be_hot
+        .list_with_size(file_type)
+        .map_err(RusticErrorKind::Backend)?;
 
     for (id, size_hot) in files_hot {
         match files.remove(&id) {
@@ -339,7 +344,10 @@ fn check_packs(
 ///
 /// If a pack is missing or has a different size
 fn check_packs_list(be: &impl ReadBackend, mut packs: HashMap<Id, u32>) -> RusticResult<()> {
-    for (id, size) in be.list_with_size(FileType::Pack)? {
+    for (id, size) in be
+        .list_with_size(FileType::Pack)
+        .map_err(RusticErrorKind::Backend)?
+    {
         match packs.remove(&id) {
             None => warn!("pack {id} not referenced in index. Can be a parallel backup job. To repair: 'rustic repair index'."),
             Some(index_size) if index_size != size => {

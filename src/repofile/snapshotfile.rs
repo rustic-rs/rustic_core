@@ -19,8 +19,8 @@ use shell_words::split;
 
 use crate::{
     backend::{decrypt::DecryptReadBackend, FileType, FindInBackend},
-    error::SnapshotFileErrorKind,
     error::{RusticError, RusticResult},
+    error::{RusticErrorKind, SnapshotFileErrorKind},
     id::Id,
     progress::Progress,
     repofile::RepoFile,
@@ -503,7 +503,9 @@ impl SnapshotFile {
     /// [`BackendErrorKind::IdNotUnique`]: crate::error::BackendErrorKind::IdNotUnique
     pub(crate) fn from_id<B: DecryptReadBackend>(be: &B, id: &str) -> RusticResult<Self> {
         info!("getting snapshot...");
-        let id = be.find_id(FileType::Snapshot, id)?;
+        let id = be
+            .find_id(FileType::Snapshot, id)
+            .map_err(RusticErrorKind::Backend)?;
         Self::from_backend(be, &id)
     }
 
