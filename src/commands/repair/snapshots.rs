@@ -65,6 +65,13 @@ enum Changed {
     None,
 }
 
+#[derive(Default)]
+struct RepairState {
+    replaced: HashMap<Id, (Changed, Id)>,
+    seen: HashSet<Id>,
+    delete: Vec<Id>,
+}
+
 impl RepairSnapshotsOptions {
     /// Runs the `repair snapshots` command
     ///
@@ -87,9 +94,7 @@ impl RepairSnapshotsOptions {
         let be = repo.dbe();
         let config_file = repo.config();
 
-        let mut replaced = HashMap::new();
-        let mut seen = HashSet::new();
-        let mut delete = Vec::new();
+        let mut state = RepairState::default();
 
         let indexer = Indexer::new(be.clone()).into_shared();
         let mut packer = Packer::new(
@@ -108,8 +113,7 @@ impl RepairSnapshotsOptions {
                 repo.index(),
                 &mut packer,
                 Some(snap.tree),
-                &mut replaced,
-                &mut seen,
+                &mut state,
                 dry_run,
             )? {
                 (Changed::None, _) => {
@@ -117,7 +121,7 @@ impl RepairSnapshotsOptions {
                 }
                 (Changed::This, _) => {
                     warn!("snapshot {snap_id}: root tree is damaged -> marking for deletion!");
-                    delete.push(snap_id);
+                    state.delete.push(snap_id);
                 }
                 (Changed::SubTree, id) => {
                     // change snapshot tree
@@ -132,7 +136,7 @@ impl RepairSnapshotsOptions {
                         let new_id = be.save_file(&snap)?;
                         info!("saved modified snapshot as {new_id}.");
                     }
-                    delete.push(snap_id);
+                    state.delete.push(snap_id);
                 }
             }
         }
@@ -144,12 +148,12 @@ impl RepairSnapshotsOptions {
 
         if self.delete {
             if dry_run {
-                info!("would have removed {} snapshots.", delete.len());
+                info!("would have removed {} snapshots.", state.delete.len());
             } else {
                 be.delete_list(
                     FileType::Snapshot,
                     true,
-                    delete.iter(),
+                    state.delete.iter(),
                     repo.pb.progress_counter("remove defect snapshots"),
                 )?;
             }
@@ -182,17 +186,16 @@ impl RepairSnapshotsOptions {
         index: &impl ReadGlobalIndex,
         packer: &mut Packer<BE>,
         id: Option<Id>,
-        replaced: &mut HashMap<Id, (Changed, Id)>,
-        seen: &mut HashSet<Id>,
+        state: &mut RepairState,
         dry_run: bool,
     ) -> RusticResult<(Changed, Id)> {
         let (tree, changed) = match id {
             None => (Tree::new(), Changed::This),
             Some(id) => {
-                if seen.contains(&id) {
+                if state.seen.contains(&id) {
                     return Ok((Changed::None, id));
                 }
-                if let Some(r) = replaced.get(&id) {
+                if let Some(r) = state.replaced.get(&id) {
                     return Ok(*r);
                 }
 
@@ -235,15 +238,8 @@ impl RepairSnapshotsOptions {
                             node.meta.size = new_size;
                         }
                         NodeType::Dir {} => {
-                            let (c, tree_id) = self.repair_tree(
-                                be,
-                                index,
-                                packer,
-                                node.subtree,
-                                replaced,
-                                seen,
-                                dry_run,
-                            )?;
+                            let (c, tree_id) =
+                                self.repair_tree(be, index, packer, node.subtree, state, dry_run)?;
                             match c {
                                 Changed::None => {}
                                 Changed::This => {
@@ -263,7 +259,7 @@ impl RepairSnapshotsOptions {
                     new_tree.add(node);
                 }
                 if matches!(changed, Changed::None) {
-                    _ = seen.insert(id);
+                    _ = state.seen.insert(id);
                 }
                 (new_tree, changed)
             }
@@ -279,7 +275,7 @@ impl RepairSnapshotsOptions {
                     packer.add(chunk.into(), new_id)?;
                 }
                 if let Some(id) = id {
-                    _ = replaced.insert(id, (c, new_id));
+                    _ = state.replaced.insert(id, (c, new_id));
                 }
                 Ok((c, new_id))
             }
