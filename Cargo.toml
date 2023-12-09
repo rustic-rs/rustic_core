@@ -19,7 +19,7 @@ publish = true
 readme = "README.md"
 repository = "https://github.com/rustic-rs/rustic_core"
 resolver = "2"
-rust-version = "1.70.0"
+rust-version = "1.71.0"
 description = """
 rustic_core - library for fast, encrypted, deduplicated backups that powers rustic-rs
 """
