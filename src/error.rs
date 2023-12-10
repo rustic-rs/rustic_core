@@ -41,6 +41,14 @@ impl RusticError {
     pub fn into_inner(self) -> RusticErrorKind {
         self.0
     }
+
+    /// Checks if the error is due to an incorrect password
+    pub fn is_incorrect_password(&self) -> bool {
+        matches!(
+            self.0,
+            RusticErrorKind::Repository(RepositoryErrorKind::IncorrectPassword)
+        )
+    }
 }
 
 /// [`RusticErrorKind`] describes the errors that can happen while executing a high-level command.
