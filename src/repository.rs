@@ -679,7 +679,7 @@ impl<P, S> Repository<P, S> {
     ///
     /// [`RepositoryErrorKind::HotRepositoryFlagMissing`]: crate::error::RepositoryErrorKind::HotRepositoryFlagMissing
     /// [`RepositoryErrorKind::IsNotHotRepository`]: crate::error::RepositoryErrorKind::IsNotHotRepository
-    fn open_raw(self, key: Key, config: ConfigFile) -> RusticResult<Repository<P, OpenStatus>> {
+    fn open_raw(mut self, key: Key, config: ConfigFile) -> RusticResult<Repository<P, OpenStatus>> {
         match (config.is_hot == Some(true), self.be_hot.is_some()) {
             (true, false) => return Err(RepositoryErrorKind::HotRepositoryFlagMissing.into()),
             (false, true) => return Err(RepositoryErrorKind::IsNotHotRepository.into()),
@@ -688,12 +688,15 @@ impl<P, S> Repository<P, S> {
         let cache = (!self.opts.no_cache)
             .then(|| Cache::new(config.id, self.opts.cache_dir.clone()).ok())
             .flatten();
-        cache.as_ref().map_or_else(
-            || info!("using no cache"),
-            |cache| info!("using cache at {}", cache.location()),
-        );
-        let be_cached = Arc::new(CachedBackend::new_cache(self.be.clone(), cache.clone()));
-        let mut dbe = DecryptBackend::new(be_cached, key);
+
+        if let Some(cache) = &cache {
+            self.be = CachedBackend::new_cache(self.be.clone(), cache.clone());
+            info!("using cache at {}", cache.location());
+        } else {
+            info!("using no cache");
+        }
+
+        let mut dbe = DecryptBackend::new(self.be.clone(), key);
         let zstd = config.zstd()?;
         dbe.set_zstd(zstd);
 

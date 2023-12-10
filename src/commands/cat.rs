@@ -45,10 +45,7 @@ pub(crate) fn cat_file<P, S: Open>(
     tpe: FileType,
     id: &str,
 ) -> RusticResult<Bytes> {
-    let id = repo
-        .dbe()
-        .find_id(tpe, id)
-        .map_err(RusticErrorKind::Backend)?;
+    let id = repo.dbe().find_id(tpe, id)?;
     let data = repo.dbe().read_encrypted_full(tpe, &id)?;
     Ok(data)
 }

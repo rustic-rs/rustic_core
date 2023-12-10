@@ -503,9 +503,7 @@ impl SnapshotFile {
     /// [`BackendErrorKind::IdNotUnique`]: crate::error::BackendErrorKind::IdNotUnique
     pub(crate) fn from_id<B: DecryptReadBackend>(be: &B, id: &str) -> RusticResult<Self> {
         info!("getting snapshot...");
-        let id = be
-            .find_id(FileType::Snapshot, id)
-            .map_err(RusticErrorKind::Backend)?;
+        let id = be.find_id(FileType::Snapshot, id)?;
         Self::from_backend(be, &id)
     }
 

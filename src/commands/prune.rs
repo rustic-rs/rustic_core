@@ -30,8 +30,7 @@ use crate::{
         tree::TreeStreamerOnce,
         BlobType, BlobTypeMap, Initialize,
     },
-    error::RusticResult,
-    error::{CommandErrorKind, RusticErrorKind},
+    error::{CommandErrorKind, RusticErrorKind, RusticResult},
     id::Id,
     index::{
         binarysorted::{IndexCollector, IndexType},
