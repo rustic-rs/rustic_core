@@ -132,7 +132,7 @@ fn warm_up_repo<P: ProgressBars, S>(
     pool.in_place_scope(|s| {
         for pack in packs {
             s.spawn(move |_| {
-                // ignore errors as they are expected from the warm-up
+                // TODO: Error handling
                 be.warm_up(FileType::Pack, &pack).unwrap();
                 p.inc(1);
             });

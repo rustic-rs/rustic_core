@@ -327,7 +327,7 @@ pub trait DecryptWriteBackend: WriteBackend + Clone + 'static {
 /// # Type Parameters
 ///
 /// * `C` - The type of the key to decrypt the backend with.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct DecryptBackend<C: CryptoKey> {
     /// The backend to decrypt.
     be: Arc<dyn WriteBackend>,
@@ -409,16 +409,6 @@ impl<C: CryptoKey> DecryptWriteBackend for DecryptBackend<C> {
     /// * `zstd` - The compression level to use for zstd.
     fn set_zstd(&mut self, zstd: Option<i32>) {
         self.zstd = zstd;
-    }
-}
-
-impl<C: CryptoKey> Clone for DecryptBackend<C> {
-    fn clone(&self) -> Self {
-        Self {
-            be: self.be.clone(),
-            key: self.key,
-            zstd: self.zstd,
-        }
     }
 }
 

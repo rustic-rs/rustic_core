@@ -241,7 +241,7 @@ pub trait FindInBackend: ReadBackend {
     /// [`IdErrorKind::HexError`]: crate::error::IdErrorKind::HexError
     /// [`BackendErrorKind::NoSuitableIdFound`]: crate::error::BackendErrorKind::NoSuitableIdFound
     /// [`BackendErrorKind::IdNotUnique`]: crate::error::BackendErrorKind::IdNotUnique
-    fn find_id(&self, tpe: FileType, id: &str) -> Result<Id> {
+    fn find_id(&self, tpe: FileType, id: &str) -> RusticResult<Id> {
         Ok(self.find_ids(tpe, &[id.to_string()])?.remove(0))
     }
 
