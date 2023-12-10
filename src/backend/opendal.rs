@@ -1,4 +1,4 @@
-use std::{path::PathBuf, str::FromStr};
+use std::{collections::HashMap, path::PathBuf, str::FromStr};
 
 use anyhow::Result;
 use bytes::Bytes;
@@ -6,12 +6,21 @@ use bytes::Bytes;
 use cached::proc_macro::cached;
 use log::trace;
 use once_cell::sync::Lazy;
-use opendal::{layers::BlockingLayer, BlockingOperator, ErrorKind, Metakey, Operator, Scheme};
+use opendal::{
+    layers::{BlockingLayer, LoggingLayer, RetryLayer},
+    BlockingOperator, ErrorKind, Metakey, Operator, Scheme,
+};
+use rayon::prelude::*;
 
 use crate::{
     backend::{FileType, ReadBackend, WriteBackend, ALL_FILE_TYPES},
     id::Id,
 };
+
+mod consts {
+    /// Default number of retries
+    pub(super) const DEFAULT_RETRY: usize = 5;
+}
 
 #[derive(Clone, Debug)]
 pub struct OpenDALBackend {
@@ -27,10 +36,18 @@ static RUNTIME: Lazy<tokio::runtime::Runtime> = Lazy::new(|| {
 
 impl OpenDALBackend {
     pub fn new(path: &str, options: impl IntoIterator<Item = (String, String)>) -> Result<Self> {
-        let map = options.into_iter().collect();
+        let map: HashMap<_, _> = options.into_iter().collect();
+        let max_retries = match map.get("retry").map(|v| v.as_str()) {
+            Some("false") | Some("off") => 0,
+            None | Some("default") => consts::DEFAULT_RETRY,
+            Some(value) => usize::from_str(value)?,
+        };
+
         let schema = Scheme::from_str(path)?;
         let _guard = RUNTIME.enter();
         let operator = Operator::via_map(schema, map)?
+            .layer(RetryLayer::new().with_max_times(max_retries).with_jitter())
+            .layer(LoggingLayer::default())
             .layer(BlockingLayer::create()?)
             .blocking();
         Ok(Self { operator })
@@ -86,7 +103,7 @@ impl ReadBackend for OpenDALBackend {
         Ok(self
             .operator
             .list_with(&(tpe.dirname().to_string() + "/"))
-            .delimiter("")
+            .recursive(true)
             .call()?
             .into_iter()
             .filter(|e| e.metadata().is_file())
@@ -125,7 +142,7 @@ impl ReadBackend for OpenDALBackend {
         Ok(self
             .operator
             .list_with(&(tpe.dirname().to_string() + "/"))
-            .delimiter("")
+            .recursive(true)
             .metakey(Metakey::ContentLength)
             .call()?
             .into_iter()
@@ -180,15 +197,17 @@ impl WriteBackend for OpenDALBackend {
             self.operator
                 .create_dir(&(tpe.dirname().to_string() + "/"))?;
         }
-        for i in 0u8..=255 {
+        // creating 256 dirs can be slow on remote backends, hence we parallelize it.
+        (0u8..=255).into_par_iter().try_for_each(|i| {
             self.operator.create_dir(
                 &(PathBuf::from("data")
                     .join(hex::encode([i]))
                     .to_string_lossy()
                     .to_string()
                     + "/"),
-            )?;
-        }
+            )
+        })?;
+
         Ok(())
     }
 
