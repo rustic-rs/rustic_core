@@ -192,7 +192,7 @@ impl LocalSource {
         }
 
         for file in &filter_opts.custom_ignorefile {
-            _ = walk_builder.add_custom_custom_ignorefilename(file);
+            _ = walk_builder.add_custom_ignore_filename(file);
         }
 
         _ = walk_builder
