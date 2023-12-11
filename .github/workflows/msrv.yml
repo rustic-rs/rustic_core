@@ -21,7 +21,7 @@ jobs:
     steps:
       - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4
       - name: Install cargo-hack
-        uses: taiki-e/install-action@d211c4be5a95cbcd52a0870dda7d63a107a58368 # v2
+        uses: taiki-e/install-action@6ee6c3ab83eab434138dfa928d72abc7eae14793 # v2
         with:
           tool: cargo-hack
 
