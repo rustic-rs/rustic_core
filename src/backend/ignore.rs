@@ -103,7 +103,7 @@ pub struct LocalSourceFilterOptions {
     /// Treat the provided filename like a .gitignore file (can be specified multiple times)
     #[cfg_attr(feature = "clap", clap(long, value_name = "FILE"))]
     #[cfg_attr(feature = "merge", merge(strategy = merge::vec::overwrite_empty))]
-    pub ignore_file: Vec<String>,
+    pub custom_ignorefile: Vec<String>,
 
     /// Exclude contents of directories containing this filename (can be specified multiple times)
     #[cfg_attr(feature = "clap", clap(long, value_name = "FILE"))]
@@ -191,8 +191,8 @@ impl LocalSource {
             }
         }
 
-        for file in &filter_opts.ignore_file {
-            _ = walk_builder.add_custom_ignore_filename(file);
+        for file in &filter_opts.custom_ignorefile {
+            _ = walk_builder.add_custom_custom_ignorefilename(file);
         }
 
         _ = walk_builder
