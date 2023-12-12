@@ -160,6 +160,13 @@ pub struct RepositoryOptions {
     #[cfg_attr(feature = "clap", clap(skip))]
     #[cfg_attr(feature = "merge", merge(strategy = overwrite))]
     pub options_cold: HashMap<String, String>,
+
+    /// Use this function to choose a backend for the given repository urls
+    #[cfg_attr(feature = "clap", clap(skip))]
+    #[cfg_attr(feature = "merge", merge(skip))]
+    #[serde(skip)]
+    pub backend_chooser:
+        Option<fn(&str, &str, HashMap<String, String>) -> anyhow::Result<Arc<dyn WriteBackend>>>,
 }
 
 /// Overwrite the left value with the right value
@@ -182,10 +189,7 @@ impl RepositoryOptions {
     ///
     /// * [`RepositoryErrorKind::NoRepositoryGiven`] - If no repository is given
     /// * [`RepositoryErrorKind::NoIDSpecified`] - If the warm-up command does not contain `%id`
-    /// * [`BackendErrorKind::BackendNotSupported`] - If the backend is not supported.
-    /// * [`LocalErrorKind::DirectoryCreationFailed`] - If the directory could not be created.
-    /// * [`RestErrorKind::UrlParsingFailed`] - If the url could not be parsed.
-    /// * [`RestErrorKind::BuildingClientFailed`] - If the client could not be built.
+    /// * [`BackendAccessErrorKind::BackendLoadError`] - If the specified backend cannot be loaded, e.g. is not supported
     ///
     /// # Returns
     ///
@@ -193,10 +197,7 @@ impl RepositoryOptions {
     ///
     /// [`RepositoryErrorKind::NoRepositoryGiven`]: crate::error::RepositoryErrorKind::NoRepositoryGiven
     /// [`RepositoryErrorKind::NoIDSpecified`]: crate::error::RepositoryErrorKind::NoIDSpecified
-    /// [`BackendErrorKind::BackendNotSupported`]: crate::error::BackendErrorKind::BackendNotSupported
-    /// [`LocalErrorKind::DirectoryCreationFailed`]: crate::error::LocalErrorKind::DirectoryCreationFailed
-    /// [`RestErrorKind::UrlParsingFailed`]: crate::error::RestErrorKind::UrlParsingFailed
-    /// [`RestErrorKind::BuildingClientFailed`]: crate::error::RestErrorKind::BuildingClientFailed
+    /// [`BackendAccessErrorKind::BackendLoadError`]: crate::error::BackendAccessErrorKind::BackendLoadError
     pub fn to_repository(&self) -> RusticResult<Repository<NoProgressBars, ()>> {
         Repository::new(self)
     }
@@ -274,17 +275,8 @@ impl Repository<NoProgressBars, ()> {
     ///
     /// * [`RepositoryErrorKind::NoRepositoryGiven`] - If no repository is given
     /// * [`RepositoryErrorKind::NoIDSpecified`] - If the warm-up command does not contain `%id`
-    /// * [`BackendErrorKind::BackendNotSupported`] - If the backend is not supported.
-    /// * [`LocalErrorKind::DirectoryCreationFailed`] - If the directory could not be created.
-    /// * [`RestErrorKind::UrlParsingFailed`] - If the url could not be parsed.
-    /// * [`RestErrorKind::BuildingClientFailed`] - If the client could not be built.
+    /// * [`BackendAccessErrorKind::BackendLoadError`] - If the specified backend cannot be loaded, e.g. is not supported
     ///
-    /// [`RepositoryErrorKind::NoRepositoryGiven`]: crate::error::RepositoryErrorKind::NoRepositoryGiven
-    /// [`RepositoryErrorKind::NoIDSpecified`]: crate::error::RepositoryErrorKind::NoIDSpecified
-    /// [`BackendErrorKind::BackendNotSupported`]: crate::error::BackendErrorKind::BackendNotSupported
-    /// [`LocalErrorKind::DirectoryCreationFailed`]: crate::error::LocalErrorKind::DirectoryCreationFailed
-    /// [`RestErrorKind::UrlParsingFailed`]: crate::error::RestErrorKind::UrlParsingFailed
-    /// [`RestErrorKind::BuildingClientFailed`]: crate::error::RestErrorKind::BuildingClientFailed
     pub fn new(opts: &RepositoryOptions) -> RusticResult<Self> {
         Self::new_with_progress(opts, NoProgressBars {})
     }
@@ -306,24 +298,19 @@ impl<P> Repository<P, ()> {
     ///
     /// * [`RepositoryErrorKind::NoRepositoryGiven`] - If no repository is given
     /// * [`RepositoryErrorKind::NoIDSpecified`] - If the warm-up command does not contain `%id`
-    /// * [`BackendErrorKind::BackendNotSupported`] - If the backend is not supported.
-    /// * [`LocalErrorKind::DirectoryCreationFailed`] - If the directory could not be created.
-    /// * [`RestErrorKind::UrlParsingFailed`] - If the url could not be parsed.
-    /// * [`RestErrorKind::BuildingClientFailed`] - If the client could not be built.
+    /// * [`BackendAccessErrorKind::BackendLoadError`] - If the specified backend cannot be loaded, e.g. is not supported
     ///
     /// [`RepositoryErrorKind::NoRepositoryGiven`]: crate::error::RepositoryErrorKind::NoRepositoryGiven
     /// [`RepositoryErrorKind::NoIDSpecified`]: crate::error::RepositoryErrorKind::NoIDSpecified
-    /// [`BackendErrorKind::BackendNotSupported`]: crate::error::BackendErrorKind::BackendNotSupported
-    /// [`LocalErrorKind::DirectoryCreationFailed`]: crate::error::LocalErrorKind::DirectoryCreationFailed
-    /// [`RestErrorKind::UrlParsingFailed`]: crate::error::RestErrorKind::UrlParsingFailed
-    /// [`RestErrorKind::BuildingClientFailed`]: crate::error::RestErrorKind::BuildingClientFailed
+    /// [`BackendAccessErrorKind::BackendLoadError`]: crate::error::BackendAccessErrorKind::BackendLoadError
     pub fn new_with_progress(opts: &RepositoryOptions, pb: P) -> RusticResult<Self> {
+        let backend_chooser = opts.backend_chooser.unwrap_or(get_backend);
         let mut be = match &opts.repository {
             Some(repo) => {
                 let mut options = opts.options.clone();
                 options.extend(opts.options_cold.clone());
                 let (tpe, path) = url_to_type_and_path(repo);
-                get_backend(tpe, path, options)
+                backend_chooser(tpe, path, options)
                     .map_err(|err| BackendAccessErrorKind::BackendLoadError(tpe.to_string(), err))?
             }
             None => return Err(RepositoryErrorKind::NoRepositoryGiven.into()),
@@ -347,7 +334,7 @@ impl<P> Repository<P, ()> {
                 let mut options = opts.options.clone();
                 options.extend(opts.options_hot.clone());
                 let (tpe, path) = url_to_type_and_path(repo);
-                get_backend(tpe, path, options)
+                backend_chooser(tpe, path, options)
                     .map_err(|err| BackendAccessErrorKind::BackendLoadError(tpe.to_string(), err))
             })
             .transpose()?;
@@ -834,12 +821,12 @@ impl<P, S: Open> Repository<P, S> {
     /// # Errors
     ///
     /// * [`IdErrorKind::HexError`] - If the string is not a valid hexadecimal string
-    /// * [`BackendErrorKind::NoSuitableIdFound`] - If no id could be found.
-    /// * [`BackendErrorKind::IdNotUnique`] - If the id is not unique.
+    /// * [`BackendAccessErrorKind::NoSuitableIdFound`] - If no id could be found.
+    /// * [`BackendAccessErrorKind::IdNotUnique`] - If the id is not unique.
     ///
     /// [`IdErrorKind::HexError`]: crate::error::IdErrorKind::HexError
-    /// [`BackendErrorKind::NoSuitableIdFound`]: crate::error::BackendErrorKind::NoSuitableIdFound
-    /// [`BackendErrorKind::IdNotUnique`]: crate::error::BackendErrorKind::IdNotUnique
+    /// [`BackendAccessErrorKind::NoSuitableIdFound`]: crate::error::BackendAccessErrorKind::NoSuitableIdFound
+    /// [`BackendAccessErrorKind::IdNotUnique`]: crate::error::BackendAccessErrorKind::IdNotUnique
     pub fn cat_file(&self, tpe: FileType, id: &str) -> RusticResult<Bytes> {
         commands::cat::cat_file(self, tpe, id)
     }
@@ -932,8 +919,8 @@ impl<P: ProgressBars, S: Open> Repository<P, S> {
     /// # Errors
     ///
     /// * [`IdErrorKind::HexError`] - If the string is not a valid hexadecimal string
-    /// * [`BackendErrorKind::NoSuitableIdFound`] - If no id could be found.
-    /// * [`BackendErrorKind::IdNotUnique`] - If the id is not unique.
+    /// * [`BackendAccessErrorKind::NoSuitableIdFound`] - If no id could be found.
+    /// * [`BackendAccessErrorKind::IdNotUnique`] - If the id is not unique.
     ///
     /// # Returns
     ///
@@ -941,8 +928,8 @@ impl<P: ProgressBars, S: Open> Repository<P, S> {
     /// If `id` is "latest", return the latest snapshot respecting the giving filter.
     ///
     /// [`IdErrorKind::HexError`]: crate::error::IdErrorKind::HexError
-    /// [`BackendErrorKind::NoSuitableIdFound`]: crate::error::BackendErrorKind::NoSuitableIdFound
-    /// [`BackendErrorKind::IdNotUnique`]: crate::error::BackendErrorKind::IdNotUnique
+    /// [`BackendAccessErrorKind::NoSuitableIdFound`]: crate::error::BackendAccessErrorKind::NoSuitableIdFound
+    /// [`BackendAccessErrorKind::IdNotUnique`]: crate::error::BackendAccessErrorKind::IdNotUnique
     pub fn get_snapshot_from_str(
         &self,
         id: &str,
@@ -1255,12 +1242,12 @@ impl<P: ProgressBars, S: IndexedTree> Repository<P, S> {
     /// # Errors
     ///
     /// * [`IdErrorKind::HexError`] - If the string is not a valid hexadecimal string
-    /// * [`BackendErrorKind::NoSuitableIdFound`] - If no id could be found.
-    /// * [`BackendErrorKind::IdNotUnique`] - If the id is not unique.
+    /// * [`BackendAccessErrorKind::NoSuitableIdFound`] - If no id could be found.
+    /// * [`BackendAccessErrorKind::IdNotUnique`] - If the id is not unique.
     ///
     /// [`IdErrorKind::HexError`]: crate::error::IdErrorKind::HexError
-    /// [`BackendErrorKind::NoSuitableIdFound`]: crate::error::BackendErrorKind::NoSuitableIdFound
-    /// [`BackendErrorKind::IdNotUnique`]: crate::error::BackendErrorKind::IdNotUnique
+    /// [`BackendAccessErrorKind::NoSuitableIdFound`]: crate::error::BackendAccessErrorKind::NoSuitableIdFound
+    /// [`BackendAccessErrorKind::IdNotUnique`]: crate::error::BackendAccessErrorKind::IdNotUnique
     pub fn node_from_snapshot_path(
         &self,
         snap_path: &str,

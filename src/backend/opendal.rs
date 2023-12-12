@@ -81,15 +81,9 @@ impl ReadBackend for OpenDALBackend {
     ///
     /// * `tpe` - The type of the files to list.
     ///
-    /// # Errors
-    ///
-    /// * [`IdErrorKind::HexError`] - If the string is not a valid hexadecimal string
-    ///
     /// # Notes
     ///
     /// If the file type is `FileType::Config`, this will return a list with a single default id.
-    ///
-    /// [`IdErrorKind::HexError`]: crate::error::IdErrorKind::HexError
     fn list(&self, tpe: FileType) -> Result<Vec<Id>> {
         trace!("listing tpe: {tpe:?}");
         if tpe == FileType::Config {
@@ -118,17 +112,6 @@ impl ReadBackend for OpenDALBackend {
     ///
     /// * `tpe` - The type of the files to list.
     ///
-    /// # Errors
-    ///
-    /// * [`LocalErrorKind::QueryingMetadataFailed`] - If the metadata of the file could not be queried.
-    /// * [`LocalErrorKind::FromTryIntError`] - If the length of the file could not be converted to u32.
-    /// * [`LocalErrorKind::QueryingWalkDirMetadataFailed`] - If the metadata of the file could not be queried.
-    /// * [`IdErrorKind::HexError`] - If the string is not a valid hexadecimal string
-    ///
-    /// [`LocalErrorKind::QueryingMetadataFailed`]: crate::error::LocalErrorKind::QueryingMetadataFailed
-    /// [`LocalErrorKind::FromTryIntError`]: crate::error::LocalErrorKind::FromTryIntError
-    /// [`LocalErrorKind::QueryingWalkDirMetadataFailed`]: crate::error::LocalErrorKind::QueryingWalkDirMetadataFailed
-    /// [`IdErrorKind::HexError`]: crate::error::IdErrorKind::HexError
     fn list_with_size(&self, tpe: FileType) -> Result<Vec<(Id, u32)>> {
         trace!("listing tpe: {tpe:?}");
         if tpe == FileType::Config {
@@ -184,12 +167,6 @@ impl ReadBackend for OpenDALBackend {
 
 impl WriteBackend for OpenDALBackend {
     /// Create a repository on the backend.
-    ///
-    /// # Errors
-    ///
-    /// * [`LocalErrorKind::DirectoryCreationFailed`] - If the directory could not be created.
-    ///
-    /// [`LocalErrorKind::DirectoryCreationFailed`]: crate::error::LocalErrorKind::DirectoryCreationFailed
     fn create(&self) -> Result<()> {
         trace!("creating repo at {:?}", self.location());
 
@@ -219,20 +196,6 @@ impl WriteBackend for OpenDALBackend {
     /// * `id` - The id of the file.
     /// * `cacheable` - Whether the file is cacheable.
     /// * `buf` - The bytes to write.
-    ///
-    /// # Errors
-    ///
-    /// * [`LocalErrorKind::OpeningFileFailed`] - If the file could not be opened.
-    /// * [`LocalErrorKind::FromTryIntError`] - If the length of the bytes could not be converted to u64.
-    /// * [`LocalErrorKind::SettingFileLengthFailed`] - If the length of the file could not be set.
-    /// * [`LocalErrorKind::CouldNotWriteToBuffer`] - If the bytes could not be written to the file.
-    /// * [`LocalErrorKind::SyncingOfOsMetadataFailed`] - If the metadata of the file could not be synced.
-    ///
-    /// [`LocalErrorKind::OpeningFileFailed`]: crate::error::LocalErrorKind::OpeningFileFailed
-    /// [`LocalErrorKind::FromTryIntError`]: crate::error::LocalErrorKind::FromTryIntError
-    /// [`LocalErrorKind::SettingFileLengthFailed`]: crate::error::LocalErrorKind::SettingFileLengthFailed
-    /// [`LocalErrorKind::CouldNotWriteToBuffer`]: crate::error::LocalErrorKind::CouldNotWriteToBuffer
-    /// [`LocalErrorKind::SyncingOfOsMetadataFailed`]: crate::error::LocalErrorKind::SyncingOfOsMetadataFailed
     fn write_bytes(&self, tpe: FileType, id: &Id, _cacheable: bool, buf: Bytes) -> Result<()> {
         trace!("writing tpe: {:?}, id: {}", &tpe, &id);
         let filename = self.path(tpe, id);
@@ -247,12 +210,6 @@ impl WriteBackend for OpenDALBackend {
     /// * `tpe` - The type of the file.
     /// * `id` - The id of the file.
     /// * `cacheable` - Whether the file is cacheable.
-    ///
-    /// # Errors
-    ///
-    /// * [`LocalErrorKind::FileRemovalFailed`] - If the file could not be removed.
-    ///
-    /// [`LocalErrorKind::FileRemovalFailed`]: crate::error::LocalErrorKind::FileRemovalFailed
     fn remove(&self, tpe: FileType, id: &Id, _cacheable: bool) -> Result<()> {
         trace!("removing tpe: {:?}, id: {}", &tpe, &id);
         let filename = self.path(tpe, id);

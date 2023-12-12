@@ -32,7 +32,7 @@ pub struct LocalBackend {
     post_delete_command: Option<String>,
 }
 
-/// [`LocalErrorKind`] describes the errors that can be returned by an action on the filesystem in Backends
+/// [`LocalBackendErrorKind`] describes the errors that can be returned by an action on the filesystem in Backends
 #[derive(Error, Debug, Display)]
 pub enum LocalBackendErrorKind {
     /// directory creation failed: `{0:?}`
@@ -87,9 +87,9 @@ impl LocalBackend {
     ///
     /// # Errors
     ///
-    /// * [`LocalErrorKind::DirectoryCreationFailed`] - If the directory could not be created.
+    /// * [`LocalBackendErrorKind::DirectoryCreationFailed`] - If the directory could not be created.
     ///
-    /// [`LocalErrorKind::DirectoryCreationFailed`]: crate::error::LocalErrorKind::DirectoryCreationFailed
+    /// [`LocalBackendErrorKind::DirectoryCreationFailed`]: LocalBackendErrorKind::DirectoryCreationFailed
     // TODO: We should use `impl Into<Path/PathBuf>` here. we even use it in the body!
     pub fn new(path: &str, options: impl IntoIterator<Item = (String, String)>) -> Result<Self> {
         let path = path.into();
@@ -148,10 +148,10 @@ impl LocalBackend {
     ///
     /// # Errors
     ///
-    /// * [`LocalErrorKind::FromAhoCorasick`] - If the patterns could not be compiled.
-    /// * [`LocalErrorKind::FromSplitError`] - If the command could not be parsed.
-    /// * [`LocalErrorKind::CommandExecutionFailed`] - If the command could not be executed.
-    /// * [`LocalErrorKind::CommandNotSuccessful`] - If the command was not successful.
+    /// * [`LocalBackendErrorKind::FromAhoCorasick`] - If the patterns could not be compiled.
+    /// * [`LocalBackendErrorKind::FromSplitError`] - If the command could not be parsed.
+    /// * [`LocalBackendErrorKind::CommandExecutionFailed`] - If the command could not be executed.
+    /// * [`LocalBackendErrorKind::CommandNotSuccessful`] - If the command was not successful.
     ///
     /// # Notes
     ///
@@ -160,10 +160,10 @@ impl LocalBackend {
     /// * `%type` - The type of the file.
     /// * `%id` - The id of the file.
     ///
-    /// [`LocalErrorKind::FromAhoCorasick`]: crate::error::LocalErrorKind::FromAhoCorasick
-    /// [`LocalErrorKind::FromSplitError`]: crate::error::LocalErrorKind::FromSplitError
-    /// [`LocalErrorKind::CommandExecutionFailed`]: crate::error::LocalErrorKind::CommandExecutionFailed
-    /// [`LocalErrorKind::CommandNotSuccessful`]: crate::error::LocalErrorKind::CommandNotSuccessful
+    /// [`LocalBackendErrorKind::FromAhoCorasick`]: LocalBackendErrorKind::FromAhoCorasick
+    /// [`LocalBackendErrorKind::FromSplitError`]: LocalBackendErrorKind::FromSplitError
+    /// [`LocalBackendErrorKind::CommandExecutionFailed`]: LocalBackendErrorKind::CommandExecutionFailed
+    /// [`LocalBackendErrorKind::CommandNotSuccessful`]: LocalBackendErrorKind::CommandNotSuccessful
     fn call_command(tpe: FileType, id: &Id, filename: &Path, command: &str) -> Result<()> {
         let id = id.to_hex();
         let patterns = &["%file", "%type", "%id"];
@@ -205,15 +205,9 @@ impl ReadBackend for LocalBackend {
     ///
     /// * `tpe` - The type of the files to list.
     ///
-    /// # Errors
-    ///
-    /// * [`IdErrorKind::HexError`] - If the string is not a valid hexadecimal string
-    ///
     /// # Notes
     ///
     /// If the file type is `FileType::Config`, this will return a list with a single default id.
-    ///
-    /// [`IdErrorKind::HexError`]: crate::error::IdErrorKind::HexError
     fn list(&self, tpe: FileType) -> Result<Vec<Id>> {
         trace!("listing tpe: {tpe:?}");
         if tpe == FileType::Config {
@@ -241,15 +235,13 @@ impl ReadBackend for LocalBackend {
     ///
     /// # Errors
     ///
-    /// * [`LocalErrorKind::QueryingMetadataFailed`] - If the metadata of the file could not be queried.
-    /// * [`LocalErrorKind::FromTryIntError`] - If the length of the file could not be converted to u32.
-    /// * [`LocalErrorKind::QueryingWalkDirMetadataFailed`] - If the metadata of the file could not be queried.
-    /// * [`IdErrorKind::HexError`] - If the string is not a valid hexadecimal string
+    /// * [`LocalBackendErrorKind::QueryingMetadataFailed`] - If the metadata of the file could not be queried.
+    /// * [`LocalBackendErrorKind::FromTryIntError`] - If the length of the file could not be converted to u32.
+    /// * [`LocalBackendErrorKind::QueryingWalkDirMetadataFailed`] - If the metadata of the file could not be queried.
     ///
-    /// [`LocalErrorKind::QueryingMetadataFailed`]: crate::error::LocalErrorKind::QueryingMetadataFailed
-    /// [`LocalErrorKind::FromTryIntError`]: crate::error::LocalErrorKind::FromTryIntError
-    /// [`LocalErrorKind::QueryingWalkDirMetadataFailed`]: crate::error::LocalErrorKind::QueryingWalkDirMetadataFailed
-    /// [`IdErrorKind::HexError`]: crate::error::IdErrorKind::HexError
+    /// [`LocalBackendErrorKind::QueryingMetadataFailed`]: LocalBackendErrorKind::QueryingMetadataFailed
+    /// [`LocalBackendErrorKind::FromTryIntError`]: LocalBackendErrorKind::FromTryIntError
+    /// [`LocalBackendErrorKind::QueryingWalkDirMetadataFailed`]: LocalBackendErrorKind::QueryingWalkDirMetadataFailed
     fn list_with_size(&self, tpe: FileType) -> Result<Vec<(Id, u32)>> {
         trace!("listing tpe: {tpe:?}");
         let path = self.path.join(tpe.dirname());
@@ -297,9 +289,9 @@ impl ReadBackend for LocalBackend {
     ///
     /// # Errors
     ///
-    /// * [`LocalErrorKind::ReadingContentsOfFileFailed`] - If the file could not be read.
+    /// * [`LocalBackendErrorKind::ReadingContentsOfFileFailed`] - If the file could not be read.
     ///
-    /// [`LocalErrorKind::ReadingContentsOfFileFailed`]: crate::error::LocalErrorKind::ReadingContentsOfFileFailed
+    /// [`LocalBackendErrorKind::ReadingContentsOfFileFailed`]: LocalBackendErrorKind::ReadingContentsOfFileFailed
     fn read_full(&self, tpe: FileType, id: &Id) -> Result<Bytes> {
         trace!("reading tpe: {tpe:?}, id: {id}");
         Ok(fs::read(self.path(tpe, id))
@@ -319,15 +311,15 @@ impl ReadBackend for LocalBackend {
     ///
     /// # Errors
     ///
-    /// * [`LocalErrorKind::OpeningFileFailed`] - If the file could not be opened.
-    /// * [`LocalErrorKind::CouldNotSeekToPositionInFile`] - If the file could not be seeked to the given position.
-    /// * [`LocalErrorKind::FromTryIntError`] - If the length of the file could not be converted to u32.
-    /// * [`LocalErrorKind::ReadingExactLengthOfFileFailed`] - If the length of the file could not be read.
+    /// * [`LocalBackendErrorKind::OpeningFileFailed`] - If the file could not be opened.
+    /// * [`LocalBackendErrorKind::CouldNotSeekToPositionInFile`] - If the file could not be seeked to the given position.
+    /// * [`LocalBackendErrorKind::FromTryIntError`] - If the length of the file could not be converted to u32.
+    /// * [`LocalBackendErrorKind::ReadingExactLengthOfFileFailed`] - If the length of the file could not be read.
     ///
-    /// [`LocalErrorKind::OpeningFileFailed`]: crate::error::LocalErrorKind::OpeningFileFailed
-    /// [`LocalErrorKind::CouldNotSeekToPositionInFile`]: crate::error::LocalErrorKind::CouldNotSeekToPositionInFile
-    /// [`LocalErrorKind::FromTryIntError`]: crate::error::LocalErrorKind::FromTryIntError
-    /// [`LocalErrorKind::ReadingExactLengthOfFileFailed`]: crate::error::LocalErrorKind::ReadingExactLengthOfFileFailed
+    /// [`LocalBackendErrorKind::OpeningFileFailed`]: LocalBackendErrorKind::OpeningFileFailed
+    /// [`LocalBackendErrorKind::CouldNotSeekToPositionInFile`]: LocalBackendErrorKind::CouldNotSeekToPositionInFile
+    /// [`LocalBackendErrorKind::FromTryIntError`]: LocalBackendErrorKind::FromTryIntError
+    /// [`LocalBackendErrorKind::ReadingExactLengthOfFileFailed`]: LocalBackendErrorKind::ReadingExactLengthOfFileFailed
     fn read_partial(
         &self,
         tpe: FileType,
@@ -354,9 +346,9 @@ impl WriteBackend for LocalBackend {
     ///
     /// # Errors
     ///
-    /// * [`LocalErrorKind::DirectoryCreationFailed`] - If the directory could not be created.
+    /// * [`LocalBackendErrorKind::DirectoryCreationFailed`] - If the directory could not be created.
     ///
-    /// [`LocalErrorKind::DirectoryCreationFailed`]: crate::error::LocalErrorKind::DirectoryCreationFailed
+    /// [`LocalBackendErrorKind::DirectoryCreationFailed`]: LocalBackendErrorKind::DirectoryCreationFailed
     fn create(&self) -> Result<()> {
         trace!("creating repo at {:?}", self.path);
 
@@ -382,17 +374,17 @@ impl WriteBackend for LocalBackend {
     ///
     /// # Errors
     ///
-    /// * [`LocalErrorKind::OpeningFileFailed`] - If the file could not be opened.
-    /// * [`LocalErrorKind::FromTryIntError`] - If the length of the bytes could not be converted to u64.
-    /// * [`LocalErrorKind::SettingFileLengthFailed`] - If the length of the file could not be set.
-    /// * [`LocalErrorKind::CouldNotWriteToBuffer`] - If the bytes could not be written to the file.
-    /// * [`LocalErrorKind::SyncingOfOsMetadataFailed`] - If the metadata of the file could not be synced.
+    /// * [`LocalBackendErrorKind::OpeningFileFailed`] - If the file could not be opened.
+    /// * [`LocalBackendErrorKind::FromTryIntError`] - If the length of the bytes could not be converted to u64.
+    /// * [`LocalBackendErrorKind::SettingFileLengthFailed`] - If the length of the file could not be set.
+    /// * [`LocalBackendErrorKind::CouldNotWriteToBuffer`] - If the bytes could not be written to the file.
+    /// * [`LocalBackendErrorKind::SyncingOfOsMetadataFailed`] - If the metadata of the file could not be synced.
     ///
-    /// [`LocalErrorKind::OpeningFileFailed`]: crate::error::LocalErrorKind::OpeningFileFailed
-    /// [`LocalErrorKind::FromTryIntError`]: crate::error::LocalErrorKind::FromTryIntError
-    /// [`LocalErrorKind::SettingFileLengthFailed`]: crate::error::LocalErrorKind::SettingFileLengthFailed
-    /// [`LocalErrorKind::CouldNotWriteToBuffer`]: crate::error::LocalErrorKind::CouldNotWriteToBuffer
-    /// [`LocalErrorKind::SyncingOfOsMetadataFailed`]: crate::error::LocalErrorKind::SyncingOfOsMetadataFailed
+    /// [`LocalBackendErrorKind::OpeningFileFailed`]: LocalBackendErrorKind::OpeningFileFailed
+    /// [`LocalBackendErrorKind::FromTryIntError`]: LocalBackendErrorKind::FromTryIntError
+    /// [`LocalBackendErrorKind::SettingFileLengthFailed`]: LocalBackendErrorKind::SettingFileLengthFailed
+    /// [`LocalBackendErrorKind::CouldNotWriteToBuffer`]: LocalBackendErrorKind::CouldNotWriteToBuffer
+    /// [`LocalBackendErrorKind::SyncingOfOsMetadataFailed`]: LocalBackendErrorKind::SyncingOfOsMetadataFailed
     fn write_bytes(&self, tpe: FileType, id: &Id, _cacheable: bool, buf: Bytes) -> Result<()> {
         trace!("writing tpe: {:?}, id: {}", &tpe, &id);
         let filename = self.path(tpe, id);
@@ -429,9 +421,9 @@ impl WriteBackend for LocalBackend {
     ///
     /// # Errors
     ///
-    /// * [`LocalErrorKind::FileRemovalFailed`] - If the file could not be removed.
+    /// * [`LocalBackendErrorKind::FileRemovalFailed`] - If the file could not be removed.
     ///
-    /// [`LocalErrorKind::FileRemovalFailed`]: crate::error::LocalErrorKind::FileRemovalFailed
+    /// [`LocalBackendErrorKind::FileRemovalFailed`]: LocalBackendErrorKind::FileRemovalFailed
     fn remove(&self, tpe: FileType, id: &Id, _cacheable: bool) -> Result<()> {
         trace!("removing tpe: {:?}, id: {}", &tpe, &id);
         let filename = self.path(tpe, id);

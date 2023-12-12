@@ -9,7 +9,6 @@ use std::{
     num::{ParseIntError, TryFromIntError},
     ops::RangeInclusive,
     path::{PathBuf, StripPrefixError},
-    process::ExitStatus,
     str::Utf8Error,
     time::SystemTimeError,
 };
@@ -49,6 +48,17 @@ impl RusticError {
             RusticErrorKind::Repository(RepositoryErrorKind::IncorrectPassword)
         )
     }
+
+    /// Get the corresponding backend error, if error is caused by the backend.
+    ///
+    /// Returns anyhow::Error; you need to cast this to the real backend error type
+    pub fn backend_error(&self) -> Option<&anyhow::Error> {
+        if let RusticErrorKind::Backend(error) = &self.0 {
+            Some(error)
+        } else {
+            None
+        }
+    }
 }
 
 /// [`RusticErrorKind`] describes the errors that can happen while executing a high-level command.
@@ -83,11 +93,11 @@ pub enum RusticErrorKind {
     #[error(transparent)]
     Index(#[from] IndexErrorKind),
 
-    /// [`BackendErrorKind`] describes the errors that can be returned by the various Backends
+    /// describes the errors that can be returned by the various Backends
     #[error(transparent)]
     Backend(#[from] anyhow::Error),
 
-    /// [`BackendErrorKind`] describes the errors that can be returned by the various Backends
+    /// [`BackendAccessErrorKind`] describes the errors that can be returned by accessing the various Backends
     #[error(transparent)]
     BackendAccess(#[from] BackendAccessErrorKind),
 
@@ -131,21 +141,13 @@ pub enum RusticErrorKind {
     #[error(transparent)]
     Ignore(#[from] IgnoreErrorKind),
 
-    /// [`LocalErrorKind`] describes the errors that can be returned by an action on the local filesystem as Destination
+    /// [`LocalDestinationErrorKind`] describes the errors that can be returned by an action on the local filesystem as Destination
     #[error(transparent)]
     LocalDestination(#[from] LocalDestinationErrorKind),
 
     /// [`NodeErrorKind`] describes the errors that can be returned by an action utilizing a node in Backends
     #[error(transparent)]
     Node(#[from] NodeErrorKind),
-
-    /// [`ProviderErrorKind`] describes the errors that can be returned by a backend provider
-    #[error(transparent)]
-    Provider(#[from] ProviderErrorKind),
-
-    /// [`RestErrorKind`] describes the errors that can be returned while dealing with the REST API
-    #[error(transparent)]
-    Rest(#[from] RestErrorKind),
 
     /// [`StdInErrorKind`] describes the errors that can be returned while dealing IO from CLI
     #[error(transparent)]
@@ -309,7 +311,7 @@ pub enum IndexErrorKind {
     CouldNotGetElapsedTimeFromSystemTime(#[from] SystemTimeError),
 }
 
-/// [`BackendErrorKind`] describes the errors that can be returned by the various Backends
+/// [`BackendAccessErrorKind`] describes the errors that can be returned by the various Backends
 #[derive(Error, Debug, Display)]
 pub enum BackendAccessErrorKind {
     /// backend {0:?} is not supported!
@@ -320,21 +322,6 @@ pub enum BackendAccessErrorKind {
     NoSuitableIdFound(String),
     /// id {0} is not unique
     IdNotUnique(String),
-    /// Rest API threw an error: `{0:?}`
-    RestApiError(#[from] RestErrorKind),
-    /// building REST client failed: `{0:?}`
-    BuildingRestClientFailed(#[from] reqwest::Error),
-    /// fully reading from Backend failed
-    FullyReadingFromBackendFailed,
-    /// setting option on Backend failed
-    SettingOptionOnBackendFailed,
-    /// partially reading from Backend data failed
-    PartiallyReadingFromBackendDataFailed,
-    /// listing with size failed
-    ListingWithSizeFailed,
-    /// {0:?}
-    #[error(transparent)]
-    FromBackendCacheError(#[from] CacheBackendErrorKind),
     /// {0:?}
     #[error(transparent)]
     FromIoError(#[from] std::io::Error),
@@ -344,9 +331,6 @@ pub enum BackendAccessErrorKind {
     /// {0:?}
     #[error(transparent)]
     FromLocalError(#[from] LocalDestinationErrorKind),
-    /// {0:?}
-    #[error(transparent)]
-    FromProviderError(#[from] ProviderErrorKind),
     /// {0:?}
     #[error(transparent)]
     FromIdError(#[from] IdErrorKind),
@@ -607,7 +591,7 @@ pub enum IgnoreErrorKind {
     TargetIsNotValidUnicode { file: PathBuf, target: PathBuf },
 }
 
-/// [`LocalErrorKind`] describes the errors that can be returned by an action on the filesystem in Backends
+/// [`LocalDestinationErrorKind`] describes the errors that can be returned by an action on the filesystem in Backends
 #[derive(Error, Debug, Display)]
 pub enum LocalDestinationErrorKind {
     /// directory creation failed: `{0:?}`
@@ -691,50 +675,6 @@ pub enum NodeErrorKind {
     UnrecognizedEscape,
 }
 
-/// [`ProviderErrorKind`] describes the errors that can be returned by a backend provider
-#[derive(Error, Debug, Display)]
-pub enum ProviderErrorKind {
-    /// 'rclone version' doesn't give any output
-    NoOutputForRcloneVersion,
-    /// cannot get stdout of rclone
-    NoStdOutForRclone,
-    /// rclone exited with `{0:?}`
-    RCloneExitWithBadStatus(ExitStatus),
-    /// url must start with http:\/\/! url: {0:?}
-    UrlNotStartingWithHttp(String),
-    /// StdIo Error: `{0:?}`
-    #[error(transparent)]
-    FromIoError(#[from] std::io::Error),
-    /// utf8 error: `{0:?}`
-    #[error(transparent)]
-    FromUtf8Error(#[from] Utf8Error),
-    /// `{0:?}`
-    #[error(transparent)]
-    FromRestError(#[from] RestErrorKind),
-    /// `{0:?}`
-    #[error(transparent)]
-    FromParseIntError(#[from] ParseIntError),
-}
-
-/// [`RestErrorKind`] describes the errors that can be returned while dealing with the REST API
-#[derive(Error, Debug, Display)]
-pub enum RestErrorKind {
-    /// value `{0:?}` not supported for option retry!
-    NotSupportedForRetry(String),
-    /// parsing failed for url: `{0:?}`
-    UrlParsingFailed(#[from] url::ParseError),
-    /// requesting resource failed: `{0:?}`
-    RequestingResourceFailed(#[from] reqwest::Error),
-    /// couldn't parse duration in humantime library: `{0:?}`
-    CouldNotParseDuration(#[from] humantime::DurationError),
-    /// backoff failed: {0:?}
-    BackoffError(#[from] backoff::Error<reqwest::Error>),
-    /// Failed to build HTTP client: `{0:?}`
-    BuildingClientFailed(reqwest::Error),
-    /// joining URL failed on: {0:?}
-    JoiningUrlFailed(url::ParseError),
-}
-
 /// [`StdInErrorKind`] describes the errors that can be returned while dealing IO from CLI
 #[derive(Error, Debug, Display)]
 pub enum StdInErrorKind {
@@ -800,8 +740,6 @@ impl RusticErrorMarker for CryptBackendErrorKind {}
 impl RusticErrorMarker for IgnoreErrorKind {}
 impl RusticErrorMarker for LocalDestinationErrorKind {}
 impl RusticErrorMarker for NodeErrorKind {}
-impl RusticErrorMarker for ProviderErrorKind {}
-impl RusticErrorMarker for RestErrorKind {}
 impl RusticErrorMarker for StdInErrorKind {}
 impl RusticErrorMarker for ArchiverErrorKind {}
 impl RusticErrorMarker for CommandErrorKind {}

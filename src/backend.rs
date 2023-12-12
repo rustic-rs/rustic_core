@@ -178,16 +178,15 @@ pub trait FindInBackend: ReadBackend {
     ///
     /// # Errors
     ///
-    /// * [`BackendErrorKind::NoSuitableIdFound`] - If no id could be found.
-    /// * [`BackendErrorKind::IdNotUnique`] - If the id is not unique.
+    /// * [`BackendAccessErrorKind::NoSuitableIdFound`] - If no id could be found.
+    /// * [`BackendAccessErrorKind::IdNotUnique`] - If the id is not unique.
     ///
     /// # Note
     ///
-    /// This function is used to find the id of a snapshot or index file.
-    /// The id of a snapshot or index file is the id of the first pack file.
+    /// This function is used to find the id of a snapshot.
     ///
-    /// [`BackendErrorKind::NoSuitableIdFound`]: crate::error::BackendErrorKind::NoSuitableIdFound
-    /// [`BackendErrorKind::IdNotUnique`]: crate::error::BackendErrorKind::IdNotUnique
+    /// [`BackendAccessErrorKind::NoSuitableIdFound`]: crate::error::BackendAccessErrorKind::NoSuitableIdFound
+    /// [`BackendAccessErrorKind::IdNotUnique`]: crate::error::BackendAccessErrorKind::IdNotUnique
     fn find_starts_with<T: AsRef<str>>(&self, tpe: FileType, vec: &[T]) -> RusticResult<Vec<Id>> {
         #[derive(Clone, Copy, PartialEq, Eq)]
         enum MapResult<T> {
@@ -234,13 +233,11 @@ pub trait FindInBackend: ReadBackend {
     ///
     /// # Errors
     ///
-    /// * [`IdErrorKind::HexError`] - If the string is not a valid hexadecimal string
-    /// * [`BackendErrorKind::NoSuitableIdFound`] - If no id could be found.
-    /// * [`BackendErrorKind::IdNotUnique`] - If the id is not unique.
+    /// * [`BackendAccessErrorKind::NoSuitableIdFound`] - If no id could be found.
+    /// * [`BackendAccessErrorKind::IdNotUnique`] - If the id is not unique.
     ///
-    /// [`IdErrorKind::HexError`]: crate::error::IdErrorKind::HexError
-    /// [`BackendErrorKind::NoSuitableIdFound`]: crate::error::BackendErrorKind::NoSuitableIdFound
-    /// [`BackendErrorKind::IdNotUnique`]: crate::error::BackendErrorKind::IdNotUnique
+    /// [`BackendAccessErrorKind::NoSuitableIdFound`]: crate::error::BackendAccessErrorKind::NoSuitableIdFound
+    /// [`BackendAccessErrorKind::IdNotUnique`]: crate::error::BackendAccessErrorKind::IdNotUnique
     fn find_id(&self, tpe: FileType, id: &str) -> RusticResult<Id> {
         Ok(self.find_ids(tpe, &[id.to_string()])?.remove(0))
     }
@@ -259,12 +256,12 @@ pub trait FindInBackend: ReadBackend {
     /// # Errors
     ///
     /// * [`IdErrorKind::HexError`] - If the string is not a valid hexadecimal string
-    /// * [`BackendErrorKind::NoSuitableIdFound`] - If no id could be found.
-    /// * [`BackendErrorKind::IdNotUnique`] - If the id is not unique.
+    /// * [`BackendAccessErrorKind::NoSuitableIdFound`] - If no id could be found.
+    /// * [`BackendAccessErrorKind::IdNotUnique`] - If the id is not unique.
     ///
     /// [`IdErrorKind::HexError`]: crate::error::IdErrorKind::HexError
-    /// [`BackendErrorKind::NoSuitableIdFound`]: crate::error::BackendErrorKind::NoSuitableIdFound
-    /// [`BackendErrorKind::IdNotUnique`]: crate::error::BackendErrorKind::IdNotUnique
+    /// [`BackendAccessErrorKind::NoSuitableIdFound`]: crate::error::BackendAccessErrorKind::NoSuitableIdFound
+    /// [`BackendAccessErrorKind::IdNotUnique`]: crate::error::BackendAccessErrorKind::IdNotUnique
     fn find_ids<T: AsRef<str>>(&self, tpe: FileType, ids: &[T]) -> RusticResult<Vec<Id>> {
         ids.iter()
             .map(|id| Id::from_hex(id.as_ref()))
@@ -301,6 +298,44 @@ pub trait WriteBackend: ReadBackend {
     /// * `id` - The id of the file.
     /// * `cacheable` - Whether the file is cacheable.
     fn remove(&self, tpe: FileType, id: &Id, cacheable: bool) -> Result<()>;
+}
+
+impl WriteBackend for Arc<dyn WriteBackend> {
+    fn create(&self) -> Result<()> {
+        self.deref().create()
+    }
+    fn write_bytes(&self, tpe: FileType, id: &Id, cacheable: bool, buf: Bytes) -> Result<()> {
+        self.deref().write_bytes(tpe, id, cacheable, buf)
+    }
+    fn remove(&self, tpe: FileType, id: &Id, cacheable: bool) -> Result<()> {
+        self.deref().remove(tpe, id, cacheable)
+    }
+}
+
+impl ReadBackend for Arc<dyn WriteBackend> {
+    fn location(&self) -> String {
+        self.deref().location()
+    }
+    fn list_with_size(&self, tpe: FileType) -> Result<Vec<(Id, u32)>> {
+        self.deref().list_with_size(tpe)
+    }
+    fn list(&self, tpe: FileType) -> Result<Vec<Id>> {
+        self.deref().list(tpe)
+    }
+    fn read_full(&self, tpe: FileType, id: &Id) -> Result<Bytes> {
+        self.deref().read_full(tpe, id)
+    }
+    fn read_partial(
+        &self,
+        tpe: FileType,
+        id: &Id,
+        cacheable: bool,
+        offset: u32,
+        length: u32,
+    ) -> Result<Bytes> {
+        self.deref()
+            .read_partial(tpe, id, cacheable, offset, length)
+    }
 }
 
 impl std::fmt::Debug for dyn WriteBackend {
@@ -389,42 +424,4 @@ pub trait WriteSource: Clone {
     /// * `offset` - The offset to write at.
     /// * `data` - The data to write.
     fn write_at<P: Into<PathBuf>>(&self, path: P, offset: u64, data: Bytes);
-}
-
-impl WriteBackend for Arc<dyn WriteBackend> {
-    fn create(&self) -> Result<()> {
-        self.deref().create()
-    }
-    fn write_bytes(&self, tpe: FileType, id: &Id, cacheable: bool, buf: Bytes) -> Result<()> {
-        self.deref().write_bytes(tpe, id, cacheable, buf)
-    }
-    fn remove(&self, tpe: FileType, id: &Id, cacheable: bool) -> Result<()> {
-        self.deref().remove(tpe, id, cacheable)
-    }
-}
-
-impl ReadBackend for Arc<dyn WriteBackend> {
-    fn location(&self) -> String {
-        self.deref().location()
-    }
-    fn list_with_size(&self, tpe: FileType) -> Result<Vec<(Id, u32)>> {
-        self.deref().list_with_size(tpe)
-    }
-    fn list(&self, tpe: FileType) -> Result<Vec<Id>> {
-        self.deref().list(tpe)
-    }
-    fn read_full(&self, tpe: FileType, id: &Id) -> Result<Bytes> {
-        self.deref().read_full(tpe, id)
-    }
-    fn read_partial(
-        &self,
-        tpe: FileType,
-        id: &Id,
-        cacheable: bool,
-        offset: u32,
-        length: u32,
-    ) -> Result<Bytes> {
-        self.deref()
-            .read_partial(tpe, id, cacheable, offset, length)
-    }
 }

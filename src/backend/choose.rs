@@ -13,13 +13,13 @@ use crate::{
 ///
 /// # Arguments
 ///
-/// * `url` - The url to create the [`ChooseBackend`] from.
+/// * `url` - The url to create the backend from.
 ///
 /// # Errors
 ///
-/// * [`BackendErrorKind::BackendNotSupported`] - If the backend is not supported.
+/// * [`BackendAccessErrorKind::BackendNotSupported`] - If the backend is not supported.
 ///
-/// [`BackendErrorKind::BackendNotSupported`]: crate::error::BackendErrorKind::BackendNotSupported
+/// [`BackendAccessErrorKind::BackendNotSupported`]: crate::error::BackendAccessErrorKind::BackendNotSupported
 pub fn get_backend(
     tpe: &str,
     path: &str,
