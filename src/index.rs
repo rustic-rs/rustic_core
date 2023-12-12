@@ -238,7 +238,7 @@ impl ReadIndex for GlobalIndex {
 }
 
 impl GlobalIndex {
-    /// Create a new [`IndexBackend`] from an [`Index`]
+    /// Create a new [`GlobalIndex`] from an [`Index`]
     ///
     /// # Type Parameters
     ///
@@ -254,7 +254,7 @@ impl GlobalIndex {
         }
     }
 
-    /// Create a new [`IndexBackend`] from an [`IndexCollector`]
+    /// Create a new [`GlobalIndex`] from an [`IndexCollector`]
     ///
     /// # Arguments
     ///
@@ -280,7 +280,7 @@ impl GlobalIndex {
         Ok(Self::new_from_index(collector.into_index()))
     }
 
-    /// Create a new [`IndexBackend`]
+    /// Create a new [`GlobalIndex`]
     ///
     /// # Arguments
     ///
@@ -290,7 +290,7 @@ impl GlobalIndex {
         Self::new_from_collector(be, p, IndexCollector::new(IndexType::Full))
     }
 
-    /// Create a new [`IndexBackend`] with only full trees
+    /// Create a new [`GlobalIndex`] with only full trees
     ///
     /// # Arguments
     ///

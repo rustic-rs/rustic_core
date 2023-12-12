@@ -1,27 +1,51 @@
 use std::{
     io::{BufRead, BufReader},
-    process::{Child, Command, Stdio},
-    str,
+    num::ParseIntError,
+    process::{Child, Command, ExitStatus, Stdio},
+    str::Utf8Error,
     sync::Arc,
 };
 
 use anyhow::Result;
 use bytes::Bytes;
+use displaydoc::Display;
 use log::{debug, info, warn};
 use rand::{
     distributions::{Alphanumeric, DistString},
     thread_rng,
 };
+use thiserror::Error;
 
 use crate::{
     backend::{rest::RestBackend, FileType, ReadBackend, WriteBackend},
-    error::{ProviderErrorKind, RusticResult},
     id::Id,
 };
 
 pub(super) mod constants {
     /// The string to search for in the rclone output.
     pub(super) const SEARCHSTRING: &str = "Serving restic REST API on ";
+}
+
+/// [`RcloneErrorKind`] describes the errors that can be returned by a backend provider
+#[derive(Error, Debug, Display)]
+pub enum RcloneErrorKind {
+    /// 'rclone version' doesn't give any output
+    NoOutputForRcloneVersion,
+    /// cannot get stdout of rclone
+    NoStdOutForRclone,
+    /// rclone exited with `{0:?}`
+    RCloneExitWithBadStatus(ExitStatus),
+    /// url must start with http:\/\/! url: {0:?}
+    UrlNotStartingWithHttp(String),
+    /// StdIo Error: `{0:?}`
+    #[error(transparent)]
+    FromIoError(#[from] std::io::Error),
+    /// utf8 error: `{0:?}`
+    #[error(transparent)]
+    FromUtf8Error(#[from] Utf8Error),
+    /// `{0:?}`
+    #[error(transparent)]
+    FromParseIntError(#[from] ParseIntError),
 }
 
 /// `ChildToKill` is a wrapper around a `Child` process that kills the child when it is dropped.
@@ -51,42 +75,42 @@ pub struct RcloneBackend {
 ///
 /// # Errors
 ///
-/// * [`ProviderErrorKind::FromIoError`] - If the rclone version could not be determined.
-/// * [`ProviderErrorKind::FromUtf8Error`] - If the rclone version could not be determined.
-/// * [`ProviderErrorKind::NoOutputForRcloneVersion`] - If the rclone version could not be determined.
-/// * [`ProviderErrorKind::FromParseIntError`] - If the rclone version could not be determined.
+/// * [`RcloneErrorKind::FromIoError`] - If the rclone version could not be determined.
+/// * [`RcloneErrorKind::FromUtf8Error`] - If the rclone version could not be determined.
+/// * [`RcloneErrorKind::NoOutputForRcloneVersion`] - If the rclone version could not be determined.
+/// * [`RcloneErrorKind::FromParseIntError`] - If the rclone version could not be determined.
 ///
 /// # Returns
 ///
 /// The rclone version as a tuple of (major, minor, patch).
 ///
-/// [`ProviderErrorKind::FromIoError`]: crate::error::ProviderErrorKind::FromIoError
-/// [`ProviderErrorKind::FromUtf8Error`]: crate::error::ProviderErrorKind::FromUtf8Error
-/// [`ProviderErrorKind::NoOutputForRcloneVersion`]: crate::error::ProviderErrorKind::NoOutputForRcloneVersion
-/// [`ProviderErrorKind::FromParseIntError`]: crate::error::ProviderErrorKind::FromParseIntError
-fn rclone_version() -> RusticResult<(i32, i32, i32)> {
+/// [`RcloneErrorKind::FromIoError`]: RcloneErrorKind::FromIoError
+/// [`RcloneErrorKind::FromUtf8Error`]: RcloneErrorKind::FromUtf8Error
+/// [`RcloneErrorKind::NoOutputForRcloneVersion`]: RcloneErrorKind::NoOutputForRcloneVersion
+/// [`RcloneErrorKind::FromParseIntError`]: RcloneErrorKind::FromParseIntError
+fn rclone_version() -> Result<(i32, i32, i32)> {
     let rclone_version_output = Command::new("rclone")
         .arg("version")
         .output()
-        .map_err(ProviderErrorKind::FromIoError)?
+        .map_err(RcloneErrorKind::FromIoError)?
         .stdout;
-    let rclone_version = str::from_utf8(&rclone_version_output)
-        .map_err(ProviderErrorKind::FromUtf8Error)?
+    let rclone_version = std::str::from_utf8(&rclone_version_output)
+        .map_err(RcloneErrorKind::FromUtf8Error)?
         .lines()
         .next()
-        .ok_or_else(|| ProviderErrorKind::NoOutputForRcloneVersion)?
+        .ok_or_else(|| RcloneErrorKind::NoOutputForRcloneVersion)?
         .trim_start_matches(|c: char| !c.is_numeric());
 
     let versions: Vec<&str> = rclone_version.split(&['.', '-', ' '][..]).collect();
     let major = versions[0]
         .parse::<i32>()
-        .map_err(ProviderErrorKind::FromParseIntError)?;
+        .map_err(RcloneErrorKind::FromParseIntError)?;
     let minor = versions[1]
         .parse::<i32>()
-        .map_err(ProviderErrorKind::FromParseIntError)?;
+        .map_err(RcloneErrorKind::FromParseIntError)?;
     let patch = versions[2]
         .parse::<i32>()
-        .map_err(ProviderErrorKind::FromParseIntError)?;
+        .map_err(RcloneErrorKind::FromParseIntError)?;
     Ok((major, minor, patch))
 }
 
@@ -99,23 +123,16 @@ impl RcloneBackend {
     ///
     /// # Errors
     ///
-    /// * [`ProviderErrorKind::FromIoError`] - If the rclone version could not be determined.
-    /// * [`ProviderErrorKind::NoStdOutForRclone`] - If the rclone version could not be determined.
-    /// * [`ProviderErrorKind::RCloneExitWithBadStatus`] - If rclone exited with a bad status.
-    /// * [`ProviderErrorKind::UrlNotStartingWithHttp`] - If the URL does not start with `http`.
-    /// * [`RestErrorKind::UrlParsingFailed`] - If the URL could not be parsed.
-    /// * [`RestErrorKind::BuildingClientFailed`] - If the client could not be built.
+    /// * [`RcloneErrorKind::FromIoError`] - If the rclone version could not be determined.
+    /// * [`RcloneErrorKind::NoStdOutForRclone`] - If the rclone version could not be determined.
+    /// * [`RcloneErrorKind::RCloneExitWithBadStatus`] - If rclone exited with a bad status.
+    /// * [`RcloneErrorKind::UrlNotStartingWithHttp`] - If the URL does not start with `http`.
     ///
-    /// [`ProviderErrorKind::FromIoError`]: crate::error::ProviderErrorKind::FromIoError
-    /// [`ProviderErrorKind::NoStdOutForRclone`]: crate::error::ProviderErrorKind::NoStdOutForRclone
-    /// [`ProviderErrorKind::RCloneExitWithBadStatus`]: crate::error::ProviderErrorKind::RCloneExitWithBadStatus
-    /// [`ProviderErrorKind::UrlNotStartingWithHttp`]: crate::error::ProviderErrorKind::UrlNotStartingWithHttp
-    /// [`RestErrorKind::UrlParsingFailed`]: crate::error::RestErrorKind::UrlParsingFailed
-    /// [`RestErrorKind::BuildingClientFailed`]: crate::error::RestErrorKind::BuildingClientFailed
-    pub fn new(
-        url: &str,
-        options: impl IntoIterator<Item = (String, String)>,
-    ) -> RusticResult<Self> {
+    /// [`RcloneErrorKind::FromIoError`]: RcloneErrorKind::FromIoError
+    /// [`RcloneErrorKind::NoStdOutForRclone`]: RcloneErrorKind::NoStdOutForRclone
+    /// [`RcloneErrorKind::RCloneExitWithBadStatus`]: RcloneErrorKind::RCloneExitWithBadStatus
+    /// [`RcloneErrorKind::UrlNotStartingWithHttp`]: RcloneErrorKind::UrlNotStartingWithHttp
+    pub fn new(url: &str, options: impl IntoIterator<Item = (String, String)>) -> Result<Self> {
         match rclone_version() {
             Ok((major, minor, patch)) => {
                 if major
@@ -149,22 +166,22 @@ impl RcloneBackend {
             .args(args)
             .stderr(Stdio::piped())
             .spawn()
-            .map_err(ProviderErrorKind::FromIoError)?;
+            .map_err(RcloneErrorKind::FromIoError)?;
 
         let mut stderr = BufReader::new(
             child
                 .stderr
                 .take()
-                .ok_or_else(|| ProviderErrorKind::NoStdOutForRclone)?,
+                .ok_or_else(|| RcloneErrorKind::NoStdOutForRclone)?,
         );
         let rest_url = loop {
-            if let Some(status) = child.try_wait().map_err(ProviderErrorKind::FromIoError)? {
-                return Err(ProviderErrorKind::RCloneExitWithBadStatus(status).into());
+            if let Some(status) = child.try_wait().map_err(RcloneErrorKind::FromIoError)? {
+                return Err(RcloneErrorKind::RCloneExitWithBadStatus(status).into());
             }
             let mut line = String::new();
             _ = stderr
                 .read_line(&mut line)
-                .map_err(ProviderErrorKind::FromIoError)?;
+                .map_err(RcloneErrorKind::FromIoError)?;
             match line.find(constants::SEARCHSTRING) {
                 Some(result) => {
                     if let Some(url) = line.get(result + constants::SEARCHSTRING.len()..) {
@@ -189,7 +206,7 @@ impl RcloneBackend {
         });
 
         if !rest_url.starts_with("http://") {
-            return Err(ProviderErrorKind::UrlNotStartingWithHttp(rest_url).into());
+            return Err(RcloneErrorKind::UrlNotStartingWithHttp(rest_url).into());
         }
 
         let rest_url =
@@ -219,8 +236,6 @@ impl ReadBackend for RcloneBackend {
     ///
     /// * `tpe` - The type of the file.
     ///
-    /// # Errors
-    ///
     /// If the size could not be determined.
     fn list_with_size(&self, tpe: FileType) -> Result<Vec<(Id, u32)>> {
         self.rest.list_with_size(tpe)
@@ -233,15 +248,9 @@ impl ReadBackend for RcloneBackend {
     /// * `tpe` - The type of the file.
     /// * `id` - The id of the file.
     ///
-    /// # Errors
-    ///
-    /// * [`RestErrorKind::BackoffError`] - If the backoff failed.
-    ///
     /// # Returns
     ///
     /// The data read.
-    ///
-    /// [`RestErrorKind::BackoffError`]: crate::error::RestErrorKind::BackoffError
     fn read_full(&self, tpe: FileType, id: &Id) -> Result<Bytes> {
         self.rest.read_full(tpe, id)
     }
@@ -256,15 +265,9 @@ impl ReadBackend for RcloneBackend {
     /// * `offset` - The offset to read from.
     /// * `length` - The length to read.
     ///
-    /// # Errors
-    ///
-    /// * [`RestErrorKind::BackoffError`] - If the backoff failed.
-    ///
     /// # Returns
     ///
     /// The data read.
-    ///
-    /// [`RestErrorKind::BackoffError`]: crate::error::RestErrorKind::BackoffError
     fn read_partial(
         &self,
         tpe: FileType,
@@ -279,12 +282,6 @@ impl ReadBackend for RcloneBackend {
 
 impl WriteBackend for RcloneBackend {
     /// Creates a new file.
-    ///
-    /// # Errors
-    ///
-    /// * [`RestErrorKind::BackoffError`] - If the backoff failed.
-    ///
-    /// [`RestErrorKind::BackoffError`]: crate::error::RestErrorKind::BackoffError
     fn create(&self) -> Result<()> {
         self.rest.create()
     }
@@ -297,12 +294,6 @@ impl WriteBackend for RcloneBackend {
     /// * `id` - The id of the file.
     /// * `cacheable` - Whether the data should be cached.
     /// * `buf` - The data to write.
-    ///
-    /// # Errors
-    ///
-    /// * [`RestErrorKind::BackoffError`] - If the backoff failed.
-    ///
-    /// [`RestErrorKind::BackoffError`]: crate::error::RestErrorKind::BackoffError
     fn write_bytes(&self, tpe: FileType, id: &Id, cacheable: bool, buf: Bytes) -> Result<()> {
         self.rest.write_bytes(tpe, id, cacheable, buf)
     }
@@ -314,12 +305,6 @@ impl WriteBackend for RcloneBackend {
     /// * `tpe` - The type of the file.
     /// * `id` - The id of the file.
     /// * `cacheable` - Whether the file is cacheable.
-    ///
-    /// # Errors
-    ///
-    /// * [`RestErrorKind::BackoffError`] - If the backoff failed.
-    ///
-    /// [`RestErrorKind::BackoffError`]: crate::error::RestErrorKind::BackoffError
     fn remove(&self, tpe: FileType, id: &Id, cacheable: bool) -> Result<()> {
         self.rest.remove(tpe, id, cacheable)
     }

@@ -61,9 +61,9 @@ impl LocalDestination {
     ///
     /// # Errors
     ///
-    /// * [`LocalErrorKind::DirectoryCreationFailed`] - If the directory could not be created.
+    /// * [`LocalDestinationErrorKind::DirectoryCreationFailed`] - If the directory could not be created.
     ///
-    /// [`LocalErrorKind::DirectoryCreationFailed`]: crate::error::LocalErrorKind::DirectoryCreationFailed
+    /// [`LocalDestinationErrorKind::DirectoryCreationFailed`]: crate::error::LocalDestinationErrorKind::DirectoryCreationFailed
     // TODO: We should use `impl Into<Path/PathBuf>` here. we even use it in the body!
     pub fn new(path: &str, create: bool, expect_file: bool) -> RusticResult<Self> {
         let is_dir = path.ends_with('/');
@@ -115,13 +115,13 @@ impl LocalDestination {
     ///
     /// # Errors
     ///
-    /// * [`LocalErrorKind::DirectoryRemovalFailed`] - If the directory could not be removed.
+    /// * [`LocalDestinationErrorKind::DirectoryRemovalFailed`] - If the directory could not be removed.
     ///
     /// # Notes
     ///
     /// This will remove the directory recursively.
     ///
-    /// [`LocalErrorKind::DirectoryRemovalFailed`]: crate::error::LocalErrorKind::DirectoryRemovalFailed
+    /// [`LocalDestinationErrorKind::DirectoryRemovalFailed`]: crate::error::LocalDestinationErrorKind::DirectoryRemovalFailed
     pub fn remove_dir(&self, dirname: impl AsRef<Path>) -> RusticResult<()> {
         Ok(fs::remove_dir_all(dirname)
             .map_err(LocalDestinationErrorKind::DirectoryRemovalFailed)?)
@@ -135,7 +135,7 @@ impl LocalDestination {
     ///
     /// # Errors
     ///
-    /// * [`LocalErrorKind::FileRemovalFailed`] - If the file could not be removed.
+    /// * [`LocalDestinationErrorKind::FileRemovalFailed`] - If the file could not be removed.
     ///
     /// # Notes
     ///
@@ -144,7 +144,7 @@ impl LocalDestination {
     /// * If the file is a symlink, the symlink will be removed, not the file it points to.
     /// * If the file is a directory or device, this will fail.
     ///
-    /// [`LocalErrorKind::FileRemovalFailed`]: crate::error::LocalErrorKind::FileRemovalFailed
+    /// [`LocalDestinationErrorKind::FileRemovalFailed`]: crate::error::LocalDestinationErrorKind::FileRemovalFailed
     pub fn remove_file(&self, filename: impl AsRef<Path>) -> RusticResult<()> {
         Ok(fs::remove_file(filename).map_err(LocalDestinationErrorKind::FileRemovalFailed)?)
     }
@@ -157,13 +157,13 @@ impl LocalDestination {
     ///
     /// # Errors
     ///
-    /// * [`LocalErrorKind::DirectoryCreationFailed`] - If the directory could not be created.
+    /// * [`LocalDestinationErrorKind::DirectoryCreationFailed`] - If the directory could not be created.
     ///
     /// # Notes
     ///
     /// This will create the directory structure recursively.
     ///
-    /// [`LocalErrorKind::DirectoryCreationFailed`]: crate::error::LocalErrorKind::DirectoryCreationFailed
+    /// [`LocalDestinationErrorKind::DirectoryCreationFailed`]: crate::error::LocalDestinationErrorKind::DirectoryCreationFailed
     pub fn create_dir(&self, item: impl AsRef<Path>) -> RusticResult<()> {
         let dirname = self.path.join(item);
         fs::create_dir_all(dirname).map_err(LocalDestinationErrorKind::DirectoryCreationFailed)?;
@@ -179,9 +179,9 @@ impl LocalDestination {
     ///
     /// # Errors
     ///
-    /// * [`LocalErrorKind::SettingTimeMetadataFailed`] - If the times could not be set
+    /// * [`LocalDestinationErrorKind::SettingTimeMetadataFailed`] - If the times could not be set
     ///
-    /// [`LocalErrorKind::SettingTimeMetadataFailed`]: crate::error::LocalErrorKind::SettingTimeMetadataFailed
+    /// [`LocalDestinationErrorKind::SettingTimeMetadataFailed`]: crate::error::LocalDestinationErrorKind::SettingTimeMetadataFailed
     pub fn set_times(&self, item: impl AsRef<Path>, meta: &Metadata) -> RusticResult<()> {
         let filename = self.path(item);
         if let Some(mtime) = meta.mtime {
@@ -226,9 +226,9 @@ impl LocalDestination {
     ///
     /// # Errors
     ///
-    /// * [`LocalErrorKind::FromErrnoError`] - If the user/group could not be set.
+    /// * [`LocalDestinationErrorKind::FromErrnoError`] - If the user/group could not be set.
     ///
-    /// [`LocalErrorKind::FromErrnoError`]: crate::error::LocalErrorKind::FromErrnoError
+    /// [`LocalDestinationErrorKind::FromErrnoError`]: crate::error::LocalDestinationErrorKind::FromErrnoError
     pub fn set_user_group(&self, item: impl AsRef<Path>, meta: &Metadata) -> RusticResult<()> {
         let filename = self.path(item);
 
@@ -271,9 +271,9 @@ impl LocalDestination {
     ///
     /// # Errors
     ///
-    /// * [`LocalErrorKind::FromErrnoError`] - If the uid/gid could not be set.
+    /// * [`LocalDestinationErrorKind::FromErrnoError`] - If the uid/gid could not be set.
     ///
-    /// [`LocalErrorKind::FromErrnoError`]: crate::error::LocalErrorKind::FromErrnoError
+    /// [`LocalDestinationErrorKind::FromErrnoError`]: crate::error::LocalDestinationErrorKind::FromErrnoError
     pub fn set_uid_gid(&self, item: impl AsRef<Path>, meta: &Metadata) -> RusticResult<()> {
         let filename = self.path(item);
 
@@ -311,9 +311,9 @@ impl LocalDestination {
     ///
     /// # Errors        
     ///
-    /// * [`LocalErrorKind::SettingFilePermissionsFailed`] - If the permissions could not be set.
+    /// * [`LocalDestinationErrorKind::SettingFilePermissionsFailed`] - If the permissions could not be set.
     ///
-    /// [`LocalErrorKind::SettingFilePermissionsFailed`]: crate::error::LocalErrorKind::SettingFilePermissionsFailed
+    /// [`LocalDestinationErrorKind::SettingFilePermissionsFailed`]: crate::error::LocalDestinationErrorKind::SettingFilePermissionsFailed
     pub fn set_permission(&self, item: impl AsRef<Path>, node: &Node) -> RusticResult<()> {
         if node.is_symlink() {
             return Ok(());
@@ -360,13 +360,13 @@ impl LocalDestination {
     ///
     /// # Errors
     ///
-    /// * [`LocalErrorKind::ListingXattrsFailed`] - If listing the extended attributes failed.
-    /// * [`LocalErrorKind::GettingXattrFailed`] - If getting an extended attribute failed.
-    /// * [`LocalErrorKind::SettingXattrFailed`] - If setting an extended attribute failed.
+    /// * [`LocalDestinationErrorKind::ListingXattrsFailed`] - If listing the extended attributes failed.
+    /// * [`LocalDestinationErrorKind::GettingXattrFailed`] - If getting an extended attribute failed.
+    /// * [`LocalDestinationErrorKind::SettingXattrFailed`] - If setting an extended attribute failed.
     ///
-    /// [`LocalErrorKind::ListingXattrsFailed`]: crate::error::LocalErrorKind::ListingXattrsFailed
-    /// [`LocalErrorKind::GettingXattrFailed`]: crate::error::LocalErrorKind::GettingXattrFailed
-    /// [`LocalErrorKind::SettingXattrFailed`]: crate::error::LocalErrorKind::SettingXattrFailed
+    /// [`LocalDestinationErrorKind::ListingXattrsFailed`]: crate::error::LocalDestinationErrorKind::ListingXattrsFailed
+    /// [`LocalDestinationErrorKind::GettingXattrFailed`]: crate::error::LocalDestinationErrorKind::GettingXattrFailed
+    /// [`LocalDestinationErrorKind::SettingXattrFailed`]: crate::error::LocalDestinationErrorKind::SettingXattrFailed
     pub fn set_extended_attributes(
         &self,
         item: impl AsRef<Path>,
@@ -432,20 +432,20 @@ impl LocalDestination {
     ///
     /// # Errors
     ///
-    /// * [`LocalErrorKind::FileDoesNotHaveParent`] - If the file does not have a parent.
-    /// * [`LocalErrorKind::DirectoryCreationFailed`] - If the directory could not be created.
-    /// * [`LocalErrorKind::OpeningFileFailed`] - If the file could not be opened.
-    /// * [`LocalErrorKind::SettingFileLengthFailed`] - If the length of the file could not be set.
+    /// * [`LocalDestinationErrorKind::FileDoesNotHaveParent`] - If the file does not have a parent.
+    /// * [`LocalDestinationErrorKind::DirectoryCreationFailed`] - If the directory could not be created.
+    /// * [`LocalDestinationErrorKind::OpeningFileFailed`] - If the file could not be opened.
+    /// * [`LocalDestinationErrorKind::SettingFileLengthFailed`] - If the length of the file could not be set.
     ///
     /// # Notes
     ///
     /// If the file exists, truncate it to the given length. (TODO: check if this is correct)
     /// If it doesn't exist, create a new (empty) one with given length.
     ///
-    /// [`LocalErrorKind::FileDoesNotHaveParent`]: crate::error::LocalErrorKind::FileDoesNotHaveParent
-    /// [`LocalErrorKind::DirectoryCreationFailed`]: crate::error::LocalErrorKind::DirectoryCreationFailed
-    /// [`LocalErrorKind::OpeningFileFailed`]: crate::error::LocalErrorKind::OpeningFileFailed
-    /// [`LocalErrorKind::SettingFileLengthFailed`]: crate::error::LocalErrorKind::SettingFileLengthFailed
+    /// [`LocalDestinationErrorKind::FileDoesNotHaveParent`]: crate::error::LocalDestinationErrorKind::FileDoesNotHaveParent
+    /// [`LocalDestinationErrorKind::DirectoryCreationFailed`]: crate::error::LocalDestinationErrorKind::DirectoryCreationFailed
+    /// [`LocalDestinationErrorKind::OpeningFileFailed`]: crate::error::LocalDestinationErrorKind::OpeningFileFailed
+    /// [`LocalDestinationErrorKind::SettingFileLengthFailed`]: crate::error::LocalDestinationErrorKind::SettingFileLengthFailed
     pub fn set_length(&self, item: impl AsRef<Path>, size: u64) -> RusticResult<()> {
         let filename = self.path(item);
         let dir = filename
@@ -480,13 +480,13 @@ impl LocalDestination {
     ///
     /// # Errors
     ///
-    /// * [`LocalErrorKind::SymlinkingFailed`] - If the symlink could not be created.
-    /// * [`LocalErrorKind::FromTryIntError`] - If the device could not be converted to the correct type.
-    /// * [`LocalErrorKind::FromErrnoError`] - If the device could not be created.
+    /// * [`LocalDestinationErrorKind::SymlinkingFailed`] - If the symlink could not be created.
+    /// * [`LocalDestinationErrorKind::FromTryIntError`] - If the device could not be converted to the correct type.
+    /// * [`LocalDestinationErrorKind::FromErrnoError`] - If the device could not be created.
     ///
-    /// [`LocalErrorKind::SymlinkingFailed`]: crate::error::LocalErrorKind::SymlinkingFailed
-    /// [`LocalErrorKind::FromTryIntError`]: crate::error::LocalErrorKind::FromTryIntError
-    /// [`LocalErrorKind::FromErrnoError`]: crate::error::LocalErrorKind::FromErrnoError
+    /// [`LocalDestinationErrorKind::SymlinkingFailed`]: crate::error::LocalDestinationErrorKind::SymlinkingFailed
+    /// [`LocalDestinationErrorKind::FromTryIntError`]: crate::error::LocalDestinationErrorKind::FromTryIntError
+    /// [`LocalDestinationErrorKind::FromErrnoError`]: crate::error::LocalDestinationErrorKind::FromErrnoError
     pub fn create_special(&self, item: impl AsRef<Path>, node: &Node) -> RusticResult<()> {
         let filename = self.path(item);
 
@@ -556,15 +556,15 @@ impl LocalDestination {
     ///
     /// # Errors
     ///
-    /// * [`LocalErrorKind::OpeningFileFailed`] - If the file could not be opened.
-    /// * [`LocalErrorKind::CouldNotSeekToPositionInFile`] - If the file could not be seeked to the given position.
-    /// * [`LocalErrorKind::FromTryIntError`] - If the length of the file could not be converted to u32.
-    /// * [`LocalErrorKind::ReadingExactLengthOfFileFailed`] - If the length of the file could not be read.
+    /// * [`LocalDestinationErrorKind::OpeningFileFailed`] - If the file could not be opened.
+    /// * [`LocalDestinationErrorKind::CouldNotSeekToPositionInFile`] - If the file could not be seeked to the given position.
+    /// * [`LocalDestinationErrorKind::FromTryIntError`] - If the length of the file could not be converted to u32.
+    /// * [`LocalDestinationErrorKind::ReadingExactLengthOfFileFailed`] - If the length of the file could not be read.
     ///
-    /// [`LocalErrorKind::OpeningFileFailed`]: crate::error::LocalErrorKind::OpeningFileFailed
-    /// [`LocalErrorKind::CouldNotSeekToPositionInFile`]: crate::error::LocalErrorKind::CouldNotSeekToPositionInFile
-    /// [`LocalErrorKind::FromTryIntError`]: crate::error::LocalErrorKind::FromTryIntError
-    /// [`LocalErrorKind::ReadingExactLengthOfFileFailed`]: crate::error::LocalErrorKind::ReadingExactLengthOfFileFailed
+    /// [`LocalDestinationErrorKind::OpeningFileFailed`]: crate::error::LocalDestinationErrorKind::OpeningFileFailed
+    /// [`LocalDestinationErrorKind::CouldNotSeekToPositionInFile`]: crate::error::LocalDestinationErrorKind::CouldNotSeekToPositionInFile
+    /// [`LocalDestinationErrorKind::FromTryIntError`]: crate::error::LocalDestinationErrorKind::FromTryIntError
+    /// [`LocalDestinationErrorKind::ReadingExactLengthOfFileFailed`]: crate::error::LocalDestinationErrorKind::ReadingExactLengthOfFileFailed
     pub fn read_at(&self, item: impl AsRef<Path>, offset: u64, length: u64) -> RusticResult<Bytes> {
         let filename = self.path(item);
         let mut file =
@@ -618,17 +618,17 @@ impl LocalDestination {
     ///
     /// # Errors
     ///
-    /// * [`LocalErrorKind::OpeningFileFailed`] - If the file could not be opened.
-    /// * [`LocalErrorKind::CouldNotSeekToPositionInFile`] - If the file could not be seeked to the given position.
-    /// * [`LocalErrorKind::CouldNotWriteToBuffer`] - If the bytes could not be written to the file.
+    /// * [`LocalDestinationErrorKind::OpeningFileFailed`] - If the file could not be opened.
+    /// * [`LocalDestinationErrorKind::CouldNotSeekToPositionInFile`] - If the file could not be seeked to the given position.
+    /// * [`LocalDestinationErrorKind::CouldNotWriteToBuffer`] - If the bytes could not be written to the file.
     ///
     /// # Notes
     ///
     /// This will create the file if it doesn't exist.
     ///
-    /// [`LocalErrorKind::OpeningFileFailed`]: crate::error::LocalErrorKind::OpeningFileFailed
-    /// [`LocalErrorKind::CouldNotSeekToPositionInFile`]: crate::error::LocalErrorKind::CouldNotSeekToPositionInFile
-    /// [`LocalErrorKind::CouldNotWriteToBuffer`]: crate::error::LocalErrorKind::CouldNotWriteToBuffer
+    /// [`LocalDestinationErrorKind::OpeningFileFailed`]: crate::error::LocalDestinationErrorKind::OpeningFileFailed
+    /// [`LocalDestinationErrorKind::CouldNotSeekToPositionInFile`]: crate::error::LocalDestinationErrorKind::CouldNotSeekToPositionInFile
+    /// [`LocalDestinationErrorKind::CouldNotWriteToBuffer`]: crate::error::LocalDestinationErrorKind::CouldNotWriteToBuffer
     pub fn write_at(&self, item: impl AsRef<Path>, offset: u64, data: &[u8]) -> RusticResult<()> {
         let filename = self.path(item);
         let mut file = fs::OpenOptions::new()

@@ -19,8 +19,7 @@ use shell_words::split;
 
 use crate::{
     backend::{decrypt::DecryptReadBackend, FileType, FindInBackend},
-    error::{RusticError, RusticResult},
-    error::{RusticErrorKind, SnapshotFileErrorKind},
+    error::{RusticError, RusticResult, SnapshotFileErrorKind},
     id::Id,
     progress::Progress,
     repofile::RepoFile,
@@ -428,12 +427,12 @@ impl SnapshotFile {
     /// # Errors
     ///
     /// * [`IdErrorKind::HexError`] - If the string is not a valid hexadecimal string
-    /// * [`BackendErrorKind::NoSuitableIdFound`] - If no id could be found.
-    /// * [`BackendErrorKind::IdNotUnique`] - If the id is not unique.
+    /// * [`BackendAccessErrorKind::NoSuitableIdFound`] - If no id could be found.
+    /// * [`BackendAccessErrorKind::IdNotUnique`] - If the id is not unique.
     ///
     /// [`IdErrorKind::HexError`]: crate::error::IdErrorKind::HexError
-    /// [`BackendErrorKind::NoSuitableIdFound`]: crate::error::BackendErrorKind::NoSuitableIdFound
-    /// [`BackendErrorKind::IdNotUnique`]: crate::error::BackendErrorKind::IdNotUnique
+    /// [`BackendAccessErrorKind::NoSuitableIdFound`]: crate::error::BackendAccessErrorKind::NoSuitableIdFound
+    /// [`BackendAccessErrorKind::IdNotUnique`]: crate::error::BackendAccessErrorKind::IdNotUnique
     pub(crate) fn from_str<B: DecryptReadBackend>(
         be: &B,
         string: &str,
@@ -495,12 +494,12 @@ impl SnapshotFile {
     ///
     /// # Errors
     /// * [`IdErrorKind::HexError`] - If the string is not a valid hexadecimal string
-    /// * [`BackendErrorKind::NoSuitableIdFound`] - If no id could be found.
-    /// * [`BackendErrorKind::IdNotUnique`] - If the id is not unique.
+    /// * [`BackendAccessErrorKind::NoSuitableIdFound`] - If no id could be found.
+    /// * [`BackendAccessErrorKind::IdNotUnique`] - If the id is not unique.
     ///
     /// [`IdErrorKind::HexError`]: crate::error::IdErrorKind::HexError
-    /// [`BackendErrorKind::NoSuitableIdFound`]: crate::error::BackendErrorKind::NoSuitableIdFound
-    /// [`BackendErrorKind::IdNotUnique`]: crate::error::BackendErrorKind::IdNotUnique
+    /// [`BackendAccessErrorKind::NoSuitableIdFound`]: crate::error::BackendAccessErrorKind::NoSuitableIdFound
+    /// [`BackendAccessErrorKind::IdNotUnique`]: crate::error::BackendAccessErrorKind::IdNotUnique
     pub(crate) fn from_id<B: DecryptReadBackend>(be: &B, id: &str) -> RusticResult<Self> {
         info!("getting snapshot...");
         let id = be.find_id(FileType::Snapshot, id)?;
@@ -518,12 +517,12 @@ impl SnapshotFile {
     /// # Errors
     ///
     /// * [`IdErrorKind::HexError`] - If the string is not a valid hexadecimal string
-    /// * [`BackendErrorKind::NoSuitableIdFound`] - If no id could be found.
-    /// * [`BackendErrorKind::IdNotUnique`] - If the id is not unique.
+    /// * [`BackendAccessErrorKind::NoSuitableIdFound`] - If no id could be found.
+    /// * [`BackendAccessErrorKind::IdNotUnique`] - If the id is not unique.
     ///
     /// [`IdErrorKind::HexError`]: crate::error::IdErrorKind::HexError
-    /// [`BackendErrorKind::NoSuitableIdFound`]: crate::error::BackendErrorKind::NoSuitableIdFound
-    /// [`BackendErrorKind::IdNotUnique`]: crate::error::BackendErrorKind::IdNotUnique
+    /// [`BackendAccessErrorKind::NoSuitableIdFound`]: crate::error::BackendAccessErrorKind::NoSuitableIdFound
+    /// [`BackendAccessErrorKind::IdNotUnique`]: crate::error::BackendAccessErrorKind::IdNotUnique
     pub(crate) fn from_ids<B: DecryptReadBackend, T: AsRef<str>>(
         be: &B,
         ids: &[T],

@@ -5,8 +5,8 @@ use bytes::Bytes;
 use crate::{
     backend::{decrypt::DecryptReadBackend, FileType, FindInBackend},
     blob::{tree::Tree, BlobType},
+    error::CommandErrorKind,
     error::RusticResult,
-    error::{CommandErrorKind, RusticErrorKind},
     id::Id,
     index::ReadIndex,
     progress::ProgressBars,
@@ -30,16 +30,16 @@ use crate::{
 /// # Errors
 ///
 /// * [`IdErrorKind::HexError`] - If the string is not a valid hexadecimal string
-/// * [`BackendErrorKind::NoSuitableIdFound`] - If no id could be found.
-/// * [`BackendErrorKind::IdNotUnique`] - If the id is not unique.
+/// * [`BackendAccessErrorKind::NoSuitableIdFound`] - If no id could be found.
+/// * [`BackendAccessErrorKind::IdNotUnique`] - If the id is not unique.
 ///
 /// # Returns
 ///
 /// The data read.
 ///
 /// [`IdErrorKind::HexError`]: crate::error::IdErrorKind::HexError
-/// [`BackendErrorKind::NoSuitableIdFound`]: crate::error::BackendErrorKind::NoSuitableIdFound
-/// [`BackendErrorKind::IdNotUnique`]: crate::error::BackendErrorKind::IdNotUnique
+/// [`BackendAccessErrorKind::NoSuitableIdFound`]: crate::error::BackendAccessErrorKind::NoSuitableIdFound
+/// [`BackendAccessErrorKind::IdNotUnique`]: crate::error::BackendAccessErrorKind::IdNotUnique
 pub(crate) fn cat_file<P, S: Open>(
     repo: &Repository<P, S>,
     tpe: FileType,
