@@ -51,7 +51,7 @@ impl RusticError {
 
     /// Get the corresponding backend error, if error is caused by the backend.
     ///
-    /// Returns anyhow::Error; you need to cast this to the real backend error type
+    /// Returns `anyhow::Error`; you need to cast this to the real backend error type
     pub fn backend_error(&self) -> Option<&anyhow::Error> {
         if let RusticErrorKind::Backend(error) = &self.0 {
             Some(error)
