@@ -59,6 +59,10 @@ use crate::{
 mod warm_up;
 use warm_up::{warm_up, warm_up_wait};
 
+/// Function which can be user to choose a backend from a backend type, a backend path and options given as `HashMap`.
+pub type BackendChooser =
+    fn(&str, &str, HashMap<String, String>) -> anyhow::Result<Arc<dyn WriteBackend>>;
+
 /// Options for using and opening a [`Repository`]
 #[serde_as]
 #[cfg_attr(feature = "clap", derive(clap::Parser))]
@@ -165,8 +169,7 @@ pub struct RepositoryOptions {
     #[cfg_attr(feature = "clap", clap(skip))]
     #[cfg_attr(feature = "merge", merge(skip))]
     #[serde(skip)]
-    pub backend_chooser:
-        Option<fn(&str, &str, HashMap<String, String>) -> anyhow::Result<Arc<dyn WriteBackend>>>,
+    pub backend_chooser: Option<BackendChooser>,
 }
 
 /// Overwrite the left value with the right value

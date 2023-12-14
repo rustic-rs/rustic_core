@@ -4,6 +4,7 @@ use anyhow::Result;
 use bytes::Bytes;
 #[allow(unused_imports)]
 use cached::proc_macro::cached;
+use itertools::Itertools;
 use log::trace;
 use once_cell::sync::Lazy;
 use opendal::{
@@ -11,6 +12,7 @@ use opendal::{
     BlockingOperator, ErrorKind, Metakey, Operator, Scheme,
 };
 use rayon::prelude::*;
+use url::{self, Url};
 
 use crate::{
     backend::{FileType, ReadBackend, WriteBackend, ALL_FILE_TYPES},
@@ -35,9 +37,39 @@ static RUNTIME: Lazy<tokio::runtime::Runtime> = Lazy::new(|| {
 });
 
 impl OpenDALBackend {
-    pub fn new(path: &str, options: impl IntoIterator<Item = (String, String)>) -> Result<Self> {
-        let map: HashMap<_, _> = options.into_iter().collect();
-        let max_retries = match map.get("retry").map(|v| v.as_str()) {
+    /// convenience method to directly create a new s3 backend
+    ///
+    /// The path should be something like "https:://s3.amazonaws.com/bucket/my/repopath"
+    pub fn new_s3(path: &str, mut options: HashMap<String, String>) -> Result<Self> {
+        let mut url = Url::parse(path)?;
+        if let Some(mut path_segments) = url.path_segments() {
+            if let Some(bucket) = path_segments.next() {
+                let _ = options.insert("bucket".to_string(), bucket.to_string());
+            }
+            let root = path_segments.join("/");
+            if !root.is_empty() {
+                let _ = options.insert("root".to_string(), root);
+            }
+        }
+        if url.has_host() {
+            if url.scheme().is_empty() {
+                url.set_scheme("https")
+                    .expect("could not set scheme to https");
+            }
+            url.set_path("");
+            url.set_query(None);
+            url.set_fragment(None);
+            let _ = options.insert("endpoint".to_string(), url.to_string());
+        }
+        _ = options
+            .entry("region".to_string())
+            .or_insert_with(|| "auto".to_string());
+
+        Self::new("s3", dbg!(options))
+    }
+
+    pub fn new(path: &str, options: HashMap<String, String>) -> Result<Self> {
+        let max_retries = match options.get("retry").map(|v| v.as_str()) {
             Some("false") | Some("off") => 0,
             None | Some("default") => consts::DEFAULT_RETRY,
             Some(value) => usize::from_str(value)?,
@@ -45,7 +77,7 @@ impl OpenDALBackend {
 
         let schema = Scheme::from_str(path)?;
         let _guard = RUNTIME.enter();
-        let operator = Operator::via_map(schema, map)?
+        let operator = Operator::via_map(schema, options)?
             .layer(RetryLayer::new().with_max_times(max_retries).with_jitter())
             .layer(LoggingLayer::default())
             .layer(BlockingLayer::create()?)

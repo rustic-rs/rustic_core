@@ -1,5 +1,5 @@
 use anyhow::Result;
-use std::sync::Arc;
+use std::{collections::HashMap, sync::Arc};
 
 use crate::{
     backend::{
@@ -13,7 +13,9 @@ use crate::{
 ///
 /// # Arguments
 ///
+/// * `tpe` - The backend type. Currently supported types are "local", "rclone", "rest", "opendal", "s3"
 /// * `url` - The url to create the backend from.
+/// * `options` - additional options for creating the backend
 ///
 /// # Errors
 ///
@@ -23,13 +25,14 @@ use crate::{
 pub fn get_backend(
     tpe: &str,
     path: &str,
-    options: impl IntoIterator<Item = (String, String)>,
+    options: HashMap<String, String>,
 ) -> Result<Arc<dyn WriteBackend>> {
     Ok(match tpe {
         "local" => Arc::new(LocalBackend::new(path, options)?),
         "rclone" => Arc::new(RcloneBackend::new(path, options)?),
         "rest" => Arc::new(RestBackend::new(path, options)?),
         "opendal" => Arc::new(OpenDALBackend::new(path, options)?),
+        "s3" => Arc::new(OpenDALBackend::new_s3(path, options)?),
         backend => {
             return Err(BackendAccessErrorKind::BackendNotSupported(backend.to_owned()).into())
         }
