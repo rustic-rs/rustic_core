@@ -39,7 +39,7 @@ static RUNTIME: Lazy<tokio::runtime::Runtime> = Lazy::new(|| {
 impl OpenDALBackend {
     /// convenience method to directly create a new s3 backend
     ///
-    /// The path should be something like "https:://s3.amazonaws.com/bucket/my/repopath"
+    /// The path should be something like "`https://s3.amazonaws.com/bucket/my/repopath`"
     pub fn new_s3(path: &str, mut options: HashMap<String, String>) -> Result<Self> {
         let mut url = Url::parse(path)?;
         if let Some(mut path_segments) = url.path_segments() {
