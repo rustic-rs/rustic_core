@@ -58,7 +58,7 @@ derive_setters = "0.1.6"
 log = "0.4.20"
 
 # parallelize
-crossbeam-channel = "0.5.8"
+crossbeam-channel = "0.5.9"
 pariter = "0.5.1"
 rayon = "1.8.0"
 
