@@ -364,6 +364,7 @@ pub struct ReadSourceEntry<O> {
 /// Trait for backends that can read and open sources.
 /// This trait is implemented by all backends that can read data and open from a source.
 pub trait ReadSourceOpen {
+    /// The Reader used for this source
     type Reader: Read + Send + 'static;
 
     /// Opens the source.
@@ -373,15 +374,17 @@ pub trait ReadSourceOpen {
 /// Trait for backends that can read from a source.
 ///
 /// This trait is implemented by all backends that can read data from a source.
-pub trait ReadSource {
+pub trait ReadSource: Sync + Send {
+    /// The type used to handle open source files
     type Open: ReadSourceOpen;
+    /// The iterator we use to iterate over the source entries
     type Iter: Iterator<Item = RusticResult<ReadSourceEntry<Self::Open>>>;
 
     /// Returns the size of the source.
     fn size(&self) -> RusticResult<Option<u64>>;
 
     /// Returns an iterator over the entries of the source.
-    fn entries(self) -> Self::Iter;
+    fn entries(&self) -> Self::Iter;
 }
 
 /// Trait for backends that can write to a source.
