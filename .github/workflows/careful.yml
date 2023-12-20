@@ -33,7 +33,7 @@ jobs:
         with:
           toolchain: ${{ matrix.rust }}
       - name: install cargo-careful
-        uses: taiki-e/install-action@2b8d4e021f3c5d9b9d4726c038ac367d3ed730b6 # v2
+        uses: taiki-e/install-action@57fbff3bfbe0630412e3b91136e8fac7dcb615ca # v2
         with:
           tool: cargo-careful
       - uses: Swatinem/rust-cache@a95ba195448af2da9b00fb742d14ffaaf3c21f43 # v2
