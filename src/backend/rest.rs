@@ -4,7 +4,6 @@ use std::time::Duration;
 use anyhow::Result;
 use backoff::{backoff::Backoff, ExponentialBackoff, ExponentialBackoffBuilder};
 use bytes::Bytes;
-use displaydoc::Display;
 use log::{trace, warn};
 use reqwest::{
     blocking::{Client, ClientBuilder, Response},
@@ -12,35 +11,16 @@ use reqwest::{
     Url,
 };
 use serde_derive::Deserialize;
-use thiserror::Error;
 
 use crate::{
     backend::{FileType, ReadBackend, WriteBackend},
+    error::RestErrorKind,
     id::Id,
 };
 
 mod consts {
     /// Default number of retries
     pub(super) const DEFAULT_RETRY: usize = 5;
-}
-
-/// [`RestErrorKind`] describes the errors that can be returned while dealing with the REST API
-#[derive(Error, Debug, Display)]
-pub enum RestErrorKind {
-    /// value `{0:?}` not supported for option retry!
-    NotSupportedForRetry(String),
-    /// parsing failed for url: `{0:?}`
-    UrlParsingFailed(#[from] url::ParseError),
-    /// requesting resource failed: `{0:?}`
-    RequestingResourceFailed(#[from] reqwest::Error),
-    /// couldn't parse duration in humantime library: `{0:?}`
-    CouldNotParseDuration(#[from] humantime::DurationError),
-    /// backoff failed: {0:?}
-    BackoffError(#[from] backoff::Error<reqwest::Error>),
-    /// Failed to build HTTP client: `{0:?}`
-    BuildingClientFailed(reqwest::Error),
-    /// joining URL failed on: {0:?}
-    JoiningUrlFailed(url::ParseError),
 }
 
 // trait CheckError to add user-defined method check_error on Response
