@@ -1,3 +1,5 @@
+mod warm_up;
+
 use std::{
     cmp::Ordering,
     collections::HashMap,
@@ -54,12 +56,10 @@ use crate::{
         snapshotfile::{SnapshotGroup, SnapshotGroupCriterion},
         ConfigFile, PathList, RepoFile, SnapshotFile, SnapshotSummary, Tree,
     },
+    repository::{warm_up::warm_up, warm_up::warm_up_wait},
 };
 
-mod warm_up;
-use warm_up::{warm_up, warm_up_wait};
-
-/// Function which can be user to choose a backend from a backend type, a backend path and options given as `HashMap`.
+/// Function which can be used to choose a backend from a backend type, a backend path and options given as `HashMap`.
 pub type BackendChooser =
     fn(&str, &str, HashMap<String, String>) -> anyhow::Result<Arc<dyn WriteBackend>>;
 
