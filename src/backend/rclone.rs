@@ -1,51 +1,26 @@
 use std::{
-    io::{BufRead, BufReader},
-    num::ParseIntError,
-    process::{Child, Command, ExitStatus, Stdio},
-    str::Utf8Error,
+    io::{BufReader, BufRead},
+    process::{Child, Command, Stdio},
     sync::Arc,
 };
 
 use anyhow::Result;
 use bytes::Bytes;
-use displaydoc::Display;
 use log::{debug, info, warn};
 use rand::{
     distributions::{Alphanumeric, DistString},
     thread_rng,
 };
-use thiserror::Error;
 
 use crate::{
     backend::{rest::RestBackend, FileType, ReadBackend, WriteBackend},
+    error::RcloneErrorKind,
     id::Id,
 };
 
 pub(super) mod constants {
     /// The string to search for in the rclone output.
     pub(super) const SEARCHSTRING: &str = "Serving restic REST API on ";
-}
-
-/// [`RcloneErrorKind`] describes the errors that can be returned by a backend provider
-#[derive(Error, Debug, Display)]
-pub enum RcloneErrorKind {
-    /// 'rclone version' doesn't give any output
-    NoOutputForRcloneVersion,
-    /// cannot get stdout of rclone
-    NoStdOutForRclone,
-    /// rclone exited with `{0:?}`
-    RCloneExitWithBadStatus(ExitStatus),
-    /// url must start with http:\/\/! url: {0:?}
-    UrlNotStartingWithHttp(String),
-    /// StdIo Error: `{0:?}`
-    #[error(transparent)]
-    FromIoError(#[from] std::io::Error),
-    /// utf8 error: `{0:?}`
-    #[error(transparent)]
-    FromUtf8Error(#[from] Utf8Error),
-    /// `{0:?}`
-    #[error(transparent)]
-    FromParseIntError(#[from] ParseIntError),
 }
 
 /// `ChildToKill` is a wrapper around a `Child` process that kills the child when it is dropped.
