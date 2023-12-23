@@ -81,10 +81,7 @@ serde_with = { version = "3.4.0", features = ["base64"] }
 
 # other dependencies
 bytes = "1.5.0"
-chrono = { version = "0.4.31", default-features = false, features = [
-  "clock",
-  "serde",
-] }
+chrono = { version = "0.4.31", default-features = false, features = ["clock", "serde"] }
 enum-map = "2.7.3"
 enum-map-derive = "0.17.0"
 zstd = "0.13.0"
@@ -104,12 +101,7 @@ walkdir = "2.4.0"
 
 # rest backend
 backoff = "0.4.0"
-reqwest = { version = "0.11.23", default-features = false, features = [
-  "json",
-  "rustls-tls-native-roots",
-  "stream",
-  "blocking",
-] }
+reqwest = { version = "0.11.23", default-features = false, features = ["json", "rustls-tls-native-roots", "stream", "blocking"] }
 url = "2.5.0"
 
 # opendal backend
@@ -140,11 +132,7 @@ shell-words = "1.1.0"
 
 [target.'cfg(not(windows))'.dependencies]
 # opendal backend - sftp is not supported on windows, see https://github.com/apache/incubator-opendal/issues/2963
-opendal = { version = "0.43.0", features = [
-  "services-b2",
-  "services-sftp",
-  "services-swift",
-] }
+opendal = { version = "0.43.0", features = ["services-b2", "services-sftp", "services-swift"] }
 sha2 = { version = "0.10", features = ["asm"] }
 
 [target.'cfg(windows)'.dependencies]
@@ -190,7 +178,7 @@ debug = true
 
 [profile.release]
 opt-level = 3
-debug = false            # true for profiling
+debug = false # true for profiling
 rpath = false
 lto = "fat"
 debug-assertions = false
@@ -208,7 +196,7 @@ codegen-units = 4
 
 [profile.bench]
 opt-level = 3
-debug = true             # true for profiling
+debug = true # true for profiling
 rpath = false
 lto = true
 debug-assertions = false
