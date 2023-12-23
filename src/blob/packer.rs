@@ -16,13 +16,14 @@ use crate::{
     backend::{decrypt::DecryptFullBackend, decrypt::DecryptWriteBackend, FileType},
     blob::BlobType,
     crypto::{hasher::hash, CryptoKey},
-    error::PackerErrorKind,
-    error::{RusticErrorKind, RusticResult},
+    error::{PackerErrorKind, RusticErrorKind, RusticResult},
     id::Id,
     index::indexer::SharedIndexer,
     repofile::{
-        configfile::ConfigFile, indexfile::IndexBlob, indexfile::IndexPack,
-        packfile::PackHeaderLength, packfile::PackHeaderRef, snapshotfile::SnapshotSummary,
+        configfile::ConfigFile,
+        indexfile::{IndexBlob, IndexPack},
+        packfile::{PackHeaderLength, PackHeaderRef},
+        snapshotfile::SnapshotSummary,
     },
 };
 

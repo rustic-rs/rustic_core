@@ -5,8 +5,7 @@ use derive_setters::Setters;
 use crate::{
     backend::decrypt::{DecryptBackend, DecryptWriteBackend},
     crypto::CryptoKey,
-    error::CommandErrorKind,
-    error::RusticResult,
+    error::{CommandErrorKind, RusticResult},
     repofile::ConfigFile,
     repository::{Open, Repository},
 };

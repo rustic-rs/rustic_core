@@ -1,7 +1,7 @@
 use std::{ffi::OsString, path::PathBuf};
 
 use crate::{
-    backend::{node::Metadata, node::Node, node::NodeType},
+    backend::node::{Metadata, Node, NodeType},
     blob::tree::comp_to_osstr,
 };
 

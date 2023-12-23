@@ -17,10 +17,12 @@ use serde::{Deserialize, Deserializer};
 use serde_derive::Serialize;
 
 use crate::{
-    backend::{decrypt::DecryptReadBackend, node::Metadata, node::Node, node::NodeType},
+    backend::{
+        decrypt::DecryptReadBackend,
+        node::{Metadata, Node, NodeType},
+    },
     crypto::hasher::hash,
-    error::RusticResult,
-    error::TreeErrorKind,
+    error::{RusticResult, TreeErrorKind},
     id::Id,
     index::ReadGlobalIndex,
     progress::Progress,

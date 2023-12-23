@@ -3,8 +3,10 @@
 use crate::{
     error::RusticResult,
     progress::ProgressBars,
-    repofile::snapshotfile::{SnapshotGroup, SnapshotGroupCriterion},
-    repofile::SnapshotFile,
+    repofile::{
+        snapshotfile::{SnapshotGroup, SnapshotGroupCriterion},
+        SnapshotFile,
+    },
     repository::{Open, Repository},
 };
 

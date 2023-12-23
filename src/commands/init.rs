@@ -5,8 +5,10 @@ use log::info;
 use crate::{
     backend::WriteBackend,
     chunker::random_poly,
-    commands::config::{save_config, ConfigOptions},
-    commands::key::KeyOptions,
+    commands::{
+        config::{save_config, ConfigOptions},
+        key::KeyOptions,
+    },
     crypto::aespoly1305::Key,
     error::{RusticErrorKind, RusticResult},
     id::Id,

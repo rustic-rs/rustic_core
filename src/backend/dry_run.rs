@@ -4,7 +4,7 @@ use zstd::decode_all;
 
 use crate::{
     backend::{
-        decrypt::DecryptFullBackend, decrypt::DecryptReadBackend, decrypt::DecryptWriteBackend,
+        decrypt::{DecryptFullBackend, DecryptReadBackend, DecryptWriteBackend},
         FileType, ReadBackend, WriteBackend,
     },
     error::{CryptBackendErrorKind, RusticErrorKind, RusticResult},

@@ -9,8 +9,7 @@ use crate::{
     archiver::tree::TreeType,
     backend::{decrypt::DecryptReadBackend, node::Node},
     blob::tree::Tree,
-    error::ArchiverErrorKind,
-    error::RusticResult,
+    error::{ArchiverErrorKind, RusticResult},
     id::Id,
     index::ReadGlobalIndex,
 };

@@ -3,7 +3,10 @@ use std::sync::Arc;
 use anyhow::Result;
 use bytes::Bytes;
 
-use crate::{backend::FileType, backend::ReadBackend, backend::WriteBackend, id::Id};
+use crate::{
+    backend::{FileType, ReadBackend, WriteBackend},
+    id::Id,
+};
 
 /// A hot/cold backend implementation.
 ///

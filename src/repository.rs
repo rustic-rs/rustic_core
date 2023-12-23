@@ -18,8 +18,7 @@ use shell_words::split;
 
 use crate::{
     backend::{
-        cache::Cache,
-        cache::CachedBackend,
+        cache::{Cache, CachedBackend},
         choose::{get_backend, url_to_type_and_path},
         decrypt::{DecryptBackend, DecryptReadBackend, DecryptWriteBackend},
         hotcold::HotColdBackend,
@@ -46,7 +45,6 @@ use crate::{
         restore::{RestoreOptions, RestorePlan},
     },
     crypto::aespoly1305::Key,
-    error::RusticResult,
     error::{BackendAccessErrorKind, KeyFileErrorKind, RepositoryErrorKind, RusticErrorKind},
     id::Id,
     index::{GlobalIndex, IndexEntry, ReadGlobalIndex, ReadIndex},
@@ -57,6 +55,7 @@ use crate::{
         ConfigFile, PathList, RepoFile, SnapshotFile, SnapshotSummary, Tree,
     },
     repository::{warm_up::warm_up, warm_up::warm_up_wait},
+    RusticResult,
 };
 
 /// Function which can be used to choose a backend from a backend type, a backend path and options given as `HashMap`.

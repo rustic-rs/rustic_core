@@ -5,8 +5,7 @@ use bytes::Bytes;
 use crate::{
     backend::{decrypt::DecryptReadBackend, FileType, FindInBackend},
     blob::{tree::Tree, BlobType},
-    error::CommandErrorKind,
-    error::RusticResult,
+    error::{CommandErrorKind, RusticResult},
     id::Id,
     index::ReadIndex,
     progress::ProgressBars,

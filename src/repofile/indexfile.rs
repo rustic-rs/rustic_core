@@ -5,8 +5,10 @@ use chrono::{DateTime, Local};
 use serde_derive::{Deserialize, Serialize};
 
 use crate::{
-    backend::FileType, blob::BlobType, id::Id, repofile::packfile::PackHeaderRef,
-    repofile::RepoFile,
+    backend::FileType,
+    blob::BlobType,
+    id::Id,
+    repofile::{packfile::PackHeaderRef, RepoFile},
 };
 
 /// Index files describe index information about multiple `pack` files.

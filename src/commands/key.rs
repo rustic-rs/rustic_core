@@ -3,10 +3,8 @@ use derive_setters::Setters;
 
 use crate::{
     backend::{decrypt::DecryptWriteBackend, FileType, WriteBackend},
-    crypto::aespoly1305::Key,
-    crypto::hasher::hash,
-    error::CommandErrorKind,
-    error::{RusticErrorKind, RusticResult},
+    crypto::{aespoly1305::Key, hasher::hash},
+    error::{CommandErrorKind, RusticErrorKind, RusticResult},
     id::Id,
     repofile::KeyFile,
     repository::{Open, Repository},

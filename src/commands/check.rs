@@ -18,8 +18,7 @@ use crate::{
         binarysorted::{IndexCollector, IndexType},
         GlobalIndex, ReadGlobalIndex,
     },
-    progress::Progress,
-    progress::ProgressBars,
+    progress::{Progress, ProgressBars},
     repofile::{IndexFile, IndexPack, PackHeader, PackHeaderLength, PackHeaderRef, SnapshotFile},
     repository::{Open, Repository},
 };

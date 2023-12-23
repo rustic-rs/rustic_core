@@ -10,13 +10,18 @@ use serde_with::{serde_as, DisplayFromStr};
 
 use crate::{
     archiver::{parent::Parent, Archiver},
-    backend::ignore::{LocalSource, LocalSourceFilterOptions, LocalSourceSaveOptions},
-    backend::{dry_run::DryRunBackend, stdin::StdinSource},
+    backend::{
+        dry_run::DryRunBackend,
+        ignore::{LocalSource, LocalSourceFilterOptions, LocalSourceSaveOptions},
+        stdin::StdinSource,
+    },
     error::RusticResult,
     id::Id,
     progress::ProgressBars,
-    repofile::snapshotfile::{SnapshotGroup, SnapshotGroupCriterion},
-    repofile::{PathList, SnapshotFile},
+    repofile::{
+        snapshotfile::{SnapshotGroup, SnapshotGroupCriterion},
+        PathList, SnapshotFile,
+    },
     repository::{IndexedIds, IndexedTree, Repository},
 };
 

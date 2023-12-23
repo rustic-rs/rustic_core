@@ -2,7 +2,8 @@ use std::{io::stdin, path::PathBuf};
 
 use crate::{
     backend::{
-        node::Metadata, node::Node, node::NodeType, ReadSource, ReadSourceEntry, ReadSourceOpen,
+        node::{Metadata, Node, NodeType},
+        ReadSource, ReadSourceEntry, ReadSourceOpen,
     },
     error::RusticResult,
 };

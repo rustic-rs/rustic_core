@@ -14,8 +14,7 @@ use walkdir::WalkDir;
 
 use crate::{
     backend::{FileType, ReadBackend, WriteBackend},
-    error::CacheBackendErrorKind,
-    error::RusticResult,
+    error::{CacheBackendErrorKind, RusticResult},
     id::Id,
 };
 

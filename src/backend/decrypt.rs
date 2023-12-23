@@ -14,9 +14,7 @@ pub fn max_compression_level() -> i32 {
 }
 
 use crate::{
-    backend::FileType,
-    backend::ReadBackend,
-    backend::WriteBackend,
+    backend::{FileType, ReadBackend, WriteBackend},
     crypto::{hasher::hash, CryptoKey},
     error::{CryptBackendErrorKind, RusticErrorKind},
     id::Id,

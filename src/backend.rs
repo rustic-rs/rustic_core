@@ -22,9 +22,9 @@ use serde_derive::{Deserialize, Serialize};
 
 use crate::{
     backend::node::Node,
-    error::BackendAccessErrorKind,
-    error::{RusticErrorKind, RusticResult},
+    error::{BackendAccessErrorKind, RusticErrorKind},
     id::Id,
+    RusticResult,
 };
 
 /// All [`FileType`]s which are located in separated directories
