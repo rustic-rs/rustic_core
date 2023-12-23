@@ -11,6 +11,7 @@ use bytes::Bytes;
 #[allow(unused_imports)]
 use cached::proc_macro::cached;
 use filetime::{set_symlink_file_times, FileTime};
+#[cfg(not(windows))]
 use log::warn;
 #[cfg(not(windows))]
 use nix::sys::stat::{mknod, Mode, SFlag};
