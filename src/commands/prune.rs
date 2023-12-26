@@ -1359,7 +1359,7 @@ fn find_used_blobs(
     let mut ids: HashMap<_, _> = snap_trees.iter().map(|id| (*id, 0)).collect();
     let p = pb.progress_counter("finding used blobs...");
 
-    let mut tree_streamer = TreeStreamerOnce::new(be.clone(), index, snap_trees, p)?;
+    let mut tree_streamer = TreeStreamerOnce::new(be, index, snap_trees, p)?;
     while let Some(item) = tree_streamer.next().transpose()? {
         let (_, tree) = item;
         for node in tree.nodes {

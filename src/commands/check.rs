@@ -386,7 +386,7 @@ fn check_snapshots(
     p.finish();
 
     let p = pb.progress_counter("checking trees...");
-    let mut tree_streamer = TreeStreamerOnce::new(be, index, snap_trees, p)?;
+    let mut tree_streamer = TreeStreamerOnce::new(&be, index, snap_trees, p)?;
     while let Some(item) = tree_streamer.next().transpose()? {
         let (path, tree) = item;
         for node in tree.nodes {

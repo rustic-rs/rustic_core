@@ -84,7 +84,7 @@ pub(crate) fn copy<'a, Q, R: IndexedFull, P: ProgressBars, S: IndexedIds>(
             Ok(())
         })?;
 
-    let tree_streamer = TreeStreamerOnce::new(be.clone(), index, snap_trees, p)?;
+    let tree_streamer = TreeStreamerOnce::new(be, index, snap_trees, p)?;
     tree_streamer
         .par_bridge()
         .try_for_each(|item| -> RusticResult<_> {

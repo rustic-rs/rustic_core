@@ -478,7 +478,7 @@ impl<P: Progress> TreeStreamerOnce<P> {
     ///
     /// [`TreeErrorKind::SendingCrossbeamMessageFailed`]: crate::error::TreeErrorKind::SendingCrossbeamMessageFailed
     pub fn new<BE: DecryptReadBackend, I: ReadGlobalIndex>(
-        be: BE,
+        be: &BE,
         index: &I,
         ids: Vec<Id>,
         p: P,
