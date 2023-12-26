@@ -274,23 +274,23 @@ impl RestoreOptions {
             match (&next_dst, &next_node) {
                 (None, None) => break,
 
-                (Some(dst), None) => {
-                    process_existing(dst)?;
+                (Some(destination), None) => {
+                    process_existing(destination)?;
                     next_dst = dst_iter.next();
                 }
-                (Some(dst), Some((path, node))) => match dst.path().cmp(&dest.path(path)) {
+                (Some(destination), Some((path, node))) => match destination.path().cmp(&dest.path(path)) {
                     Ordering::Less => {
-                        process_existing(dst)?;
+                        process_existing(destination)?;
                         next_dst = dst_iter.next();
                     }
                     Ordering::Equal => {
                         // process existing node
-                        if (node.is_dir() && !dst.file_type().unwrap().is_dir())
-                            || (node.is_file() && !dst.metadata().unwrap().is_file())
+                        if (node.is_dir() && !destination.file_type().unwrap().is_dir())
+                            || (node.is_file() && !destination.metadata().unwrap().is_file())
                             || node.is_special()
                         {
                             // if types do not match, first remove the existing file
-                            process_existing(dst)?;
+                            process_existing(destination)?;
                         }
                         process_node(path, node, true)?;
                         next_dst = dst_iter.next();
