@@ -36,6 +36,7 @@ use crate::{
         config::ConfigOptions,
         copy::CopySnapshot,
         forget::{ForgetGroups, KeepOptions},
+        fs::OpenFile,
         key::KeyOptions,
         prune::{PruneOptions, PrunePlan},
         repair::{index::RepairIndexOptions, snapshots::RepairSnapshotsOptions},
@@ -1161,6 +1162,40 @@ impl<P, S: IndexedFull> Repository<P, S> {
             .ok_or_else(|| RepositoryErrorKind::IdNotFound(*id))?;
         Ok(ie)
     }
+    /// Open a file in te repository for reading
+    ///
+    /// # Arguments
+    ///
+    /// * `tpe` - The type of the blob
+    /// * `id` - The id of the blob
+    pub fn open_file(&self, node: &Node) -> RusticResult<OpenFile> {
+        Ok(commands::fs::OpenFile::from_node(self, node))
+    }
+
+    /// Reads an opened file at the given position
+    ///
+    /// # Arguments
+    ///
+    /// * `tpe` - The type of the blob
+    /// * `id` - The id of the blob
+    pub fn read_file_at(
+        &self,
+        openfile: &OpenFile,
+        offset: usize,
+        length: usize,
+    ) -> RusticResult<Bytes> {
+        openfile.read_at(self, offset, length)
+    }
+}
+
+impl<P, S: IndexedTree> Repository<P, S> {
+    pub fn get_tree(&self, id: &Id) -> RusticResult<Tree> {
+        Tree::from_backend(self.index(), *id)
+    }
+
+    pub fn node_from_path(&self, root_tree: Id, path: &Path) -> RusticResult<Node> {
+        Tree::node_from_path(self.index(), root_tree, Path::new(path))
+    }
 }
 
 impl<P: ProgressBars, S: IndexedTree> Repository<P, S> {
@@ -1210,7 +1245,6 @@ impl<P: ProgressBars, S: IndexedTree> Repository<P, S> {
     ) -> RusticResult<Node> {
         Tree::node_from_path(self.dbe(), self.index(), snap.tree, Path::new(path))
     }
-
     /// Reads a raw tree from a "SNAP\[:PATH\]" syntax
     ///
     /// This parses a snapshot (using the filter when "latest" is used) and then traverses into the path to get the tree.

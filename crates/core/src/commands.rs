@@ -10,6 +10,7 @@ pub mod copy;
 /// The `dump` command.
 pub mod dump;
 pub mod forget;
+pub mod fs;
 pub mod init;
 pub mod key;
 pub mod merge;

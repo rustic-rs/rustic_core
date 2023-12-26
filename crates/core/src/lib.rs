@@ -183,6 +183,7 @@ pub use crate::{
         config::ConfigOptions,
         copy::CopySnapshot,
         forget::{ForgetGroup, ForgetGroups, ForgetSnapshot, KeepOptions},
+        fs::OpenFile,
         key::KeyOptions,
         prune::{PruneOptions, PrunePlan, PruneStats},
         repair::{index::RepairIndexOptions, snapshots::RepairSnapshotsOptions},
