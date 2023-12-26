@@ -197,12 +197,12 @@ pub struct BackupOptions {
 pub(crate) fn backup<P: ProgressBars, S: IndexedIds>(
     repo: &Repository<P, S>,
     opts: &BackupOptions,
-    source: PathList,
+    source: &PathList,
     mut snap: SnapshotFile,
 ) -> RusticResult<SnapshotFile> {
     let index = repo.index();
 
-    let backup_stdin = source == PathList::from_string("-")?;
+    let backup_stdin = *source == PathList::from_string("-")?;
     let backup_path = if backup_stdin {
         vec![PathBuf::from(&opts.stdin_filename)]
     } else {
