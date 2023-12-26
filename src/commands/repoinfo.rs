@@ -103,14 +103,14 @@ impl PackInfo {
 pub(crate) fn collect_index_infos<P: ProgressBars, S: Open>(
     repo: &Repository<P, S>,
 ) -> RusticResult<IndexInfos> {
-    let mut blob_info = BlobTypeMap::<()>::default().map(|blob_type, _| BlobInfo {
+    let mut blob_info = BlobTypeMap::<()>::default().map(|blob_type, ()| BlobInfo {
         blob_type,
         count: 0,
         size: 0,
         data_size: 0,
     });
     let mut blob_info_delete = blob_info;
-    let mut pack_info = BlobTypeMap::<()>::default().map(|blob_type, _| PackInfo {
+    let mut pack_info = BlobTypeMap::<()>::default().map(|blob_type, ()| PackInfo {
         blob_type,
         count: 0,
         min_size: None,

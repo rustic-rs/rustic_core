@@ -45,6 +45,7 @@ pub struct ForgetSnapshot {
 
 impl ForgetGroups {
     /// Turn `ForgetGroups` into the list of all snapshot IDs to remove.
+    #[must_use]
     pub fn into_forget_ids(self) -> Vec<Id> {
         self.0
             .into_iter()

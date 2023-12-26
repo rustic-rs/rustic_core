@@ -358,6 +358,7 @@ pub struct PruneStats {
 
 impl PruneStats {
     /// Compute statistics about blobs of all types
+    #[must_use]
     pub fn blobs_sum(&self) -> SizeStats {
         self.blobs
             .values()
@@ -365,6 +366,7 @@ impl PruneStats {
     }
 
     /// Compute total size statistics for blobs of all types
+    #[must_use]
     pub fn size_sum(&self) -> SizeStats {
         self.size
             .values()
@@ -982,6 +984,7 @@ impl PrunePlan {
     }
 
     /// Get the list of packs-to-repack from the [`PrunePlan`].
+    #[must_use]
     pub fn repack_packs(&self) -> Vec<Id> {
         self.index_files
             .iter()

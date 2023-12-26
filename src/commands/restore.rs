@@ -217,7 +217,7 @@ impl RestoreOptions {
                         debug!("to restore: {path:?}");
                         if !dry_run {
                             dest.create_dir(path).map_err(|err| {
-                                CommandErrorKind::ErrorCreating(path.to_path_buf(), Box::new(err))
+                                CommandErrorKind::ErrorCreating(path.clone(), Box::new(err))
                             })?;
                         }
                     }
@@ -229,7 +229,7 @@ impl RestoreOptions {
                         restore_infos
                             .add_file(dest, node, path.clone(), repo, self.verify_existing)
                             .map_err(|err| {
-                                CommandErrorKind::ErrorCollecting(path.to_path_buf(), Box::new(err))
+                                CommandErrorKind::ErrorCollecting(path.clone(), Box::new(err))
                             })?,
                     ) {
                         // Note that exists = false and Existing or Verified can happen if the file is changed between scanning the dir
@@ -435,9 +435,8 @@ fn restore_contents<P: ProgressBars, S: Open>(
     for (i, size) in file_lengths.iter().enumerate() {
         if *size == 0 {
             let path = &filenames[i];
-            dest.set_length(path, *size).map_err(|err| {
-                CommandErrorKind::ErrorSettingLength(path.to_path_buf(), Box::new(err))
-            })?;
+            dest.set_length(path, *size)
+                .map_err(|err| CommandErrorKind::ErrorSettingLength(path.clone(), Box::new(err)))?;
         }
     }
 
@@ -521,7 +520,7 @@ fn restore_contents<P: ProgressBars, S: Open>(
                                     dest.set_length(path, filesize)
                                         .map_err(|err| {
                                             CommandErrorKind::ErrorSettingLength(
-                                                path.to_path_buf(),
+                                                path.clone(),
                                                 Box::new(err),
                                             )
                                         })
@@ -584,7 +583,7 @@ impl BlobLocation {
         self.uncompressed_length
             .map_or(
                 self.length - 32, // crypto overhead
-                |length| length.get(),
+                std::num::NonZeroU32::get,
             )
             .into()
     }
@@ -642,7 +641,11 @@ impl RestorePlan {
 
         // Empty files which exists with correct size should always return Ok(Existing)!
         if file.meta.size == 0 {
-            if let Some(meta) = open_file.as_ref().map(|f| f.metadata()).transpose()? {
+            if let Some(meta) = open_file
+                .as_ref()
+                .map(std::fs::File::metadata)
+                .transpose()?
+            {
                 if meta.len() == 0 {
                     // Empty file exists
                     return Ok(AddFileResult::Existing);
@@ -651,7 +654,11 @@ impl RestorePlan {
         }
 
         if !ignore_mtime {
-            if let Some(meta) = open_file.as_ref().map(|f| f.metadata()).transpose()? {
+            if let Some(meta) = open_file
+                .as_ref()
+                .map(std::fs::File::metadata)
+                .transpose()?
+            {
                 // TODO: This is the same logic as in backend/ignore.rs => consollidate!
                 let mtime = meta
                     .modified()
@@ -712,6 +719,7 @@ impl RestorePlan {
     /// Get a list of all pack files needed to perform the restore
     ///
     /// This can be used e.g. to warm-up those pack files before doing the atual restore.
+    #[must_use]
     pub fn to_packs(&self) -> Vec<Id> {
         self.r
             .iter()

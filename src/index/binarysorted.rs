@@ -205,7 +205,7 @@ impl IntoIterator for Index {
 
     // Turns Collector into an iterator yielding PackIndex by sorting the entries by pack.
     fn into_iter(mut self) -> Self::IntoIter {
-        for (_, tc) in self.0.iter_mut() {
+        for (_, tc) in &mut self.0 {
             if let EntriesVariants::FullEntries(entries) = &mut tc.entries {
                 entries.par_sort_unstable_by(|e1, e2| e1.pack_idx.cmp(&e2.pack_idx));
             }

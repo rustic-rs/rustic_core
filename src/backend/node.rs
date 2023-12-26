@@ -128,6 +128,7 @@ impl NodeType {
     // Windows doesn't support non-unicode link targets, so we assume unicode here.
     // TODO: Test and check this!
     /// Get a [`NodeType`] from a linktarget path
+    #[must_use]
     pub fn from_link(target: &Path) -> Self {
         Self::Symlink {
             linktarget: target.as_os_str().to_string_lossy().to_string(),
@@ -163,6 +164,7 @@ impl NodeType {
     /// * If the link target is not valid unicode
     // TODO: Implement non-unicode link targets correctly for windows
     #[cfg(windows)]
+    #[must_use]
     pub fn to_link(&self) -> &Path {
         match self {
             Self::Symlink { linktarget, .. } => Path::new(linktarget),
@@ -329,6 +331,7 @@ impl Node {
 /// # Returns
 ///
 /// The ordering of the two nodes
+#[must_use]
 pub fn last_modified_node(n1: &Node, n2: &Node) -> Ordering {
     n1.meta.mtime.cmp(&n2.meta.mtime)
 }

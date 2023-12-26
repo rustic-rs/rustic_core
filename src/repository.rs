@@ -689,7 +689,7 @@ impl<P, S> Repository<P, S> {
         let zstd = config.zstd()?;
         dbe.set_zstd(zstd);
 
-        let open = OpenStatus { dbe, cache, config };
+        let open = OpenStatus { cache, dbe, config };
 
         Ok(Repository {
             name: self.name,

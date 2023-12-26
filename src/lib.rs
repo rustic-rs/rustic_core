@@ -88,11 +88,11 @@ This crate exposes a few features for controlling dependency usage.
     // TODO: frequently check
     // unreachable_pub,
     // TODO: Activate if you're feeling like fixing stuff 
-    // clippy::pedantic,
-    // clippy::correctness,
-    // clippy::suspicious,
-    // clippy::complexity,
-    // clippy::perf,
+    clippy::pedantic,
+    clippy::correctness,
+    clippy::suspicious,
+    clippy::complexity,
+    clippy::perf, // till here
     missing_docs,
     rust_2018_idioms,
     trivial_casts,

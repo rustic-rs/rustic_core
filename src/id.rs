@@ -147,6 +147,7 @@ impl HexId {
     const EMPTY: Self = Self([b'0'; constants::HEX_LEN]);
 
     /// Get the string representation of a [`HexId`]
+    #[must_use]
     pub fn as_str(&self) -> &str {
         // This is only ever filled with hex chars, which are ascii
         std::str::from_utf8(&self.0).unwrap()

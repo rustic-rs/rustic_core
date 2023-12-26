@@ -69,8 +69,8 @@ impl OpenDALBackend {
     }
 
     pub fn new(path: &str, options: HashMap<String, String>) -> Result<Self> {
-        let max_retries = match options.get("retry").map(|v| v.as_str()) {
-            Some("false") | Some("off") => 0,
+        let max_retries = match options.get("retry").map(std::string::String::as_str) {
+            Some("false" | "off") => 0,
             None | Some("default") => consts::DEFAULT_RETRY,
             Some(value) => usize::from_str(value)?,
         };

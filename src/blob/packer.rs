@@ -231,7 +231,7 @@ impl<BE: DecryptWriteBackend> Packer<BE> {
                             .unwrap()
                             .add_raw(&data, &id, data_len, ul, size_limit)
                     })
-                    .and_then(|_| raw_packer.write().unwrap().finalize());
+                    .and_then(|()| raw_packer.write().unwrap().finalize());
                 _ = finish_tx.send(status);
             })
             .unwrap();

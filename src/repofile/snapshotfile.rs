@@ -364,7 +364,7 @@ impl SnapshotFile {
                     .collect::<Vec<_>>()
                     .join(" ")
             },
-            |command| command.clone(),
+            std::clone::Clone::clone,
         );
 
         let mut snap = Self {
@@ -901,6 +901,7 @@ impl SnapshotGroup {
     ///
     /// * `sn` - The [`SnapshotFile`] to extract the [`SnapshotGroup`] from
     /// * `crit` - The [`SnapshotGroupCriterion`] to use
+    #[must_use]
     pub fn from_snapshot(sn: &SnapshotFile, crit: SnapshotGroupCriterion) -> Self {
         Self {
             hostname: crit.hostname.then(|| sn.hostname.clone()),
@@ -943,6 +944,7 @@ impl StringList {
     /// # Arguments
     ///
     /// * `s` - The String to check
+    #[must_use]
     pub fn contains(&self, s: &str) -> bool {
         self.0.iter().any(|m| m == s)
     }
@@ -952,6 +954,7 @@ impl StringList {
     /// # Arguments
     ///
     /// * `sl` - The [`StringList`] to check
+    #[must_use]
     pub fn contains_all(&self, sl: &Self) -> bool {
         sl.0.iter().all(|s| self.contains(s))
     }
@@ -1146,6 +1149,7 @@ impl PathList {
     }
 
     /// Sort paths and filters out subpaths of already existing paths.
+    #[must_use]
     pub fn merge(self) -> Self {
         let mut paths = self.0;
         // sort paths

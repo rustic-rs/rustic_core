@@ -9,6 +9,7 @@ use zstd::stream::{copy_encode, decode_all};
 pub use zstd::compression_level_range;
 
 /// The maximum compression level allowed by zstd
+#[must_use]
 pub fn max_compression_level() -> i32 {
     *compression_level_range().end()
 }

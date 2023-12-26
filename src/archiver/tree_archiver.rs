@@ -134,7 +134,7 @@ impl<'a, BE: DecryptWriteBackend, I: ReadGlobalIndex> TreeArchiver<'a, BE, I> {
     fn add_file(&mut self, path: &Path, node: Node, parent: &ParentResult<()>, size: u64) {
         let filename = path.join(node.name());
         match parent {
-            ParentResult::Matched(_) => {
+            ParentResult::Matched(()) => {
                 debug!("unchanged file: {:?}", filename);
                 self.summary.files_unmodified += 1;
             }
