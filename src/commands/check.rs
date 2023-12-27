@@ -109,7 +109,7 @@ impl CheckOptions {
 
         let index_be = GlobalIndex::new_from_index(index_collector.into_index());
 
-        check_snapshots(be.clone(), &index_be, pb)?;
+        check_snapshots(be, &index_be, pb)?;
 
         if self.read_data {
             let p = pb.progress_bytes("reading pack data...");
@@ -373,7 +373,7 @@ fn check_packs_list(be: &impl ReadBackend, mut packs: HashMap<Id, u32>) -> Rusti
 ///
 /// If a snapshot or tree is missing or has a different size
 fn check_snapshots(
-    be: impl DecryptReadBackend,
+    be: &impl DecryptReadBackend,
     index: &impl ReadGlobalIndex,
     pb: &impl ProgressBars,
 ) -> RusticResult<()> {
@@ -386,7 +386,7 @@ fn check_snapshots(
     p.finish();
 
     let p = pb.progress_counter("checking trees...");
-    let mut tree_streamer = TreeStreamerOnce::new(&be, index, snap_trees, p)?;
+    let mut tree_streamer = TreeStreamerOnce::new(be, index, snap_trees, p)?;
     while let Some(item) = tree_streamer.next().transpose()? {
         let (path, tree) = item;
         for node in tree.nodes {

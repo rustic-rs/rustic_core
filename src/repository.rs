@@ -1400,7 +1400,7 @@ impl<P: ProgressBars, S: IndexedIds> Repository<P, S> {
     pub fn backup(
         &self,
         opts: &BackupOptions,
-        source: PathList,
+        source: &PathList,
         snap: SnapshotFile,
     ) -> RusticResult<SnapshotFile> {
         commands::backup::backup(self, opts, source, snap)

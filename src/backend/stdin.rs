@@ -19,11 +19,11 @@ pub struct StdinSource {
 
 impl StdinSource {
     /// Creates a new `StdinSource`.
-    pub const fn new(path: PathBuf) -> RusticResult<Self> {
-        Ok(Self {
+    pub const fn new(path: PathBuf) -> Self {
+        Self {
             finished: false,
             path,
-        })
+        }
     }
 }
 

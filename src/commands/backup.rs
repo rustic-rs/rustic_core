@@ -238,7 +238,7 @@ pub(crate) fn backup<P: ProgressBars, S: IndexedIds>(
 
     let snap = if backup_stdin {
         let path = &backup_path[0];
-        let src = StdinSource::new(path.clone())?;
+        let src = StdinSource::new(path.clone());
         archiver.archive(
             src,
             path,
