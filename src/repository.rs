@@ -1310,11 +1310,11 @@ impl<P: ProgressBars, S: IndexedTree> Repository<P, S> {
     /// # Note
     ///
     /// The `PathBuf` returned will be relative to the given `node`.
-    pub fn ls<'a>(
-        &'a self,
-        node: &'a Node,
-        ls_opts: &'a LsOptions,
-    ) -> RusticResult<impl Iterator<Item = RusticResult<(PathBuf, Node)>> + Clone + 'a> {
+    pub fn ls(
+        &self,
+        node: &Node,
+        ls_opts: &LsOptions,
+    ) -> RusticResult<impl Iterator<Item = RusticResult<(PathBuf, Node)>> + Clone + '_> {
         NodeStreamer::new_with_glob(self.dbe().clone(), self.index(), node, ls_opts)
     }
 
