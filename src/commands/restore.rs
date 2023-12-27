@@ -278,29 +278,31 @@ impl RestoreOptions {
                     process_existing(destination)?;
                     next_dst = dst_iter.next();
                 }
-                (Some(destination), Some((path, node))) => match destination.path().cmp(&dest.path(path)) {
-                    Ordering::Less => {
-                        process_existing(destination)?;
-                        next_dst = dst_iter.next();
-                    }
-                    Ordering::Equal => {
-                        // process existing node
-                        if (node.is_dir() && !destination.file_type().unwrap().is_dir())
-                            || (node.is_file() && !destination.metadata().unwrap().is_file())
-                            || node.is_special()
-                        {
-                            // if types do not match, first remove the existing file
+                (Some(destination), Some((path, node))) => {
+                    match destination.path().cmp(&dest.path(path)) {
+                        Ordering::Less => {
                             process_existing(destination)?;
+                            next_dst = dst_iter.next();
                         }
-                        process_node(path, node, true)?;
-                        next_dst = dst_iter.next();
-                        next_node = node_streamer.next().transpose()?;
+                        Ordering::Equal => {
+                            // process existing node
+                            if (node.is_dir() && !destination.file_type().unwrap().is_dir())
+                                || (node.is_file() && !destination.metadata().unwrap().is_file())
+                                || node.is_special()
+                            {
+                                // if types do not match, first remove the existing file
+                                process_existing(destination)?;
+                            }
+                            process_node(path, node, true)?;
+                            next_dst = dst_iter.next();
+                            next_node = node_streamer.next().transpose()?;
+                        }
+                        Ordering::Greater => {
+                            process_node(path, node, false)?;
+                            next_node = node_streamer.next().transpose()?;
+                        }
                     }
-                    Ordering::Greater => {
-                        process_node(path, node, false)?;
-                        next_node = node_streamer.next().transpose()?;
-                    }
-                },
+                }
                 (None, Some((path, node))) => {
                     process_node(path, node, false)?;
                     next_node = node_streamer.next().transpose()?;
