@@ -39,6 +39,19 @@ pub fn get_backend(
     })
 }
 
+/// Splits the given url into the backend type and the path.
+///
+/// # Arguments
+///
+/// * `url` - The url to split.
+///
+/// # Returns
+///
+/// A tuple with the backend type and the path.
+///
+/// # Notes
+///
+/// If the url is a windows path, the type will be "local".
 pub fn url_to_type_and_path(url: &str) -> (&str, &str) {
     match url.split_once(':') {
         #[cfg(windows)]
