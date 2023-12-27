@@ -1,4 +1,8 @@
-use std::{collections::HashMap, path::PathBuf, str::FromStr};
+use std::{
+    collections::HashMap,
+    path::{Path, PathBuf},
+    str::FromStr,
+};
 
 use anyhow::Result;
 use bytes::Bytes;
@@ -47,7 +51,11 @@ impl OpenDALBackend {
     /// # Notes
     ///
     /// The path should be something like "`https://s3.amazonaws.com/bucket/my/repopath`"
-    pub fn new_s3(path: &str, mut options: HashMap<String, String>) -> Result<Self> {
+    pub fn new_s3(path: impl AsRef<Path>, mut options: HashMap<String, String>) -> Result<Self> {
+        let path = path
+            .as_ref()
+            .to_str()
+            .expect("could not convert path to str!");
         let mut url = Url::parse(path)?;
         if let Some(mut path_segments) = url.path_segments() {
             if let Some(bucket) = path_segments.next() {
@@ -75,13 +83,17 @@ impl OpenDALBackend {
         Self::new("s3", options)
     }
 
-    pub fn new(path: &str, options: HashMap<String, String>) -> Result<Self> {
+    pub fn new(path: impl AsRef<Path>, options: HashMap<String, String>) -> Result<Self> {
         let max_retries = match options.get("retry").map(std::string::String::as_str) {
             Some("false" | "off") => 0,
             None | Some("default") => consts::DEFAULT_RETRY,
             Some(value) => usize::from_str(value)?,
         };
 
+        let path = path
+            .as_ref()
+            .to_str()
+            .expect("could not convert path to str!");
         let schema = Scheme::from_str(path)?;
         let _guard = RUNTIME.enter();
         let operator = Operator::via_map(schema, options)?

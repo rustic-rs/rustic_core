@@ -90,9 +90,11 @@ impl LocalBackend {
     /// * [`LocalBackendErrorKind::DirectoryCreationFailed`] - If the directory could not be created.
     ///
     /// [`LocalBackendErrorKind::DirectoryCreationFailed`]: LocalBackendErrorKind::DirectoryCreationFailed
-    // TODO: We should use `impl Into<Path/PathBuf>` here. we even use it in the body!
-    pub fn new(path: &str, options: impl IntoIterator<Item = (String, String)>) -> Result<Self> {
-        let path = path.into();
+    pub fn new(
+        path: impl AsRef<Path>,
+        options: impl IntoIterator<Item = (String, String)>,
+    ) -> Result<Self> {
+        let path = path.as_ref().to_owned();
         fs::create_dir_all(&path).map_err(LocalBackendErrorKind::DirectoryCreationFailed)?;
         let mut post_create_command = None;
         let mut post_delete_command = None;

@@ -297,6 +297,8 @@ pub enum RepositoryErrorKind {
     ConfigFileExists,
     /// did not find id {0} in index
     IdNotFound(Id),
+    /// no suitable backend type found for {0}
+    NoBackendTypeGiven(String),
 }
 
 /// [`IndexErrorKind`] describes the errors that can be returned by processing Indizes

@@ -1,5 +1,5 @@
-use std::str::FromStr;
 use std::time::Duration;
+use std::{path::Path, str::FromStr};
 
 use anyhow::Result;
 use backoff::{backoff::Backoff, ExponentialBackoff, ExponentialBackoffBuilder};
@@ -134,7 +134,14 @@ impl RestBackend {
     ///
     /// [`RestErrorKind::UrlParsingFailed`]: RestErrorKind::UrlParsingFailed
     /// [`RestErrorKind::BuildingClientFailed`]: RestErrorKind::BuildingClientFailed
-    pub fn new(url: &str, options: impl IntoIterator<Item = (String, String)>) -> Result<Self> {
+    pub fn new(
+        url: impl AsRef<Path>,
+        options: impl IntoIterator<Item = (String, String)>,
+    ) -> Result<Self> {
+        let url = url
+            .as_ref()
+            .to_str()
+            .expect("could not convert path to str!");
         let url = if url.ends_with('/') {
             Url::parse(url).map_err(RestErrorKind::UrlParsingFailed)?
         } else {

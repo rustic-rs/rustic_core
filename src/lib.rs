@@ -157,7 +157,7 @@ pub(crate) mod repository;
 // rustic_core Public API
 pub use crate::{
     backend::{
-        choose::get_backend,
+        choose::{get_backend, BackendChoice, BackendType},
         decrypt::{compression_level_range, max_compression_level},
         ignore::{LocalSource, LocalSourceFilterOptions, LocalSourceSaveOptions},
         local_destination::LocalDestination,
@@ -183,5 +183,5 @@ pub use crate::{
     repofile::snapshotfile::{
         PathList, SnapshotGroup, SnapshotGroupCriterion, SnapshotOptions, StringList,
     },
-    repository::{BackendChooser, IndexedFull, OpenStatus, Repository, RepositoryOptions},
+    repository::{IndexedFull, OpenStatus, Repository, RepositoryOptions},
 };

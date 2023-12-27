@@ -19,7 +19,7 @@ use shell_words::split;
 use crate::{
     backend::{
         cache::{Cache, CachedBackend},
-        choose::{get_backend, url_to_type_and_path},
+        choose::{get_backend, url_to_type_and_path, BackendChoice, BackendType},
         decrypt::{DecryptBackend, DecryptReadBackend, DecryptWriteBackend},
         hotcold::HotColdBackend,
         local_destination::LocalDestination,
@@ -57,10 +57,6 @@ use crate::{
     repository::{warm_up::warm_up, warm_up::warm_up_wait},
     RusticResult,
 };
-
-/// Function which can be used to choose a backend from a backend type, a backend path and options given as `HashMap`.
-pub type BackendChooser =
-    fn(&str, &str, HashMap<String, String>) -> anyhow::Result<Arc<dyn WriteBackend>>;
 
 /// Options for using and opening a [`Repository`]
 #[serde_as]
@@ -164,11 +160,11 @@ pub struct RepositoryOptions {
     #[cfg_attr(feature = "merge", merge(strategy = overwrite))]
     pub options_cold: HashMap<String, String>,
 
-    /// Use this function to choose a backend for the given repository urls
+    /// Use this type to choose a backend for the given repository urls
     #[cfg_attr(feature = "clap", clap(skip))]
     #[cfg_attr(feature = "merge", merge(skip))]
     #[serde(skip)]
-    pub backend_chooser: Option<BackendChooser>,
+    pub backend_type: Option<BackendType>,
 }
 
 /// Overwrite the left value with the right value
@@ -306,14 +302,21 @@ impl<P> Repository<P, ()> {
     /// [`RepositoryErrorKind::NoIDSpecified`]: crate::error::RepositoryErrorKind::NoIDSpecified
     /// [`BackendAccessErrorKind::BackendLoadError`]: crate::error::BackendAccessErrorKind::BackendLoadError
     pub fn new_with_progress(opts: &RepositoryOptions, pb: P) -> RusticResult<Self> {
-        let backend_chooser = opts.backend_chooser.unwrap_or(get_backend);
         let mut be = match &opts.repository {
             Some(repo) => {
                 let mut options = opts.options.clone();
                 options.extend(opts.options_cold.clone());
-                let (tpe, path) = url_to_type_and_path(repo);
-                backend_chooser(tpe, path, options)
-                    .map_err(|err| BackendAccessErrorKind::BackendLoadError(tpe.to_string(), err))?
+
+                let backend = if let Some(backend_type) = opts.backend_type {
+                    let (tpe, path) = url_to_type_and_path(repo);
+                    backend_type.init(path, options).map_err(|err| {
+                        BackendAccessErrorKind::BackendLoadError(tpe.to_string(), err)
+                    })?
+                } else {
+                    get_backend(repo, options)?
+                };
+
+                backend
             }
             None => return Err(RepositoryErrorKind::NoRepositoryGiven.into()),
         };
@@ -335,9 +338,7 @@ impl<P> Repository<P, ()> {
             .map(|repo| {
                 let mut options = opts.options.clone();
                 options.extend(opts.options_hot.clone());
-                let (tpe, path) = url_to_type_and_path(repo);
-                backend_chooser(tpe, path, options)
-                    .map_err(|err| BackendAccessErrorKind::BackendLoadError(tpe.to_string(), err))
+                get_backend(repo, options)
             })
             .transpose()?;
 
