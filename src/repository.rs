@@ -343,7 +343,7 @@ impl<P> Repository<P, ()> {
 
         let mut name = be.location();
         if let Some(be_hot) = &be_hot {
-            be = HotColdBackend::new_hotcold(be, be_hot.clone());
+            be = Arc::new(HotColdBackend::new(be, be_hot.clone()));
             name.push('#');
             name.push_str(&be_hot.location());
         }

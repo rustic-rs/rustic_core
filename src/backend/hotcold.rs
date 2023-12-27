@@ -32,11 +32,11 @@ impl HotColdBackend {
     ///
     /// * `be` - The backend to use.
     /// * `hot_be` - The backend to use for hot files.
-    pub fn new_hotcold(
-        be: Arc<dyn WriteBackend>,
-        be_hot: Arc<dyn WriteBackend>,
-    ) -> Arc<dyn WriteBackend> {
-        Arc::new(Self { be, be_hot })
+    pub fn new<BE: WriteBackend>(be: BE, hot_be: BE) -> Self {
+        Self {
+            be: Arc::new(be),
+            be_hot: Arc::new(hot_be),
+        }
     }
 }
 
