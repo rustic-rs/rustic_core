@@ -37,7 +37,14 @@ static RUNTIME: Lazy<tokio::runtime::Runtime> = Lazy::new(|| {
 });
 
 impl OpenDALBackend {
-    /// convenience method to directly create a new s3 backend
+    /// Convenience method to directly create a new s3 backend
+    ///
+    /// # Arguments
+    ///
+    /// * `path` - The path to the s3 bucket
+    /// * `options` - Additional options for the s3 backend
+    ///
+    /// # Notes
     ///
     /// The path should be something like "`https://s3.amazonaws.com/bucket/my/repopath`"
     pub fn new_s3(path: &str, mut options: HashMap<String, String>) -> Result<Self> {
@@ -65,7 +72,7 @@ impl OpenDALBackend {
             .entry("region".to_string())
             .or_insert_with(|| "auto".to_string());
 
-        Self::new("s3", dbg!(options))
+        Self::new("s3", options)
     }
 
     pub fn new(path: &str, options: HashMap<String, String>) -> Result<Self> {
