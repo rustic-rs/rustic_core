@@ -1,7 +1,7 @@
 use std::process::Command;
 use std::thread::sleep;
 
-use log::{debug, warn};
+use log::{debug, error, warn};
 use rayon::ThreadPoolBuilder;
 use shell_words::split;
 
@@ -120,26 +120,28 @@ fn warm_up_repo<P: ProgressBars, S>(
     repo: &Repository<P, S>,
     packs: impl ExactSizeIterator<Item = Id>,
 ) -> RusticResult<()> {
-    let p = repo.pb.progress_counter("warming up packs...");
-    p.set_length(packs.len() as u64);
+    let progress_bar = repo.pb.progress_counter("warming up packs...");
+    progress_bar.set_length(packs.len() as u64);
 
     let pool = ThreadPoolBuilder::new()
         .num_threads(constants::MAX_READER_THREADS_NUM)
         .build()
         .map_err(RepositoryErrorKind::FromThreadPoolbilderError)?;
-    let p = &p;
-    let be = &repo.be;
-    pool.in_place_scope(|s| {
+    let progress_bar_ref = &progress_bar;
+    let backend = &repo.be;
+    pool.in_place_scope(|scope| {
         for pack in packs {
-            s.spawn(move |_| {
-                // TODO: Error handling
-                be.warm_up(FileType::Pack, &pack).unwrap();
-                p.inc(1);
+            scope.spawn(move |_| {
+                if let Err(e) = backend.warm_up(FileType::Pack, &pack) {
+                    // FIXME: Use error handling
+                    error!("warm-up failed for pack {pack:?}. {e}");
+                };
+                progress_bar_ref.inc(1);
             });
         }
     });
 
-    p.finish();
+    progress_bar_ref.finish();
 
     Ok(())
 }
