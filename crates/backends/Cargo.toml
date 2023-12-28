@@ -9,7 +9,6 @@ edition = "2021"
 # core
 rustic_core = { path = "../core" }
 
-
 # errors
 anyhow = "1.0.75"
 displaydoc = "0.2.4"
@@ -20,11 +19,10 @@ log = "0.4.20"
 
 # other dependencies
 bytes = "1.5.0"
-itertools = "0.12.0"
 humantime = "2.1.0"
+itertools = "0.12.0"
 
 # serialization
-shell-words = "1.1.0"
 binrw = "0.13.3"
 hex = { version = "0.4.3", features = ["serde"] }
 serde = { version = "1.0.193" }
@@ -32,28 +30,19 @@ serde-aux = "4.3.1"
 serde_derive = "1.0.193"
 serde_json = "1.0.108"
 serde_with = { version = "3.4.0", features = ["base64"] }
+shell-words = "1.1.0"
 
 # local backend
 aho-corasick = "1.1.2"
-cached = { version = "0.46.1", default-features = false, features = [
-  "proc_macro",
-] }
+cached = { version = "0.46.1", default-features = false, features = ["proc_macro"] }
 filetime = "0.2.23"
 ignore = "0.4.21"
-nix = { version = "0.27.1", default-features = false, features = [
-  "user",
-  "fs",
-] }
+nix = { version = "0.27.1", default-features = false, features = ["user", "fs"] }
 walkdir = "2.4.0"
 
 # rest backend
 backoff = "0.4.0"
-reqwest = { version = "0.11.23", default-features = false, features = [
-  "json",
-  "rustls-tls-native-roots",
-  "stream",
-  "blocking",
-] }
+reqwest = { version = "0.11.23", default-features = false, features = ["json", "rustls-tls-native-roots", "stream", "blocking"] }
 url = "2.5.0"
 
 # opendal backend
@@ -70,11 +59,7 @@ rayon = "1.8.0"
 
 [target.'cfg(not(windows))'.dependencies]
 # opendal backend - sftp is not supported on windows, see https://github.com/apache/incubator-opendal/issues/2963
-opendal = { version = "0.43.0", features = [
-  "services-b2",
-  "services-sftp",
-  "services-swift",
-] }
+opendal = { version = "0.43.0", features = ["services-b2", "services-sftp", "services-swift"] }
 
 [target.'cfg(windows)'.dependencies]
 # opendal backend

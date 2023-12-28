@@ -17,7 +17,7 @@ use crate::{
 /// If the url is a windows path, the type will be "local".
 #[non_exhaustive]
 #[derive(Debug, Clone, Copy)]
-pub enum BackendType {
+pub enum SupportedBackend {
     /// The local backend
     Local,
 
@@ -34,7 +34,7 @@ pub enum BackendType {
     S3,
 }
 
-impl TryFrom<&str> for BackendType {
+impl TryFrom<&str> for SupportedBackend {
     type Error = BackendAccessErrorKind;
 
     fn try_from(value: &str) -> Result<Self, Self::Error> {
@@ -51,14 +51,26 @@ impl TryFrom<&str> for BackendType {
     }
 }
 
-impl BackendChoice for BackendType {
-    fn init(&self, path: &str, options: HashMap<String, String>) -> Result<Arc<dyn WriteBackend>> {
+impl BackendChoice for SupportedBackend {
+    fn init(
+        &self,
+        location: &str,
+        options: Option<HashMap<String, String>>,
+    ) -> Result<Arc<dyn WriteBackend>> {
+        let options = options.unwrap_or_default();
+
         Ok(match self {
-            Self::Local => Arc::new(LocalBackend::new(path, options)?),
-            Self::Rclone => Arc::new(RcloneBackend::new(path, options)?),
-            Self::Rest => Arc::new(RestBackend::new(path, options)?),
-            Self::OpenDAL => Arc::new(OpenDALBackend::new(path, options)?),
-            Self::S3 => Arc::new(OpenDALBackend::new_s3(path, options)?),
+            Self::Local => Arc::new(LocalBackend::new(location, options)?),
+            Self::Rclone => Arc::new(RcloneBackend::new(location, options)?),
+            Self::Rest => Arc::new(RestBackend::new(location, options)?),
+            Self::OpenDAL => Arc::new(OpenDALBackend::new(location, options)?),
+            Self::S3 => Arc::new(OpenDALBackend::new_s3(location, options)?),
         })
+    }
+}
+
+impl From<SupportedBackend> for Arc<dyn BackendChoice> {
+    fn from(backend: SupportedBackend) -> Self {
+        Arc::new(backend)
     }
 }

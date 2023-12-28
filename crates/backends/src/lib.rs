@@ -7,6 +7,6 @@ pub mod rest;
 
 // rustic_backend Public API
 pub use crate::{
-    choose::BackendType, local::LocalBackend, opendal::OpenDALBackend, rclone::RcloneBackend,
+    choose::SupportedBackend, local::LocalBackend, opendal::OpenDALBackend, rclone::RcloneBackend,
     rest::RestBackend,
 };

@@ -1,6 +1,5 @@
 [workspace]
-
-members = ["crates/core", "crates/backends"]
+members = ["crates/core", "crates/backends", "examples/*"]
 resolver = "2"
 
 # see: https://nnethercote.github.io/perf-book/build-configuration.html
@@ -20,7 +19,7 @@ debug = true
 
 [profile.release]
 opt-level = 3
-debug = false            # true for profiling
+debug = false # true for profiling
 rpath = false
 lto = "fat"
 debug-assertions = false
@@ -38,7 +37,7 @@ codegen-units = 4
 
 [profile.bench]
 opt-level = 3
-debug = true             # true for profiling
+debug = true # true for profiling
 rpath = false
 lto = true
 debug-assertions = false

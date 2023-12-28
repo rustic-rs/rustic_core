@@ -23,8 +23,11 @@ pub trait BackendChoice {
     /// * [`BackendAccessErrorKind::BackendNotSupported`] - If the backend is not supported.
     ///
     /// [`BackendAccessErrorKind::BackendNotSupported`]: crate::error::BackendAccessErrorKind::BackendNotSupported
-    fn init(&self, path: &str, options: HashMap<String, String>) -> Result<Arc<dyn WriteBackend>>;
-    // fn get_backend(url: &str, options: HashMap<String, String>) -> Result<Arc<dyn WriteBackend>>;
+    fn init(
+        &self,
+        location: &str,
+        options: Option<HashMap<String, String>>,
+    ) -> Result<Arc<dyn WriteBackend>>;
 }
 
 /// Choose the suitable backend from a given url.
@@ -42,11 +45,11 @@ pub trait BackendChoice {
 pub fn get_backend(
     url: &str,
     backend_type: Arc<dyn BackendChoice>,
-    options: HashMap<String, String>,
+    options: impl Into<Option<HashMap<String, String>>>,
 ) -> RusticResult<Arc<dyn WriteBackend>> {
     let (tpe, path) = url_to_type_and_path(url);
     backend_type
-        .init(path, options)
+        .init(path, options.into())
         .map_err(|err| BackendAccessErrorKind::BackendLoadError(tpe.to_string(), err).into())
 }
 
