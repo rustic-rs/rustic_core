@@ -1,4 +1,5 @@
 //! `backup` example
+use rustic_backend::SupportedBackend;
 use rustic_core::{BackupOptions, PathList, Repository, RepositoryOptions, SnapshotOptions};
 use simplelog::{Config, LevelFilter, SimpleLogger};
 use std::error::Error;
@@ -9,8 +10,10 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     // Open repository
     let repo_opts = RepositoryOptions::default()
+        .backend_type(SupportedBackend::Local)
         .repository("/tmp/repo")
         .password("test");
+
     let repo = Repository::new(&repo_opts)?.open()?.to_indexed_ids()?;
 
     let backup_opts = BackupOptions::default();
