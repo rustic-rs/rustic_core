@@ -2,11 +2,11 @@
 use derive_setters::Setters;
 
 use crate::{
-    backend::{FileType, WriteBackend},
+    backend::{decrypt::DecryptWriteBackend, FileType, WriteBackend},
     crypto::aespoly1305::Key,
     crypto::hasher::hash,
     error::CommandErrorKind,
-    error::RusticResult,
+    error::{RusticErrorKind, RusticResult},
     id::Id,
     repofile::KeyFile,
     repository::{Open, Repository},
@@ -57,7 +57,7 @@ impl KeyOptions {
         repo: &Repository<P, S>,
         pass: &str,
     ) -> RusticResult<Id> {
-        let key = repo.key();
+        let key = repo.dbe().key();
         self.add(repo, pass, *key)
     }
 
@@ -110,7 +110,8 @@ impl KeyOptions {
         let data = serde_json::to_vec(&keyfile).map_err(CommandErrorKind::FromJsonError)?;
         let id = hash(&data);
         repo.be
-            .write_bytes(FileType::Key, &id, false, data.into())?;
+            .write_bytes(FileType::Key, &id, false, data.into())
+            .map_err(RusticErrorKind::Backend)?;
         Ok(id)
     }
 }

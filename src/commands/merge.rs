@@ -91,6 +91,7 @@ pub(crate) fn merge_trees<P: ProgressBars, S: IndexedTree>(
     cmp: &impl Fn(&Node, &Node) -> Ordering,
     summary: &mut SnapshotSummary,
 ) -> RusticResult<Id> {
+    let be = repo.dbe();
     let index = repo.index();
     let indexer = Indexer::new(repo.dbe().clone()).into_shared();
     let packer = Packer::new(
@@ -110,7 +111,7 @@ pub(crate) fn merge_trees<P: ProgressBars, S: IndexedTree>(
     };
 
     let p = repo.pb.progress_spinner("merging snapshots...");
-    let tree_merged = tree::merge_trees(index, trees, cmp, &save, summary)?;
+    let tree_merged = tree::merge_trees(be, index, trees, cmp, &save, summary)?;
     let stats = packer.finalize()?;
     indexer.write().unwrap().finalize()?;
     p.finish();

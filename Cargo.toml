@@ -19,7 +19,7 @@ publish = true
 readme = "README.md"
 repository = "https://github.com/rustic-rs/rustic_core"
 resolver = "2"
-rust-version = "1.70.0"
+rust-version = "1.71.0"
 description = """
 rustic_core - library for fast, encrypted, deduplicated backups that powers rustic-rs
 """
@@ -99,8 +99,9 @@ backoff = "0.4.0"
 reqwest = { version = "0.11.23", default-features = false, features = ["json", "rustls-tls-native-roots", "stream", "blocking"] }
 url = "2.5.0"
 
-# rclone backend
-# semver = "1.0.18" # FIXME: unused, remove?
+# opendal backend
+once_cell = "1.19.0"
+tokio = "1.34.0"
 
 # cache
 cachedir = "0.3.1"
@@ -109,6 +110,7 @@ dirs = "5.0.1"
 # cli
 clap = { version = "4.4.11", optional = true, features = ["derive", "env", "wrap_help"] }
 
+anyhow = "1.0.75"
 bytesize = "1.3.0"
 directories = "5.0.1"
 dunce = "1.0.4"
@@ -120,7 +122,13 @@ path-dedot = "3.1.1"
 shell-words = "1.1.0"
 
 [target.'cfg(not(windows))'.dependencies]
+# opendal backend - sftp is not supported on windows, see https://github.com/apache/incubator-opendal/issues/2963
+opendal = { version = "0.43.0", features = ["services-b2", "services-sftp", "services-swift"] }
 sha2 = { version = "0.10", features = ["asm"] }
+
+[target.'cfg(windows)'.dependencies]
+# opendal backend
+opendal = { version = "0.43.0", features = ["services-b2", "services-swift"] }
 
 [target.'cfg(all(windows, not(target_env="gnu")))'.dependencies]
 # unfortunately, the asm extensions do not build on MSVC, see https://github.com/RustCrypto/asm-hashes/issues/17

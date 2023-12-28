@@ -1,10 +1,12 @@
 use std::{
     collections::HashMap,
     fs::{self, File},
-    io::{Read, Seek, SeekFrom, Write},
+    io::{ErrorKind, Read, Seek, SeekFrom, Write},
     path::PathBuf,
+    sync::Arc,
 };
 
+use anyhow::Result;
 use bytes::Bytes;
 use dirs::cache_dir;
 use log::{trace, warn};
@@ -26,38 +28,28 @@ use crate::{
 ///
 /// * `BE` - The backend to cache.
 #[derive(Clone, Debug)]
-pub struct CachedBackend<BE: WriteBackend> {
+pub struct CachedBackend {
     /// The backend to cache.
-    be: BE,
+    be: Arc<dyn WriteBackend>,
     /// The cache.
-    cache: Option<Cache>,
+    cache: Cache,
 }
 
-impl<BE: WriteBackend> CachedBackend<BE> {
+impl CachedBackend {
     /// Create a new [`CachedBackend`] from a given backend.
     ///
     /// # Type Parameters
     ///
     /// * `BE` - The backend to cache.
-    pub fn new(be: BE, cache: Option<Cache>) -> Self {
-        Self { be, cache }
+    pub fn new_cache(be: Arc<dyn WriteBackend>, cache: Cache) -> Arc<dyn WriteBackend> {
+        Arc::new(Self { be, cache })
     }
 }
 
-impl<BE: WriteBackend> ReadBackend for CachedBackend<BE> {
+impl ReadBackend for CachedBackend {
     /// Returns the location of the backend as a String.
     fn location(&self) -> String {
         self.be.location()
-    }
-
-    /// Sets an option of the backend.
-    ///
-    ///  # Arguments
-    ///
-    /// * `option` - The option to set.
-    /// * `value` - The value to set the option to.
-    fn set_option(&mut self, option: &str, value: &str) -> RusticResult<()> {
-        self.be.set_option(option, value)
     }
 
     /// Lists all files with their size of the given type.
@@ -73,13 +65,11 @@ impl<BE: WriteBackend> ReadBackend for CachedBackend<BE> {
     /// # Returns
     ///
     /// A vector of tuples containing the id and size of the files.
-    fn list_with_size(&self, tpe: FileType) -> RusticResult<Vec<(Id, u32)>> {
+    fn list_with_size(&self, tpe: FileType) -> Result<Vec<(Id, u32)>> {
         let list = self.be.list_with_size(tpe)?;
 
-        if let Some(cache) = &self.cache {
-            if tpe.is_cacheable() {
-                cache.remove_not_in_list(tpe, &list)?;
-            }
+        if tpe.is_cacheable() {
+            self.cache.remove_not_in_list(tpe, &list)?;
         }
 
         Ok(list)
@@ -101,20 +91,20 @@ impl<BE: WriteBackend> ReadBackend for CachedBackend<BE> {
     /// The data read.
     ///
     /// [`CacheBackendErrorKind::FromIoError`]: crate::error::CacheBackendErrorKind::FromIoError
-    fn read_full(&self, tpe: FileType, id: &Id) -> RusticResult<Bytes> {
-        match (&self.cache, tpe.is_cacheable()) {
-            (None, _) | (Some(_), false) => self.be.read_full(tpe, id),
-            (Some(cache), true) => cache.read_full(tpe, id).map_or_else(
-                |err| {
-                    warn!("Error in cache backend: {err}");
-                    let res = self.be.read_full(tpe, id);
-                    if let Ok(data) = &res {
-                        _ = cache.write_bytes(tpe, id, data.clone());
-                    }
-                    res
-                },
-                Ok,
-            ),
+    fn read_full(&self, tpe: FileType, id: &Id) -> Result<Bytes> {
+        if tpe.is_cacheable() {
+            match self.cache.read_full(tpe, id) {
+                Ok(Some(data)) => return Ok(data),
+                Ok(None) => {}
+                Err(err) => warn!("Error in cache backend: {err}"),
+            }
+            let res = self.be.read_full(tpe, id);
+            if let Ok(data) = &res {
+                _ = self.cache.write_bytes(tpe, id, data.clone());
+            }
+            res
+        } else {
+            self.be.read_full(tpe, id)
         }
     }
 
@@ -144,39 +134,38 @@ impl<BE: WriteBackend> ReadBackend for CachedBackend<BE> {
         cacheable: bool,
         offset: u32,
         length: u32,
-    ) -> RusticResult<Bytes> {
-        match (&self.cache, cacheable || tpe.is_cacheable()) {
-            (None, _) | (Some(_), false) => {
-                self.be.read_partial(tpe, id, cacheable, offset, length)
+    ) -> Result<Bytes> {
+        if cacheable || tpe.is_cacheable() {
+            match self.cache.read_partial(tpe, id, offset, length) {
+                Ok(Some(data)) => return Ok(data),
+                Ok(None) => {}
+                Err(err) => warn!("Error in cache backend: {err}"),
+            };
+            // read full file, save to cache and return partial content
+            match self.be.read_full(tpe, id) {
+                Ok(data) => {
+                    let range = offset as usize..(offset + length) as usize;
+                    _ = self.cache.write_bytes(tpe, id, data.clone());
+                    Ok(Bytes::copy_from_slice(&data.slice(range)))
+                }
+                error => error,
             }
-            (Some(cache), true) => {
-                cache.read_partial(tpe, id, offset, length).map_or_else(
-                    |err| {
-                        warn!("Error in cache backend: {err}");
-                        match self.be.read_full(tpe, id) {
-                            // read full file, save to cache and return partial content from cache
-                            // TODO: - Do not read to memory, but use a Reader
-                            //       - Don't read from cache, but use the right part of the read content
-                            Ok(data) => {
-                                if cache.write_bytes(tpe, id, data).is_ok() {
-                                    cache.read_partial(tpe, id, offset, length)
-                                } else {
-                                    self.be.read_partial(tpe, id, false, offset, length)
-                                }
-                            }
-                            error => error,
-                        }
-                    },
-                    Ok,
-                )
-            }
+        } else {
+            self.be.read_partial(tpe, id, cacheable, offset, length)
         }
+    }
+    fn needs_warm_up(&self) -> bool {
+        self.be.needs_warm_up()
+    }
+
+    fn warm_up(&self, tpe: FileType, id: &Id) -> Result<()> {
+        self.be.warm_up(tpe, id)
     }
 }
 
-impl<BE: WriteBackend> WriteBackend for CachedBackend<BE> {
+impl WriteBackend for CachedBackend {
     /// Creates the backend.
-    fn create(&self) -> RusticResult<()> {
+    fn create(&self) -> Result<()> {
         self.be.create()
     }
 
@@ -190,11 +179,9 @@ impl<BE: WriteBackend> WriteBackend for CachedBackend<BE> {
     /// * `id` - The id of the file.
     /// * `cacheable` - Whether the file is cacheable.
     /// * `buf` - The data to write.
-    fn write_bytes(&self, tpe: FileType, id: &Id, cacheable: bool, buf: Bytes) -> RusticResult<()> {
-        if let Some(cache) = &self.cache {
-            if cacheable || tpe.is_cacheable() {
-                _ = cache.write_bytes(tpe, id, buf.clone());
-            }
+    fn write_bytes(&self, tpe: FileType, id: &Id, cacheable: bool, buf: Bytes) -> Result<()> {
+        if cacheable || tpe.is_cacheable() {
+            _ = self.cache.write_bytes(tpe, id, buf.clone());
         }
         self.be.write_bytes(tpe, id, cacheable, buf)
     }
@@ -207,11 +194,9 @@ impl<BE: WriteBackend> WriteBackend for CachedBackend<BE> {
     ///
     /// * `tpe` - The type of the file.
     /// * `id` - The id of the file.
-    fn remove(&self, tpe: FileType, id: &Id, cacheable: bool) -> RusticResult<()> {
-        if let Some(cache) = &self.cache {
-            if cacheable || tpe.is_cacheable() {
-                _ = cache.remove(tpe, id);
-            }
+    fn remove(&self, tpe: FileType, id: &Id, cacheable: bool) -> Result<()> {
+        if cacheable || tpe.is_cacheable() {
+            _ = self.cache.remove(tpe, id);
         }
         self.be.remove(tpe, id, cacheable)
     }
@@ -375,11 +360,16 @@ impl Cache {
     /// * [`CacheBackendErrorKind::FromIoError`] - If the file could not be read.
     ///
     /// [`CacheBackendErrorKind::FromIoError`]: crate::error::CacheBackendErrorKind::FromIoError
-    pub fn read_full(&self, tpe: FileType, id: &Id) -> RusticResult<Bytes> {
+    pub fn read_full(&self, tpe: FileType, id: &Id) -> RusticResult<Option<Bytes>> {
         trace!("cache reading tpe: {:?}, id: {}", &tpe, &id);
-        let data = fs::read(self.path(tpe, id)).map_err(CacheBackendErrorKind::FromIoError)?;
-        trace!("cache hit!");
-        Ok(data.into())
+        match fs::read(self.path(tpe, id)) {
+            Ok(data) => {
+                trace!("cache hit!");
+                Ok(Some(data.into()))
+            }
+            Err(err) if err.kind() == ErrorKind::NotFound => Ok(None),
+            Err(err) => Err(CacheBackendErrorKind::FromIoError(err).into()),
+        }
     }
 
     /// Reads partial data of the given file.
@@ -402,15 +392,18 @@ impl Cache {
         id: &Id,
         offset: u32,
         length: u32,
-    ) -> RusticResult<Bytes> {
+    ) -> RusticResult<Option<Bytes>> {
         trace!(
             "cache reading tpe: {:?}, id: {}, offset: {}",
             &tpe,
             &id,
             &offset
         );
-        let mut file =
-            File::open(self.path(tpe, id)).map_err(CacheBackendErrorKind::FromIoError)?;
+        let mut file = match File::open(self.path(tpe, id)) {
+            Ok(file) => file,
+            Err(err) if err.kind() == ErrorKind::NotFound => return Ok(None),
+            Err(err) => return Err(CacheBackendErrorKind::FromIoError(err).into()),
+        };
         _ = file
             .seek(SeekFrom::Start(u64::from(offset)))
             .map_err(CacheBackendErrorKind::FromIoError)?;
@@ -418,7 +411,7 @@ impl Cache {
         file.read_exact(&mut vec)
             .map_err(CacheBackendErrorKind::FromIoError)?;
         trace!("cache hit!");
-        Ok(vec.into())
+        Ok(Some(vec.into()))
     }
 
     /// Writes the given data to the given file.

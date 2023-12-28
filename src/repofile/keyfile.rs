@@ -7,7 +7,7 @@ use serde_with::{base64::Base64, serde_as};
 use crate::{
     backend::{FileType, ReadBackend},
     crypto::{aespoly1305::Key, CryptoKey},
-    error::{KeyFileErrorKind, RusticResult},
+    error::{KeyFileErrorKind, RusticErrorKind, RusticResult},
     id::Id,
 };
 
@@ -199,7 +199,9 @@ impl KeyFile {
     ///
     /// The [`KeyFile`] read from the backend
     fn from_backend<B: ReadBackend>(be: &B, id: &Id) -> RusticResult<Self> {
-        let data = be.read_full(FileType::Key, id)?;
+        let data = be
+            .read_full(FileType::Key, id)
+            .map_err(RusticErrorKind::Backend)?;
         Ok(
             serde_json::from_slice(&data)
                 .map_err(KeyFileErrorKind::DeserializingFromSliceFailed)?,
@@ -328,7 +330,7 @@ pub(crate) fn find_key_in_backend<B: ReadBackend>(
     if let Some(id) = hint {
         key_from_backend(be, id, passwd)
     } else {
-        for id in be.list(FileType::Key)? {
+        for id in be.list(FileType::Key).map_err(RusticErrorKind::Backend)? {
             if let Ok(key) = key_from_backend(be, &id, passwd) {
                 return Ok(key);
             }

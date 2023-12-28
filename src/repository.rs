@@ -5,6 +5,7 @@ use std::{
     io::{BufRead, BufReader, Write},
     path::{Path, PathBuf},
     process::{Command, Stdio},
+    sync::Arc,
 };
 
 use bytes::Bytes;
@@ -17,12 +18,13 @@ use crate::{
     backend::{
         cache::Cache,
         cache::CachedBackend,
-        choose::ChooseBackend,
-        decrypt::{DecryptBackend, DecryptFullBackend, DecryptReadBackend, DecryptWriteBackend},
+        choose::{get_backend, url_to_type_and_path},
+        decrypt::{DecryptBackend, DecryptReadBackend, DecryptWriteBackend},
         hotcold::HotColdBackend,
-        local::LocalDestination,
+        local_destination::LocalDestination,
         node::Node,
-        FileType, ReadBackend,
+        warm_up::WarmUpAccessBackend,
+        FileType, ReadBackend, WriteBackend,
     },
     blob::{
         tree::{NodeStreamer, TreeStreamerOptions as LsOptions},
@@ -43,9 +45,9 @@ use crate::{
     },
     crypto::aespoly1305::Key,
     error::RusticResult,
-    error::{KeyFileErrorKind, RepositoryErrorKind, RusticErrorKind},
+    error::{BackendAccessErrorKind, KeyFileErrorKind, RepositoryErrorKind, RusticErrorKind},
     id::Id,
-    index::{IndexBackend, IndexEntry, IndexedBackend, ReadIndex},
+    index::{GlobalIndex, IndexEntry, ReadGlobalIndex, ReadIndex},
     progress::{NoProgressBars, ProgressBars},
     repofile::{
         keyfile::find_key_in_backend,
@@ -56,6 +58,10 @@ use crate::{
 
 mod warm_up;
 use warm_up::{warm_up, warm_up_wait};
+
+/// Function which can be user to choose a backend from a backend type, a backend path and options given as `HashMap`.
+pub type BackendChooser =
+    fn(&str, &str, HashMap<String, String>) -> anyhow::Result<Arc<dyn WriteBackend>>;
 
 /// Options for using and opening a [`Repository`]
 #[serde_as]
@@ -144,10 +150,26 @@ pub struct RepositoryOptions {
     #[serde_as(as = "Option<DisplayFromStr>")]
     pub warm_up_wait: Option<humantime::Duration>,
 
-    /// Other options for this repository
+    /// Other options for this repository (hot and cold part)
     #[cfg_attr(feature = "clap", clap(skip))]
     #[cfg_attr(feature = "merge", merge(strategy = overwrite))]
     pub options: HashMap<String, String>,
+
+    /// Other options for the hot repository
+    #[cfg_attr(feature = "clap", clap(skip))]
+    #[cfg_attr(feature = "merge", merge(strategy = overwrite))]
+    pub options_hot: HashMap<String, String>,
+
+    /// Other options for the cold repository
+    #[cfg_attr(feature = "clap", clap(skip))]
+    #[cfg_attr(feature = "merge", merge(strategy = overwrite))]
+    pub options_cold: HashMap<String, String>,
+
+    /// Use this function to choose a backend for the given repository urls
+    #[cfg_attr(feature = "clap", clap(skip))]
+    #[cfg_attr(feature = "merge", merge(skip))]
+    #[serde(skip)]
+    pub backend_chooser: Option<BackendChooser>,
 }
 
 /// Overwrite the left value with the right value
@@ -170,10 +192,7 @@ impl RepositoryOptions {
     ///
     /// * [`RepositoryErrorKind::NoRepositoryGiven`] - If no repository is given
     /// * [`RepositoryErrorKind::NoIDSpecified`] - If the warm-up command does not contain `%id`
-    /// * [`BackendErrorKind::BackendNotSupported`] - If the backend is not supported.
-    /// * [`LocalErrorKind::DirectoryCreationFailed`] - If the directory could not be created.
-    /// * [`RestErrorKind::UrlParsingFailed`] - If the url could not be parsed.
-    /// * [`RestErrorKind::BuildingClientFailed`] - If the client could not be built.
+    /// * [`BackendAccessErrorKind::BackendLoadError`] - If the specified backend cannot be loaded, e.g. is not supported
     ///
     /// # Returns
     ///
@@ -181,10 +200,7 @@ impl RepositoryOptions {
     ///
     /// [`RepositoryErrorKind::NoRepositoryGiven`]: crate::error::RepositoryErrorKind::NoRepositoryGiven
     /// [`RepositoryErrorKind::NoIDSpecified`]: crate::error::RepositoryErrorKind::NoIDSpecified
-    /// [`BackendErrorKind::BackendNotSupported`]: crate::error::BackendErrorKind::BackendNotSupported
-    /// [`LocalErrorKind::DirectoryCreationFailed`]: crate::error::LocalErrorKind::DirectoryCreationFailed
-    /// [`RestErrorKind::UrlParsingFailed`]: crate::error::RestErrorKind::UrlParsingFailed
-    /// [`RestErrorKind::BuildingClientFailed`]: crate::error::RestErrorKind::BuildingClientFailed
+    /// [`BackendAccessErrorKind::BackendLoadError`]: crate::error::BackendAccessErrorKind::BackendLoadError
     pub fn to_repository(&self) -> RusticResult<Repository<NoProgressBars, ()>> {
         Repository::new(self)
     }
@@ -236,10 +252,10 @@ pub struct Repository<P, S> {
     pub name: String,
 
     /// The HotColdBackend to use for this repository
-    pub(crate) be: HotColdBackend<ChooseBackend>,
+    pub(crate) be: Arc<dyn WriteBackend>,
 
     /// The Backende to use for hot files
-    pub(crate) be_hot: Option<ChooseBackend>,
+    pub(crate) be_hot: Option<Arc<dyn WriteBackend>>,
 
     /// The options used for this repository
     opts: RepositoryOptions,
@@ -262,17 +278,8 @@ impl Repository<NoProgressBars, ()> {
     ///
     /// * [`RepositoryErrorKind::NoRepositoryGiven`] - If no repository is given
     /// * [`RepositoryErrorKind::NoIDSpecified`] - If the warm-up command does not contain `%id`
-    /// * [`BackendErrorKind::BackendNotSupported`] - If the backend is not supported.
-    /// * [`LocalErrorKind::DirectoryCreationFailed`] - If the directory could not be created.
-    /// * [`RestErrorKind::UrlParsingFailed`] - If the url could not be parsed.
-    /// * [`RestErrorKind::BuildingClientFailed`] - If the client could not be built.
+    /// * [`BackendAccessErrorKind::BackendLoadError`] - If the specified backend cannot be loaded, e.g. is not supported
     ///
-    /// [`RepositoryErrorKind::NoRepositoryGiven`]: crate::error::RepositoryErrorKind::NoRepositoryGiven
-    /// [`RepositoryErrorKind::NoIDSpecified`]: crate::error::RepositoryErrorKind::NoIDSpecified
-    /// [`BackendErrorKind::BackendNotSupported`]: crate::error::BackendErrorKind::BackendNotSupported
-    /// [`LocalErrorKind::DirectoryCreationFailed`]: crate::error::LocalErrorKind::DirectoryCreationFailed
-    /// [`RestErrorKind::UrlParsingFailed`]: crate::error::RestErrorKind::UrlParsingFailed
-    /// [`RestErrorKind::BuildingClientFailed`]: crate::error::RestErrorKind::BuildingClientFailed
     pub fn new(opts: &RepositoryOptions) -> RusticResult<Self> {
         Self::new_with_progress(opts, NoProgressBars {})
     }
@@ -294,20 +301,21 @@ impl<P> Repository<P, ()> {
     ///
     /// * [`RepositoryErrorKind::NoRepositoryGiven`] - If no repository is given
     /// * [`RepositoryErrorKind::NoIDSpecified`] - If the warm-up command does not contain `%id`
-    /// * [`BackendErrorKind::BackendNotSupported`] - If the backend is not supported.
-    /// * [`LocalErrorKind::DirectoryCreationFailed`] - If the directory could not be created.
-    /// * [`RestErrorKind::UrlParsingFailed`] - If the url could not be parsed.
-    /// * [`RestErrorKind::BuildingClientFailed`] - If the client could not be built.
+    /// * [`BackendAccessErrorKind::BackendLoadError`] - If the specified backend cannot be loaded, e.g. is not supported
     ///
     /// [`RepositoryErrorKind::NoRepositoryGiven`]: crate::error::RepositoryErrorKind::NoRepositoryGiven
     /// [`RepositoryErrorKind::NoIDSpecified`]: crate::error::RepositoryErrorKind::NoIDSpecified
-    /// [`BackendErrorKind::BackendNotSupported`]: crate::error::BackendErrorKind::BackendNotSupported
-    /// [`LocalErrorKind::DirectoryCreationFailed`]: crate::error::LocalErrorKind::DirectoryCreationFailed
-    /// [`RestErrorKind::UrlParsingFailed`]: crate::error::RestErrorKind::UrlParsingFailed
-    /// [`RestErrorKind::BuildingClientFailed`]: crate::error::RestErrorKind::BuildingClientFailed
+    /// [`BackendAccessErrorKind::BackendLoadError`]: crate::error::BackendAccessErrorKind::BackendLoadError
     pub fn new_with_progress(opts: &RepositoryOptions, pb: P) -> RusticResult<Self> {
-        let be = match &opts.repository {
-            Some(repo) => ChooseBackend::from_url(repo)?,
+        let backend_chooser = opts.backend_chooser.unwrap_or(get_backend);
+        let mut be = match &opts.repository {
+            Some(repo) => {
+                let mut options = opts.options.clone();
+                options.extend(opts.options_cold.clone());
+                let (tpe, path) = url_to_type_and_path(repo);
+                backend_chooser(tpe, path, options)
+                    .map_err(|err| BackendAccessErrorKind::BackendLoadError(tpe.to_string(), err))?
+            }
             None => return Err(RepositoryErrorKind::NoRepositoryGiven.into()),
         };
 
@@ -318,18 +326,25 @@ impl<P> Repository<P, ()> {
             info!("using warm-up command {command}");
         }
 
+        if opts.warm_up {
+            be = WarmUpAccessBackend::new_warm_up(be);
+        }
+
         let be_hot = opts
             .repo_hot
             .as_ref()
-            .map(|repo| ChooseBackend::from_url(repo))
+            .map(|repo| {
+                let mut options = opts.options.clone();
+                options.extend(opts.options_hot.clone());
+                let (tpe, path) = url_to_type_and_path(repo);
+                backend_chooser(tpe, path, options)
+                    .map_err(|err| BackendAccessErrorKind::BackendLoadError(tpe.to_string(), err))
+            })
             .transpose()?;
 
-        let mut be = HotColdBackend::new(be, be_hot.clone());
-        for (opt, value) in &opts.options {
-            be.set_option(opt, value)?;
-        }
         let mut name = be.location();
         if let Some(be_hot) = &be_hot {
+            be = HotColdBackend::new_hotcold(be, be_hot.clone());
             name.push('#');
             name.push_str(&be_hot.location());
         }
@@ -509,9 +524,14 @@ impl<P, S> Repository<P, S> {
             ))?;
 
         if let Some(be_hot) = &self.be_hot {
-            let mut keys = self.be.list_with_size(FileType::Key)?;
+            let mut keys = self
+                .be
+                .list_with_size(FileType::Key)
+                .map_err(RusticErrorKind::Backend)?;
             keys.sort_unstable_by_key(|key| key.0);
-            let mut hot_keys = be_hot.list_with_size(FileType::Key)?;
+            let mut hot_keys = be_hot
+                .list_with_size(FileType::Key)
+                .map_err(RusticErrorKind::Backend)?;
             hot_keys.sort_unstable_by_key(|key| key.0);
             if keys != hot_keys {
                 return Err(RepositoryErrorKind::KeysDontMatchForRepositories(self.name).into());
@@ -527,7 +547,7 @@ impl<P, S> Repository<P, S> {
             }
         })?;
         info!("repository {}: password is correct.", self.name);
-        let dbe = DecryptBackend::new(&self.be, key);
+        let dbe = DecryptBackend::new(self.be.clone(), key);
         let config: ConfigFile = dbe.get_file(&config_id)?;
         self.open_raw(key, config)
     }
@@ -649,7 +669,7 @@ impl<P, S> Repository<P, S> {
     ///
     /// [`RepositoryErrorKind::HotRepositoryFlagMissing`]: crate::error::RepositoryErrorKind::HotRepositoryFlagMissing
     /// [`RepositoryErrorKind::IsNotHotRepository`]: crate::error::RepositoryErrorKind::IsNotHotRepository
-    fn open_raw(self, key: Key, config: ConfigFile) -> RusticResult<Repository<P, OpenStatus>> {
+    fn open_raw(mut self, key: Key, config: ConfigFile) -> RusticResult<Repository<P, OpenStatus>> {
         match (config.is_hot == Some(true), self.be_hot.is_some()) {
             (true, false) => return Err(RepositoryErrorKind::HotRepositoryFlagMissing.into()),
             (false, true) => return Err(RepositoryErrorKind::IsNotHotRepository.into()),
@@ -658,21 +678,19 @@ impl<P, S> Repository<P, S> {
         let cache = (!self.opts.no_cache)
             .then(|| Cache::new(config.id, self.opts.cache_dir.clone()).ok())
             .flatten();
-        cache.as_ref().map_or_else(
-            || info!("using no cache"),
-            |cache| info!("using cache at {}", cache.location()),
-        );
-        let be_cached = CachedBackend::new(self.be.clone(), cache.clone());
-        let mut dbe = DecryptBackend::new(&be_cached, key);
+
+        if let Some(cache) = &cache {
+            self.be = CachedBackend::new_cache(self.be.clone(), cache.clone());
+            info!("using cache at {}", cache.location());
+        } else {
+            info!("using no cache");
+        }
+
+        let mut dbe = DecryptBackend::new(self.be.clone(), key);
         let zstd = config.zstd()?;
         dbe.set_zstd(zstd);
 
-        let open = OpenStatus {
-            key,
-            dbe,
-            cache,
-            config,
-        };
+        let open = OpenStatus { dbe, cache, config };
 
         Ok(Repository {
             name: self.name,
@@ -690,7 +708,11 @@ impl<P, S> Repository<P, S> {
     ///
     /// * `tpe` - The type of the files to list
     pub fn list(&self, tpe: FileType) -> RusticResult<impl Iterator<Item = Id>> {
-        Ok(self.be.list(tpe)?.into_iter())
+        Ok(self
+            .be
+            .list(tpe)
+            .map_err(RusticErrorKind::Backend)?
+            .into_iter())
     }
 }
 
@@ -736,38 +758,24 @@ impl<P: ProgressBars, S> Repository<P, S> {
 
 /// A repository which is open, i.e. the password has been checked and the decryption key is available.
 pub trait Open {
-    /// The [`DecryptBackend`] used by this repository
-    type DBE: DecryptFullBackend;
-
-    /// Get the decryption key
-    fn key(&self) -> &Key;
-
     /// Get the cache
     fn cache(&self) -> Option<&Cache>;
 
     /// Get the [`DecryptBackend`]
-    fn dbe(&self) -> &Self::DBE;
+    fn dbe(&self) -> &DecryptBackend<Key>;
 
     /// Get the [`ConfigFile`]
     fn config(&self) -> &ConfigFile;
 }
 
 impl<P, S: Open> Open for Repository<P, S> {
-    /// The [`DecryptBackend`] used by this repository
-    type DBE = S::DBE;
-
-    /// Get the decryption key
-    fn key(&self) -> &Key {
-        self.status.key()
-    }
-
     /// Get the cache
     fn cache(&self) -> Option<&Cache> {
         self.status.cache()
     }
 
     /// Get the [`DecryptBackend`]
-    fn dbe(&self) -> &Self::DBE {
+    fn dbe(&self) -> &DecryptBackend<Key> {
         self.status.dbe()
     }
 
@@ -777,35 +785,25 @@ impl<P, S: Open> Open for Repository<P, S> {
     }
 }
 
-#[derive(Debug)]
 /// Open Status: This repository is open, i.e. the password has been checked and the decryption key is available.
+#[derive(Debug)]
 pub struct OpenStatus {
-    /// The decryption key
-    key: Key,
     /// The cache
     cache: Option<Cache>,
     /// The [`DecryptBackend`]
-    dbe: DecryptBackend<CachedBackend<HotColdBackend<ChooseBackend>>, Key>,
+    dbe: DecryptBackend<Key>,
     /// The [`ConfigFile`]
     config: ConfigFile,
 }
 
 impl Open for OpenStatus {
-    /// The [`DecryptBackend`] used by this repository
-    type DBE = DecryptBackend<CachedBackend<HotColdBackend<ChooseBackend>>, Key>;
-
-    /// Get the decryption key
-    fn key(&self) -> &Key {
-        &self.key
-    }
-
     /// Get the cache
     fn cache(&self) -> Option<&Cache> {
         self.cache.as_ref()
     }
 
     /// Get the [`DecryptBackend`]
-    fn dbe(&self) -> &Self::DBE {
+    fn dbe(&self) -> &DecryptBackend<Key> {
         &self.dbe
     }
 
@@ -826,12 +824,12 @@ impl<P, S: Open> Repository<P, S> {
     /// # Errors
     ///
     /// * [`IdErrorKind::HexError`] - If the string is not a valid hexadecimal string
-    /// * [`BackendErrorKind::NoSuitableIdFound`] - If no id could be found.
-    /// * [`BackendErrorKind::IdNotUnique`] - If the id is not unique.
+    /// * [`BackendAccessErrorKind::NoSuitableIdFound`] - If no id could be found.
+    /// * [`BackendAccessErrorKind::IdNotUnique`] - If the id is not unique.
     ///
     /// [`IdErrorKind::HexError`]: crate::error::IdErrorKind::HexError
-    /// [`BackendErrorKind::NoSuitableIdFound`]: crate::error::BackendErrorKind::NoSuitableIdFound
-    /// [`BackendErrorKind::IdNotUnique`]: crate::error::BackendErrorKind::IdNotUnique
+    /// [`BackendAccessErrorKind::NoSuitableIdFound`]: crate::error::BackendAccessErrorKind::NoSuitableIdFound
+    /// [`BackendAccessErrorKind::IdNotUnique`]: crate::error::BackendAccessErrorKind::IdNotUnique
     pub fn cat_file(&self, tpe: FileType, id: &str) -> RusticResult<Bytes> {
         commands::cat::cat_file(self, tpe, id)
     }
@@ -887,7 +885,7 @@ impl<P, S: Open> Repository<P, S> {
     }
 
     // TODO: add documentation!
-    pub(crate) fn dbe(&self) -> &S::DBE {
+    pub(crate) fn dbe(&self) -> &DecryptBackend<Key> {
         self.status.dbe()
     }
 }
@@ -924,8 +922,8 @@ impl<P: ProgressBars, S: Open> Repository<P, S> {
     /// # Errors
     ///
     /// * [`IdErrorKind::HexError`] - If the string is not a valid hexadecimal string
-    /// * [`BackendErrorKind::NoSuitableIdFound`] - If no id could be found.
-    /// * [`BackendErrorKind::IdNotUnique`] - If the id is not unique.
+    /// * [`BackendAccessErrorKind::NoSuitableIdFound`] - If no id could be found.
+    /// * [`BackendAccessErrorKind::IdNotUnique`] - If the id is not unique.
     ///
     /// # Returns
     ///
@@ -933,8 +931,8 @@ impl<P: ProgressBars, S: Open> Repository<P, S> {
     /// If `id` is "latest", return the latest snapshot respecting the giving filter.
     ///
     /// [`IdErrorKind::HexError`]: crate::error::IdErrorKind::HexError
-    /// [`BackendErrorKind::NoSuitableIdFound`]: crate::error::BackendErrorKind::NoSuitableIdFound
-    /// [`BackendErrorKind::IdNotUnique`]: crate::error::BackendErrorKind::IdNotUnique
+    /// [`BackendAccessErrorKind::NoSuitableIdFound`]: crate::error::BackendAccessErrorKind::NoSuitableIdFound
+    /// [`BackendAccessErrorKind::IdNotUnique`]: crate::error::BackendAccessErrorKind::IdNotUnique
     pub fn get_snapshot_from_str(
         &self,
         id: &str,
@@ -1078,7 +1076,7 @@ impl<P: ProgressBars, S: Open> Repository<P, S> {
     ///
     /// This saves the full index in memory which can be quite memory-consuming!
     pub fn to_indexed(self) -> RusticResult<Repository<P, IndexedStatus<FullIndex, S>>> {
-        let index = IndexBackend::new(self.dbe(), &self.pb.progress_counter(""))?;
+        let index = GlobalIndex::new(self.dbe(), &self.pb.progress_counter(""))?;
         let status = IndexedStatus {
             open: self.status,
             index,
@@ -1099,7 +1097,7 @@ impl<P: ProgressBars, S: Open> Repository<P, S> {
     /// This saves only the `Id`s for data blobs. Therefore, not all operations are possible on the repository.
     /// However, operations which add data are fully functional.
     pub fn to_indexed_ids(self) -> RusticResult<Repository<P, IndexedStatus<IdIndex, S>>> {
-        let index = IndexBackend::only_full_trees(self.dbe(), &self.pb.progress_counter(""))?;
+        let index = GlobalIndex::only_full_trees(self.dbe(), &self.pb.progress_counter(""))?;
         let status = IndexedStatus {
             open: self.status,
             index,
@@ -1148,7 +1146,7 @@ impl<P: ProgressBars, S: Open> Repository<P, S> {
 
 /// A repository which is indexed such that all tree blobs are contained in the index.
 pub trait IndexedTree: Open {
-    type I: IndexedBackend;
+    type I: ReadGlobalIndex;
     fn index(&self) -> &Self::I;
 }
 
@@ -1177,7 +1175,7 @@ pub struct IndexedStatus<T, S: Open> {
     /// The open status
     open: S,
     /// The index backend
-    index: IndexBackend<S::DBE>,
+    index: GlobalIndex,
     /// The marker for the type of index
     marker: std::marker::PhantomData<T>,
 }
@@ -1189,7 +1187,7 @@ pub struct IdIndex {}
 pub struct FullIndex {}
 
 impl<T, S: Open> IndexedTree for IndexedStatus<T, S> {
-    type I = IndexBackend<S::DBE>;
+    type I = GlobalIndex;
 
     fn index(&self) -> &Self::I {
         &self.index
@@ -1201,15 +1199,10 @@ impl<S: Open> IndexedIds for IndexedStatus<FullIndex, S> {}
 impl<S: Open> IndexedFull for IndexedStatus<FullIndex, S> {}
 
 impl<T, S: Open> Open for IndexedStatus<T, S> {
-    type DBE = S::DBE;
-
-    fn key(&self) -> &Key {
-        self.open.key()
-    }
     fn cache(&self) -> Option<&Cache> {
         self.open.cache()
     }
-    fn dbe(&self) -> &Self::DBE {
+    fn dbe(&self) -> &DecryptBackend<Key> {
         self.open.dbe()
     }
     fn config(&self) -> &ConfigFile {
@@ -1252,12 +1245,12 @@ impl<P: ProgressBars, S: IndexedTree> Repository<P, S> {
     /// # Errors
     ///
     /// * [`IdErrorKind::HexError`] - If the string is not a valid hexadecimal string
-    /// * [`BackendErrorKind::NoSuitableIdFound`] - If no id could be found.
-    /// * [`BackendErrorKind::IdNotUnique`] - If the id is not unique.
+    /// * [`BackendAccessErrorKind::NoSuitableIdFound`] - If no id could be found.
+    /// * [`BackendAccessErrorKind::IdNotUnique`] - If the id is not unique.
     ///
     /// [`IdErrorKind::HexError`]: crate::error::IdErrorKind::HexError
-    /// [`BackendErrorKind::NoSuitableIdFound`]: crate::error::BackendErrorKind::NoSuitableIdFound
-    /// [`BackendErrorKind::IdNotUnique`]: crate::error::BackendErrorKind::IdNotUnique
+    /// [`BackendAccessErrorKind::NoSuitableIdFound`]: crate::error::BackendAccessErrorKind::NoSuitableIdFound
+    /// [`BackendAccessErrorKind::IdNotUnique`]: crate::error::BackendAccessErrorKind::IdNotUnique
     pub fn node_from_snapshot_path(
         &self,
         snap_path: &str,
@@ -1268,7 +1261,7 @@ impl<P: ProgressBars, S: IndexedTree> Repository<P, S> {
         let p = &self.pb.progress_counter("getting snapshot...");
         let snap = SnapshotFile::from_str(self.dbe(), id, filter, p)?;
 
-        Tree::node_from_path(self.index(), snap.tree, Path::new(path))
+        Tree::node_from_path(self.dbe(), self.index(), snap.tree, Path::new(path))
     }
 
     /// Get a [`Node`] from a [`SnapshotFile`] and a `path`
@@ -1284,7 +1277,7 @@ impl<P: ProgressBars, S: IndexedTree> Repository<P, S> {
         snap: &SnapshotFile,
         path: &str,
     ) -> RusticResult<Node> {
-        Tree::node_from_path(self.index(), snap.tree, Path::new(path))
+        Tree::node_from_path(self.dbe(), self.index(), snap.tree, Path::new(path))
     }
 
     /// Reads a raw tree from a "SNAP\[:PATH\]" syntax
@@ -1318,12 +1311,12 @@ impl<P: ProgressBars, S: IndexedTree> Repository<P, S> {
     /// # Note
     ///
     /// The `PathBuf` returned will be relative to the given `node`.
-    pub fn ls(
-        &self,
-        node: &Node,
-        ls_opts: &LsOptions,
-    ) -> RusticResult<impl Iterator<Item = RusticResult<(PathBuf, Node)>> + Clone> {
-        NodeStreamer::new_with_glob(self.index().clone(), node, ls_opts)
+    pub fn ls<'a>(
+        &'a self,
+        node: &'a Node,
+        ls_opts: &'a LsOptions,
+    ) -> RusticResult<impl Iterator<Item = RusticResult<(PathBuf, Node)>> + Clone + 'a> {
+        NodeStreamer::new_with_glob(self.dbe().clone(), self.index(), node, ls_opts)
     }
 
     /// Restore a given [`RestorePlan`] to a local destination

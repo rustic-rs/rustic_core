@@ -6,8 +6,13 @@ use std::{
 use log::warn;
 
 use crate::{
-    archiver::tree::TreeType, backend::node::Node, blob::tree::Tree, error::ArchiverErrorKind,
-    error::RusticResult, id::Id, index::IndexedBackend,
+    archiver::tree::TreeType,
+    backend::{decrypt::DecryptReadBackend, node::Node},
+    blob::tree::Tree,
+    error::ArchiverErrorKind,
+    error::RusticResult,
+    id::Id,
+    index::ReadGlobalIndex,
 };
 
 /// The `ItemWithParent` is a `TreeType` wrapping the result of a parent search and a type `O`.
@@ -85,14 +90,15 @@ impl Parent {
     /// * `tree_id` - The tree id of the parent tree.
     /// * `ignore_ctime` - Ignore ctime when comparing nodes.
     /// * `ignore_inode` - Ignore inode number when comparing nodes.
-    pub(crate) fn new<BE: IndexedBackend>(
-        be: &BE,
+    pub(crate) fn new(
+        be: &impl DecryptReadBackend,
+        index: &impl ReadGlobalIndex,
         tree_id: Option<Id>,
         ignore_ctime: bool,
         ignore_inode: bool,
     ) -> Self {
         // if tree_id is given, try to load tree from backend.
-        let tree = tree_id.and_then(|tree_id| match Tree::from_backend(be, tree_id) {
+        let tree = tree_id.and_then(|tree_id| match Tree::from_backend(be, index, tree_id) {
             Ok(tree) => Some(tree),
             Err(err) => {
                 warn!("ignoring error when loading parent tree {tree_id}: {err}");
@@ -184,14 +190,19 @@ impl Parent {
     ///
     /// * `be` - The backend to read from.
     /// * `name` - The name of the parent node.
-    fn set_dir<BE: IndexedBackend>(&mut self, be: &BE, name: &OsStr) {
+    fn set_dir(
+        &mut self,
+        be: &impl DecryptReadBackend,
+        index: &impl ReadGlobalIndex,
+        name: &OsStr,
+    ) {
         let tree = self.p_node(name).and_then(|p_node| {
             p_node.subtree.map_or_else(
                 || {
                     warn!("ignoring parent node {}: is no tree!", p_node.name);
                     None
                 },
-                |tree_id| match Tree::from_backend(be, tree_id) {
+                |tree_id| match Tree::from_backend(be, index, tree_id) {
                     Ok(tree) => Some(tree),
                     Err(err) => {
                         warn!("ignoring error when loading parent tree {tree_id}: {err}");
@@ -246,9 +257,10 @@ impl Parent {
     /// * [`ArchiverErrorKind::TreeStackEmpty`] - If the tree stack is empty.
     ///
     /// [`ArchiverErrorKind::TreeStackEmpty`]: crate::error::ArchiverErrorKind::TreeStackEmpty
-    pub(crate) fn process<BE: IndexedBackend, O>(
+    pub(crate) fn process<O>(
         &mut self,
-        be: &BE,
+        be: &impl DecryptReadBackend,
+        index: &impl ReadGlobalIndex,
         item: TreeType<O, OsString>,
     ) -> RusticResult<ItemWithParent<O>> {
         let result = match item {
@@ -256,7 +268,7 @@ impl Parent {
                 let parent_result = self
                     .is_parent(&node, &tree)
                     .map(|node| node.subtree.unwrap());
-                self.set_dir(be, &tree);
+                self.set_dir(be, index, &tree);
                 TreeType::NewTree((path, node, parent_result))
             }
             TreeType::EndTree => {
@@ -264,11 +276,10 @@ impl Parent {
                 TreeType::EndTree
             }
             TreeType::Other((path, mut node, open)) => {
-                let be = be.clone();
                 let parent = self.is_parent(&node, &node.name());
                 let parent = match parent {
                     ParentResult::Matched(p_node) => {
-                        if p_node.content.iter().flatten().all(|id| be.has_data(id)) {
+                        if p_node.content.iter().flatten().all(|id| index.has_data(id)) {
                             node.content = Some(p_node.content.iter().flatten().copied().collect());
                             ParentResult::Matched(())
                         } else {

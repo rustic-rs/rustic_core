@@ -12,11 +12,11 @@ use crate::{
     backend::{cache::Cache, decrypt::DecryptReadBackend, node::NodeType, FileType, ReadBackend},
     blob::{tree::TreeStreamerOnce, BlobType},
     crypto::hasher::hash,
-    error::RusticResult,
+    error::{RusticErrorKind, RusticResult},
     id::Id,
     index::{
         binarysorted::{IndexCollector, IndexType},
-        IndexBackend, IndexedBackend,
+        GlobalIndex, ReadGlobalIndex,
     },
     progress::Progress,
     progress::ProgressBars,
@@ -57,7 +57,7 @@ impl CheckOptions {
         let be = repo.dbe();
         let cache = repo.cache();
         let hot_be = &repo.be_hot;
-        let raw_be = &repo.be;
+        let raw_be = repo.dbe();
         let pb = &repo.pb;
         if !self.trust_cache {
             if let Some(cache) = &cache {
@@ -66,7 +66,9 @@ impl CheckOptions {
                     //
                     // This lists files here and later when reading index / checking snapshots
                     // TODO: Only list the files once...
-                    _ = be.list_with_size(file_type)?;
+                    _ = be
+                        .list_with_size(file_type)
+                        .map_err(RusticErrorKind::Backend)?;
 
                     let p = pb.progress_bytes(format!("checking {file_type:?} in cache..."));
                     // TODO: Make concurrency (20) customizable
@@ -106,9 +108,9 @@ impl CheckOptions {
                 .map(|(_, size)| u64::from(*size))
                 .sum::<u64>();
 
-        let index_be = IndexBackend::new_from_index(be, index_collector.into_index());
+        let index_be = GlobalIndex::new_from_index(index_collector.into_index());
 
-        check_snapshots(&index_be, pb)?;
+        check_snapshots(be.clone(), &index_be, pb)?;
 
         if self.read_data {
             let p = pb.progress_bytes("reading pack data...");
@@ -118,10 +120,10 @@ impl CheckOptions {
                 .into_index()
                 .into_iter()
                 .par_bridge()
-                .for_each_with((be.clone(), p.clone()), |(be, p), pack| {
+                .for_each(|pack| {
                     let id = pack.id;
                     let data = be.read_full(FileType::Pack, &id).unwrap();
-                    match check_pack(be, pack, data, p) {
+                    match check_pack(be, pack, data, &p) {
                         Ok(()) => {}
                         Err(err) => error!("Error reading pack {id} : {err}",),
                     }
@@ -152,11 +154,14 @@ fn check_hot_files(
 ) -> RusticResult<()> {
     let p = pb.progress_spinner(format!("checking {file_type:?} in hot repo..."));
     let mut files = be
-        .list_with_size(file_type)?
+        .list_with_size(file_type)
+        .map_err(RusticErrorKind::Backend)?
         .into_iter()
         .collect::<HashMap<_, _>>();
 
-    let files_hot = be_hot.list_with_size(file_type)?;
+    let files_hot = be_hot
+        .list_with_size(file_type)
+        .map_err(RusticErrorKind::Backend)?;
 
     for (id, size_hot) in files_hot {
         match files.remove(&id) {
@@ -220,7 +225,7 @@ fn check_cache_files(
                 (_, Err(err)) => {
                     error!("Error reading file Type: {file_type:?}, Id: {id} : {err}");
                 }
-                (Ok(data_cached), Ok(data)) if data_cached != data => {
+                (Ok(Some(data_cached)), Ok(data)) if data_cached != data => {
                     error!(
                         "Cached file Type: {file_type:?}, Id: {id} is not identical to backend!"
                     );
@@ -339,7 +344,10 @@ fn check_packs(
 ///
 /// If a pack is missing or has a different size
 fn check_packs_list(be: &impl ReadBackend, mut packs: HashMap<Id, u32>) -> RusticResult<()> {
-    for (id, size) in be.list_with_size(FileType::Pack)? {
+    for (id, size) in be
+        .list_with_size(FileType::Pack)
+        .map_err(RusticErrorKind::Backend)?
+    {
         match packs.remove(&id) {
             None => warn!("pack {id} not referenced in index. Can be a parallel backup job. To repair: 'rustic repair index'."),
             Some(index_size) if index_size != size => {
@@ -365,10 +373,13 @@ fn check_packs_list(be: &impl ReadBackend, mut packs: HashMap<Id, u32>) -> Rusti
 /// # Errors
 ///
 /// If a snapshot or tree is missing or has a different size
-fn check_snapshots(index: &impl IndexedBackend, pb: &impl ProgressBars) -> RusticResult<()> {
+fn check_snapshots(
+    be: impl DecryptReadBackend,
+    index: &impl ReadGlobalIndex,
+    pb: &impl ProgressBars,
+) -> RusticResult<()> {
     let p = pb.progress_counter("reading snapshots...");
-    let snap_trees: Vec<_> = index
-        .be()
+    let snap_trees: Vec<_> = be
         .stream_all::<SnapshotFile>(&p)?
         .iter()
         .map_ok(|(_, snap)| snap.tree)
@@ -376,7 +387,7 @@ fn check_snapshots(index: &impl IndexedBackend, pb: &impl ProgressBars) -> Rusti
     p.finish();
 
     let p = pb.progress_counter("checking trees...");
-    let mut tree_streamer = TreeStreamerOnce::new(index.clone(), snap_trees, p)?;
+    let mut tree_streamer = TreeStreamerOnce::new(be, index, snap_trees, p)?;
     while let Some(item) = tree_streamer.next().transpose()? {
         let (path, tree) = item;
         for node in tree.nodes {

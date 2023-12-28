@@ -7,7 +7,7 @@ use crate::{
     backend::{decrypt::DecryptWriteBackend, node::NodeType},
     blob::{packer::Packer, tree::TreeStreamerOnce, BlobType},
     error::RusticResult,
-    index::{indexer::Indexer, IndexedBackend, ReadIndex},
+    index::{indexer::Indexer, ReadIndex},
     progress::ProgressBars,
     repofile::SnapshotFile,
     repository::{IndexedFull, IndexedIds, IndexedTree, Open, Repository},
@@ -51,6 +51,7 @@ pub(crate) fn copy<'a, Q, R: IndexedFull, P: ProgressBars, S: IndexedIds>(
         .map(|sn| (sn.tree, SnapshotFile::clear_ids(sn)))
         .unzip();
 
+    let be = repo.dbe();
     let index = repo.index();
     let index_dest = repo_dest.index();
     let indexer = Indexer::new(be_dest.clone()).into_shared();
@@ -77,13 +78,13 @@ pub(crate) fn copy<'a, Q, R: IndexedFull, P: ProgressBars, S: IndexedIds>(
         .try_for_each(|id| -> RusticResult<_> {
             trace!("copy tree blob {id}");
             if !index_dest.has_tree(id) {
-                let data = index.get_tree(id).unwrap().read_data(index.be())?;
+                let data = index.get_tree(id).unwrap().read_data(be)?;
                 tree_packer.add(data, *id)?;
             }
             Ok(())
         })?;
 
-    let tree_streamer = TreeStreamerOnce::new(index.clone(), snap_trees, p)?;
+    let tree_streamer = TreeStreamerOnce::new(be.clone(), index, snap_trees, p)?;
     tree_streamer
         .par_bridge()
         .try_for_each(|item| -> RusticResult<_> {
@@ -95,7 +96,7 @@ pub(crate) fn copy<'a, Q, R: IndexedFull, P: ProgressBars, S: IndexedIds>(
                             |id| -> RusticResult<_> {
                                 trace!("copy data blob {id}");
                                 if !index_dest.has_data(id) {
-                                    let data = index.get_data(id).unwrap().read_data(index.be())?;
+                                    let data = index.get_data(id).unwrap().read_data(be)?;
                                     data_packer.add(data, *id)?;
                                 }
                                 Ok(())
@@ -107,7 +108,7 @@ pub(crate) fn copy<'a, Q, R: IndexedFull, P: ProgressBars, S: IndexedIds>(
                         let id = node.subtree.unwrap();
                         trace!("copy tree blob {id}");
                         if !index_dest.has_tree(&id) {
-                            let data = index.get_tree(&id).unwrap().read_data(index.be())?;
+                            let data = index.get_tree(&id).unwrap().read_data(be)?;
                             tree_packer.add(data, id)?;
                         }
                     }
