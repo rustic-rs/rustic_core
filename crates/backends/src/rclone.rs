@@ -13,11 +13,9 @@ use rand::{
     thread_rng,
 };
 
-use crate::{
-    backend::{rest::RestBackend, FileType, ReadBackend, WriteBackend},
-    error::RcloneErrorKind,
-    id::Id,
-};
+use crate::{error::RcloneErrorKind, rest::RestBackend};
+
+use rustic_core::{id::Id, FileType, ReadBackend, WriteBackend};
 
 pub(super) mod constants {
     /// The string to search for in the rclone output.

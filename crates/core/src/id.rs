@@ -1,3 +1,5 @@
+//! The `Id` type and related functions
+
 use std::{fmt, io::Read, ops::Deref, path::Path};
 
 use binrw::{BinRead, BinWrite};

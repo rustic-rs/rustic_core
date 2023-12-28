@@ -18,7 +18,7 @@ use opendal::{
 use rayon::prelude::*;
 use url::{self, Url};
 
-use crate::{
+use rustic_core::{
     backend::{FileType, ReadBackend, WriteBackend, ALL_FILE_TYPES},
     id::Id,
 };

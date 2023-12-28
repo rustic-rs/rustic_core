@@ -1,15 +1,13 @@
+//! Module for backend related functionality.
+
 pub(crate) mod cache;
-pub(crate) mod choose;
+pub mod choose;
 pub(crate) mod decrypt;
 pub(crate) mod dry_run;
 pub(crate) mod hotcold;
 pub(crate) mod ignore;
-pub(crate) mod local;
 pub(crate) mod local_destination;
 pub(crate) mod node;
-pub(crate) mod opendal;
-pub(crate) mod rclone;
-pub(crate) mod rest;
 pub(crate) mod stdin;
 pub(crate) mod warm_up;
 
@@ -56,7 +54,8 @@ pub enum FileType {
 }
 
 impl FileType {
-    const fn dirname(self) -> &'static str {
+    /// Returns the directory name of the file type.
+    pub const fn dirname(self) -> &'static str {
         match self {
             Self::Config => "config",
             Self::Snapshot => "snapshots",
@@ -426,4 +425,26 @@ pub trait WriteSource: Clone {
     /// * `offset` - The offset to write at.
     /// * `data` - The data to write.
     fn write_at<P: Into<PathBuf>>(&self, path: P, offset: u64, data: Bytes);
+}
+
+/// Splits the given url into the backend type and the path.
+///
+/// # Arguments
+///
+/// * `url` - The url to split.
+///
+/// # Returns
+///
+/// A tuple with the backend type and the path.
+///
+/// # Notes
+///
+/// If the url is a windows path, the type will be "local".
+pub fn url_to_type_and_path(url: &str) -> (&str, &str) {
+    match url.split_once(':') {
+        #[cfg(windows)]
+        Some((drive, _)) if drive.len() == 1 => ("local", url),
+        Some((tpe, path)) => (tpe, path),
+        None => ("local", url),
+    }
 }

@@ -12,9 +12,10 @@ use reqwest::{
 };
 use serde_derive::Deserialize;
 
-use crate::{
+use crate::error::RestErrorKind;
+
+use rustic_core::{
     backend::{FileType, ReadBackend, WriteBackend},
-    error::RestErrorKind,
     id::Id,
 };
 

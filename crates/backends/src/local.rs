@@ -17,7 +17,7 @@ use shell_words::split;
 use thiserror::Error;
 use walkdir::WalkDir;
 
-use crate::{
+use rustic_core::{
     backend::{FileType, ReadBackend, WriteBackend, ALL_FILE_TYPES},
     id::Id,
 };
