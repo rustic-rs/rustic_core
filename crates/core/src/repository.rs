@@ -2,7 +2,6 @@ mod warm_up;
 
 use std::{
     cmp::Ordering,
-    collections::HashMap,
     fs::File,
     io::{BufRead, BufReader, Write},
     path::{Path, PathBuf},
@@ -19,7 +18,6 @@ use shell_words::split;
 use crate::{
     backend::{
         cache::{Cache, CachedBackend},
-        choose::{get_backend, BackendChoice},
         decrypt::{DecryptBackend, DecryptReadBackend, DecryptWriteBackend},
         hotcold::HotColdBackend,
         local_destination::LocalDestination,
@@ -66,20 +64,6 @@ use crate::{
 #[serde(default, rename_all = "kebab-case", deny_unknown_fields)]
 #[setters(into, strip_option)]
 pub struct RepositoryOptions {
-    /// Repository to use
-    #[cfg_attr(
-        feature = "clap",
-        clap(short, long, global = true, alias = "repo", env = "RUSTIC_REPOSITORY")
-    )]
-    pub repository: Option<String>,
-
-    /// Repository to use as hot storage
-    #[cfg_attr(
-        feature = "clap",
-        clap(long, global = true, alias = "repository_hot", env = "RUSTIC_REPO_HOT")
-    )]
-    pub repo_hot: Option<String>,
-
     /// Password of the repository
     ///
     /// # Warning
@@ -144,27 +128,6 @@ pub struct RepositoryOptions {
     #[cfg_attr(feature = "clap", clap(long, global = true, value_name = "DURATION"))]
     #[serde_as(as = "Option<DisplayFromStr>")]
     pub warm_up_wait: Option<humantime::Duration>,
-
-    /// Other options for this repository (hot and cold part)
-    #[cfg_attr(feature = "clap", clap(skip))]
-    #[cfg_attr(feature = "merge", merge(strategy = overwrite))]
-    pub options: HashMap<String, String>,
-
-    /// Other options for the hot repository
-    #[cfg_attr(feature = "clap", clap(skip))]
-    #[cfg_attr(feature = "merge", merge(strategy = overwrite))]
-    pub options_hot: HashMap<String, String>,
-
-    /// Other options for the cold repository
-    #[cfg_attr(feature = "clap", clap(skip))]
-    #[cfg_attr(feature = "merge", merge(strategy = overwrite))]
-    pub options_cold: HashMap<String, String>,
-
-    /// Use this type to choose a backend for the given repository urls
-    #[cfg_attr(feature = "clap", clap(skip))]
-    #[cfg_attr(feature = "merge", merge(skip))]
-    #[serde(skip)]
-    pub backend_type: Option<Arc<dyn BackendChoice>>,
 }
 
 /// Overwrite the left value with the right value
@@ -176,31 +139,9 @@ pub struct RepositoryOptions {
 /// * `left` - The left value
 /// * `right` - The right value
 #[cfg(feature = "merge")]
-pub(crate) fn overwrite<T>(left: &mut T, right: T) {
+pub fn overwrite<T>(left: &mut T, right: T) {
     *left = right;
 }
-
-impl RepositoryOptions {
-    /// Create a [`Repository`] using the given repository options
-    ///
-    /// # Errors
-    ///
-    /// * [`RepositoryErrorKind::NoRepositoryGiven`] - If no repository is given
-    /// * [`RepositoryErrorKind::NoIDSpecified`] - If the warm-up command does not contain `%id`
-    /// * [`BackendAccessErrorKind::BackendLoadError`] - If the specified backend cannot be loaded, e.g. is not supported
-    ///
-    /// # Returns
-    ///
-    /// The repository without progress bars
-    ///
-    /// [`RepositoryErrorKind::NoRepositoryGiven`]: crate::error::RepositoryErrorKind::NoRepositoryGiven
-    /// [`RepositoryErrorKind::NoIDSpecified`]: crate::error::RepositoryErrorKind::NoIDSpecified
-    /// [`BackendAccessErrorKind::BackendLoadError`]: crate::error::BackendAccessErrorKind::BackendLoadError
-    pub fn to_repository(&self) -> RusticResult<Repository<NoProgressBars, ()>> {
-        Repository::new(self)
-    }
-}
-
 /// Read a password from a reader
 ///
 /// # Arguments
@@ -249,7 +190,7 @@ pub struct Repository<P, S> {
     /// The HotColdBackend to use for this repository
     pub(crate) be: Arc<dyn WriteBackend>,
 
-    /// The Backende to use for hot files
+    /// The Backend to use for hot files
     pub(crate) be_hot: Option<Arc<dyn WriteBackend>>,
 
     /// The options used for this repository
@@ -275,8 +216,12 @@ impl Repository<NoProgressBars, ()> {
     /// * [`RepositoryErrorKind::NoIDSpecified`] - If the warm-up command does not contain `%id`
     /// * [`BackendAccessErrorKind::BackendLoadError`] - If the specified backend cannot be loaded, e.g. is not supported
     ///
-    pub fn new(opts: &RepositoryOptions) -> RusticResult<Self> {
-        Self::new_with_progress(opts, NoProgressBars {})
+    pub fn new(
+        opts: &RepositoryOptions,
+        be: Arc<dyn WriteBackend>,
+        be_hot: Option<Arc<dyn WriteBackend>>,
+    ) -> RusticResult<Self> {
+        Self::new_with_progress(opts, be, be_hot, NoProgressBars {})
     }
 }
 
@@ -301,21 +246,12 @@ impl<P> Repository<P, ()> {
     /// [`RepositoryErrorKind::NoRepositoryGiven`]: crate::error::RepositoryErrorKind::NoRepositoryGiven
     /// [`RepositoryErrorKind::NoIDSpecified`]: crate::error::RepositoryErrorKind::NoIDSpecified
     /// [`BackendAccessErrorKind::BackendLoadError`]: crate::error::BackendAccessErrorKind::BackendLoadError
-    pub fn new_with_progress(opts: &RepositoryOptions, pb: P) -> RusticResult<Self> {
-        let mut be = match &opts.repository {
-            Some(repo) => {
-                let mut options = opts.options.clone();
-                options.extend(opts.options_cold.clone());
-
-                if let Some(backend_type) = opts.backend_type.clone() {
-                    get_backend(repo, backend_type, options)?
-                } else {
-                    return Err(RepositoryErrorKind::NoBackendTypeGiven.into());
-                }
-            }
-            None => return Err(RepositoryErrorKind::NoRepositoryGiven.into()),
-        };
-
+    pub fn new_with_progress(
+        opts: &RepositoryOptions,
+        mut be: Arc<dyn WriteBackend>,
+        be_hot: Option<Arc<dyn WriteBackend>>,
+        pb: P,
+    ) -> RusticResult<Self> {
         if let Some(command) = &opts.warm_up_command {
             if !command.contains("%id") {
                 return Err(RepositoryErrorKind::NoIDSpecified.into());
@@ -326,20 +262,6 @@ impl<P> Repository<P, ()> {
         if opts.warm_up {
             be = WarmUpAccessBackend::new_warm_up(be);
         }
-
-        let be_hot = opts
-            .repo_hot
-            .as_ref()
-            .map(|repo| {
-                let mut options = opts.options.clone();
-                options.extend(opts.options_hot.clone());
-
-                opts.backend_type.clone().map_or_else(
-                    || Err(RepositoryErrorKind::NoBackendTypeGiven.into()),
-                    |backend_type| get_backend(repo, backend_type, options),
-                )
-            })
-            .transpose()?;
 
         let mut name = be.location();
         if let Some(be_hot) = &be_hot {
@@ -674,6 +596,7 @@ impl<P, S> Repository<P, S> {
             (false, true) => return Err(RepositoryErrorKind::IsNotHotRepository.into()),
             _ => {}
         }
+
         let cache = (!self.opts.no_cache)
             .then(|| Cache::new(config.id, self.opts.cache_dir.clone()).ok())
             .flatten();

@@ -1,11 +1,15 @@
 //! `init` example
-use rustic_core::{ConfigOptions, KeyOptions, Repository, RepositoryOptions};
+use rustic_backend::choose::SupportedBackend;
+use rustic_core::{BackendChoice, ConfigOptions, KeyOptions, Repository, RepositoryOptions};
 use simplelog::{Config, LevelFilter, SimpleLogger};
 use std::error::Error;
 
 fn main() -> Result<(), Box<dyn Error>> {
     // Display info logs
     let _ = SimpleLogger::init(LevelFilter::Info, Config::default());
+
+    // Init backend
+    let backend = SupportedBackend::try_from("local:/tmp/repo")?;
 
     // Init repository
     let repo_opts = RepositoryOptions::default()
