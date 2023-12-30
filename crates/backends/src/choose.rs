@@ -5,7 +5,7 @@ use serde_with::serde_as;
 use std::{collections::HashMap, sync::Arc};
 use strum_macros::{Display, EnumString};
 
-use rustic_core::{backend::WriteBackend, overwrite};
+use rustic_core::{backend::WriteBackend, overwrite, RepositoryBackends};
 
 use crate::{
     error::BackendAccessErrorKind,
@@ -55,13 +55,13 @@ pub struct BackendOptions {
 }
 
 impl BackendOptions {
-    pub fn to_backends(&self) -> Result<(Arc<dyn WriteBackend>, Option<Arc<dyn WriteBackend>>)> {
+    pub fn to_backends(&self) -> Result<RepositoryBackends> {
         let be = self
             .get_backend(self.repository.clone())?
             .expect("Should be able to initialize main backend.");
         let be_hot = self.get_backend(self.repo_hot.clone())?;
 
-        Ok((be, be_hot))
+        Ok(RepositoryBackends::new(be, be_hot))
     }
 
     fn get_backend(&self, repo_string: Option<String>) -> Result<Option<Arc<dyn WriteBackend>>> {

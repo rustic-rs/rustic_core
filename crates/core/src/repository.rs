@@ -53,7 +53,7 @@ use crate::{
         ConfigFile, PathList, RepoFile, SnapshotFile, SnapshotSummary, Tree,
     },
     repository::{warm_up::warm_up, warm_up::warm_up_wait},
-    RusticResult,
+    RepositoryBackends, RusticResult,
 };
 
 /// Options for using and opening a [`Repository`]
@@ -209,8 +209,7 @@ impl Repository<NoProgressBars, ()> {
     /// # Arguments
     ///
     /// * `opts` - The options to use for the repository
-    /// * `be` - The backend to create a repository with
-    /// * `be_hot` - The hot backend to create a repository with
+    /// * `backends` - The backends to create/access a repository on
     ///
     /// # Errors
     ///
@@ -218,12 +217,8 @@ impl Repository<NoProgressBars, ()> {
     /// * [`RepositoryErrorKind::NoIDSpecified`] - If the warm-up command does not contain `%id`
     /// * [`BackendAccessErrorKind::BackendLoadError`] - If the specified backend cannot be loaded, e.g. is not supported
     ///
-    pub fn new(
-        opts: &RepositoryOptions,
-        be: Arc<dyn WriteBackend>,
-        be_hot: Option<Arc<dyn WriteBackend>>,
-    ) -> RusticResult<Self> {
-        Self::new_with_progress(opts, be, be_hot, NoProgressBars {})
+    pub fn new(opts: &RepositoryOptions, backends: RepositoryBackends) -> RusticResult<Self> {
+        Self::new_with_progress(opts, backends, NoProgressBars {})
     }
 }
 
@@ -237,8 +232,7 @@ impl<P> Repository<P, ()> {
     /// # Arguments
     ///
     /// * `opts` - The options to use for the repository
-    /// * `be` - The backend to create a repository with
-    /// * `be_hot` - The hot backend to create a repository with
+    /// * `backends` - The backends to create/access a repository on
     /// * `pb` - The progress bars to use
     ///
     /// # Errors
@@ -252,10 +246,12 @@ impl<P> Repository<P, ()> {
     /// [`BackendAccessErrorKind::BackendLoadError`]: crate::error::BackendAccessErrorKind::BackendLoadError
     pub fn new_with_progress(
         opts: &RepositoryOptions,
-        mut be: Arc<dyn WriteBackend>,
-        be_hot: Option<Arc<dyn WriteBackend>>,
+        backends: RepositoryBackends,
         pb: P,
     ) -> RusticResult<Self> {
+        let mut be = backends.repository();
+        let be_hot = backends.repo_hot();
+
         if let Some(command) = &opts.warm_up_command {
             if !command.contains("%id") {
                 return Err(RepositoryErrorKind::NoIDSpecified.into());

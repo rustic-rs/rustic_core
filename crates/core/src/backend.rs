@@ -425,3 +425,26 @@ pub trait WriteSource: Clone {
     /// * `data` - The data to write.
     fn write_at<P: Into<PathBuf>>(&self, path: P, offset: u64, data: Bytes);
 }
+
+#[derive(Debug, Clone)]
+pub struct RepositoryBackends {
+    repository: Arc<dyn WriteBackend>,
+    repo_hot: Option<Arc<dyn WriteBackend>>,
+}
+
+impl RepositoryBackends {
+    pub fn new(repository: Arc<dyn WriteBackend>, repo_hot: Option<Arc<dyn WriteBackend>>) -> Self {
+        Self {
+            repository,
+            repo_hot,
+        }
+    }
+
+    pub fn repository(&self) -> Arc<dyn WriteBackend> {
+        self.repository.clone()
+    }
+
+    pub fn repo_hot(&self) -> Option<Arc<dyn WriteBackend>> {
+        self.repo_hot.clone()
+    }
+}

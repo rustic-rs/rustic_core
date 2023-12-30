@@ -8,7 +8,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     // Display info logs
     let _ = SimpleLogger::init(LevelFilter::Info, Config::default());
 
-    let (be, be_hot) = BackendOptions::default()
+    let backends = BackendOptions::default()
         .repository("/tmp/repo")
         .repo_hot("/tmp/repo2")
         .to_backends()?;
@@ -16,7 +16,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     // Open repository
     let repo_opts = RepositoryOptions::default().password("test");
 
-    let repo = Repository::new(&repo_opts, be, be_hot)?
+    let repo = Repository::new(&repo_opts, backends)?
         .open()?
         .to_indexed_ids()?;
 

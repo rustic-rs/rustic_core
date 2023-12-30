@@ -9,7 +9,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let _ = SimpleLogger::init(LevelFilter::Info, Config::default());
 
     // Init backend
-    let (be, be_hot) = BackendOptions::default()
+    let backends = BackendOptions::default()
         .repository("/tmp/repo")
         .to_backends()?;
 
@@ -17,7 +17,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let repo_opts = RepositoryOptions::default().password("test");
     let key_opts = KeyOptions::default();
     let config_opts = ConfigOptions::default();
-    let _repo = Repository::new(&repo_opts, be, be_hot)?.init(&key_opts, &config_opts)?;
+    let _repo = Repository::new(&repo_opts, backends)?.init(&key_opts, &config_opts)?;
 
     // -> use _repo for any operation on an open repository
     Ok(())
