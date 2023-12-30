@@ -101,13 +101,6 @@ pub trait BackendChoice {
     ) -> Result<Arc<dyn WriteBackend>>;
 }
 
-impl std::fmt::Debug for (dyn BackendChoice + 'static) {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        // TODO: Implement Debug for BackendChoice
-        write!(f, "BackendChoice")
-    }
-}
-
 /// The supported backend types.
 ///
 /// Currently supported types are "local", "rclone", "rest", "opendal", "s3"
