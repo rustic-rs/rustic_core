@@ -12,7 +12,7 @@ use opendal::{
     layers::{BlockingLayer, LoggingLayer, RetryLayer},
     BlockingOperator, ErrorKind, Metakey, Operator, Scheme,
 };
-use rayon::prelude::*;
+use rayon::prelude::{IntoParallelIterator, ParallelIterator};
 
 use rustic_core::{
     backend::{FileType, ReadBackend, WriteBackend, ALL_FILE_TYPES},
