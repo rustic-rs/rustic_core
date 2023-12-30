@@ -182,5 +182,8 @@ pub use crate::{
     repofile::snapshotfile::{
         PathList, SnapshotGroup, SnapshotGroupCriterion, SnapshotOptions, StringList,
     },
-    repository::{overwrite, IndexedFull, OpenStatus, Repository, RepositoryOptions},
+    repository::{IndexedFull, OpenStatus, Repository, RepositoryOptions},
 };
+
+#[cfg(feature = "merge")]
+pub use crate::repository::overwrite;
