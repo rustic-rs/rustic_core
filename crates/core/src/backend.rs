@@ -162,6 +162,13 @@ pub trait ReadBackend: Send + Sync + 'static {
     }
 }
 
+/// Trait for Searching in a backend.
+///
+/// This trait is implemented by all backends that can be searched in.
+///
+/// # Note
+///
+/// This trait is used to find the id of a snapshot that contains a given file name.
 pub trait FindInBackend: ReadBackend {
     /// Finds the id of the file starting with the given string.
     ///
@@ -364,6 +371,7 @@ pub struct ReadSourceEntry<O> {
 /// Trait for backends that can read and open sources.
 /// This trait is implemented by all backends that can read data and open from a source.
 pub trait ReadSourceOpen {
+    /// The type of the reader.
     type Reader: Read + Send + 'static;
 
     /// Opens the source.
@@ -374,7 +382,10 @@ pub trait ReadSourceOpen {
 ///
 /// This trait is implemented by all backends that can read data from a source.
 pub trait ReadSource {
+    /// The type of the open information.
     type Open: ReadSourceOpen;
+
+    /// The type of the iterator over the entries.
     type Iter: Iterator<Item = RusticResult<ReadSourceEntry<Self::Open>>>;
 
     /// Returns the size of the source.
