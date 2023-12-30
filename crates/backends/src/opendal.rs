@@ -1,10 +1,11 @@
+pub mod s3;
+
 use std::{collections::HashMap, path::PathBuf, str::FromStr};
 
 use anyhow::Result;
 use bytes::Bytes;
 #[allow(unused_imports)]
 use cached::proc_macro::cached;
-use itertools::Itertools;
 use log::trace;
 use once_cell::sync::Lazy;
 use opendal::{
@@ -12,7 +13,6 @@ use opendal::{
     BlockingOperator, ErrorKind, Metakey, Operator, Scheme,
 };
 use rayon::prelude::*;
-use url::{self, Url};
 
 use rustic_core::{
     backend::{FileType, ReadBackend, WriteBackend, ALL_FILE_TYPES},
@@ -37,44 +37,12 @@ static RUNTIME: Lazy<tokio::runtime::Runtime> = Lazy::new(|| {
 });
 
 impl OpenDALBackend {
-    /// Convenience method to directly create a new s3 backend
+    /// Create a new openDAL backend.
     ///
     /// # Arguments
     ///
-    /// * `path` - The path to the s3 bucket
-    /// * `options` - Additional options for the s3 backend
-    ///
-    /// # Notes
-    ///
-    /// The path should be something like "`https://s3.amazonaws.com/bucket/my/repopath`"
-    pub fn new_s3(path: &str, mut options: HashMap<String, String>) -> Result<Self> {
-        let mut url = Url::parse(path)?;
-        if let Some(mut path_segments) = url.path_segments() {
-            if let Some(bucket) = path_segments.next() {
-                let _ = options.insert("bucket".to_string(), bucket.to_string());
-            }
-            let root = path_segments.join("/");
-            if !root.is_empty() {
-                let _ = options.insert("root".to_string(), root);
-            }
-        }
-        if url.has_host() {
-            if url.scheme().is_empty() {
-                url.set_scheme("https")
-                    .expect("could not set scheme to https");
-            }
-            url.set_path("");
-            url.set_query(None);
-            url.set_fragment(None);
-            let _ = options.insert("endpoint".to_string(), url.to_string());
-        }
-        _ = options
-            .entry("region".to_string())
-            .or_insert_with(|| "auto".to_string());
-
-        Self::new("s3", options)
-    }
-
+    /// * `path` - The path to the OpenDAL backend.
+    /// * `options` - Additional options for the OpenDAL backend.
     pub fn new(path: &str, options: HashMap<String, String>) -> Result<Self> {
         let max_retries = match options.get("retry").map(std::string::String::as_str) {
             Some("false" | "off") => 0,

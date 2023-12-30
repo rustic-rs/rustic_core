@@ -10,7 +10,7 @@ pub mod util;
 pub use crate::{
     choose::{BackendOptions, SupportedBackend},
     local::LocalBackend,
-    opendal::OpenDALBackend,
+    opendal::{s3::S3Backend, OpenDALBackend},
     rclone::RcloneBackend,
     rest::RestBackend,
 };

@@ -12,7 +12,7 @@ use rustic_core::{backend::WriteBackend, RepositoryBackends};
 use crate::{
     error::BackendAccessErrorKind,
     local::LocalBackend,
-    opendal::OpenDALBackend,
+    opendal::{s3::S3Backend, OpenDALBackend},
     rclone::RcloneBackend,
     rest::RestBackend,
     util::{url_to_type_and_path, BackendUrl},
@@ -147,7 +147,7 @@ impl BackendChoice for SupportedBackend {
             Self::Rclone => Arc::new(RcloneBackend::new(&location, options)?),
             Self::Rest => Arc::new(RestBackend::new(&location, options)?),
             Self::OpenDAL => Arc::new(OpenDALBackend::new(&location, options)?),
-            Self::S3 => Arc::new(OpenDALBackend::new_s3(&location, options)?),
+            Self::S3 => Arc::new(S3Backend::new(&location, options)?),
         })
     }
 }
