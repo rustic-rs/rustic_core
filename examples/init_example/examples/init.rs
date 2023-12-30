@@ -1,5 +1,5 @@
 //! `init` example
-use rustic_backend::{choose::SupportedBackend, BackendOptions};
+use rustic_backend::BackendOptions;
 use rustic_core::{ConfigOptions, KeyOptions, Repository, RepositoryOptions};
 use simplelog::{Config, LevelFilter, SimpleLogger};
 use std::error::Error;

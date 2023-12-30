@@ -1,12 +1,11 @@
 use crate::SupportedBackend;
 use anyhow::Result;
-use url::Url;
 
 #[derive(PartialEq, Debug)]
-pub struct BackendUrl(Url);
+pub struct BackendUrl<'a>(&'a str);
 
-impl std::ops::Deref for BackendUrl {
-    type Target = Url;
+impl<'a> std::ops::Deref for BackendUrl<'a> {
+    type Target = &'a str;
 
     fn deref(&self) -> &Self::Target {
         &self.0
@@ -27,25 +26,12 @@ impl std::ops::Deref for BackendUrl {
 ///
 /// If the url is a windows path, the type will be "local".
 pub fn url_to_type_and_path(url: &str) -> Result<(SupportedBackend, BackendUrl)> {
-    match url.split_once(':') {
-        #[cfg(windows)]
-        Some((drive, _)) if drive.len() == 1 => Ok((
-            SupportedBackend::try_from("local")?,
-            BackendUrl(Url::from_directory_path(url).expect("URL is not a valid directory path")),
-        )),
-        #[cfg(windows)]
-        Some((scheme, _)) if scheme.contains('\\') => Ok((
-            SupportedBackend::Local,
-            BackendUrl(Url::from_directory_path(url).expect("URL is not a valid directory path")),
-        )),
-        Some((scheme, path)) => Ok((
-            SupportedBackend::try_from(scheme)?,
-            BackendUrl(Url::from_directory_path(path).expect("URL is not a valid directory path")),
-        )),
-        None => Ok((
-            SupportedBackend::try_from("local")?,
-            BackendUrl(Url::from_directory_path(url).expect("URL is not a valid directory path")),
-        )),
+    match url.split_once('|') {
+        Some((scheme, path)) if scheme.contains('\\') || path.contains('\\') => {
+            Ok((SupportedBackend::Local, BackendUrl(url)))
+        }
+        Some((scheme, path)) => Ok((SupportedBackend::try_from(scheme)?, BackendUrl(path))),
+        None => Ok((SupportedBackend::Local, BackendUrl(url))),
     }
 }
 
@@ -57,55 +43,105 @@ mod tests {
     use super::*;
 
     #[rstest]
-    #[case("local:/tmp/repo", (SupportedBackend::Local, BackendUrl(Url::from_directory_path("/tmp/repo").unwrap())))]
+    #[case("local|/tmp/repo", (SupportedBackend::Local, BackendUrl("/tmp/repo")))]
     #[case(
-        "rclone:remote:/tmp/repo",
+        "rclone|remote:/tmp/repo",
         (SupportedBackend::Rclone,
-        BackendUrl(Url::from_directory_path("remote:/tmp/repo").unwrap()))
+        BackendUrl("remote:/tmp/repo"))
     )]
     #[case(
-        "rest:https://example.com/tmp/repo",
+        "rest|https://example.com/tmp/repo",
         (SupportedBackend::Rest,
-        BackendUrl(Url::from_directory_path("https://example.com/tmp/repo").unwrap()))
+        BackendUrl("https://example.com/tmp/repo"))
     )]
     #[case(
-        "opendal:https://example.com/tmp/repo",
+        "opendal|https://example.com/tmp/repo",
         (SupportedBackend::OpenDAL,
-        BackendUrl(Url::from_directory_path("https://example.com/tmp/repo").unwrap()))
+        BackendUrl("https://example.com/tmp/repo"))
     )]
     #[case(
-        "s3:https://example.com/tmp/repo",
+        "s3|https://example.com/tmp/repo",
         (SupportedBackend::S3,
-        BackendUrl(Url::from_directory_path("https://example.com/tmp/repo").unwrap()))
+        BackendUrl("https://example.com/tmp/repo"))
     )]
     #[case(
         r#"C:\tmp\repo"#,
         (SupportedBackend::Local,
-        BackendUrl(Url::from_directory_path(r#"C:\tmp\repo"#).unwrap()))
+        BackendUrl(r#"C:\tmp\repo"#))
     )]
     #[case(
-        r#"\\.\C:\\tmp\\repo"#,
+        r#"\\.\C:\Test\repo"#,
         (SupportedBackend::Local,
-        BackendUrl(Url::from_directory_path(r#"\\.\C:\tmp\repo"#).unwrap()))
+        BackendUrl(r#"\\.\C:\Test\repo"#))
+    )]
+    #[case(
+        r#"\\?\C:\Test\repo"#,
+        (SupportedBackend::Local,
+        BackendUrl(r#"\\?\C:\Test\repo"#))
+    )]
+    #[case(
+        r#"\\.\Volume{b75e2c83-0000-0000-0000-602f00000000}\Test\repo"#,
+        (SupportedBackend::Local,
+        BackendUrl(r#"\\.\Volume{b75e2c83-0000-0000-0000-602f00000000}\Test\repo"#))
+    )]
+    #[case(
+        r#"\\?\Volume{b75e2c83-0000-0000-0000-602f00000000}\Test\repo"#,
+        (SupportedBackend::Local,
+        BackendUrl(r#"\\?\Volume{b75e2c83-0000-0000-0000-602f00000000}\Test\repo"#))
+    )]
+    #[case(
+        r#"\\Server2\Share\Test\repo"#,
+        (SupportedBackend::Local,
+        BackendUrl(r#"\\Server2\Share\Test\repo"#))
+    )]
+    #[case(
+        r#"\\?\UNC\Server\Share\Test\repo"#,
+        (SupportedBackend::Local,
+        BackendUrl(r#"\\?\UNC\Server\Share\Test\repo"#))
+    )]
+    #[case(
+        r#"C:\Projects\apilibrary\"#,
+        (SupportedBackend::Local,
+        BackendUrl(r#"C:\Projects\apilibrary\"#))
+    )]
+    // A relative path from the current directory of the C: drive.
+    #[case(
+        r#"C:Projects\apilibrary\"#,
+        (SupportedBackend::Local,
+        BackendUrl(r#"C:Projects\apilibrary\"#))
+    )]
+    // A relative path from the root of the current drive.
+    #[case(
+        r#"\Program Files\Custom Utilities\rustic\Repositories\"#,
+        (SupportedBackend::Local,
+        BackendUrl(r#"\Program Files\Custom Utilities\rustic\Repositories\"#))
+    )]
+    #[case(
+        r#"..\Publications\TravelBrochures\"#,
+        (SupportedBackend::Local,
+        BackendUrl(r#"..\Publications\TravelBrochures\"#))
+    )]
+    #[case(
+        r#"2023\repos\"#,
+        (SupportedBackend::Local,
+        BackendUrl(r#"2023\repos\"#))
+    )]
+    // The root directory of the C: drive on system07.
+    #[case(
+        r#"\\system07\C$\"#, 
+        (SupportedBackend::Local,
+        BackendUrl(r#"\\system07\C$\"#))
+    )]
+    #[case(
+        r#"\\127.0.0.1\c$\temp\repo\"#, 
+        (SupportedBackend::Local,
+        BackendUrl(r#"\\127.0.0.1\c$\temp\repo\"#))
     )]
     fn test_url_to_type_and_path_is_ok(
         #[case] url: &str,
         #[case] expected: (SupportedBackend, BackendUrl),
     ) {
+        // Check https://learn.microsoft.com/en-us/dotnet/standard/io/file-path-formats
         assert_eq!(url_to_type_and_path(url).unwrap(), expected);
-
-        // TODO: https://learn.microsoft.com/en-us/dotnet/standard/io/file-path-formats
-        // "\Program Files\Custom Utilities\"
-        // "2018\January.xlsx"
-        // "..\Publications\TravelBrochures\"
-        // "C:\Projects\apilibrary\"
-        // "C:Projects\apilibrary\"
-        // "\\system07\C$\ "
-        // "\\Server2\Share\Test\"
-        // "\\.\C:\Test\"
-        // "\\?\C:\Test\"
-        // "\\.\Volume{b75e2c83-0000-0000-0000-602f00000000}\Test\"
-        // "\\?\Volume{b75e2c83-0000-0000-0000-602f00000000}\Test\"
-        // "\\?\UNC\Server\Share\Test\"
     }
 }

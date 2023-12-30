@@ -141,11 +141,11 @@ impl BackendChoice for SupportedBackend {
         let options = options.unwrap_or_default();
 
         Ok(match self {
-            Self::Local => Arc::new(LocalBackend::new(location.path(), options)?),
-            Self::Rclone => Arc::new(RcloneBackend::new(location.path(), options)?),
-            Self::Rest => Arc::new(RestBackend::new(location.path(), options)?),
-            Self::OpenDAL => Arc::new(OpenDALBackend::new(location.path(), options)?),
-            Self::S3 => Arc::new(OpenDALBackend::new_s3(location.path(), options)?),
+            Self::Local => Arc::new(LocalBackend::new(&location, options)?),
+            Self::Rclone => Arc::new(RcloneBackend::new(&location, options)?),
+            Self::Rest => Arc::new(RestBackend::new(&location, options)?),
+            Self::OpenDAL => Arc::new(OpenDALBackend::new(&location, options)?),
+            Self::S3 => Arc::new(OpenDALBackend::new_s3(&location, options)?),
         })
     }
 }

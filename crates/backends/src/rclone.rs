@@ -186,7 +186,7 @@ impl RcloneBackend {
             "http://".to_string() + user.as_str() + ":" + password.as_str() + "@" + &rest_url[7..];
 
         debug!("using REST backend with url {url}.");
-        let rest = RestBackend::new(rest_url, options)?;
+        let rest = RestBackend::new(&rest_url, options)?;
         Ok(Self {
             _child_data: Arc::new(ChildToKill(child)),
             url: url.to_string(),
