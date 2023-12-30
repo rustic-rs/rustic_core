@@ -138,8 +138,17 @@ jobs:
         with:
           tool: cargo-hack
       - uses: Swatinem/rust-cache@a95ba195448af2da9b00fb742d14ffaaf3c21f43 # v2
-      - name: Run Cargo Hack
+
+      - name: Install libssl-dev
+        if: ${{ matrix.os == 'ubuntu-latest' }}
+        run: sudo apt-get install libssl-dev
+
+      - name: Run Cargo Hack with tls-rustls
         run: cargo +${{ matrix.rust }} hack check --feature-powerset --features tls-rustls --skip tls-native --no-dev-deps
+
+      - name: Run Cargo Hack with tls-native
+        if: ${{ matrix.os == 'ubuntu-latest' }}
+        run: cargo +${{ matrix.rust }} hack check --feature-powerset --features tls-native --skip tls-rustls --no-dev-deps
 
   result:
     name: Result (CI)
