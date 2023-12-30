@@ -81,35 +81,22 @@ serde_with = { version = "3.4.0", features = ["base64"] }
 
 # other dependencies
 bytes = "1.5.0"
-chrono = { version = "0.4.31", default-features = false, features = [
-  "clock",
-  "serde",
-] }
+chrono = { version = "0.4.31", default-features = false, features = ["clock", "serde"] }
 enum-map = "2.7.3"
 enum-map-derive = "0.17.0"
 zstd = "0.13.0"
 
 # local backend
 aho-corasick = "1.1.2"
-cached = { version = "0.46.1", default-features = false, features = [
-  "proc_macro",
-] }
+cached = { version = "0.46.1", default-features = false, features = ["proc_macro"] }
 filetime = "0.2.23"
 ignore = "0.4.21"
-nix = { version = "0.27.1", default-features = false, features = [
-  "user",
-  "fs",
-] }
+nix = { version = "0.27.1", default-features = false, features = ["user", "fs"] }
 walkdir = "2.4.0"
 
 # rest backend
 backoff = "0.4.0"
-reqwest = { version = "0.11.23", default-features = false, features = [
-  "json",
-  "rustls-tls-native-roots",
-  "stream",
-  "blocking",
-] }
+reqwest = { version = "0.11.23", default-features = false, features = ["json", "rustls-tls-native-roots", "stream", "blocking"] }
 url = "2.5.0"
 
 # cache
@@ -117,11 +104,7 @@ cachedir = "0.3.1"
 dirs = "5.0.1"
 
 # cli
-clap = { version = "4.4.11", optional = true, features = [
-  "derive",
-  "env",
-  "wrap_help",
-] }
+clap = { version = "4.4.11", optional = true, features = ["derive", "env", "wrap_help"] }
 
 anyhow = "1.0.75"
 bytesize = "1.3.0"
