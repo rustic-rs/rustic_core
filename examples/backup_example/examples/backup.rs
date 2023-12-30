@@ -1,5 +1,5 @@
 //! `backup` example
-use rustic_backend::SupportedBackend;
+use rustic_backend::BackendOptions;
 use rustic_core::{BackupOptions, PathList, Repository, RepositoryOptions, SnapshotOptions};
 use simplelog::{Config, LevelFilter, SimpleLogger};
 use std::error::Error;
@@ -8,13 +8,17 @@ fn main() -> Result<(), Box<dyn Error>> {
     // Display info logs
     let _ = SimpleLogger::init(LevelFilter::Info, Config::default());
 
-    // Open repository
-    let repo_opts = RepositoryOptions::default()
-        .backend_type(SupportedBackend::Local)
+    let (be, be_hot) = BackendOptions::default()
         .repository("/tmp/repo")
-        .password("test");
+        .repo_hot("/tmp/repo2")
+        .to_backends()?;
 
-    let repo = Repository::new(&repo_opts)?.open()?.to_indexed_ids()?;
+    // Open repository
+    let repo_opts = RepositoryOptions::default().password("test");
+
+    let repo = Repository::new(&repo_opts, be, be_hot)?
+        .open()?
+        .to_indexed_ids()?;
 
     let backup_opts = BackupOptions::default();
     let source = PathList::from_string(".")?.sanitize()?;

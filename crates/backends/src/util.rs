@@ -1,9 +1,17 @@
-use std::path::PathBuf;
-
 use crate::SupportedBackend;
+use anyhow::Result;
+use url::Url;
 
 #[derive(PartialEq, Debug)]
-pub struct BackendUrl(PathBuf);
+pub struct BackendUrl(Url);
+
+impl std::ops::Deref for BackendUrl {
+    type Target = Url;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
 
 /// Splits the given url into the backend type and the path.
 ///
@@ -18,17 +26,26 @@ pub struct BackendUrl(PathBuf);
 /// # Notes
 ///
 /// If the url is a windows path, the type will be "local".
-pub fn url_to_type_and_path(url: &str) -> anyhow::Result<(SupportedBackend, BackendUrl)> {
+pub fn url_to_type_and_path(url: &str) -> Result<(SupportedBackend, BackendUrl)> {
     match url.split_once(':') {
         #[cfg(windows)]
-        Some((drive, _)) if drive.len() == 1 => {
-            Ok((SupportedBackend::try_from("local")?, BackendUrl(url.into())))
-        }
-        Some((scheme, _)) if scheme.contains('\\') => {
-            Ok((SupportedBackend::Local, BackendUrl(url.into())))
-        }
-        Some((scheme, path)) => Ok((SupportedBackend::try_from(scheme)?, BackendUrl(path.into()))),
-        None => Ok((SupportedBackend::try_from("local")?, BackendUrl(url.into()))),
+        Some((drive, _)) if drive.len() == 1 => Ok((
+            SupportedBackend::try_from("local")?,
+            BackendUrl(Url::from_directory_path(url).expect("URL is not a valid directory path")),
+        )),
+        #[cfg(windows)]
+        Some((scheme, _)) if scheme.contains('\\') => Ok((
+            SupportedBackend::Local,
+            BackendUrl(Url::from_directory_path(url).expect("URL is not a valid directory path")),
+        )),
+        Some((scheme, path)) => Ok((
+            SupportedBackend::try_from(scheme)?,
+            BackendUrl(Url::from_directory_path(path).expect("URL is not a valid directory path")),
+        )),
+        None => Ok((
+            SupportedBackend::try_from("local")?,
+            BackendUrl(Url::from_directory_path(url).expect("URL is not a valid directory path")),
+        )),
     }
 }
 
@@ -40,36 +57,36 @@ mod tests {
     use super::*;
 
     #[rstest]
-    #[case("local:/tmp/repo", (SupportedBackend::Local, BackendUrl("/tmp/repo".into())))]
+    #[case("local:/tmp/repo", (SupportedBackend::Local, BackendUrl(Url::from_directory_path("/tmp/repo").unwrap())))]
     #[case(
         "rclone:remote:/tmp/repo",
         (SupportedBackend::Rclone,
-        BackendUrl("remote:/tmp/repo".into()))
+        BackendUrl(Url::from_directory_path("remote:/tmp/repo").unwrap()))
     )]
     #[case(
         "rest:https://example.com/tmp/repo",
         (SupportedBackend::Rest,
-        BackendUrl("https://example.com/tmp/repo".into()))
+        BackendUrl(Url::from_directory_path("https://example.com/tmp/repo").unwrap()))
     )]
     #[case(
         "opendal:https://example.com/tmp/repo",
         (SupportedBackend::OpenDAL,
-        BackendUrl("https://example.com/tmp/repo".into()))
+        BackendUrl(Url::from_directory_path("https://example.com/tmp/repo").unwrap()))
     )]
     #[case(
         "s3:https://example.com/tmp/repo",
         (SupportedBackend::S3,
-        BackendUrl("https://example.com/tmp/repo".into()))
+        BackendUrl(Url::from_directory_path("https://example.com/tmp/repo").unwrap()))
     )]
     #[case(
         r#"C:\tmp\repo"#,
         (SupportedBackend::Local,
-        BackendUrl(r#"C:\tmp\repo"#.into()))
+        BackendUrl(Url::from_directory_path(r#"C:\tmp\repo"#).unwrap()))
     )]
     #[case(
         r#"\\.\C:\\tmp\\repo"#,
         (SupportedBackend::Local,
-        BackendUrl(r#"\\.\C:\tmp\repo"#.into()))
+        BackendUrl(Url::from_directory_path(r#"\\.\C:\tmp\repo"#).unwrap()))
     )]
     fn test_url_to_type_and_path_is_ok(
         #[case] url: &str,

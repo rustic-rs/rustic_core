@@ -1,6 +1,5 @@
 use std::{
     io::{BufRead, BufReader},
-    path::Path,
     process::{Child, Command, Stdio},
     sync::Arc,
 };
@@ -106,10 +105,7 @@ impl RcloneBackend {
     /// [`RcloneErrorKind::NoStdOutForRclone`]: RcloneErrorKind::NoStdOutForRclone
     /// [`RcloneErrorKind::RCloneExitWithBadStatus`]: RcloneErrorKind::RCloneExitWithBadStatus
     /// [`RcloneErrorKind::UrlNotStartingWithHttp`]: RcloneErrorKind::UrlNotStartingWithHttp
-    pub fn new(
-        url: impl AsRef<Path>,
-        options: impl IntoIterator<Item = (String, String)>,
-    ) -> Result<Self> {
+    pub fn new(url: &str, options: impl IntoIterator<Item = (String, String)>) -> Result<Self> {
         match rclone_version() {
             Ok((major, minor, patch)) => {
                 if major
@@ -131,10 +127,6 @@ impl RcloneBackend {
             Err(err) => warn!("Could not determine rclone version: {err}"),
         }
 
-        let url = url
-            .as_ref()
-            .to_str()
-            .expect("could not convert path to str!");
         let user = Alphanumeric.sample_string(&mut thread_rng(), 12);
         let password = Alphanumeric.sample_string(&mut thread_rng(), 12);
 

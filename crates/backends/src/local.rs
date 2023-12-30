@@ -335,8 +335,13 @@ impl ReadBackend for LocalBackend {
             File::open(self.path(tpe, id)).map_err(LocalBackendErrorKind::OpeningFileFailed)?;
         _ = file
             .seek(SeekFrom::Start(offset.into()))
-            .map_err(LocalErrorKind::CouldNotSeekToPositionInFile)?;
-        let mut vec = vec![0; length.try_into().map_err(LocalErrorKind::FromTryIntError)?];
+            .map_err(LocalBackendErrorKind::CouldNotSeekToPositionInFile)?;
+        let mut vec = vec![
+            0;
+            length
+                .try_into()
+                .map_err(LocalBackendErrorKind::FromTryIntError)?
+        ];
         file.read_exact(&mut vec)
             .map_err(LocalBackendErrorKind::ReadingExactLengthOfFileFailed)?;
         Ok(vec.into())

@@ -209,6 +209,8 @@ impl Repository<NoProgressBars, ()> {
     /// # Arguments
     ///
     /// * `opts` - The options to use for the repository
+    /// * `be` - The backend to create a repository with
+    /// * `be_hot` - The hot backend to create a repository with
     ///
     /// # Errors
     ///
@@ -235,6 +237,8 @@ impl<P> Repository<P, ()> {
     /// # Arguments
     ///
     /// * `opts` - The options to use for the repository
+    /// * `be` - The backend to create a repository with
+    /// * `be_hot` - The hot backend to create a repository with
     /// * `pb` - The progress bars to use
     ///
     /// # Errors
