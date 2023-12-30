@@ -426,13 +426,27 @@ pub trait WriteSource: Clone {
     fn write_at<P: Into<PathBuf>>(&self, path: P, offset: u64, data: Bytes);
 }
 
+/// The backends a repository can be initialized and operated on
+///
+/// # Note
+///
+/// This struct is used to initialize a [`Repository`].
 #[derive(Debug, Clone)]
 pub struct RepositoryBackends {
+    /// The main repository of this [`RepositoryBackends`].
     repository: Arc<dyn WriteBackend>,
+
+    /// The hot repository of this [`RepositoryBackends`].
     repo_hot: Option<Arc<dyn WriteBackend>>,
 }
 
 impl RepositoryBackends {
+    /// Creates a new [`RepositoryBackends`].
+    ///
+    /// # Arguments
+    ///
+    /// * `repository` - The main repository of this [`RepositoryBackends`].
+    /// * `repo_hot` - The hot repository of this [`RepositoryBackends`].
     pub fn new(repository: Arc<dyn WriteBackend>, repo_hot: Option<Arc<dyn WriteBackend>>) -> Self {
         Self {
             repository,
@@ -440,10 +454,12 @@ impl RepositoryBackends {
         }
     }
 
+    /// Returns the repository of this [`RepositoryBackends`].
     pub fn repository(&self) -> Arc<dyn WriteBackend> {
         self.repository.clone()
     }
 
+    /// Returns the hot repository of this [`RepositoryBackends`].
     pub fn repo_hot(&self) -> Option<Arc<dyn WriteBackend>> {
         self.repo_hot.clone()
     }
