@@ -18,6 +18,9 @@ jobs:
   msrv:
     name: Check MSRV
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        crate: [rustic_core, rustic_backend]
     steps:
       - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4
       - name: Install cargo-hack
@@ -26,7 +29,7 @@ jobs:
           tool: cargo-hack
 
       - name: Run Cargo Hack
-        run: cargo hack check --rust-version
+        run: cargo hack check --rust-version -p ${{ matrix.crate }}
 
   result:
     name: Result (MSRV)
