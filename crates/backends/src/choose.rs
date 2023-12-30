@@ -5,7 +5,9 @@ use serde_with::serde_as;
 use std::{collections::HashMap, sync::Arc};
 use strum_macros::{Display, EnumString};
 
-use rustic_core::{backend::WriteBackend, overwrite, RepositoryBackends};
+#[allow(unused_imports)]
+use rustic_core::overwrite;
+use rustic_core::{backend::WriteBackend, RepositoryBackends};
 
 use crate::{
     error::BackendAccessErrorKind,
