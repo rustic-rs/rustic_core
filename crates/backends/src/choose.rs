@@ -55,18 +55,6 @@ pub struct BackendOptions {
 }
 
 impl BackendOptions {
-    //     // TODO: Implement BackendOptions::from_repo_opts
-    //     pub fn from_repo_opts(config: RepositoryOptions) -> Self {
-    //         // Parse the url for repo and repo_hot
-
-    //         // Create the backends
-
-    //         // Create the BackendOptions
-    //         // repo: Arc<dyn WriteBackend>,
-    //         // repo_hot: Option<Arc<dyn WriteBackend>>,
-    //         // options: Option<HashMap<String, String>>,
-    //     }
-
     pub fn to_backends(&self) -> Result<(Arc<dyn WriteBackend>, Option<Arc<dyn WriteBackend>>)> {
         let be = self
             .get_backend(self.repository.clone())?
@@ -151,23 +139,6 @@ pub enum SupportedBackend {
     S3,
 }
 
-// impl TryFrom<&str> for SupportedBackend {
-//     type Error = BackendAccessErrorKind;
-
-//     fn try_from(value: &str) -> Result<Self, Self::Error> {
-//         match value {
-//             "local" => Ok(Self::Local),
-//             "rclone" => Ok(Self::Rclone),
-//             "rest" => Ok(Self::Rest),
-//             "opendal" => Ok(Self::OpenDAL),
-//             "s3" => Ok(Self::S3),
-//             backend => Err(BackendAccessErrorKind::BackendNotSupported(
-//                 backend.to_owned(),
-//             )),
-//         }
-//     }
-// }
-
 impl BackendChoice for SupportedBackend {
     fn to_backend(
         &self,
@@ -185,12 +156,6 @@ impl BackendChoice for SupportedBackend {
         })
     }
 }
-
-// impl From<SupportedBackend> for Arc<dyn BackendChoice> {
-//     fn from(backend: SupportedBackend) -> Self {
-//         Arc::new(backend)
-//     }
-// }
 
 #[cfg(test)]
 mod tests {
