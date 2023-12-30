@@ -135,17 +135,7 @@ path-dedot = "3.1.1"
 shell-words = "1.1.0"
 
 [target.'cfg(not(windows))'.dependencies]
-# opendal backend - sftp is not supported on windows, see https://github.com/apache/incubator-opendal/issues/2963
-opendal = { version = "0.43.0", features = [
-  "services-b2",
-  "services-sftp",
-  "services-swift",
-] }
 sha2 = { version = "0.10", features = ["asm"] }
-
-[target.'cfg(windows)'.dependencies]
-# opendal backend
-opendal = { version = "0.43.0", features = ["services-b2", "services-swift"] }
 
 [target.'cfg(all(windows, not(target_env="gnu")))'.dependencies]
 # unfortunately, the asm extensions do not build on MSVC, see https://github.com/RustCrypto/asm-hashes/issues/17
