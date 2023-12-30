@@ -35,10 +35,13 @@ harness = true
 edition = "2021"
 
 [features]
-default = []
+default = ["tls-rustls"]
 cli = ["merge", "clap"]
 merge = ["dep:merge"]
 clap = ["dep:clap"]
+# The tls-* features should be treated as mutually exclusive.
+tls-native = ["reqwest/native-tls"]
+tls-rustls = ["reqwest/rustls-tls-native-roots"]
 
 [package.metadata.docs.rs]
 all-features = true
@@ -96,7 +99,7 @@ walkdir = "2.4.0"
 
 # rest backend
 backoff = "0.4.0"
-reqwest = { version = "0.11.23", default-features = false, features = ["json", "rustls-tls-native-roots", "stream", "blocking"] }
+reqwest = { version = "0.11.23", default-features = false, features = ["json", "stream", "blocking"] }
 url = "2.5.0"
 
 # rclone backend

@@ -14,6 +14,10 @@ on:
   merge_group:
     types: [checks_requested]
 
+env:
+  # Comma-separated list of all non-conflicting features.
+  all_features: cli
+
 jobs:
   fmt:
     name: Rustfmt
@@ -41,7 +45,7 @@ jobs:
           components: clippy
       - uses: Swatinem/rust-cache@a95ba195448af2da9b00fb742d14ffaaf3c21f43 # v2
       - name: Run clippy
-        run: cargo clippy --all-targets --all-features -- -D warnings
+        run: cargo clippy --all-targets --features ${{ env.all_features }} -- -D warnings
 
   test:
     name: Test
@@ -71,7 +75,7 @@ jobs:
           toolchain: ${{ matrix.rust }}
       - uses: Swatinem/rust-cache@a95ba195448af2da9b00fb742d14ffaaf3c21f43 # v2
       - name: Run Cargo Test
-        run: cargo +${{ matrix.rust }} test -r --all-targets --all-features --workspace
+        run: cargo +${{ matrix.rust }} test -r --all-targets --features ${{ env.all_features }} --workspace
 
   docs:
     name: Build docs
@@ -101,7 +105,7 @@ jobs:
           toolchain: ${{ matrix.rust }}
       - uses: Swatinem/rust-cache@a95ba195448af2da9b00fb742d14ffaaf3c21f43 # v2
       - name: Run Cargo Doc
-        run: cargo +${{ matrix.rust }} doc --no-deps --all-features --workspace --examples
+        run: cargo +${{ matrix.rust }} doc --no-deps --features ${{ env.all_features }} --workspace --examples
 
   powerset:
     name: Check Powerset of Features
@@ -135,7 +139,7 @@ jobs:
           tool: cargo-hack
       - uses: Swatinem/rust-cache@a95ba195448af2da9b00fb742d14ffaaf3c21f43 # v2
       - name: Run Cargo Hack
-        run: cargo +${{ matrix.rust }} hack check --feature-powerset --no-dev-deps
+        run: cargo +${{ matrix.rust }} hack check --feature-powerset --features tls-rustls --skip tls-native --no-dev-deps
 
   result:
     name: Result (CI)
