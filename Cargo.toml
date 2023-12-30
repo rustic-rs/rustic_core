@@ -2,6 +2,14 @@
 members = ["crates/core", "crates/backends", "examples/*"]
 resolver = "2"
 
+[workspace.package]
+rust-version = "1.71.1"
+
+[workspace.dependencies]
+rustic_backend = { path = "crates/backends" }
+rustic_core = { path = "crates/core" }
+simplelog = "0.12.1"
+
 # see: https://nnethercote.github.io/perf-book/build-configuration.html
 [profile.dev]
 opt-level = 0
@@ -19,7 +27,7 @@ debug = true
 
 [profile.release]
 opt-level = 3
-debug = false # true for profiling
+debug = false            # true for profiling
 rpath = false
 lto = "fat"
 debug-assertions = false
@@ -37,7 +45,7 @@ codegen-units = 4
 
 [profile.bench]
 opt-level = 3
-debug = true # true for profiling
+debug = true             # true for profiling
 rpath = false
 lto = true
 debug-assertions = false
