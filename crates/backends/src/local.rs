@@ -1,9 +1,8 @@
 use std::{
     fs::{self, File},
     io::{Read, Seek, SeekFrom, Write},
-    num::TryFromIntError,
     path::{Path, PathBuf},
-    process::{Command, ExitStatus},
+    process::Command,
 };
 
 use aho_corasick::AhoCorasick;
@@ -11,10 +10,8 @@ use anyhow::Result;
 use bytes::Bytes;
 #[allow(unused_imports)]
 use cached::proc_macro::cached;
-use displaydoc::Display;
 use log::{debug, trace, warn};
 use shell_words::split;
-use thiserror::Error;
 use walkdir::WalkDir;
 
 use rustic_core::{
