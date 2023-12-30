@@ -9,7 +9,6 @@ use std::{
     num::{ParseIntError, TryFromIntError},
     ops::RangeInclusive,
     path::{PathBuf, StripPrefixError},
-    process::ExitStatus,
     str::Utf8Error,
     time::SystemTimeError,
 };
@@ -484,47 +483,6 @@ pub enum PackerErrorKind {
     AddingIndexPackFailed(#[from] IndexErrorKind),
 }
 
-/// [`RestErrorKind`] describes the errors that can be returned while dealing with the REST API
-#[derive(Error, Debug, Display)]
-pub enum RestErrorKind {
-    /// value `{0:?}` not supported for option retry!
-    NotSupportedForRetry(String),
-    /// parsing failed for url: `{0:?}`
-    UrlParsingFailed(#[from] url::ParseError),
-    /// requesting resource failed: `{0:?}`
-    RequestingResourceFailed(#[from] reqwest::Error),
-    /// couldn't parse duration in humantime library: `{0:?}`
-    CouldNotParseDuration(#[from] humantime::DurationError),
-    /// backoff failed: {0:?}
-    BackoffError(#[from] backoff::Error<reqwest::Error>),
-    /// Failed to build HTTP client: `{0:?}`
-    BuildingClientFailed(reqwest::Error),
-    /// joining URL failed on: {0:?}
-    JoiningUrlFailed(url::ParseError),
-}
-
-/// [`RcloneErrorKind`] describes the errors that can be returned by a backend provider
-#[derive(Error, Debug, Display)]
-pub enum RcloneErrorKind {
-    /// 'rclone version' doesn't give any output
-    NoOutputForRcloneVersion,
-    /// cannot get stdout of rclone
-    NoStdOutForRclone,
-    /// rclone exited with `{0:?}`
-    RCloneExitWithBadStatus(ExitStatus),
-    /// url must start with http:\/\/! url: {0:?}
-    UrlNotStartingWithHttp(String),
-    /// StdIo Error: `{0:?}`
-    #[error(transparent)]
-    FromIoError(#[from] std::io::Error),
-    /// utf8 error: `{0:?}`
-    #[error(transparent)]
-    FromUtf8Error(#[from] Utf8Error),
-    /// `{0:?}`
-    #[error(transparent)]
-    FromParseIntError(#[from] ParseIntError),
-}
-
 /// [`TreeErrorKind`] describes the errors that can come up dealing with Trees
 #[derive(Error, Debug, Display)]
 pub enum TreeErrorKind {
@@ -786,8 +744,6 @@ impl RusticErrorMarker for LocalDestinationErrorKind {}
 impl RusticErrorMarker for NodeErrorKind {}
 impl RusticErrorMarker for StdInErrorKind {}
 impl RusticErrorMarker for ArchiverErrorKind {}
-impl RusticErrorMarker for RcloneErrorKind {}
-impl RusticErrorMarker for RestErrorKind {}
 impl RusticErrorMarker for CommandErrorKind {}
 impl RusticErrorMarker for std::io::Error {}
 
