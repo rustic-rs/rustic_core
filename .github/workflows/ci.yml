@@ -109,6 +109,7 @@ jobs:
     strategy:
       matrix:
         rust: [stable, beta, nightly]
+        crate: [rustic_core, rustic_backend] # if we use a workspace, we also check all examples/*
         job:
           - os: macos-latest
           - os: ubuntu-latest
@@ -135,7 +136,7 @@ jobs:
           tool: cargo-hack
       - uses: Swatinem/rust-cache@a95ba195448af2da9b00fb742d14ffaaf3c21f43 # v2
       - name: Run Cargo Hack
-        run: cargo +${{ matrix.rust }} hack check --feature-powerset --no-dev-deps
+        run: cargo +${{ matrix.rust }} hack check --feature-powerset --no-dev-deps -p ${{ matrix.crate }}
 
   result:
     name: Result (CI)
