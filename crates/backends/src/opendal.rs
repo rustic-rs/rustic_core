@@ -1,3 +1,4 @@
+#[cfg(feature = "s3")]
 pub mod s3;
 
 use std::{collections::HashMap, path::PathBuf, str::FromStr};

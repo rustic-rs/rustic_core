@@ -24,6 +24,7 @@ pub enum BackendAccessErrorKind {
     /// {0:?}
     #[error(transparent)]
     FromTryIntError(#[from] TryFromIntError),
+    #[cfg(feature = "rest")]
     /// backoff failed: {0:?}
     BackoffError(#[from] backoff::Error<reqwest::Error>),
     /// parsing failed for url: `{0:?}`
@@ -69,12 +70,15 @@ pub enum RestErrorKind {
     NotSupportedForRetry(String),
     /// parsing failed for url: `{0:?}`
     UrlParsingFailed(#[from] url::ParseError),
+    #[cfg(feature = "rest")]
     /// requesting resource failed: `{0:?}`
     RequestingResourceFailed(#[from] reqwest::Error),
     /// couldn't parse duration in humantime library: `{0:?}`
     CouldNotParseDuration(#[from] humantime::DurationError),
+    #[cfg(feature = "rest")]
     /// backoff failed: {0:?}
     BackoffError(#[from] backoff::Error<reqwest::Error>),
+    #[cfg(feature = "rest")]
     /// Failed to build HTTP client: `{0:?}`
     BuildingClientFailed(reqwest::Error),
     /// joining URL failed on: {0:?}

@@ -49,6 +49,7 @@ mod tests {
         (SupportedBackend::Rclone,
         BackendUrl("remote:/tmp/repo"))
     )]
+    #[cfg(feature = "rest")]
     #[case(
         "rest|https://example.com/tmp/repo",
         (SupportedBackend::Rest,

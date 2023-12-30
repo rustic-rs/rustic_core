@@ -23,20 +23,32 @@ implement [`serde::Serialize`] and [`serde::Deserialize`].
 
 # Example - initialize a repository, backup to it and get snapshots
 
-```
-    use rustic_core::{BackupOptions, ConfigOptions, KeyOptions, PathList, Repository, RepositoryOptions, SnapshotOptions};
+```rust
+    use rustic_backend::BackendOptions;
+    use rustic_core::{BackupOptions, ConfigOptions, KeyOptions, PathList,
+        Repository, RepositoryOptions, SnapshotOptions
+    };
 
     // Initialize the repository in a temporary dir
     let repo_dir = tempfile::tempdir().unwrap();
+
     let repo_opts = RepositoryOptions::default()
-        .repository(repo_dir.path().to_str().unwrap())
         .password("test");
+
+    // Initialize Backends
+    let backends = BackendOptions::default()
+        .repository(repo_dir.path().to_str().unwrap())
+        .to_backends()
+        .unwrap();
+
     let key_opts = KeyOptions::default();
+
     let config_opts = ConfigOptions::default();
-    let _repo = Repository::new(&repo_opts).unwrap().init(&key_opts, &config_opts).unwrap();
+
+    let _repo = Repository::new(&repo_opts, backends.clone()).unwrap().init(&key_opts, &config_opts).unwrap();
 
     // We could have used _repo directly, but open the repository again to show how to open it...
-    let repo = Repository::new(&repo_opts).unwrap().open().unwrap();
+    let repo = Repository::new(&repo_opts, backends).unwrap().open().unwrap();
 
     // Get all snapshots from the repository
     let snaps = repo.get_all_snapshots().unwrap();
@@ -56,7 +68,7 @@ implement [`serde::Serialize`] and [`serde::Deserialize`].
     let source = PathList::from_string("src").unwrap().sanitize().unwrap();
 
     // run the backup and return the snapshot pointing to the backup'ed data.
-    let snap = repo.backup(&backup_opts, source, snap).unwrap();
+    let snap = repo.backup(&backup_opts, &source, snap).unwrap();
     // assert_eq!(&snap.paths, ["src"]);
 
     // Get all snapshots from the repository
@@ -144,7 +156,7 @@ pub mod backend;
 pub(crate) mod blob;
 pub(crate) mod cdc;
 pub(crate) mod chunker;
-pub(crate) mod commands;
+pub mod commands;
 pub(crate) mod crypto;
 pub(crate) mod error;
 pub mod id;

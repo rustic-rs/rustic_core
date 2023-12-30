@@ -282,7 +282,7 @@ pub struct KeepOptions {
 /// assert_eq!(left, "60s".parse::<humantime::Duration>().unwrap().into());
 /// ```
 #[cfg(feature = "merge")]
-fn overwrite_zero_duration(left: &mut humantime::Duration, right: humantime::Duration) {
+pub fn overwrite_zero_duration(left: &mut humantime::Duration, right: humantime::Duration) {
     if *left == std::time::Duration::ZERO.into() {
         *left = right;
     }

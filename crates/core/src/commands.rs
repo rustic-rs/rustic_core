@@ -1,3 +1,5 @@
+//! The commands that can be run by the CLI.
+
 pub mod backup;
 /// The `cat` command.
 pub mod cat;

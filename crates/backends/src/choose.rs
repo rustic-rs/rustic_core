@@ -12,11 +12,20 @@ use rustic_core::{backend::WriteBackend, RepositoryBackends};
 use crate::{
     error::BackendAccessErrorKind,
     local::LocalBackend,
-    opendal::{s3::S3Backend, OpenDALBackend},
-    rclone::RcloneBackend,
-    rest::RestBackend,
     util::{url_to_type_and_path, BackendUrl},
 };
+
+#[cfg(feature = "s3")]
+use crate::opendal::s3::S3Backend;
+
+#[cfg(feature = "opendal")]
+use crate::opendal::OpenDALBackend;
+
+#[cfg(feature = "rclone")]
+use crate::rclone::RcloneBackend;
+
+#[cfg(feature = "rest")]
+use crate::rest::RestBackend;
 
 /// Options for a backend.
 #[serde_as]
@@ -117,18 +126,22 @@ pub enum SupportedBackend {
     #[strum(serialize = "local", to_string = "Local Backend")]
     Local,
 
+    #[cfg(feature = "rclone")]
     /// A rclone backend
     #[strum(serialize = "rclone", to_string = "rclone Backend")]
     Rclone,
 
+    #[cfg(feature = "rest")]
     /// A REST backend
     #[strum(serialize = "rest", to_string = "REST Backend")]
     Rest,
 
+    #[cfg(feature = "opendal")]
     /// An openDAL backend (general)
     #[strum(serialize = "opendal", to_string = "openDAL Backend")]
     OpenDAL,
 
+    #[cfg(feature = "s3")]
     /// An openDAL S3 backend
     #[strum(serialize = "s3", to_string = "S3 Backend")]
     S3,
@@ -144,9 +157,13 @@ impl BackendChoice for SupportedBackend {
 
         Ok(match self {
             Self::Local => Arc::new(LocalBackend::new(&location, options)?),
+            #[cfg(feature = "rclone")]
             Self::Rclone => Arc::new(RcloneBackend::new(&location, options)?),
+            #[cfg(feature = "rest")]
             Self::Rest => Arc::new(RestBackend::new(&location, options)?),
+            #[cfg(feature = "opendal")]
             Self::OpenDAL => Arc::new(OpenDALBackend::new(&location, options)?),
+            #[cfg(feature = "s3")]
             Self::S3 => Arc::new(S3Backend::new(&location, options)?),
         })
     }
@@ -161,9 +178,13 @@ mod tests {
 
     #[rstest]
     #[case("local", SupportedBackend::Local)]
+    #[cfg(feature = "rclone")]
     #[case("rclone", SupportedBackend::Rclone)]
+    #[cfg(feature = "rest")]
     #[case("rest", SupportedBackend::Rest)]
+    #[cfg(feature = "opendal")]
     #[case("opendal", SupportedBackend::OpenDAL)]
+    #[cfg(feature = "s3")]
     #[case("s3", SupportedBackend::S3)]
     fn test_try_from_is_ok(#[case] input: &str, #[case] expected: SupportedBackend) {
         assert_eq!(SupportedBackend::try_from(input).unwrap(), expected);
