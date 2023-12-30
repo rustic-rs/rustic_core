@@ -10,7 +10,7 @@ use crate::{
     error::ArchiverErrorKind,
     error::RusticResult,
     id::Id,
-    index::{indexer::SharedIndexer, IndexedBackend},
+    index::{indexer::SharedIndexer, ReadGlobalIndex},
     repofile::{configfile::ConfigFile, snapshotfile::SnapshotSummary},
 };
 
@@ -24,20 +24,20 @@ pub(crate) type TreeItem = TreeType<(ParentResult<()>, u64), ParentResult<Id>>;
 /// * `I` - The index to read from.
 ///
 // TODO: Add documentation
-pub(crate) struct TreeArchiver<BE: DecryptWriteBackend, I: IndexedBackend> {
+pub(crate) struct TreeArchiver<'a, BE: DecryptWriteBackend, I: ReadGlobalIndex> {
     /// The current tree.
     tree: Tree,
     /// The stack of trees.
     stack: Vec<(PathBuf, Node, ParentResult<Id>, Tree)>,
     /// The index to read from.
-    index: I,
+    index: &'a I,
     /// The packer to write to.
     tree_packer: Packer<BE>,
     /// The summary of the snapshot.
     summary: SnapshotSummary,
 }
 
-impl<BE: DecryptWriteBackend, I: IndexedBackend> TreeArchiver<BE, I> {
+impl<'a, BE: DecryptWriteBackend, I: ReadGlobalIndex> TreeArchiver<'a, BE, I> {
     /// Creates a new `TreeArchiver`.
     ///
     /// # Type Parameters
@@ -62,7 +62,7 @@ impl<BE: DecryptWriteBackend, I: IndexedBackend> TreeArchiver<BE, I> {
     /// [`PackerErrorKind::IntConversionFailed`]: crate::error::PackerErrorKind::IntConversionFailed
     pub(crate) fn new(
         be: BE,
-        index: I,
+        index: &'a I,
         indexer: SharedIndexer<BE>,
         config: &ConfigFile,
         summary: SnapshotSummary,
