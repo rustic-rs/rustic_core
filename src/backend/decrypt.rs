@@ -1,5 +1,6 @@
-use std::num::NonZeroU32;
+use std::{num::NonZeroU32, sync::Arc};
 
+use anyhow::Result;
 use bytes::Bytes;
 use crossbeam_channel::{unbounded, Receiver};
 use rayon::prelude::*;
@@ -17,7 +18,7 @@ use crate::{
     backend::ReadBackend,
     backend::WriteBackend,
     crypto::{hasher::hash, CryptoKey},
-    error::CryptBackendErrorKind,
+    error::{CryptBackendErrorKind, RusticErrorKind},
     id::Id,
     repofile::RepoFile,
     Progress, RusticResult,
@@ -31,7 +32,7 @@ pub trait DecryptFullBackend: DecryptWriteBackend + DecryptReadBackend {}
 
 impl<T: DecryptWriteBackend + DecryptReadBackend> DecryptFullBackend for T {}
 
-pub trait DecryptReadBackend: ReadBackend {
+pub trait DecryptReadBackend: ReadBackend + Clone + 'static {
     /// Decrypts the given data.
     ///
     /// # Arguments
@@ -109,7 +110,9 @@ pub trait DecryptReadBackend: ReadBackend {
         uncompressed_length: Option<NonZeroU32>,
     ) -> RusticResult<Bytes> {
         self.read_encrypted_from_partial(
-            &self.read_partial(tpe, id, cacheable, offset, length)?,
+            &self
+                .read_partial(tpe, id, cacheable, offset, length)
+                .map_err(RusticErrorKind::Backend)?,
             uncompressed_length,
         )
     }
@@ -142,7 +145,7 @@ pub trait DecryptReadBackend: ReadBackend {
         &self,
         p: &impl Progress,
     ) -> RusticResult<Receiver<RusticResult<(Id, F)>>> {
-        let list = self.list(F::TYPE)?;
+        let list = self.list(F::TYPE).map_err(RusticErrorKind::Backend)?;
         self.stream_list(list, p)
     }
 
@@ -174,7 +177,7 @@ pub trait DecryptReadBackend: ReadBackend {
     }
 }
 
-pub trait DecryptWriteBackend: WriteBackend {
+pub trait DecryptWriteBackend: WriteBackend + Clone + 'static {
     /// The type of the key.
     type Key: CryptoKey;
 
@@ -194,9 +197,30 @@ pub trait DecryptWriteBackend: WriteBackend {
     ///
     /// # Returns
     ///
-    /// The id of the data. (TODO: Check if this is correct)
+    /// The hash of the written data.
     fn hash_write_full(&self, tpe: FileType, data: &[u8]) -> RusticResult<Id>;
 
+    /// Writes the given data to the backend without compression and returns the id of the data.
+    ///
+    /// # Arguments
+    ///
+    /// * `tpe` - The type of the file.
+    /// * `data` - The data to write.
+    ///
+    /// # Errors
+    ///
+    /// If the data could not be written.
+    ///
+    /// # Returns
+    ///
+    /// The hash of the written data.
+    fn hash_write_full_uncompressed(&self, tpe: FileType, data: &[u8]) -> RusticResult<Id> {
+        let data = self.key().encrypt_data(data)?;
+        let id = hash(&data);
+        self.write_bytes(tpe, &id, false, data.into())
+            .map_err(RusticErrorKind::Backend)?;
+        Ok(id)
+    }
     /// Saves the given file.
     ///
     /// # Arguments
@@ -216,6 +240,27 @@ pub trait DecryptWriteBackend: WriteBackend {
         let data = serde_json::to_vec(file)
             .map_err(CryptBackendErrorKind::SerializingToJsonByteVectorFailed)?;
         self.hash_write_full(F::TYPE, &data)
+    }
+
+    /// Saves the given file uncompressed.
+    ///
+    /// # Arguments
+    ///
+    /// * `file` - The file to save.
+    ///
+    /// # Errors
+    ///
+    /// * [`CryptBackendErrorKind::SerializingToJsonByteVectorFailed`] - If the file could not be serialized to json.
+    ///
+    /// # Returns
+    ///
+    /// The id of the file.
+    ///
+    /// [`CryptBackendErrorKind::SerializingToJsonByteVectorFailed`]: crate::error::CryptBackendErrorKind::SerializingToJsonByteVectorFailed
+    fn save_file_uncompressed<F: RepoFile>(&self, file: &F) -> RusticResult<Id> {
+        let data = serde_json::to_vec(file)
+            .map_err(CryptBackendErrorKind::SerializingToJsonByteVectorFailed)?;
+        self.hash_write_full_uncompressed(F::TYPE, &data)
     }
 
     /// Saves the given list of files.
@@ -281,24 +326,22 @@ pub trait DecryptWriteBackend: WriteBackend {
 ///
 /// # Type Parameters
 ///
-/// * `R` - The type of the backend to decrypt.
 /// * `C` - The type of the key to decrypt the backend with.
-#[derive(Clone, Debug)]
-pub struct DecryptBackend<R, C> {
+#[derive(Debug, Clone)]
+pub struct DecryptBackend<C: CryptoKey> {
     /// The backend to decrypt.
-    backend: R,
+    be: Arc<dyn WriteBackend>,
     /// The key to decrypt the backend with.
     key: C,
     /// The compression level to use for zstd.
     zstd: Option<i32>,
 }
 
-impl<R: ReadBackend, C: CryptoKey> DecryptBackend<R, C> {
+impl<C: CryptoKey> DecryptBackend<C> {
     /// Creates a new decrypt backend.
     ///
     /// # Type Parameters
     ///
-    /// * `R` - The type of the backend to decrypt.
     /// * `C` - The type of the key to decrypt the backend with.
     ///
     /// # Arguments
@@ -309,16 +352,16 @@ impl<R: ReadBackend, C: CryptoKey> DecryptBackend<R, C> {
     /// # Returns
     ///
     /// The new decrypt backend.
-    pub fn new(be: &R, key: C) -> Self {
+    pub fn new(be: Arc<dyn WriteBackend>, key: C) -> Self {
         Self {
-            backend: be.clone(),
+            be,
             key,
             zstd: None,
         }
     }
 }
 
-impl<R: WriteBackend, C: CryptoKey> DecryptWriteBackend for DecryptBackend<R, C> {
+impl<C: CryptoKey> DecryptWriteBackend for DecryptBackend<C> {
     /// The type of the key.
     type Key = C;
 
@@ -354,7 +397,8 @@ impl<R: WriteBackend, C: CryptoKey> DecryptWriteBackend for DecryptBackend<R, C>
             None => self.key().encrypt_data(data)?,
         };
         let id = hash(&data);
-        self.write_bytes(tpe, &id, false, data.into())?;
+        self.write_bytes(tpe, &id, false, data.into())
+            .map_err(RusticErrorKind::Backend)?;
         Ok(id)
     }
 
@@ -368,7 +412,7 @@ impl<R: WriteBackend, C: CryptoKey> DecryptWriteBackend for DecryptBackend<R, C>
     }
 }
 
-impl<R: ReadBackend, C: CryptoKey> DecryptReadBackend for DecryptBackend<R, C> {
+impl<C: CryptoKey> DecryptReadBackend for DecryptBackend<C> {
     /// Decrypts the given data.
     ///
     /// # Arguments
@@ -397,7 +441,8 @@ impl<R: ReadBackend, C: CryptoKey> DecryptReadBackend for DecryptBackend<R, C> {
     /// [`CryptBackendErrorKind::DecryptionNotSupportedForBackend`]: crate::error::CryptBackendErrorKind::DecryptionNotSupportedForBackend
     /// [`CryptBackendErrorKind::DecodingZstdCompressedDataFailed`]: crate::error::CryptBackendErrorKind::DecodingZstdCompressedDataFailed
     fn read_encrypted_full(&self, tpe: FileType, id: &Id) -> RusticResult<Bytes> {
-        let decrypted = self.decrypt(&self.read_full(tpe, id)?)?;
+        let decrypted =
+            self.decrypt(&self.read_full(tpe, id).map_err(RusticErrorKind::Backend)?)?;
         Ok(match decrypted.first() {
             Some(b'{' | b'[') => decrypted, // not compressed
             Some(2) => decode_all(&decrypted[1..])
@@ -408,25 +453,21 @@ impl<R: ReadBackend, C: CryptoKey> DecryptReadBackend for DecryptBackend<R, C> {
     }
 }
 
-impl<R: ReadBackend, C: CryptoKey> ReadBackend for DecryptBackend<R, C> {
+impl<C: CryptoKey> ReadBackend for DecryptBackend<C> {
     fn location(&self) -> String {
-        self.backend.location()
+        self.be.location()
     }
 
-    fn set_option(&mut self, option: &str, value: &str) -> RusticResult<()> {
-        self.backend.set_option(option, value)
+    fn list(&self, tpe: FileType) -> Result<Vec<Id>> {
+        self.be.list(tpe)
     }
 
-    fn list(&self, tpe: FileType) -> RusticResult<Vec<Id>> {
-        self.backend.list(tpe)
+    fn list_with_size(&self, tpe: FileType) -> Result<Vec<(Id, u32)>> {
+        self.be.list_with_size(tpe)
     }
 
-    fn list_with_size(&self, tpe: FileType) -> RusticResult<Vec<(Id, u32)>> {
-        self.backend.list_with_size(tpe)
-    }
-
-    fn read_full(&self, tpe: FileType, id: &Id) -> RusticResult<Bytes> {
-        self.backend.read_full(tpe, id)
+    fn read_full(&self, tpe: FileType, id: &Id) -> Result<Bytes> {
+        self.be.read_full(tpe, id)
     }
 
     fn read_partial(
@@ -436,22 +477,21 @@ impl<R: ReadBackend, C: CryptoKey> ReadBackend for DecryptBackend<R, C> {
         cacheable: bool,
         offset: u32,
         length: u32,
-    ) -> RusticResult<Bytes> {
-        self.backend
-            .read_partial(tpe, id, cacheable, offset, length)
+    ) -> Result<Bytes> {
+        self.be.read_partial(tpe, id, cacheable, offset, length)
     }
 }
 
-impl<R: WriteBackend, C: CryptoKey> WriteBackend for DecryptBackend<R, C> {
-    fn create(&self) -> RusticResult<()> {
-        self.backend.create()
+impl<C: CryptoKey> WriteBackend for DecryptBackend<C> {
+    fn create(&self) -> Result<()> {
+        self.be.create()
     }
 
-    fn write_bytes(&self, tpe: FileType, id: &Id, cacheable: bool, buf: Bytes) -> RusticResult<()> {
-        self.backend.write_bytes(tpe, id, cacheable, buf)
+    fn write_bytes(&self, tpe: FileType, id: &Id, cacheable: bool, buf: Bytes) -> Result<()> {
+        self.be.write_bytes(tpe, id, cacheable, buf)
     }
 
-    fn remove(&self, tpe: FileType, id: &Id, cacheable: bool) -> RusticResult<()> {
-        self.backend.remove(tpe, id, cacheable)
+    fn remove(&self, tpe: FileType, id: &Id, cacheable: bool) -> Result<()> {
+        self.be.remove(tpe, id, cacheable)
     }
 }

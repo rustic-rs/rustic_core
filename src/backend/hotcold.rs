@@ -1,6 +1,9 @@
+use std::sync::Arc;
+
+use anyhow::Result;
 use bytes::Bytes;
 
-use crate::{backend::FileType, backend::ReadBackend, backend::WriteBackend, id::Id, RusticResult};
+use crate::{backend::FileType, backend::ReadBackend, backend::WriteBackend, id::Id};
 
 /// A hot/cold backend implementation.
 ///
@@ -8,14 +11,14 @@ use crate::{backend::FileType, backend::ReadBackend, backend::WriteBackend, id::
 ///
 /// * `BE` - The backend to use.
 #[derive(Clone, Debug)]
-pub struct HotColdBackend<BE: WriteBackend> {
+pub struct HotColdBackend {
     /// The backend to use.
-    be: BE,
+    be: Arc<dyn WriteBackend>,
     /// The backend to use for hot files.
-    hot_be: Option<BE>,
+    be_hot: Arc<dyn WriteBackend>,
 }
 
-impl<BE: WriteBackend> HotColdBackend<BE> {
+impl HotColdBackend {
     /// Creates a new `HotColdBackend`.
     ///
     /// # Type Parameters
@@ -26,28 +29,25 @@ impl<BE: WriteBackend> HotColdBackend<BE> {
     ///
     /// * `be` - The backend to use.
     /// * `hot_be` - The backend to use for hot files.
-    pub fn new(be: BE, hot_be: Option<BE>) -> Self {
-        Self { be, hot_be }
+    pub fn new_hotcold(
+        be: Arc<dyn WriteBackend>,
+        be_hot: Arc<dyn WriteBackend>,
+    ) -> Arc<dyn WriteBackend> {
+        Arc::new(Self { be, be_hot })
     }
 }
 
-impl<BE: WriteBackend> ReadBackend for HotColdBackend<BE> {
+impl ReadBackend for HotColdBackend {
     fn location(&self) -> String {
         self.be.location()
     }
 
-    fn set_option(&mut self, option: &str, value: &str) -> RusticResult<()> {
-        self.be.set_option(option, value)
-    }
-
-    fn list_with_size(&self, tpe: FileType) -> RusticResult<Vec<(Id, u32)>> {
+    fn list_with_size(&self, tpe: FileType) -> Result<Vec<(Id, u32)>> {
         self.be.list_with_size(tpe)
     }
 
-    fn read_full(&self, tpe: FileType, id: &Id) -> RusticResult<Bytes> {
-        self.hot_be
-            .as_ref()
-            .map_or_else(|| self.be.read_full(tpe, id), |be| be.read_full(tpe, id))
+    fn read_full(&self, tpe: FileType, id: &Id) -> Result<Bytes> {
+        self.be_hot.read_full(tpe, id)
     }
 
     fn read_partial(
@@ -57,41 +57,41 @@ impl<BE: WriteBackend> ReadBackend for HotColdBackend<BE> {
         cacheable: bool,
         offset: u32,
         length: u32,
-    ) -> RusticResult<Bytes> {
-        match (&self.hot_be, cacheable || tpe != FileType::Pack) {
-            (None, _) | (Some(_), false) => {
-                self.be.read_partial(tpe, id, cacheable, offset, length)
-            }
-            (Some(be), true) => be.read_partial(tpe, id, cacheable, offset, length),
+    ) -> Result<Bytes> {
+        if cacheable || tpe != FileType::Pack {
+            self.be_hot.read_partial(tpe, id, cacheable, offset, length)
+        } else {
+            self.be.read_partial(tpe, id, cacheable, offset, length)
         }
+    }
+
+    fn needs_warm_up(&self) -> bool {
+        self.be.needs_warm_up()
+    }
+
+    fn warm_up(&self, tpe: FileType, id: &Id) -> Result<()> {
+        self.be.warm_up(tpe, id)
     }
 }
 
-impl<BE: WriteBackend> WriteBackend for HotColdBackend<BE> {
-    fn create(&self) -> RusticResult<()> {
+impl WriteBackend for HotColdBackend {
+    fn create(&self) -> Result<()> {
         self.be.create()?;
-        if let Some(be) = &self.hot_be {
-            be.create()?;
-        }
-        Ok(())
+        self.be_hot.create()
     }
 
-    fn write_bytes(&self, tpe: FileType, id: &Id, cacheable: bool, buf: Bytes) -> RusticResult<()> {
-        if let Some(be) = &self.hot_be {
-            if tpe != FileType::Config && (cacheable || tpe != FileType::Pack) {
-                be.write_bytes(tpe, id, cacheable, buf.clone())?;
-            }
+    fn write_bytes(&self, tpe: FileType, id: &Id, cacheable: bool, buf: Bytes) -> Result<()> {
+        if tpe != FileType::Config && (cacheable || tpe != FileType::Pack) {
+            self.be_hot.write_bytes(tpe, id, cacheable, buf.clone())?;
         }
         self.be.write_bytes(tpe, id, cacheable, buf)
     }
 
-    fn remove(&self, tpe: FileType, id: &Id, cacheable: bool) -> RusticResult<()> {
+    fn remove(&self, tpe: FileType, id: &Id, cacheable: bool) -> Result<()> {
         // First remove cold file
         self.be.remove(tpe, id, cacheable)?;
-        if let Some(be) = &self.hot_be {
-            if cacheable || tpe != FileType::Pack {
-                be.remove(tpe, id, cacheable)?;
-            }
+        if cacheable || tpe != FileType::Pack {
+            self.be_hot.remove(tpe, id, cacheable)?;
         }
         Ok(())
     }
