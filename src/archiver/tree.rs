@@ -94,7 +94,12 @@ where
                                     let name = node.name();
                                     return Some(TreeType::NewTree((path, node, name)));
                                 }
-                                let node = Node::new_node(&p, NodeType::Dir, Metadata::default());
+                                // Use mode 755 for missing dirs, so they can be accessed
+                                let meta = Metadata {
+                                    mode: Some(0o755),
+                                    ..Default::default()
+                                };
+                                let node = Node::new_node(&p, NodeType::Dir, meta);
                                 return Some(TreeType::NewTree((self.path.clone(), node, p)));
                             }
                         }
