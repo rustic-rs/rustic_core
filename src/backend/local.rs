@@ -347,11 +347,7 @@ impl ReadBackend for LocalBackend {
         trace!("reading tpe: {tpe:?}, id: {id}, offset: {offset}, length: {length}");
         let mut file = File::open(self.path(tpe, id)).map_err(LocalErrorKind::OpeningFileFailed)?;
         _ = file
-            .seek(SeekFrom::Start(
-                offset
-                    .try_into()
-                    .expect("offset conversion should never fail."),
-            ))
+            .seek(SeekFrom::Start(offset.into()))
             .map_err(LocalErrorKind::CouldNotSeekToPositionInFile)?;
         let mut vec = vec![0; length.try_into().map_err(LocalErrorKind::FromTryIntError)?];
         file.read_exact(&mut vec)
