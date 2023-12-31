@@ -158,5 +158,3 @@ rustdoc-json = "0.8.8"
 rustup-toolchain = "0.1.6"
 simplelog = "0.12.1"
 tempfile = "3.8.1"
-
-rustic_backend = { path = "../backends" }
