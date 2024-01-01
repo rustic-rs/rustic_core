@@ -47,6 +47,11 @@ pub(crate) fn init<P, S>(
     let repo_id = Id::random();
     let chunker_poly = random_poly()?;
     let mut config = ConfigFile::new(2, repo_id, chunker_poly);
+    if repo.be_hot.is_some() {
+        // for hot/cold repository, `config` must be identical to thee config file which is read by the backend, i.e. the one saved in the hot repo.
+        // Note: init_with_config does handle the is_hot config correctly for the hot and the cold repo.
+        config.is_hot = Some(true);
+    }
     config_opts.apply(&mut config)?;
 
     let key = init_with_config(repo, pass, key_opts, &config)?;
