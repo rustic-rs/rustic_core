@@ -26,7 +26,7 @@ impl<'a> std::ops::Deref for BackendUrl<'a> {
 ///
 /// If the url is a windows path, the type will be "local".
 pub fn url_to_type_and_path(url: &str) -> Result<(SupportedBackend, BackendUrl)> {
-    match url.split_once('|') {
+    match url.split_once(':') {
         Some((scheme, path)) if scheme.contains('\\') || path.contains('\\') => {
             Ok((SupportedBackend::Local, BackendUrl(url)))
         }
@@ -43,25 +43,25 @@ mod tests {
     use super::*;
 
     #[rstest]
-    #[case("local|/tmp/repo", (SupportedBackend::Local, BackendUrl("/tmp/repo")))]
+    #[case("local:/tmp/repo", (SupportedBackend::Local, BackendUrl("/tmp/repo")))]
     #[case(
-        "rclone|remote:/tmp/repo",
+        "rclone:remote:/tmp/repo",
         (SupportedBackend::Rclone,
         BackendUrl("remote:/tmp/repo"))
     )]
     #[cfg(feature = "rest")]
     #[case(
-        "rest|https://example.com/tmp/repo",
+        "rest:https://example.com/tmp/repo",
         (SupportedBackend::Rest,
         BackendUrl("https://example.com/tmp/repo"))
     )]
     #[case(
-        "opendal|https://example.com/tmp/repo",
+        "opendal:https://example.com/tmp/repo",
         (SupportedBackend::OpenDAL,
         BackendUrl("https://example.com/tmp/repo"))
     )]
     #[case(
-        "s3|https://example.com/tmp/repo",
+        "s3:https://example.com/tmp/repo",
         (SupportedBackend::S3,
         BackendUrl("https://example.com/tmp/repo"))
     )]
