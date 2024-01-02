@@ -31,7 +31,7 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [features]
-default = []
+default = ["cli", "opendal", "s3", "rest", "rclone"]
 cli = ["merge", "clap"]
 merge = ["dep:merge"]
 clap = ["dep:clap"]
@@ -97,6 +97,7 @@ rand = "0.8.5"
 # parallelize
 # crossbeam-channel = "0.5.10"
 # pariter = "0.5.1"
+dunce = "1.0.4"
 rayon = "1.8.0"
 
 [target.'cfg(not(windows))'.dependencies]
