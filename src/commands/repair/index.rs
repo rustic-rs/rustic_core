@@ -63,25 +63,17 @@ impl RepairIndexOptions {
                     *changed = true;
                     debug!("removing non-existing pack {id} from index");
                 }
-                Some(size) if index_size != size => {
-                    // pack exists, but sizes do not
-                    pack_read_header.push((
-                        id,
-                        to_delete,
-                        Some(PackHeaderRef::from_index_pack(&p).size()),
-                        size.max(index_size),
-                    ));
-                    info!("pack {id}: size computed by index: {index_size}, actual size: {size}, will re-read header");
-                    *changed = true;
-                }
-                _ => {
-                    // pack in repo and index matches
-                    if self.read_all {
+                Some(size) => {
+                    if index_size != size {
+                        info!("pack {id}: size computed by index: {index_size}, actual size: {size}, will re-read header");
+                    }
+
+                    if index_size != size || self.read_all {
+                        // pack exists, but sizes do not match or we want to read all pack files
                         pack_read_header.push((
                             id,
-                            to_delete,
                             Some(PackHeaderRef::from_index_pack(&p).size()),
-                            index_size,
+                            size,
                         ));
                         *changed = true;
                     } else {
@@ -116,9 +108,9 @@ impl RepairIndexOptions {
         p.finish();
 
         // process packs which are listed but not contained in the index
-        pack_read_header.extend(packs.into_iter().map(|(id, size)| (id, false, None, size)));
+        pack_read_header.extend(packs.into_iter().map(|(id, size)| (id, None, size)));
 
-        repo.warm_up_wait(pack_read_header.iter().map(|(id, _, _, _)| *id))?;
+        repo.warm_up_wait(pack_read_header.iter().map(|(id, _, _)| *id))?;
 
         let indexer = Indexer::new(be.clone()).into_shared();
         let p = repo.pb.progress_counter("reading pack headers");
@@ -128,7 +120,7 @@ impl RepairIndexOptions {
                 .try_into()
                 .map_err(CommandErrorKind::ConversionToU64Failed)?,
         );
-        for (id, to_delete, size_hint, packsize) in pack_read_header {
+        for (id, size_hint, packsize) in pack_read_header {
             debug!("reading pack {id}...");
             let pack = IndexPack {
                 id,
@@ -143,7 +135,8 @@ impl RepairIndexOptions {
             };
 
             if !dry_run {
-                indexer.write().unwrap().add_with(pack, to_delete)?;
+                // write pack file to index - without the delete mark
+                indexer.write().unwrap().add_with(pack, false)?;
             }
             p.inc(1);
         }
