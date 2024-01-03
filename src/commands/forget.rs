@@ -95,7 +95,7 @@ pub(crate) fn get_forget_snapshots<P: ProgressBars, S: Open>(
 #[cfg_attr(feature = "clap", derive(clap::Parser))]
 #[cfg_attr(feature = "merge", derive(merge::Merge))]
 #[serde_as]
-#[derive(Clone, Debug, PartialEq, Eq, Derivative, Deserialize, Setters)]
+#[derive(Clone, Debug, PartialEq, Eq, Derivative, Serialize, Deserialize, Setters)]
 #[derivative(Default)]
 #[serde(default, rename_all = "kebab-case", deny_unknown_fields)]
 #[setters(into)]
