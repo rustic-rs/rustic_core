@@ -39,7 +39,7 @@ default = ["tls-rustls"]
 cli = ["merge", "clap"]
 merge = ["dep:merge"]
 clap = ["dep:clap"]
-# The tls-* features should be treated as mutually exclusive.
+# tls-native and tls-rustls are mutually exclusive.
 tls-native = ["reqwest/native-tls"]
 tls-rustls = ["reqwest/rustls-tls-native-roots"]
 

@@ -55,11 +55,11 @@ This crate exposes a few features for controlling dependency usage:
 - **clap** - Enables a dependency on the `clap` crate and enables parsing from
   the commandline. *This feature is disabled by default*.
 - **tls-native** - Builds with native TLS support (i.e. link against system TLS
-  library). This feature should be treated as mutually exclusive with
-  `tls-rustls`. *This features is disabled by default*.
+  library). *This feature is mutually exclusive with `tls-rustls` and it is
+  disabled by default*.
 - **tls-rustls** - Builds with Rustls support (i.e. with bundled TLS library).
-  This feature should be treated as mutually exclusive with `tls-native`. *This
-  feature is enabled by default*.
+  *This feature is mutually exclusive with `tls-native` and it is enabled by
+  default*.
 
 ## Examples
 
