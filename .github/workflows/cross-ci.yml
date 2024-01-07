@@ -17,6 +17,10 @@ defaults:
   run:
     shell: bash
 
+env:
+  # Comma-separated list of all non-conflicting features.
+  all_features: cli
+
 jobs:
   cross-check:
     name: Cross checking ${{ matrix.job.target }}
@@ -87,6 +91,8 @@ jobs:
           toolchain: ${{ matrix.rust }}
           target: ${{ matrix.job.target }}
           use-cross: ${{ matrix.job.use-cross }}
+          all-features: false
+          feature: ${{ env.all_features }}
 
   result:
     name: Result (Cross-CI)

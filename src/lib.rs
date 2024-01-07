@@ -139,6 +139,9 @@ This crate exposes a few features for controlling dependency usage.
 #![allow(rustdoc::private_intra_doc_links)]
 #![allow(clippy::needless_raw_string_hashes)]
 
+#[cfg(all(feature = "tls-native", feature = "tls-rustls"))]
+compile_error!("features \"tls-native\" and \"tls-rustls\" cannot be enabled at the same time. Please disable one of them.");
+
 pub(crate) mod archiver;
 pub(crate) mod backend;
 pub(crate) mod blob;
