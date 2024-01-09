@@ -20,11 +20,12 @@ impl TryFrom<&str> for BackendLocation {
     type Error = anyhow::Error;
 
     fn try_from(value: &str) -> std::result::Result<Self, Self::Error> {
-        match (canonicalize(Path::new(value)), Url::parse(value)) {
-            (Ok(_), Ok(_)) => Ok(BackendLocation(value.to_owned())),
-            (Ok(val), _) => Ok(BackendLocation(val.to_str().unwrap().to_owned())),
-            (_, Ok(val)) => Ok(BackendLocation(val.to_string())),
-            // value if val.starts_with('\\') => Ok(BackendUrl(val.to_string())),
+        match (canonicalize(Path::new(value)), Url::parse(value), value) {
+            (Ok(_), Ok(_), _) => Ok(BackendLocation(value.to_owned())),
+            (Ok(val), _, _) => Ok(BackendLocation(val.to_str().unwrap().to_owned())),
+            (_, Ok(val), _) => Ok(BackendLocation(val.to_string())),
+            #[cfg(windows)]
+            (_, _, val) if val.starts_with('\\') => Ok(BackendLocation(val.to_string())),
             _ => Err(anyhow::anyhow!("Invalid backend location: {}", value)),
         }
     }
