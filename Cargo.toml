@@ -1,12 +1,12 @@
 [workspace]
-members = ["crates/core", "crates/backends", "examples/*"]
+members = ["crates/core", "crates/backend", "examples/*"]
 resolver = "2"
 
 [workspace.package]
 rust-version = "1.71.1"
 
 [workspace.dependencies]
-rustic_backend = { path = "crates/backends" }
+rustic_backend = { path = "crates/backend" }
 rustic_core = { path = "crates/core" }
 simplelog = "0.12.1"
 
