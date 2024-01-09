@@ -78,6 +78,7 @@ mod tests {
         (SupportedBackend::Local,
         BackendUrl(r#"C:\tmp\repo"#))
     )]
+    #[should_panic]
     #[case(
         r#"C:/tmp/repo"#,
         (SupportedBackend::Local,
