@@ -12,7 +12,7 @@ use rustic_core::{backend::WriteBackend, RepositoryBackends};
 use crate::{
     error::BackendAccessErrorKind,
     local::LocalBackend,
-    util::{url_to_type_and_path, BackendUrl},
+    util::{location_to_type_and_path, BackendLocation},
 };
 
 #[cfg(feature = "s3")]
@@ -78,7 +78,7 @@ impl BackendOptions {
     fn get_backend(&self, repo_string: Option<String>) -> Result<Option<Arc<dyn WriteBackend>>> {
         repo_string
             .map(|string| {
-                let (be_type, location) = url_to_type_and_path(&string)?;
+                let (be_type, location) = location_to_type_and_path(&string)?;
 
                 let mut options = self.options.clone();
                 options.extend(self.options_cold.clone());
@@ -107,7 +107,7 @@ pub trait BackendChoice {
     /// [`BackendAccessErrorKind::BackendNotSupported`]: crate::error::BackendAccessErrorKind::BackendNotSupported
     fn to_backend(
         &self,
-        location: BackendUrl,
+        location: BackendLocation,
         options: Option<HashMap<String, String>>,
     ) -> Result<Arc<dyn WriteBackend>>;
 }
@@ -150,7 +150,7 @@ pub enum SupportedBackend {
 impl BackendChoice for SupportedBackend {
     fn to_backend(
         &self,
-        location: BackendUrl,
+        location: BackendLocation,
         options: Option<HashMap<String, String>>,
     ) -> Result<Arc<dyn WriteBackend>> {
         let options = options.unwrap_or_default();
