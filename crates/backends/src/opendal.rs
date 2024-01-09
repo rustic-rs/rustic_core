@@ -44,14 +44,14 @@ impl OpenDALBackend {
     ///
     /// * `path` - The path to the OpenDAL backend.
     /// * `options` - Additional options for the OpenDAL backend.
-    pub fn new(path: &str, options: HashMap<String, String>) -> Result<Self> {
+    pub fn new(path: impl AsRef<str>, options: HashMap<String, String>) -> Result<Self> {
         let max_retries = match options.get("retry").map(std::string::String::as_str) {
             Some("false" | "off") => 0,
             None | Some("default") => consts::DEFAULT_RETRY,
             Some(value) => usize::from_str(value)?,
         };
 
-        let schema = Scheme::from_str(path)?;
+        let schema = Scheme::from_str(path.as_ref())?;
         let _guard = RUNTIME.enter();
         let operator = Operator::via_map(schema, options)?
             .layer(RetryLayer::new().with_max_times(max_retries).with_jitter())

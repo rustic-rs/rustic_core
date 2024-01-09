@@ -12,6 +12,12 @@ impl<'a> std::ops::Deref for BackendUrl<'a> {
     }
 }
 
+impl<'a> AsRef<str> for BackendUrl<'a> {
+    fn as_ref(&self) -> &str {
+        self.0
+    }
+}
+
 /// Splits the given url into the backend type and the path.
 ///
 /// # Arguments

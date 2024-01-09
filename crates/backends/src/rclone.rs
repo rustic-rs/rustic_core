@@ -105,7 +105,10 @@ impl RcloneBackend {
     /// [`RcloneErrorKind::NoStdOutForRclone`]: RcloneErrorKind::NoStdOutForRclone
     /// [`RcloneErrorKind::RCloneExitWithBadStatus`]: RcloneErrorKind::RCloneExitWithBadStatus
     /// [`RcloneErrorKind::UrlNotStartingWithHttp`]: RcloneErrorKind::UrlNotStartingWithHttp
-    pub fn new(url: &str, options: impl IntoIterator<Item = (String, String)>) -> Result<Self> {
+    pub fn new(
+        url: impl AsRef<str>,
+        options: impl IntoIterator<Item = (String, String)>,
+    ) -> Result<Self> {
         match rclone_version() {
             Ok((major, minor, patch)) => {
                 if major
@@ -130,7 +133,7 @@ impl RcloneBackend {
         let user = Alphanumeric.sample_string(&mut thread_rng(), 12);
         let password = Alphanumeric.sample_string(&mut thread_rng(), 12);
 
-        let args = ["serve", "restic", url, "--addr", "localhost:0"];
+        let args = ["serve", "restic", url.as_ref(), "--addr", "localhost:0"];
         debug!("starting rclone with args {args:?}");
 
         let mut child = Command::new("rclone")
@@ -185,11 +188,11 @@ impl RcloneBackend {
         let rest_url =
             "http://".to_string() + user.as_str() + ":" + password.as_str() + "@" + &rest_url[7..];
 
-        debug!("using REST backend with url {url}.");
-        let rest = RestBackend::new(&rest_url, options)?;
+        debug!("using REST backend with url {}.", url.as_ref());
+        let rest = RestBackend::new(rest_url, options)?;
         Ok(Self {
             _child_data: Arc::new(ChildToKill(child)),
-            url: url.to_string(),
+            url: String::from(url.as_ref()),
             rest,
         })
     }

@@ -135,7 +135,11 @@ impl RestBackend {
     ///
     /// [`RestErrorKind::UrlParsingFailed`]: RestErrorKind::UrlParsingFailed
     /// [`RestErrorKind::BuildingClientFailed`]: RestErrorKind::BuildingClientFailed
-    pub fn new(url: &str, options: impl IntoIterator<Item = (String, String)>) -> Result<Self> {
+    pub fn new(
+        url: impl AsRef<str>,
+        options: impl IntoIterator<Item = (String, String)>,
+    ) -> Result<Self> {
+        let url = url.as_ref();
         let url = if url.ends_with('/') {
             Url::parse(url).map_err(RestErrorKind::UrlParsingFailed)?
         } else {

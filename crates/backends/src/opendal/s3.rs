@@ -78,8 +78,8 @@ impl S3Backend {
     /// # Notes
     ///
     /// The path should be something like "`https://s3.amazonaws.com/bucket/my/repopath`"
-    pub fn new(path: &str, mut options: HashMap<String, String>) -> Result<Self> {
-        let mut url = Url::parse(path)?;
+    pub fn new(path: impl AsRef<str>, mut options: HashMap<String, String>) -> Result<Self> {
+        let mut url = Url::parse(path.as_ref())?;
         if let Some(mut path_segments) = url.path_segments() {
             if let Some(bucket) = path_segments.next() {
                 let _ = options.insert("bucket".to_string(), bucket.to_string());

@@ -43,8 +43,11 @@ impl LocalBackend {
     /// * [`LocalBackendErrorKind::DirectoryCreationFailed`] - If the directory could not be created.
     ///
     /// [`LocalBackendErrorKind::DirectoryCreationFailed`]: LocalBackendErrorKind::DirectoryCreationFailed
-    pub fn new(path: &str, options: impl IntoIterator<Item = (String, String)>) -> Result<Self> {
-        let path = path.into();
+    pub fn new(
+        path: impl AsRef<str>,
+        options: impl IntoIterator<Item = (String, String)>,
+    ) -> Result<Self> {
+        let path = path.as_ref().into();
         fs::create_dir_all(&path).map_err(LocalBackendErrorKind::DirectoryCreationFailed)?;
         let mut post_create_command = None;
         let mut post_delete_command = None;
