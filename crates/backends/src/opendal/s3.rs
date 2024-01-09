@@ -105,4 +105,8 @@ impl S3Backend {
 
         Ok(Self(OpenDALBackend::new("s3", options)?))
     }
+
+    pub fn to_inner(self) -> OpenDALBackend {
+        self.0
+    }
 }
