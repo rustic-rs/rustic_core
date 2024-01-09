@@ -92,7 +92,9 @@ mod tests {
     use super::*;
 
     #[rstest]
+    #[cfg(not(windows))]
     #[case("local:/tmp/repo", (SupportedBackend::Local, BackendLocation::try_from("/tmp/repo").unwrap()))]
+    #[cfg(not(windows))]
     #[case("/tmp/repo", (SupportedBackend::Local, BackendLocation::try_from("/tmp/repo").unwrap()))]
     #[cfg(feature = "rclone")]
     #[case(
