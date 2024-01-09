@@ -33,6 +33,8 @@ impl<'a> AsRef<str> for BackendUrl<'a> {
 /// If the url is a windows path, the type will be "local".
 pub fn url_to_type_and_path(url: &str) -> Result<(SupportedBackend, BackendUrl)> {
     match url.split_once(':') {
+        #[cfg(windows)]
+        Some((drive, _)) if drive.len() == 1 => Ok((SupportedBackend::Local, BackendUrl(url))),
         Some((scheme, path)) if scheme.contains('\\') || path.contains('\\') => {
             Ok((SupportedBackend::Local, BackendUrl(url)))
         }
@@ -75,6 +77,11 @@ mod tests {
         r#"C:\tmp\repo"#,
         (SupportedBackend::Local,
         BackendUrl(r#"C:\tmp\repo"#))
+    )]
+    #[case(
+        r#"C:/tmp/repo"#,
+        (SupportedBackend::Local,
+        BackendUrl(r#"C:/tmp/repo"#))
     )]
     #[case(
         r#"\\.\C:\Test\repo"#,

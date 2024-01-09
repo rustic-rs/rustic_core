@@ -138,6 +138,8 @@ quickcheck = "1.0.3"
 quickcheck_macros = "1.0.0"
 rstest = "0.18.2"
 rustdoc-json = "0.8.8"
+# We need to have rustic_backend here, because the doc-tests in lib.rs of rustic_core
+rustic_backend = { workspace = true }
 rustup-toolchain = "0.1.6"
 simplelog = "0.12.1"
 tempfile = "3.9.0"
