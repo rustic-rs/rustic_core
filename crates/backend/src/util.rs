@@ -92,6 +92,7 @@ mod tests {
     #[rstest]
     #[case("local:/tmp/repo", (SupportedBackend::Local, BackendLocation::try_from("/tmp/repo").unwrap()))]
     #[case("/tmp/repo", (SupportedBackend::Local, BackendLocation::try_from("/tmp/repo").unwrap()))]
+    #[cfg(feature = "rclone")]
     #[case(
         "rclone:remote:/tmp/repo",
         (SupportedBackend::Rclone,
@@ -103,92 +104,109 @@ mod tests {
         (SupportedBackend::Rest,
         BackendLocation::try_from("https://example.com/tmp/repo").unwrap())
     )]
+    #[cfg(feature = "opendal")]
     #[case(
         "opendal:https://example.com/tmp/repo",
         (SupportedBackend::OpenDAL,
         BackendLocation::try_from("https://example.com/tmp/repo").unwrap())
     )]
+    #[cfg(feature = "s3")]
     #[case(
         "s3:https://example.com/tmp/repo",
         (SupportedBackend::S3,
         BackendLocation::try_from("https://example.com/tmp/repo").unwrap())
     )]
+    #[cfg(windows)]
     #[case(
         r#"C:\tmp\repo"#,
         (SupportedBackend::Local,
         BackendLocation::try_from(r#"C:\tmp\repo"#).unwrap())
     )]
     #[should_panic]
+    #[cfg(windows)]
     #[case(
         r#"C:/tmp/repo"#,
         (SupportedBackend::Local,
         BackendLocation::try_from(r#"C:/tmp/repo"#).unwrap())
     )]
+    #[cfg(windows)]
     #[case(
         r#"\\.\C:\Test\repo"#,
         (SupportedBackend::Local,
         BackendLocation::try_from(r#"\\.\C:\Test\repo"#).unwrap())
     )]
+    #[cfg(windows)]
     #[case(
         r#"\\?\C:\Test\repo"#,
         (SupportedBackend::Local,
         BackendLocation::try_from(r#"\\?\C:\Test\repo"#).unwrap())
     )]
+    #[cfg(windows)]
     #[case(
         r#"\\.\Volume{b75e2c83-0000-0000-0000-602f00000000}\Test\repo"#,
         (SupportedBackend::Local,
         BackendLocation::try_from(r#"\\.\Volume{b75e2c83-0000-0000-0000-602f00000000}\Test\repo"#).unwrap())
     )]
+    #[cfg(windows)]
     #[case(
         r#"\\?\Volume{b75e2c83-0000-0000-0000-602f00000000}\Test\repo"#,
         (SupportedBackend::Local,
         BackendLocation::try_from(r#"\\?\Volume{b75e2c83-0000-0000-0000-602f00000000}\Test\repo"#).unwrap())
     )]
+    #[cfg(windows)]
     #[case(
         r#"\\Server2\Share\Test\repo"#,
         (SupportedBackend::Local,
         BackendLocation::try_from(r#"\\Server2\Share\Test\repo"#).unwrap())
     )]
+    #[cfg(windows)]
     #[case(
         r#"\\?\UNC\Server\Share\Test\repo"#,
         (SupportedBackend::Local,
         BackendLocation::try_from(r#"\\?\UNC\Server\Share\Test\repo"#).unwrap())
     )]
+    #[cfg(windows)]
     #[case(
         r#"C:\Projects\apilibrary\"#,
         (SupportedBackend::Local,
         BackendLocation::try_from(r#"C:\Projects\apilibrary\"#).unwrap())
     )]
     // A relative path from the current directory of the C: drive.
+    #[cfg(windows)]
     #[case(
         r#"C:Projects\apilibrary\"#,
         (SupportedBackend::Local,
         BackendLocation::try_from(r#"C:Projects\apilibrary\"#).unwrap())
     )]
     // A relative path from the root of the current drive.
+    #[cfg(windows)]
     #[case(
         r#"\Program Files\Custom Utilities\rustic\Repositories\"#,
         (SupportedBackend::Local,
         BackendLocation::try_from(r#"\Program Files\Custom Utilities\rustic\Repositories\"#).unwrap())
     )]
     #[should_panic]
+    #[cfg(windows)]
     #[case(
         r#"..\Publications\TravelBrochures\"#,
         (SupportedBackend::Local,
         BackendLocation::try_from(r#"..\Publications\TravelBrochures\"#).unwrap())
     )]
     #[should_panic]
+    #[cfg(windows)]
     #[case(
         r#"2023\repos\"#,
         (SupportedBackend::Local,
         BackendLocation::try_from(r#"2023\repos\"#).unwrap())
     )]
     // The root directory of the C: drive on localhost.
+    #[cfg(windows)]
     #[case(
         r#"\\localhost\C$\"#, 
         (SupportedBackend::Local,
         BackendLocation::try_from(r#"\\localhost\C$\"#).unwrap())
     )]
+    #[cfg(windows)]
     #[case(
         r#"\\127.0.0.1\c$\temp\repo\"#, 
         (SupportedBackend::Local,
