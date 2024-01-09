@@ -182,18 +182,18 @@ mod tests {
         (SupportedBackend::Local,
         BackendLocation::try_from(r#"2023\repos\"#).unwrap())
     )]
-    // The root directory of the C: drive on system07.
+    // The root directory of the C: drive on localhost.
     #[case(
-        r#"\\system07\C$\"#, 
+        r#"\\localhost\C$\"#, 
         (SupportedBackend::Local,
-        BackendLocation::try_from(r#"\\system07\C$\"#).unwrap())
+        BackendLocation::try_from(r#"\\localhost\C$\"#).unwrap())
     )]
     #[case(
         r#"\\127.0.0.1\c$\temp\repo\"#, 
         (SupportedBackend::Local,
         BackendLocation::try_from(r#"\\127.0.0.1\c$\temp\repo\"#).unwrap())
     )]
-    fn test_url_to_type_and_path_is_ok(
+    fn test_location_to_type_and_path_is_ok(
         #[case] url: &str,
         #[case] expected: (SupportedBackend, BackendLocation),
     ) {
