@@ -85,8 +85,10 @@ pub fn location_to_type_and_path(
 #[cfg(test)]
 mod tests {
 
+    #[allow(unused_imports)]
     use rstest::rstest;
 
+    #[allow(unused_imports)]
     use super::*;
 
     #[rstest]
