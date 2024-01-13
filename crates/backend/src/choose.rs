@@ -67,22 +67,26 @@ pub struct BackendOptions {
 
 impl BackendOptions {
     pub fn to_backends(&self) -> Result<RepositoryBackends> {
+        let mut options = self.options.clone();
+        options.extend(self.options_cold.clone());
         let be = self
-            .get_backend(self.repository.clone())?
+            .get_backend(self.repository.clone(), options)?
             .expect("Should be able to initialize main backend.");
-        let be_hot = self.get_backend(self.repo_hot.clone())?;
+        let mut options = self.options.clone();
+        options.extend(self.options_hot.clone());
+        let be_hot = self.get_backend(self.repo_hot.clone(), options)?;
 
         Ok(RepositoryBackends::new(be, be_hot))
     }
 
-    fn get_backend(&self, repo_string: Option<String>) -> Result<Option<Arc<dyn WriteBackend>>> {
+    fn get_backend(
+        &self,
+        repo_string: Option<String>,
+        options: HashMap<String, String>,
+    ) -> Result<Option<Arc<dyn WriteBackend>>> {
         repo_string
             .map(|string| {
                 let (be_type, location) = location_to_type_and_path(&string)?;
-
-                let mut options = self.options.clone();
-                options.extend(self.options_cold.clone());
-
                 be_type.to_backend(location, options.into()).map_err(|err| {
                     BackendAccessErrorKind::BackendLoadError(be_type.to_string(), err).into()
                 })
