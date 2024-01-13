@@ -5,65 +5,52 @@ use itertools::Itertools;
 use url::{self, Url};
 
 use crate::opendal::OpenDALBackend;
+use bytes::Bytes;
+use rustic_core::{FileType, Id, ReadBackend, WriteBackend};
 
 #[derive(Clone, Debug)]
 pub struct S3Backend(OpenDALBackend);
 
-impl rustic_core::ReadBackend for S3Backend {
+impl ReadBackend for S3Backend {
     fn location(&self) -> String {
-        <OpenDALBackend as rustic_core::ReadBackend>::location(&self.0)
+        self.0.location()
     }
 
-    fn list(&self, tpe: rustic_core::FileType) -> Result<Vec<rustic_core::Id>> {
-        <OpenDALBackend as rustic_core::ReadBackend>::list(&self.0, tpe)
+    fn list(&self, tpe: FileType) -> Result<Vec<Id>> {
+        self.0.list(tpe)
     }
 
-    fn list_with_size(&self, tpe: rustic_core::FileType) -> Result<Vec<(rustic_core::Id, u32)>> {
-        <OpenDALBackend as rustic_core::ReadBackend>::list_with_size(&self.0, tpe)
+    fn list_with_size(&self, tpe: FileType) -> Result<Vec<(Id, u32)>> {
+        self.0.list_with_size(tpe)
     }
 
-    fn read_full(&self, tpe: rustic_core::FileType, id: &rustic_core::Id) -> Result<bytes::Bytes> {
-        <OpenDALBackend as rustic_core::ReadBackend>::read_full(&self.0, tpe, id)
+    fn read_full(&self, tpe: FileType, id: &Id) -> Result<Bytes> {
+        self.0.read_full(tpe, id)
     }
 
     fn read_partial(
         &self,
-        tpe: rustic_core::FileType,
-        id: &rustic_core::Id,
-        _cacheable: bool,
+        tpe: FileType,
+        id: &Id,
+        cacheable: bool,
         offset: u32,
         length: u32,
-    ) -> Result<bytes::Bytes> {
-        <OpenDALBackend as rustic_core::ReadBackend>::read_partial(
-            &self.0, tpe, id, _cacheable, offset, length,
-        )
+    ) -> Result<Bytes> {
+        self.0.read_partial(tpe, id, cacheable, offset, length)
     }
 }
 
-impl rustic_core::WriteBackend for S3Backend {
+impl WriteBackend for S3Backend {
     fn create(&self) -> Result<()> {
-        <OpenDALBackend as rustic_core::WriteBackend>::create(&self.0)
+        self.0.create()
     }
 
-    fn write_bytes(
-        &self,
-        tpe: rustic_core::FileType,
-        id: &rustic_core::Id,
-        _cacheable: bool,
-        buf: bytes::Bytes,
-    ) -> Result<()> {
-        <OpenDALBackend as rustic_core::WriteBackend>::write_bytes(
-            &self.0, tpe, id, _cacheable, buf,
-        )
+    fn write_bytes(&self, tpe: FileType, id: &Id, cacheable: bool, buf: Bytes) -> Result<()> {
+        self.0.write_bytes(tpe, id, cacheable, buf)
     }
 
-    fn remove(
-        &self,
-        tpe: rustic_core::FileType,
-        id: &rustic_core::Id,
-        _cacheable: bool,
-    ) -> Result<()> {
-        <OpenDALBackend as rustic_core::WriteBackend>::remove(&self.0, tpe, id, _cacheable)
+    fn remove(&self, tpe: FileType, id: &Id, cacheable: bool) -> Result<()> {
+        self.0.remove(tpe, id, cacheable)
     }
 }
 
