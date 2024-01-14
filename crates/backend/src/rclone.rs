@@ -1,7 +1,6 @@
 use std::{
     io::{BufRead, BufReader},
     process::{Child, Command, Stdio},
-    sync::Arc,
 };
 
 use anyhow::Result;
@@ -21,27 +20,23 @@ pub(super) mod constants {
     pub(super) const SEARCHSTRING: &str = "Serving restic REST API on ";
 }
 
-/// `ChildToKill` is a wrapper around a `Child` process that kills the child when it is dropped.
-#[derive(Debug)]
-struct ChildToKill(Child);
-
-impl Drop for ChildToKill {
-    /// Kill the child process.
-    fn drop(&mut self) {
-        debug!("killing rclone.");
-        self.0.kill().unwrap();
-    }
-}
-
 /// `RcloneBackend` is a backend that uses rclone to access a remote backend.
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub struct RcloneBackend {
     /// The REST backend.
     rest: RestBackend,
     /// The url of the backend.
     url: String,
     /// The child data contains the child process and is used to kill the child process when the backend is dropped.
-    _child_data: Arc<ChildToKill>,
+    child: Child,
+}
+
+impl Drop for RcloneBackend {
+    /// Kill the child process.
+    fn drop(&mut self) {
+        debug!("killing rclone.");
+        self.child.kill().unwrap();
+    }
 }
 
 /// Get the rclone version.
@@ -191,7 +186,7 @@ impl RcloneBackend {
         debug!("using REST backend with url {}.", url.as_ref());
         let rest = RestBackend::new(rest_url, options)?;
         Ok(Self {
-            _child_data: Arc::new(ChildToKill(child)),
+            child,
             url: String::from(url.as_ref()),
             rest,
         })
