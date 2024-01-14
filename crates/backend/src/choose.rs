@@ -1,5 +1,5 @@
 //! This module contains the trait [`BackendChoice`] and the function [`get_backend`] to choose a backend from a given url.
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use derive_setters::Setters;
 use serde_with::serde_as;
 use std::{collections::HashMap, sync::Arc};
@@ -71,7 +71,7 @@ impl BackendOptions {
         options.extend(self.options_cold.clone());
         let be = self
             .get_backend(self.repository.clone(), options)?
-            .expect("Should be able to initialize main backend.");
+            .ok_or(anyhow!("Should be able to initialize main backend."))?;
         let mut options = self.options.clone();
         options.extend(self.options_hot.clone());
         let be_hot = self.get_backend(self.repo_hot.clone(), options)?;
