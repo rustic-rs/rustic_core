@@ -130,6 +130,68 @@ pub struct RepositoryOptions {
     pub warm_up_wait: Option<humantime::Duration>,
 }
 
+impl RepositoryOptions {
+    /// Evaluates the password given by the repository options
+    ///
+    /// # Errors
+    ///
+    /// * [`RepositoryErrorKind::OpeningPasswordFileFailed`] - If opening the password file failed
+    /// * [`RepositoryErrorKind::ReadingPasswordFromReaderFailed`] - If reading the password failed
+    /// * [`RepositoryErrorKind::FromSplitError`] - If splitting the password command failed
+    /// * [`RepositoryErrorKind::PasswordCommandParsingFailed`] - If parsing the password command failed
+    /// * [`RepositoryErrorKind::ReadingPasswordFromCommandFailed`] - If reading the password from the command failed
+    ///
+    /// # Returns
+    ///
+    /// The password or `None` if no password is given
+    ///
+    /// [`RepositoryErrorKind::OpeningPasswordFileFailed`]: crate::error::RepositoryErrorKind::OpeningPasswordFileFailed
+    /// [`RepositoryErrorKind::ReadingPasswordFromReaderFailed`]: crate::error::RepositoryErrorKind::ReadingPasswordFromReaderFailed
+    /// [`RepositoryErrorKind::FromSplitError`]: crate::error::RepositoryErrorKind::FromSplitError
+    /// [`RepositoryErrorKind::PasswordCommandParsingFailed`]: crate::error::RepositoryErrorKind::PasswordCommandParsingFailed
+    /// [`RepositoryErrorKind::ReadingPasswordFromCommandFailed`]: crate::error::RepositoryErrorKind::ReadingPasswordFromCommandFailed
+    pub fn evaluate_password(&self) -> RusticResult<Option<String>> {
+        match (&self.password, &self.password_file, &self.password_command) {
+            (Some(pwd), _, _) => Ok(Some(pwd.clone())),
+            (_, Some(file), _) => {
+                let mut file = BufReader::new(
+                    File::open(file).map_err(RepositoryErrorKind::OpeningPasswordFileFailed)?,
+                );
+                Ok(Some(read_password_from_reader(&mut file)?))
+            }
+            (_, _, Some(command)) => {
+                let commands = split(command).map_err(RepositoryErrorKind::FromSplitError)?;
+                debug!("commands: {commands:?}");
+                let command = Command::new(&commands[0])
+                    .args(&commands[1..])
+                    .stdout(Stdio::piped())
+                    .spawn()?;
+                let Ok(output) = command.wait_with_output() else {
+                    return Err(RepositoryErrorKind::PasswordCommandParsingFailed.into());
+                };
+                if !output.status.success() {
+                    #[allow(clippy::option_if_let_else)]
+                    let s = match output.status.code() {
+                        Some(c) => format!("exited with status code {c}"),
+                        None => "was terminated".into(),
+                    };
+                    error!("password-command {s}");
+                    return Err(RepositoryErrorKind::ReadingPasswordFromCommandFailed.into());
+                }
+
+                let mut pwd = BufReader::new(&*output.stdout);
+                Ok(Some(match read_password_from_reader(&mut pwd) {
+                    Ok(val) => val,
+                    Err(_) => {
+                        return Err(RepositoryErrorKind::ReadingPasswordFromCommandFailed.into())
+                    }
+                }))
+            }
+            (None, None, None) => Ok(None),
+        }
+    }
+}
+
 /// Overwrite the left value with the right value
 ///
 /// This is used for merging [`RepositoryOptions`] and [`ConfigOptions`]
@@ -302,48 +364,7 @@ impl<P, S> Repository<P, S> {
     /// [`RepositoryErrorKind::PasswordCommandParsingFailed`]: crate::error::RepositoryErrorKind::PasswordCommandParsingFailed
     /// [`RepositoryErrorKind::ReadingPasswordFromCommandFailed`]: crate::error::RepositoryErrorKind::ReadingPasswordFromCommandFailed
     pub fn password(&self) -> RusticResult<Option<String>> {
-        match (
-            &self.opts.password,
-            &self.opts.password_file,
-            &self.opts.password_command,
-        ) {
-            (Some(pwd), _, _) => Ok(Some(pwd.clone())),
-            (_, Some(file), _) => {
-                let mut file = BufReader::new(
-                    File::open(file).map_err(RepositoryErrorKind::OpeningPasswordFileFailed)?,
-                );
-                Ok(Some(read_password_from_reader(&mut file)?))
-            }
-            (_, _, Some(command)) => {
-                let commands = split(command).map_err(RepositoryErrorKind::FromSplitError)?;
-                debug!("commands: {commands:?}");
-                let command = Command::new(&commands[0])
-                    .args(&commands[1..])
-                    .stdout(Stdio::piped())
-                    .spawn()?;
-                let Ok(output) = command.wait_with_output() else {
-                    return Err(RepositoryErrorKind::PasswordCommandParsingFailed.into());
-                };
-                if !output.status.success() {
-                    #[allow(clippy::option_if_let_else)]
-                    let s = match output.status.code() {
-                        Some(c) => format!("exited with status code {c}"),
-                        None => "was terminated".into(),
-                    };
-                    error!("password-command {s}");
-                    return Err(RepositoryErrorKind::ReadingPasswordFromCommandFailed.into());
-                }
-
-                let mut pwd = BufReader::new(&*output.stdout);
-                Ok(Some(match read_password_from_reader(&mut pwd) {
-                    Ok(val) => val,
-                    Err(_) => {
-                        return Err(RepositoryErrorKind::ReadingPasswordFromCommandFailed.into())
-                    }
-                }))
-            }
-            (None, None, None) => Ok(None),
-        }
+        self.opts.evaluate_password()
     }
 
     /// Returns the Id of the config file
