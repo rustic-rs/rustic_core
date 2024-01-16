@@ -31,18 +31,18 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [features]
-default = ["cli", "opendal", "s3", "rest", "rclone"]
+default = ["opendal", "s3", "rest", "rclone"]
 cli = ["merge", "clap"]
 merge = ["dep:merge"]
 clap = ["dep:clap"]
-opendal = ["dep:opendal"]
+opendal = ["dep:opendal", "dep:rayon", "dep:tokio"]
 s3 = ["opendal"]
 rest = ["dep:reqwest", "dep:backoff"]
-rclone = ["rest"]
+rclone = ["rest", "dep:rand"]
 
 [dependencies]
 # core
-rustic_core = { path = "../core", features = ["cli"] }
+rustic_core = { path = "../core" }
 
 # errors
 anyhow = "1.0.79"
@@ -61,44 +61,30 @@ merge = { version = "0.1.0", optional = true }
 strum = "0.25"
 strum_macros = "0.25"
 
-# serialization
-binrw = "0.13.3"
+# general / backend choosing
+dunce = "1.0.4"
 hex = { version = "0.4.3", features = ["serde"] }
 serde = { version = "1.0.195" }
-serde-aux = "4.3.1"
-serde_derive = "1.0.195"
-serde_json = "1.0.111"
-serde_with = { version = "3.4.0", features = ["base64"] }
-shell-words = "1.1.0"
+url = "2.5.0"
 
-# cli
+# cli support
 clap = { version = "4.4.14", optional = true, features = ["derive", "env", "wrap_help"] }
 
 # local backend
 aho-corasick = "1.1.2"
-cached = { version = "0.47.0", default-features = false, features = ["proc_macro"] }
-filetime = "0.2.23"
-ignore = "0.4.22"
-nix = { version = "0.27.1", default-features = false, features = ["user", "fs"] }
+shell-words = "1.1.0"
 walkdir = "2.4.0"
 
 # rest backend
 backoff = { version = "0.4.0", optional = true }
 reqwest = { version = "0.11.23", default-features = false, features = ["json", "rustls-tls-native-roots", "stream", "blocking"], optional = true }
-url = "2.5.0"
+
+# rclone backend
+rand = { version = "0.8.5", optional = true }
 
 # opendal backend
-once_cell = "1.19.0"
-tokio = "1.35.1"
-
-# crypto
-rand = "0.8.5"
-
-# parallelize
-# crossbeam-channel = "0.5.10"
-# pariter = "0.5.1"
-dunce = "1.0.4"
-rayon = "1.8.0"
+rayon = { version = "1.8.0", optional = true }
+tokio = { version = "1.35.1", optional = true }
 
 [target.'cfg(not(windows))'.dependencies]
 # opendal backend - sftp is not supported on windows, see https://github.com/apache/incubator-opendal/issues/2963

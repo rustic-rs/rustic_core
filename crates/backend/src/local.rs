@@ -8,8 +8,6 @@ use std::{
 use aho_corasick::AhoCorasick;
 use anyhow::Result;
 use bytes::Bytes;
-#[allow(unused_imports)]
-use cached::proc_macro::cached;
 use log::{debug, trace, warn};
 use shell_words::split;
 use walkdir::WalkDir;

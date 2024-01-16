@@ -10,7 +10,7 @@ use reqwest::{
     header::{HeaderMap, HeaderValue},
     Url,
 };
-use serde_derive::Deserialize;
+use serde::Deserialize;
 
 use crate::error::RestErrorKind;
 

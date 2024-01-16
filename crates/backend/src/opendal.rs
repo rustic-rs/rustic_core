@@ -1,19 +1,17 @@
 #[cfg(feature = "s3")]
 pub mod s3;
 
-use std::{collections::HashMap, path::PathBuf, str::FromStr};
+use std::{collections::HashMap, path::PathBuf, str::FromStr, sync::OnceLock};
 
 use anyhow::Result;
 use bytes::Bytes;
-#[allow(unused_imports)]
-use cached::proc_macro::cached;
 use log::trace;
-use once_cell::sync::Lazy;
 use opendal::{
     layers::{BlockingLayer, LoggingLayer, RetryLayer},
     BlockingOperator, ErrorKind, Metakey, Operator, Scheme,
 };
 use rayon::prelude::{IntoParallelIterator, ParallelIterator};
+use tokio::runtime::Runtime;
 
 use rustic_core::{FileType, Id, ReadBackend, WriteBackend, ALL_FILE_TYPES};
 
@@ -27,12 +25,15 @@ pub struct OpenDALBackend {
     operator: BlockingOperator,
 }
 
-static RUNTIME: Lazy<tokio::runtime::Runtime> = Lazy::new(|| {
-    tokio::runtime::Builder::new_multi_thread()
-        .enable_all()
-        .build()
-        .unwrap()
-});
+fn runtime() -> &'static Runtime {
+    static RUNTIME: OnceLock<Runtime> = OnceLock::new();
+    &RUNTIME.get_or_init(|| {
+        tokio::runtime::Builder::new_multi_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+    })
+}
 
 impl OpenDALBackend {
     /// Create a new openDAL backend.
@@ -49,7 +50,7 @@ impl OpenDALBackend {
         };
 
         let schema = Scheme::from_str(path.as_ref())?;
-        let _guard = RUNTIME.enter();
+        let _guard = runtime().enter();
         let operator = Operator::via_map(schema, options)?
             .layer(RetryLayer::new().with_max_times(max_retries).with_jitter())
             .layer(LoggingLayer::default())

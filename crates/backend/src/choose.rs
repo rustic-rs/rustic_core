@@ -1,7 +1,6 @@
 //! This module contains the trait [`BackendChoice`] and the function [`get_backend`] to choose a backend from a given url.
 use anyhow::{anyhow, Result};
 use derive_setters::Setters;
-use serde_with::serde_as;
 use std::{collections::HashMap, sync::Arc};
 use strum_macros::{Display, EnumString};
 
@@ -27,7 +26,6 @@ use crate::rclone::RcloneBackend;
 use crate::rest::RestBackend;
 
 /// Options for a backend.
-#[serde_as]
 #[cfg_attr(feature = "clap", derive(clap::Parser))]
 #[cfg_attr(feature = "merge", derive(merge::Merge))]
 #[derive(Clone, Default, Debug, serde::Deserialize, serde::Serialize, Setters)]

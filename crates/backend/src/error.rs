@@ -29,8 +29,6 @@ pub enum BackendAccessErrorKind {
     BackoffError(#[from] backoff::Error<reqwest::Error>),
     /// parsing failed for url: `{0:?}`
     UrlParsingFailed(#[from] url::ParseError),
-    /// generic Ignore error: `{0:?}`
-    GenericError(#[from] ignore::Error),
     /// creating data in backend failed
     CreatingDataOnBackendFailed,
     /// writing bytes to backend failed
