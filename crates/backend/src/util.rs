@@ -1,9 +1,5 @@
-use std::path::Path;
-
 use crate::SupportedBackend;
 use anyhow::Result;
-use dunce::canonicalize;
-use url::Url;
 
 #[derive(PartialEq, Debug)]
 pub struct BackendLocation(String);
@@ -13,21 +9,6 @@ impl std::ops::Deref for BackendLocation {
 
     fn deref(&self) -> &Self::Target {
         &self.0
-    }
-}
-
-impl TryFrom<&str> for BackendLocation {
-    type Error = anyhow::Error;
-
-    fn try_from(value: &str) -> std::result::Result<Self, Self::Error> {
-        match (canonicalize(Path::new(value)), Url::parse(value), value) {
-            (Ok(_), Ok(_), _) => Ok(BackendLocation(value.to_owned())),
-            (Ok(val), _, _) => Ok(BackendLocation(val.to_str().unwrap().to_owned())),
-            (_, Ok(val), _) => Ok(BackendLocation(val.to_string())),
-            #[cfg(windows)]
-            (_, _, val) if val.starts_with('\\') => Ok(BackendLocation(val.to_string())),
-            _ => Err(anyhow::anyhow!("Invalid backend location: {}", value)),
-        }
     }
 }
 
@@ -64,20 +45,20 @@ pub fn location_to_type_and_path(
         #[cfg(windows)]
         Some((drive_letter, _)) if drive_letter.len() == 1 && !raw_location.contains('/') => Ok((
             SupportedBackend::Local,
-            BackendLocation::try_from(raw_location)?,
+            BackendLocation(raw_location.to_string()),
         )),
         #[cfg(windows)]
         Some((scheme, path)) if scheme.contains('\\') || path.contains('\\') => Ok((
             SupportedBackend::Local,
-            BackendLocation::try_from(raw_location)?,
+            BackendLocation(raw_location.to_string()),
         )),
         Some((scheme, path)) => Ok((
             SupportedBackend::try_from(scheme)?,
-            BackendLocation::try_from(path)?,
+            BackendLocation(path.to_string()),
         )),
         None => Ok((
             SupportedBackend::Local,
-            BackendLocation::try_from(raw_location)?,
+            BackendLocation(raw_location.to_string()),
         )),
     }
 }

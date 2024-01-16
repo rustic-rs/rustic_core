@@ -62,7 +62,6 @@ strum = "0.25"
 strum_macros = "0.25"
 
 # general / backend choosing
-dunce = "1.0.4"
 hex = { version = "0.4.3", features = ["serde"] }
 serde = { version = "1.0.195" }
 url = "2.5.0"
