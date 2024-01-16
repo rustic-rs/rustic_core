@@ -342,10 +342,6 @@ pub enum BackendAccessErrorKind {
     /// {0:?}
     #[error(transparent)]
     FromBackendDecryptionError(#[from] CryptBackendErrorKind),
-    /// backoff failed: {0:?}
-    BackoffError(#[from] backoff::Error<reqwest::Error>),
-    /// parsing failed for url: `{0:?}`
-    UrlParsingFailed(#[from] url::ParseError),
     /// generic Ignore error: `{0:?}`
     GenericError(#[from] ignore::Error),
     /// creating data in backend failed
