@@ -36,7 +36,7 @@ cli = ["merge", "clap"]
 merge = ["dep:merge"]
 clap = ["dep:clap"]
 s3 = ["opendal"]
-opendal = ["dep:opendal", "dep:rayon", "dep:tokio"]
+opendal = ["dep:opendal", "dep:rayon", "dep:tokio", "tokio/rt-multi-thread"]
 rest = ["dep:reqwest", "dep:backoff"]
 rclone = ["rest", "dep:rand"]
 
@@ -83,7 +83,7 @@ rand = { version = "0.8.5", optional = true }
 
 # opendal backend
 rayon = { version = "1.8.0", optional = true }
-tokio = { version = "1.35.1", optional = true , default-features = false, features = ["rt-multi-thread"]}
+tokio = { version = "1.35.1", optional = true, default-features = false }
 
 [target.'cfg(not(windows))'.dependencies]
 # opendal backend - sftp is not supported on windows, see https://github.com/apache/incubator-opendal/issues/2963
