@@ -1012,7 +1012,9 @@ impl<P: ProgressBars, S: Open> Repository<P, S> {
         let status = IndexedStatus {
             open: self.status,
             index,
-            marker: std::marker::PhantomData,
+            index_data: FullIndex {
+                cache: quick_cache::sync::Cache::with_weighter(32, 32000000, BytesWeighter {}),
+            },
         };
         Ok(Repository {
             name: self.name,
@@ -1033,7 +1035,7 @@ impl<P: ProgressBars, S: Open> Repository<P, S> {
         let status = IndexedStatus {
             open: self.status,
             index,
-            marker: std::marker::PhantomData,
+            index_data: IdIndex {},
         };
         Ok(Repository {
             name: self.name,
@@ -1086,14 +1088,27 @@ pub trait IndexedTree: Open {
 /// and additionally the `Id`s of data blobs are also contained in the index.
 pub trait IndexedIds: IndexedTree {}
 
-/// A repository which is indexed such that all blob information is fully contained in the index.
-pub trait IndexedFull: IndexedIds {}
-
 impl<P, S: IndexedTree> IndexedTree for Repository<P, S> {
     type I = S::I;
     fn index(&self) -> &Self::I {
         self.status.index()
     }
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct BytesWeighter;
+
+impl quick_cache::Weighter<Id, Bytes> for BytesWeighter {
+    fn weight(&self, _key: &Id, val: &Bytes) -> u32 {
+        // Be cautions out about zero weights!
+        val.len().clamp(1, u32::MAX as usize) as u32
+    }
+}
+
+/// A repository which is indexed such that all blob information is fully contained in the index.
+pub trait IndexedFull: IndexedIds {
+    /// Access cache of repository
+    fn blob_cache(&self) -> &quick_cache::sync::Cache<Id, Bytes, BytesWeighter>;
 }
 
 /// The indexed status of a repository
@@ -1109,14 +1124,16 @@ pub struct IndexedStatus<T, S: Open> {
     /// The index backend
     index: GlobalIndex,
     /// The marker for the type of index
-    marker: std::marker::PhantomData<T>,
+    index_data: T,
 }
 
 #[derive(Debug, Clone, Copy)]
-pub struct IdIndex {}
+pub struct IdIndex;
 
-#[derive(Debug, Clone, Copy)]
-pub struct FullIndex {}
+#[derive(Debug)]
+pub struct FullIndex {
+    cache: quick_cache::sync::Cache<Id, Bytes, BytesWeighter>,
+}
 
 impl<T, S: Open> IndexedTree for IndexedStatus<T, S> {
     type I = GlobalIndex;
@@ -1128,7 +1145,18 @@ impl<T, S: Open> IndexedTree for IndexedStatus<T, S> {
 
 impl<S: Open> IndexedIds for IndexedStatus<IdIndex, S> {}
 impl<S: Open> IndexedIds for IndexedStatus<FullIndex, S> {}
-impl<S: Open> IndexedFull for IndexedStatus<FullIndex, S> {}
+impl<P, S: IndexedFull> IndexedIds for Repository<P, S> {}
+
+impl<S: Open> IndexedFull for IndexedStatus<FullIndex, S> {
+    fn blob_cache(&self) -> &quick_cache::sync::Cache<Id, Bytes, BytesWeighter> {
+        &self.index_data.cache
+    }
+}
+impl<P, S: IndexedFull> IndexedFull for Repository<P, S> {
+    fn blob_cache(&self) -> &quick_cache::sync::Cache<Id, Bytes, BytesWeighter> {
+        self.status.blob_cache()
+    }
+}
 
 impl<T, S: Open> Open for IndexedStatus<T, S> {
     fn cache(&self) -> Option<&Cache> {
@@ -1190,11 +1218,11 @@ impl<P, S: IndexedFull> Repository<P, S> {
 
 impl<P, S: IndexedTree> Repository<P, S> {
     pub fn get_tree(&self, id: &Id) -> RusticResult<Tree> {
-        Tree::from_backend(self.index(), *id)
+        Tree::from_backend(self.dbe(), self.index(), *id)
     }
 
     pub fn node_from_path(&self, root_tree: Id, path: &Path) -> RusticResult<Node> {
-        Tree::node_from_path(self.index(), root_tree, Path::new(path))
+        Tree::node_from_path(self.dbe(), self.index(), root_tree, Path::new(path))
     }
 }
 
