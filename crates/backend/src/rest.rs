@@ -14,10 +14,7 @@ use serde_derive::Deserialize;
 
 use crate::error::RestErrorKind;
 
-use rustic_core::{
-    backend::{FileType, ReadBackend, WriteBackend},
-    id::Id,
-};
+use rustic_core::{FileType, Id, ReadBackend, WriteBackend};
 
 mod consts {
     /// Default number of retries

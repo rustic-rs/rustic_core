@@ -152,14 +152,14 @@ This crate exposes a few features for controlling dependency usage.
 #![allow(clippy::needless_raw_string_hashes)]
 
 pub(crate) mod archiver;
-pub mod backend;
+pub(crate) mod backend;
 pub(crate) mod blob;
 pub(crate) mod cdc;
 pub(crate) mod chunker;
-pub mod commands;
+pub(crate) mod commands;
 pub(crate) mod crypto;
 pub(crate) mod error;
-pub mod id;
+pub(crate) mod id;
 pub(crate) mod index;
 pub(crate) mod progress;
 /// Structs which are saved in JSON or binary format in the repository
@@ -173,7 +173,7 @@ pub use crate::{
         ignore::{LocalSource, LocalSourceFilterOptions, LocalSourceSaveOptions},
         local_destination::LocalDestination,
         node::last_modified_node,
-        FileType, ReadBackend, ReadSourceEntry, RepositoryBackends, WriteBackend,
+        FileType, ReadBackend, ReadSourceEntry, RepositoryBackends, WriteBackend, ALL_FILE_TYPES,
     },
     blob::tree::TreeStreamerOptions as LsOptions,
     commands::{
@@ -196,6 +196,3 @@ pub use crate::{
     },
     repository::{IndexedFull, OpenStatus, Repository, RepositoryOptions},
 };
-
-#[cfg(feature = "merge")]
-pub use crate::repository::overwrite;

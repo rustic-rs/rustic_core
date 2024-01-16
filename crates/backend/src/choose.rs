@@ -6,8 +6,7 @@ use std::{collections::HashMap, sync::Arc};
 use strum_macros::{Display, EnumString};
 
 #[allow(unused_imports)]
-use rustic_core::overwrite;
-use rustic_core::{backend::WriteBackend, RepositoryBackends};
+use rustic_core::{RepositoryBackends, WriteBackend};
 
 use crate::{
     error::BackendAccessErrorKind,
@@ -63,6 +62,19 @@ pub struct BackendOptions {
     #[cfg_attr(feature = "clap", clap(skip))]
     #[cfg_attr(feature = "merge", merge(strategy = overwrite))]
     pub options_cold: HashMap<String, String>,
+}
+
+/// Overwrite the left value with the right value
+///
+/// This is used for merging [`RepositoryOptions`] and [`ConfigOptions`]
+///
+/// # Arguments
+///
+/// * `left` - The left value
+/// * `right` - The right value
+#[cfg(feature = "merge")]
+pub fn overwrite<T>(left: &mut T, right: T) {
+    *left = right;
 }
 
 impl BackendOptions {

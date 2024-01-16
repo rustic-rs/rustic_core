@@ -192,18 +192,6 @@ impl RepositoryOptions {
     }
 }
 
-/// Overwrite the left value with the right value
-///
-/// This is used for merging [`RepositoryOptions`] and [`ConfigOptions`]
-///
-/// # Arguments
-///
-/// * `left` - The left value
-/// * `right` - The right value
-#[cfg(feature = "merge")]
-pub fn overwrite<T>(left: &mut T, right: T) {
-    *left = right;
-}
 /// Read a password from a reader
 ///
 /// # Arguments

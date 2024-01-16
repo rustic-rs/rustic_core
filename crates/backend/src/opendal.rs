@@ -15,10 +15,7 @@ use opendal::{
 };
 use rayon::prelude::{IntoParallelIterator, ParallelIterator};
 
-use rustic_core::{
-    backend::{FileType, ReadBackend, WriteBackend, ALL_FILE_TYPES},
-    id::Id,
-};
+use rustic_core::{FileType, Id, ReadBackend, WriteBackend, ALL_FILE_TYPES};
 
 mod consts {
     /// Default number of retries

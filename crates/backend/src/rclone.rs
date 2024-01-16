@@ -13,7 +13,7 @@ use rand::{
 
 use crate::{error::RcloneErrorKind, rest::RestBackend};
 
-use rustic_core::{id::Id, FileType, ReadBackend, WriteBackend};
+use rustic_core::{FileType, Id, ReadBackend, WriteBackend};
 
 pub(super) mod constants {
     /// The string to search for in the rclone output.

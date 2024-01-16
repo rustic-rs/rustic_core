@@ -14,10 +14,7 @@ use log::{debug, trace, warn};
 use shell_words::split;
 use walkdir::WalkDir;
 
-use rustic_core::{
-    backend::{FileType, ReadBackend, WriteBackend, ALL_FILE_TYPES},
-    id::Id,
-};
+use rustic_core::{FileType, Id, ReadBackend, WriteBackend, ALL_FILE_TYPES};
 
 use crate::error::LocalBackendErrorKind;
 
