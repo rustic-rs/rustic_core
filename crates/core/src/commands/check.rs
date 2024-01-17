@@ -224,7 +224,7 @@ fn check_cache_files(
                 (_, Err(err)) => {
                     error!("Error reading file Type: {file_type:?}, Id: {id} : {err}");
                 }
-                (Ok(data_cached), Ok(data)) if data_cached != data => {
+                (Ok(Some(data_cached)), Ok(data)) if data_cached != data => {
                     error!(
                         "Cached file Type: {file_type:?}, Id: {id} is not identical to backend!"
                     );
