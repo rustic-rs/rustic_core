@@ -1,7 +1,7 @@
 use std::{
     collections::HashMap,
     fs::{self, File},
-    io::{Read, Seek, SeekFrom, Write},
+    io::{ErrorKind, Read, Seek, SeekFrom, Write},
     path::PathBuf,
     sync::Arc,
 };
@@ -92,17 +92,16 @@ impl ReadBackend for CachedBackend {
     /// [`CacheBackendErrorKind::FromIoError`]: crate::error::CacheBackendErrorKind::FromIoError
     fn read_full(&self, tpe: FileType, id: &Id) -> Result<Bytes> {
         if tpe.is_cacheable() {
-            self.cache.read_full(tpe, id).map_or_else(
-                |err| {
-                    warn!("Error in cache backend: {err}");
-                    let res = self.be.read_full(tpe, id);
-                    if let Ok(data) = &res {
-                        _ = self.cache.write_bytes(tpe, id, data.clone());
-                    }
-                    res
-                },
-                Ok,
-            )
+            match self.cache.read_full(tpe, id) {
+                Ok(Some(data)) => return Ok(data),
+                Ok(None) => {}
+                Err(err) => warn!("Error in cache backend: {err}"),
+            }
+            let res = self.be.read_full(tpe, id);
+            if let Ok(data) = &res {
+                _ = self.cache.write_bytes(tpe, id, data.clone());
+            }
+            res
         } else {
             self.be.read_full(tpe, id)
         }
@@ -136,23 +135,20 @@ impl ReadBackend for CachedBackend {
         length: u32,
     ) -> Result<Bytes> {
         if cacheable || tpe.is_cacheable() {
-            self.cache
-                .read_partial(tpe, id, offset, length)
-                .map_or_else(
-                    |err| {
-                        warn!("Error in cache backend: {err}");
-                        // read full file, save to cache and return partial content
-                        match self.be.read_full(tpe, id) {
-                            Ok(data) => {
-                                let range = offset as usize..(offset + length) as usize;
-                                _ = self.cache.write_bytes(tpe, id, data.clone());
-                                Ok(Bytes::copy_from_slice(&data.slice(range)))
-                            }
-                            error => error,
-                        }
-                    },
-                    Ok,
-                )
+            match self.cache.read_partial(tpe, id, offset, length) {
+                Ok(Some(data)) => return Ok(data),
+                Ok(None) => {}
+                Err(err) => warn!("Error in cache backend: {err}"),
+            };
+            // read full file, save to cache and return partial content
+            match self.be.read_full(tpe, id) {
+                Ok(data) => {
+                    let range = offset as usize..(offset + length) as usize;
+                    _ = self.cache.write_bytes(tpe, id, data.clone());
+                    Ok(Bytes::copy_from_slice(&data.slice(range)))
+                }
+                error => error,
+            }
         } else {
             self.be.read_partial(tpe, id, cacheable, offset, length)
         }
@@ -363,11 +359,16 @@ impl Cache {
     /// * [`CacheBackendErrorKind::FromIoError`] - If the file could not be read.
     ///
     /// [`CacheBackendErrorKind::FromIoError`]: crate::error::CacheBackendErrorKind::FromIoError
-    pub fn read_full(&self, tpe: FileType, id: &Id) -> RusticResult<Bytes> {
+    pub fn read_full(&self, tpe: FileType, id: &Id) -> RusticResult<Option<Bytes>> {
         trace!("cache reading tpe: {:?}, id: {}", &tpe, &id);
-        let data = fs::read(self.path(tpe, id)).map_err(CacheBackendErrorKind::FromIoError)?;
-        trace!("cache hit!");
-        Ok(data.into())
+        match fs::read(self.path(tpe, id)) {
+            Ok(data) => {
+                trace!("cache hit!");
+                Ok(Some(data.into()))
+            }
+            Err(err) if err.kind() == ErrorKind::NotFound => Ok(None),
+            Err(err) => Err(CacheBackendErrorKind::FromIoError(err).into()),
+        }
     }
 
     /// Reads partial data of the given file.
@@ -390,15 +391,18 @@ impl Cache {
         id: &Id,
         offset: u32,
         length: u32,
-    ) -> RusticResult<Bytes> {
+    ) -> RusticResult<Option<Bytes>> {
         trace!(
             "cache reading tpe: {:?}, id: {}, offset: {}",
             &tpe,
             &id,
             &offset
         );
-        let mut file =
-            File::open(self.path(tpe, id)).map_err(CacheBackendErrorKind::FromIoError)?;
+        let mut file = match File::open(self.path(tpe, id)) {
+            Ok(file) => file,
+            Err(err) if err.kind() == ErrorKind::NotFound => return Ok(None),
+            Err(err) => return Err(CacheBackendErrorKind::FromIoError(err).into()),
+        };
         _ = file
             .seek(SeekFrom::Start(u64::from(offset)))
             .map_err(CacheBackendErrorKind::FromIoError)?;
@@ -406,7 +410,7 @@ impl Cache {
         file.read_exact(&mut vec)
             .map_err(CacheBackendErrorKind::FromIoError)?;
         trace!("cache hit!");
-        Ok(vec.into())
+        Ok(Some(vec.into()))
     }
 
     /// Writes the given data to the given file.
