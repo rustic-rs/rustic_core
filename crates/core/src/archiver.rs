@@ -126,6 +126,7 @@ impl<'a, BE: DecryptFullBackend, I: ReadGlobalIndex> Archiver<'a, BE, I> {
         backup_path: &Path,
         as_path: Option<&PathBuf>,
         skip_identical_parent: bool,
+        no_scan: bool,
         p: &impl Progress,
     ) -> RusticResult<SnapshotFile>
     where
@@ -133,68 +134,76 @@ impl<'a, BE: DecryptFullBackend, I: ReadGlobalIndex> Archiver<'a, BE, I> {
         <R as ReadSource>::Open: Send,
         <R as ReadSource>::Iter: Send,
     {
-        if !p.is_hidden() {
-            if let Some(size) = src.size()? {
-                p.set_length(size);
-            }
-        };
-        p.set_title("backing up...");
-
-        // filter out errors and handle as_path
-        let iter = src.entries().filter_map(|item| match item {
-            Err(e) => {
-                warn!("ignoring error {e}\n");
-                None
-            }
-            Ok(ReadSourceEntry { path, node, open }) => {
-                let snapshot_path = if let Some(as_path) = as_path {
-                    as_path
-                        .clone()
-                        .join(path.strip_prefix(backup_path).unwrap())
-                } else {
-                    path
-                };
-                Some(if node.is_dir() {
-                    (snapshot_path, node, open)
-                } else {
-                    (
-                        snapshot_path
-                            .parent()
-                            .expect("file path should have a parent!")
-                            .to_path_buf(),
-                        node,
-                        open,
-                    )
-                })
-            }
-        });
-        // handle beginning and ending of trees
-        let iter = TreeIterator::new(iter);
-
-        scope(|scope| -> RusticResult<_> {
-            // use parent snapshot
-            iter.filter_map(
-                |item| match self.parent.process(&self.be, self.index, item) {
-                    Ok(item) => Some(item),
-                    Err(err) => {
-                        warn!("ignoring error reading parent snapshot: {err:?}");
-                        None
+        std::thread::scope(|s| -> RusticResult<_> {
+            // determine backup size in parallel to running backup
+            let src_size_handle = s.spawn(|| {
+                if !no_scan && !p.is_hidden() {
+                    match src.size() {
+                        Ok(Some(size)) => p.set_length(size),
+                        Ok(None) => {}
+                        Err(err) => warn!("error determining backup size: {err}"),
                     }
-                },
-            )
-            // archive files in parallel
-            .parallel_map_scoped(scope, |item| self.file_archiver.process(item, p))
-            .readahead_scoped(scope)
-            .filter_map(|item| match item {
-                Ok(item) => Some(item),
-                Err(err) => {
-                    warn!("ignoring error: {err:?}");
+                }
+            });
+
+            // filter out errors and handle as_path
+            let iter = src.entries().filter_map(|item| match item {
+                Err(e) => {
+                    warn!("ignoring error {e}\n");
                     None
                 }
+                Ok(ReadSourceEntry { path, node, open }) => {
+                    let snapshot_path = if let Some(as_path) = as_path {
+                        as_path
+                            .clone()
+                            .join(path.strip_prefix(backup_path).unwrap())
+                    } else {
+                        path
+                    };
+                    Some(if node.is_dir() {
+                        (snapshot_path, node, open)
+                    } else {
+                        (
+                            snapshot_path
+                                .parent()
+                                .expect("file path should have a parent!")
+                                .to_path_buf(),
+                            node,
+                            open,
+                        )
+                    })
+                }
+            });
+            // handle beginning and ending of trees
+            let iter = TreeIterator::new(iter);
+
+            scope(|scope| -> RusticResult<_> {
+                // use parent snapshot
+                iter.filter_map(
+                    |item| match self.parent.process(&self.be, self.index, item) {
+                        Ok(item) => Some(item),
+                        Err(err) => {
+                            warn!("ignoring error reading parent snapshot: {err:?}");
+                            None
+                        }
+                    },
+                )
+                // archive files in parallel
+                .parallel_map_scoped(scope, |item| self.file_archiver.process(item, p))
+                .readahead_scoped(scope)
+                .filter_map(|item| match item {
+                    Ok(item) => Some(item),
+                    Err(err) => {
+                        warn!("ignoring error: {err:?}");
+                        None
+                    }
+                })
+                .try_for_each(|item| self.tree_archiver.add(item))
             })
-            .try_for_each(|item| self.tree_archiver.add(item))
-        })
-        .unwrap()?;
+            .unwrap()?;
+            src_size_handle.join().unwrap();
+            Ok(())
+        })?;
 
         let stats = self.file_archiver.finalize()?;
         let (id, mut summary) = self.tree_archiver.finalize(self.parent.tree_id())?;

@@ -31,14 +31,11 @@ use crate::{
     error::{IgnoreErrorKind, RusticResult},
 };
 
-// Walk doesn't implement Debug
-#[allow(missing_debug_implementations)]
 /// A [`LocalSource`] is a source from local paths which is used to be read from (i.e. to backup it).
+#[derive(Debug)]
 pub struct LocalSource {
     /// The walk builder.
     builder: WalkBuilder,
-    /// The walk iterator.
-    walker: Walk,
     /// The save options to use.
     save_opts: LocalSourceSaveOptions,
 }
@@ -226,13 +223,8 @@ impl LocalSource {
         }
 
         let builder = walk_builder;
-        let walker = builder.build();
 
-        Ok(Self {
-            builder,
-            walker,
-            save_opts,
-        })
+        Ok(Self { builder, save_opts })
     }
 }
 
@@ -262,7 +254,7 @@ impl ReadSourceOpen for OpenFile {
 
 impl ReadSource for LocalSource {
     type Open = OpenFile;
-    type Iter = Self;
+    type Iter = LocalSourceWalker;
 
     /// Get the size of the local source.
     ///
@@ -290,12 +282,24 @@ impl ReadSource for LocalSource {
     /// # Returns
     ///
     /// An iterator over the entries of the local source.
-    fn entries(self) -> Self::Iter {
-        self
+    fn entries(&self) -> Self::Iter {
+        LocalSourceWalker {
+            walker: self.builder.build(),
+            save_opts: self.save_opts,
+        }
     }
 }
 
-impl Iterator for LocalSource {
+// Walk doesn't implement Debug
+#[allow(missing_debug_implementations)]
+pub struct LocalSourceWalker {
+    /// The walk iterator.
+    walker: Walk,
+    /// The save options to use.
+    save_opts: LocalSourceSaveOptions,
+}
+
+impl Iterator for LocalSourceWalker {
     type Item = RusticResult<ReadSourceEntry<OpenFile>>;
 
     fn next(&mut self) -> Option<Self::Item> {

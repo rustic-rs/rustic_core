@@ -173,7 +173,8 @@ pub use crate::{
         ignore::{LocalSource, LocalSourceFilterOptions, LocalSourceSaveOptions},
         local_destination::LocalDestination,
         node::last_modified_node,
-        FileType, ReadBackend, ReadSourceEntry, RepositoryBackends, WriteBackend, ALL_FILE_TYPES,
+        FileType, ReadBackend, ReadSource, ReadSourceEntry, ReadSourceOpen, RepositoryBackends,
+        WriteBackend, ALL_FILE_TYPES,
     },
     blob::tree::TreeStreamerOptions as LsOptions,
     commands::{

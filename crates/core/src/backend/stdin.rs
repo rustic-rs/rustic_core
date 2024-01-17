@@ -9,7 +9,7 @@ use crate::{
 };
 
 /// The `StdinSource` is a `ReadSource` for stdin.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct StdinSource {
     /// Whether we have already yielded the stdin entry.
     finished: bool,
@@ -53,8 +53,8 @@ impl ReadSource for StdinSource {
     }
 
     /// Returns an iterator over the source.
-    fn entries(self) -> Self::Iter {
-        self
+    fn entries(&self) -> Self::Iter {
+        self.clone()
     }
 }
 
