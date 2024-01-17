@@ -1,0 +1,97 @@
+[package]
+name = "rustic_backend"
+version = "0.1.0"
+authors = ["the rustic-rs team"]
+categories = ["Algorithms", "Data structures", "Filesystem"]
+documentation = "https://docs.rs/rustic_backend"
+edition = "2021"
+homepage = "https://rustic.cli.rs/"
+include = ["src/**/*", "LICENSE-*", "README.md"]
+keywords = ["backup", "restic", "deduplication", "encryption", "library"]
+license = "Apache-2.0 OR MIT"
+publish = true
+readme = "README.md"
+repository = "https://github.com/rustic-rs/rustic_core/tree/main/crates/backend"
+resolver = "2"
+rust-version = { workspace = true }
+description = """
+rustic_backend - library for supporting various backends in rustic-rs
+"""
+
+[lib]
+path = "src/lib.rs"
+name = "rustic_backend"
+test = true
+doctest = true
+bench = true
+doc = true
+harness = true
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[features]
+default = ["opendal", "s3", "rest", "rclone"]
+cli = ["merge", "clap"]
+merge = ["dep:merge"]
+clap = ["dep:clap"]
+s3 = ["opendal"]
+opendal = ["dep:opendal", "dep:rayon", "dep:tokio", "tokio/rt-multi-thread"]
+rest = ["dep:reqwest", "dep:backoff"]
+rclone = ["rest", "dep:rand"]
+
+[dependencies]
+# core
+rustic_core = { path = "../core" }
+
+# errors
+anyhow = "1.0.79"
+displaydoc = "0.2.4"
+thiserror = "1.0.56"
+
+# logging
+log = "0.4.20"
+
+# other dependencies
+bytes = "1.5.0"
+derive_setters = "0.1.6"
+humantime = "2.1.0"
+itertools = "0.12.0"
+strum = "0.25"
+strum_macros = "0.25"
+
+# general / backend choosing
+hex = { version = "0.4.3", features = ["serde"] }
+serde = { version = "1.0.195" }
+url = "2.5.0"
+
+# cli support
+clap = { version = "4.4.14", optional = true, features = ["derive", "env", "wrap_help"] }
+merge = { version = "0.1.0", optional = true }
+
+# local backend
+aho-corasick = "1.1.2"
+shell-words = "1.1.0"
+walkdir = "2.4.0"
+
+# rest backend
+backoff = { version = "0.4.0", optional = true }
+reqwest = { version = "0.11.23", default-features = false, features = ["json", "rustls-tls-native-roots", "stream", "blocking"], optional = true }
+
+# rclone backend
+rand = { version = "0.8.5", optional = true }
+
+# opendal backend
+rayon = { version = "1.8.0", optional = true }
+tokio = { version = "1.35.1", optional = true, default-features = false }
+
+[target.'cfg(not(windows))'.dependencies]
+# opendal backend - sftp is not supported on windows, see https://github.com/apache/incubator-opendal/issues/2963
+opendal = { version = "0.44.1", features = ["services-b2", "services-sftp", "services-swift"], optional = true }
+
+[target.'cfg(windows)'.dependencies]
+# opendal backend
+opendal = { version = "0.44.1", features = ["services-b2", "services-swift"], optional = true }
+
+[dev-dependencies]
+rstest = "0.18.2"
