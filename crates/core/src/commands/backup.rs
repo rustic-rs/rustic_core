@@ -142,6 +142,11 @@ pub struct BackupOptions {
     #[cfg_attr(feature = "clap", clap(long, value_name = "PATH"))]
     pub as_path: Option<PathBuf>,
 
+    /// Don't scan the backup source for its size - this disables ETA estimation for backup.
+    #[cfg_attr(feature = "clap", clap(long))]
+    #[cfg_attr(feature = "merge", merge(strategy = merge::bool::overwrite_false))]
+    pub no_scan: bool,
+
     /// Dry-run mode: Don't write any data or snapshot
     #[cfg_attr(feature = "clap", clap(long))]
     #[cfg_attr(feature = "merge", merge(strategy = merge::bool::overwrite_false))]
@@ -234,7 +239,7 @@ pub(crate) fn backup<P: ProgressBars, S: IndexedIds>(
     let be = DryRunBackend::new(repo.dbe().clone(), opts.dry_run);
     info!("starting to backup {source}...");
     let archiver = Archiver::new(be, index, repo.config(), parent, snap)?;
-    let p = repo.pb.progress_bytes("determining size...");
+    let p = repo.pb.progress_bytes("backing up...");
 
     let snap = if backup_stdin {
         let path = &backup_path[0];
@@ -244,6 +249,7 @@ pub(crate) fn backup<P: ProgressBars, S: IndexedIds>(
             path,
             as_path.as_ref(),
             opts.parent_opts.skip_identical_parent,
+            opts.no_scan,
             &p,
         )?
     } else {
@@ -257,6 +263,7 @@ pub(crate) fn backup<P: ProgressBars, S: IndexedIds>(
             &backup_path[0],
             as_path.as_ref(),
             opts.parent_opts.skip_identical_parent,
+            opts.no_scan,
             &p,
         )?
     };
