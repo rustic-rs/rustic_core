@@ -1,5 +1,7 @@
 #[cfg(feature = "s3")]
 pub mod s3;
+#[cfg(all(unix, feature = "sftp"))]
+pub mod sftp;
 
 use std::{collections::HashMap, path::PathBuf, str::FromStr, sync::OnceLock};
 
