@@ -2,7 +2,7 @@
 use bytes::{Bytes, BytesMut};
 
 use crate::{
-    index::{IndexedBackend, ReadIndex},
+    index::ReadIndex,
     repofile::{BlobType, Node},
     repository::{IndexedFull, IndexedTree, Repository},
     Id, RusticResult,
@@ -57,9 +57,9 @@ impl OpenFile {
 
         while length > 0 && i < self.content.len() {
             // TODO: We should add some caching here!
-            let data = repo
-                .index()
-                .blob_from_backend(BlobType::Data, &self.content[i].id)?;
+            let data =
+                repo.index()
+                    .blob_from_backend(repo.dbe(), BlobType::Data, &self.content[i].id)?;
             if offset > data.len() {
                 // we cannot read behind the blob. This only happens if offset is too large to fit in the last blob
                 break;
