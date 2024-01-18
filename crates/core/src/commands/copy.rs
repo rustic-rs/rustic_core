@@ -8,7 +8,7 @@ use crate::{
     blob::{packer::Packer, tree::TreeStreamerOnce, BlobType},
     error::RusticResult,
     index::{indexer::Indexer, ReadIndex},
-    progress::ProgressBars,
+    progress::{Progress, ProgressBars},
     repofile::SnapshotFile,
     repository::{IndexedFull, IndexedIds, IndexedTree, Open, Repository},
 };
@@ -71,7 +71,7 @@ pub(crate) fn copy<'a, Q, R: IndexedFull, P: ProgressBars, S: IndexedIds>(
         index.total_size(BlobType::Tree),
     )?;
 
-    let p = pb.progress_counter("copying blobs in snapshots...");
+    let p = pb.progress_bytes("copying blobs...");
 
     snap_trees
         .par_iter()
@@ -79,12 +79,13 @@ pub(crate) fn copy<'a, Q, R: IndexedFull, P: ProgressBars, S: IndexedIds>(
             trace!("copy tree blob {id}");
             if !index_dest.has_tree(id) {
                 let data = index.get_tree(id).unwrap().read_data(be)?;
+                p.inc(data.len() as u64);
                 tree_packer.add(data, *id)?;
             }
             Ok(())
         })?;
 
-    let tree_streamer = TreeStreamerOnce::new(be, index, snap_trees, p)?;
+    let tree_streamer = TreeStreamerOnce::new(be, index, snap_trees, pb.progress_hidden())?;
     tree_streamer
         .par_bridge()
         .try_for_each(|item| -> RusticResult<_> {
@@ -97,6 +98,7 @@ pub(crate) fn copy<'a, Q, R: IndexedFull, P: ProgressBars, S: IndexedIds>(
                                 trace!("copy data blob {id}");
                                 if !index_dest.has_data(id) {
                                     let data = index.get_data(id).unwrap().read_data(be)?;
+                                    p.inc(data.len() as u64);
                                     data_packer.add(data, *id)?;
                                 }
                                 Ok(())
@@ -109,6 +111,7 @@ pub(crate) fn copy<'a, Q, R: IndexedFull, P: ProgressBars, S: IndexedIds>(
                         trace!("copy tree blob {id}");
                         if !index_dest.has_tree(&id) {
                             let data = index.get_tree(&id).unwrap().read_data(be)?;
+                            p.inc(data.len() as u64);
                             tree_packer.add(data, id)?;
                         }
                     }
