@@ -15,6 +15,9 @@ pub use crate::{
     local::LocalBackend,
 };
 
+#[cfg(all(unix, feature = "sftp"))]
+pub use crate::opendal::sftp::SftpBackend;
+
 #[cfg(feature = "s3")]
 pub use crate::opendal::s3::S3Backend;
 

@@ -16,6 +16,9 @@ use crate::{
 #[cfg(feature = "s3")]
 use crate::opendal::s3::S3Backend;
 
+#[cfg(all(unix, feature = "sftp"))]
+use crate::opendal::sftp::SftpBackend;
+
 #[cfg(feature = "opendal")]
 use crate::opendal::OpenDALBackend;
 
@@ -159,6 +162,11 @@ pub enum SupportedBackend {
     /// An openDAL S3 backend
     #[strum(serialize = "s3", to_string = "S3 Backend")]
     S3,
+
+    #[cfg(all(unix, feature = "sftp"))]
+    /// An openDAL sftp backend
+    #[strum(serialize = "sftp", to_string = "sftp Backend")]
+    Sftp,
 }
 
 impl BackendChoice for SupportedBackend {
@@ -179,6 +187,8 @@ impl BackendChoice for SupportedBackend {
             Self::OpenDAL => Arc::new(OpenDALBackend::new(location, options)?),
             #[cfg(feature = "s3")]
             Self::S3 => Arc::new(S3Backend::new(location, options)?),
+            #[cfg(all(unix, feature = "sftp"))]
+            Self::Sftp => Arc::new(SftpBackend::new(location, options)?),
         })
     }
 }
