@@ -2,7 +2,7 @@
 use derive_setters::Setters;
 use log::{info, warn};
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet};
 
 use crate::{
     backend::{
@@ -67,8 +67,8 @@ enum Changed {
 
 #[derive(Default)]
 struct RepairState {
-    replaced: HashMap<Id, (Changed, Id)>,
-    seen: HashSet<Id>,
+    replaced: BTreeMap<Id, (Changed, Id)>,
+    seen: BTreeSet<Id>,
     delete: Vec<Id>,
 }
 

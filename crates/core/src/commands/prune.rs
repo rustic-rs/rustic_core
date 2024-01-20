@@ -7,7 +7,7 @@ use log::{info, warn};
 
 use std::{
     cmp::Ordering,
-    collections::{HashMap, HashSet},
+    collections::{BTreeMap, BTreeSet},
     str::FromStr,
     sync::{Arc, Mutex},
 };
@@ -206,7 +206,7 @@ impl PruneOptions {
 
         // list existing pack files
         let p = pb.progress_spinner("getting packs from repository...");
-        let existing_packs: HashMap<_, _> = be
+        let existing_packs: BTreeMap<_, _> = be
             .list_with_size(FileType::Pack)
             .map_err(RusticErrorKind::Backend)?
             .into_iter()
@@ -576,9 +576,9 @@ pub struct PrunePlan {
     /// The time the plan was created
     time: DateTime<Local>,
     /// The ids of the blobs which are used
-    used_ids: HashMap<Id, u8>,
+    used_ids: BTreeMap<Id, u8>,
     /// The ids of the existing packs
-    existing_packs: HashMap<Id, u32>,
+    existing_packs: BTreeMap<Id, u32>,
     /// The packs which should be repacked
     repack_candidates: Vec<(PackInfo, RepackReason, usize, usize)>,
     /// The index files
@@ -596,12 +596,12 @@ impl PrunePlan {
     /// * `existing_packs` - The ids of the existing packs
     /// * `index_files` - The index files
     fn new(
-        used_ids: HashMap<Id, u8>,
-        existing_packs: HashMap<Id, u32>,
+        used_ids: BTreeMap<Id, u8>,
+        existing_packs: BTreeMap<Id, u32>,
         index_files: Vec<(Id, IndexFile)>,
     ) -> Self {
-        let mut processed_packs = HashSet::new();
-        let mut processed_packs_delete = HashSet::new();
+        let mut processed_packs = BTreeSet::new();
+        let mut processed_packs_delete = BTreeSet::new();
         let mut index_files: Vec<_> = index_files
             .into_iter()
             .map(|(id, index)| {
@@ -937,9 +937,6 @@ impl PrunePlan {
             }
         }
 
-        self.used_ids.shrink_to_fit();
-        self.existing_packs.shrink_to_fit();
-
         // all remaining packs in existing_packs are unreferenced packs
         for size in self.existing_packs.values() {
             self.stats.size_unref += u64::from(*size);
@@ -1247,8 +1244,8 @@ impl PackInfo {
     /// # Arguments
     ///
     /// * `pack` - The `PrunePack` to create the `PackInfo` from
-    /// * `used_ids` - The `HashMap` of used ids
-    fn from_pack(pack: &PrunePack, used_ids: &mut HashMap<Id, u8>) -> Self {
+    /// * `used_ids` - The `BTreeMap` of used ids
+    fn from_pack(pack: &PrunePack, used_ids: &mut BTreeMap<Id, u8>) -> Self {
         let mut pi = Self {
             blob_type: pack.blob_type,
             used_blobs: 0,
@@ -1339,8 +1336,8 @@ fn find_used_blobs(
     index: &impl ReadGlobalIndex,
     ignore_snaps: &[Id],
     pb: &impl ProgressBars,
-) -> RusticResult<HashMap<Id, u8>> {
-    let ignore_snaps: HashSet<_> = ignore_snaps.iter().collect();
+) -> RusticResult<BTreeMap<Id, u8>> {
+    let ignore_snaps: BTreeSet<_> = ignore_snaps.iter().collect();
 
     let p = pb.progress_counter("reading snapshots...");
     let list = be
@@ -1356,7 +1353,7 @@ fn find_used_blobs(
         .try_collect()?;
     p.finish();
 
-    let mut ids: HashMap<_, _> = snap_trees.iter().map(|id| (*id, 0)).collect();
+    let mut ids: BTreeMap<_, _> = snap_trees.iter().map(|id| (*id, 0)).collect();
     let p = pb.progress_counter("finding used blobs...");
 
     let mut tree_streamer = TreeStreamerOnce::new(be, index, snap_trees, p)?;
