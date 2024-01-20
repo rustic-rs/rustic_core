@@ -39,7 +39,7 @@ jobs:
         with:
           toolchain: stable
           components: clippy
-      - uses: Swatinem/rust-cache@a95ba195448af2da9b00fb742d14ffaaf3c21f43 # v2
+      - uses: Swatinem/rust-cache@23bce251a8cd2ffc3c1075eaa2367cf899916d84 # v2
       - name: Run clippy
         run: cargo clippy --all-targets --all-features -- -D warnings
 
@@ -69,7 +69,7 @@ jobs:
         uses: dtolnay/rust-toolchain@1482605bfc5719782e1267fd0c0cc350fe7646b8 # v1
         with:
           toolchain: ${{ matrix.rust }}
-      - uses: Swatinem/rust-cache@a95ba195448af2da9b00fb742d14ffaaf3c21f43 # v2
+      - uses: Swatinem/rust-cache@23bce251a8cd2ffc3c1075eaa2367cf899916d84 # v2
       - name: Run Cargo Test
         run: cargo +${{ matrix.rust }} test -r --all-targets --all-features --workspace --examples
 
@@ -99,7 +99,7 @@ jobs:
         uses: dtolnay/rust-toolchain@1482605bfc5719782e1267fd0c0cc350fe7646b8 # v1
         with:
           toolchain: ${{ matrix.rust }}
-      - uses: Swatinem/rust-cache@a95ba195448af2da9b00fb742d14ffaaf3c21f43 # v2
+      - uses: Swatinem/rust-cache@23bce251a8cd2ffc3c1075eaa2367cf899916d84 # v2
       - name: Run Cargo Doc
         run: cargo +${{ matrix.rust }} doc --no-deps --all-features --workspace --examples
 
@@ -134,7 +134,7 @@ jobs:
         uses: taiki-e/install-action@3ed9916b5427bc0679b294607ea47d1d8007b53f # v2
         with:
           tool: cargo-hack
-      - uses: Swatinem/rust-cache@a95ba195448af2da9b00fb742d14ffaaf3c21f43 # v2
+      - uses: Swatinem/rust-cache@23bce251a8cd2ffc3c1075eaa2367cf899916d84 # v2
       - name: Run Cargo Hack
         run: cargo +${{ matrix.rust }} hack check --feature-powerset --no-dev-deps -p ${{ matrix.crate }}
 

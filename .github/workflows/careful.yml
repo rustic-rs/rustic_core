@@ -36,7 +36,7 @@ jobs:
         uses: taiki-e/install-action@3ed9916b5427bc0679b294607ea47d1d8007b53f # v2
         with:
           tool: cargo-careful
-      - uses: Swatinem/rust-cache@a95ba195448af2da9b00fb742d14ffaaf3c21f43 # v2
+      - uses: Swatinem/rust-cache@23bce251a8cd2ffc3c1075eaa2367cf899916d84 # v2
 
       - name: Run Cargo Careful
         run: cargo +${{ matrix.rust }} careful test
