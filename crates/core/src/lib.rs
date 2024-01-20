@@ -165,6 +165,7 @@ pub(crate) mod progress;
 /// Structs which are saved in JSON or binary format in the repository
 pub mod repofile;
 pub(crate) mod repository;
+/// Virtual File System support - allows to act on the repository like on a file system
 pub mod vfs;
 
 // rustic_core Public API
@@ -184,7 +185,6 @@ pub use crate::{
         config::ConfigOptions,
         copy::CopySnapshot,
         forget::{ForgetGroup, ForgetGroups, ForgetSnapshot, KeepOptions},
-        fs::OpenFile,
         key::KeyOptions,
         prune::{PruneOptions, PrunePlan, PruneStats},
         repair::{index::RepairIndexOptions, snapshots::RepairSnapshotsOptions},

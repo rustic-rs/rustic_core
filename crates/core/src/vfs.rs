@@ -9,26 +9,39 @@ use std::{
 };
 
 use anyhow::{anyhow, bail};
+use bytes::{Bytes, BytesMut};
 use runtime_format::FormatArgs;
 
 #[cfg(feature = "webdav")]
+/// A struct which enables `WebDAV` access to a [`Vfs`] using [`dav-server`]
 pub use webdavfs::WebDavFS;
 
-use crate::repofile::{Metadata, Node, NodeType, SnapshotFile};
-use crate::{Id, IndexedFull, Repository};
+use crate::repofile::{BlobType, Metadata, Node, NodeType, SnapshotFile};
+use crate::{
+    index::ReadIndex,
+    repository::{IndexedFull, IndexedTree, Repository},
+    Id, RusticResult,
+};
 
 use format::FormattedSnapshot;
 
 #[derive(Debug, Clone, Copy)]
+/// `IdenticalSnapshot` describes how to handle identical snapshots.
 pub enum IdenticalSnapshot {
+    /// create a link to the previous identical snapshots
     AsLink,
+    /// make a dir, i.e. don't add special treatment for identical snapshots
     AsDir,
 }
 
 #[derive(Debug, Clone, Copy)]
+/// `Lates` describes wheter a `latest` entry should be added.
 pub enum Latest {
+    /// Don't add a `latest` entry
     No,
+    /// Add `latest` as symlink
     AsLink,
+    /// Add `latest` as directory with identical content as the last snapshot by time.
     AsDir,
 }
 
@@ -38,6 +51,7 @@ enum VfsTree {
     Link(OsString),
     VirtualTree(BTreeMap<OsString, VfsTree>),
 }
+
 impl VfsTree {
     fn new() -> Self {
         Self::VirtualTree(BTreeMap::new())
@@ -101,17 +115,16 @@ impl VfsTree {
 }
 
 #[derive(Debug)]
+/// A virtual file system which offers repository contents
 pub struct Vfs(VfsTree);
 
 impl Vfs {
-    pub fn new() -> Self {
-        Self(VfsTree::new())
-    }
-
+    /// Create a new [`Vfs`] from a directory [`Node`].
     pub fn from_dirnode(node: Node) -> Self {
-        Vfs(VfsTree::RusticTree(node.subtree.unwrap()))
+        Self(VfsTree::RusticTree(node.subtree.unwrap()))
     }
 
+    /// Create a new [`Vfs`] from a list of snapshots.
     pub fn from_snapshots(
         mut snapshots: Vec<SnapshotFile>,
         path_template: String,
@@ -193,6 +206,7 @@ impl Vfs {
         Ok(Self(root))
     }
 
+    /// Get a [`Node`] from the specified path.
     pub fn node_from_path<P, S: IndexedFull>(
         &self,
         repo: &Repository<P, S>,
@@ -217,6 +231,7 @@ impl Vfs {
         }
     }
 
+    /// Get a list of [`Node`]s from the specified directory path.
     pub fn dir_entries_from_path<P, S: IndexedFull>(
         &self,
         repo: &Repository<P, S>,
@@ -252,7 +267,74 @@ impl Vfs {
     }
 
     #[cfg(feature = "webdav")]
+    /// Turn the [`Vfs`] into a [`WebDavFS`]
     pub fn into_webdav_fs<P, S: IndexedFull>(self, repo: Repository<P, S>) -> Box<WebDavFS<P, S>> {
         WebDavFS::new(repo, self)
+    }
+}
+
+/// `OpenFile` stores all information needed to access the contents of a file node
+#[derive(Debug)]
+pub struct OpenFile {
+    // The list of blobs
+    content: Vec<BlobInfo>,
+}
+
+// Information about the blob: 1) The id 2) The cumulated sizes of all blobs prior to this one, a.k.a the starting point of this blob.
+#[derive(Debug)]
+struct BlobInfo {
+    id: Id,
+    cumsize: usize,
+}
+
+impl OpenFile {
+    /// Create an `OpenFile` from a `Node`
+    pub fn from_node<P, S: IndexedFull>(repo: &Repository<P, S>, node: &Node) -> Self {
+        let mut start = 0;
+        let content = node
+            .content
+            .as_ref()
+            .unwrap()
+            .iter()
+            .map(|id| {
+                let cumsize = start;
+                start += repo.index().get_data(id).unwrap().data_length() as usize;
+                BlobInfo { id: *id, cumsize }
+            })
+            .collect();
+
+        Self { content }
+    }
+
+    /// Read the `OpenFile` at the given `offset` from the `repo`.
+    pub fn read_at<P, S: IndexedFull>(
+        &self,
+        repo: &Repository<P, S>,
+        mut offset: usize,
+        mut length: usize,
+    ) -> RusticResult<Bytes> {
+        // find the start of relevant blobs
+        let mut i = self.content.partition_point(|c| c.cumsize <= offset) - 1;
+        offset -= self.content[i].cumsize;
+
+        let mut result = BytesMut::with_capacity(length);
+
+        let cache = repo.blob_cache();
+        while length > 0 && i < self.content.len() {
+            let data = cache.get_or_insert_with(&self.content[i].id, || {
+                repo.index()
+                    .blob_from_backend(repo.dbe(), BlobType::Data, &self.content[i].id)
+            })?;
+            if offset > data.len() {
+                // we cannot read behind the blob. This only happens if offset is too large to fit in the last blob
+                break;
+            }
+            let to_copy = (data.len() - offset).min(length);
+            result.extend_from_slice(&data[offset..offset + to_copy]);
+            offset = 0;
+            length -= to_copy;
+            i += 1;
+        }
+        Ok(result.into())
     }
 }

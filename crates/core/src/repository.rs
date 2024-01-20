@@ -36,7 +36,6 @@ use crate::{
         config::ConfigOptions,
         copy::CopySnapshot,
         forget::{ForgetGroups, KeepOptions},
-        fs::OpenFile,
         key::KeyOptions,
         prune::{PruneOptions, PrunePlan},
         repair::{index::RepairIndexOptions, snapshots::RepairSnapshotsOptions},
@@ -54,6 +53,7 @@ use crate::{
         ConfigFile, PathList, RepoFile, SnapshotFile, SnapshotSummary, Tree,
     },
     repository::{warm_up::warm_up, warm_up::warm_up_wait},
+    vfs::OpenFile,
     RepositoryBackends, RusticResult,
 };
 
@@ -1190,22 +1190,22 @@ impl<P, S: IndexedFull> Repository<P, S> {
             .ok_or_else(|| RepositoryErrorKind::IdNotFound(*id))?;
         Ok(ie)
     }
-    /// Open a file in te repository for reading
+    /// Open a file in the repository for reading
     ///
     /// # Arguments
     ///
-    /// * `tpe` - The type of the blob
-    /// * `id` - The id of the blob
+    /// * `node` - The node to open
     pub fn open_file(&self, node: &Node) -> RusticResult<OpenFile> {
-        Ok(commands::fs::OpenFile::from_node(self, node))
+        Ok(OpenFile::from_node(self, node))
     }
 
     /// Reads an opened file at the given position
     ///
     /// # Arguments
     ///
-    /// * `tpe` - The type of the blob
-    /// * `id` - The id of the blob
+    /// * `openfile` - The opend file
+    /// * `offset` - The offset to start reading
+    /// * `length` - The length to read
     pub fn read_file_at(
         &self,
         openfile: &OpenFile,
@@ -1217,10 +1217,23 @@ impl<P, S: IndexedFull> Repository<P, S> {
 }
 
 impl<P, S: IndexedTree> Repository<P, S> {
+    /// Get a [`Tree`] by [`Id`] from the repository.
+    ///
+    /// # Arguments
+    ///
+    /// * `id` - The `Id` of the tree
     pub fn get_tree(&self, id: &Id) -> RusticResult<Tree> {
         Tree::from_backend(self.dbe(), self.index(), *id)
     }
 
+    /// Get a [`Node`] from a root tree and a path
+    ///
+    /// This traverses into the path to get the node.
+    ///
+    /// # Arguments
+    ///
+    /// * `root_tree` - The `Id` of the root tree
+    /// * `path` - The path
     pub fn node_from_path(&self, root_tree: Id, path: &Path) -> RusticResult<Node> {
         Tree::node_from_path(self.dbe(), self.index(), root_tree, Path::new(path))
     }

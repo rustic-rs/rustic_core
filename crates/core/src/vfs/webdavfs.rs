@@ -6,14 +6,14 @@ use std::sync::{Arc, OnceLock};
 use std::time::SystemTime;
 
 use crate::repofile::Node;
-use crate::{IndexedFull, OpenFile, Repository};
+use crate::{IndexedFull, Repository};
 use bytes::{Buf, Bytes};
 use futures::FutureExt;
 
 use dav_server::davpath::DavPath;
 use dav_server::fs::*;
 
-use super::Vfs;
+use super::{OpenFile, Vfs};
 
 fn now() -> SystemTime {
     static NOW: OnceLock<SystemTime> = OnceLock::new();
