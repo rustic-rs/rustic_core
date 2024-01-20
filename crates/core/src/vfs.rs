@@ -1,6 +1,4 @@
 mod format;
-#[cfg(feature = "fuse")]
-mod mountfs;
 #[cfg(feature = "webdav")]
 mod webdavfs;
 
@@ -13,8 +11,6 @@ use std::{
 use anyhow::{anyhow, bail};
 use runtime_format::FormatArgs;
 
-#[cfg(feature = "fuse")]
-pub use mountfs::FuseFS;
 #[cfg(feature = "webdav")]
 pub use webdavfs::WebDavFS;
 
@@ -253,11 +249,6 @@ impl Vfs {
             }
         };
         Ok(result)
-    }
-
-    #[cfg(feature = "fuse")]
-    pub fn into_fuse_fs<P, S: IndexedFull>(self, repo: Repository<P, S>) -> FuseFS<P, S> {
-        FuseFS::new(repo, self)
     }
 
     #[cfg(feature = "webdav")]
