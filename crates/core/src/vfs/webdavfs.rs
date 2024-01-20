@@ -10,8 +10,8 @@ use crate::{IndexedFull, OpenFile, Repository};
 use bytes::{Buf, Bytes};
 use futures::FutureExt;
 
-use webdav_handler::davpath::DavPath;
-use webdav_handler::fs::*;
+use dav_server::davpath::DavPath;
+use dav_server::fs::*;
 
 use super::Vfs;
 
