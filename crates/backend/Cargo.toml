@@ -68,7 +68,7 @@ serde = { version = "1.0.195" }
 url = "2.5.0"
 
 # cli support
-clap = { version = "4.4.14", optional = true, features = ["derive", "env", "wrap_help"] }
+clap = { version = "4.4.18", optional = true, features = ["derive", "env", "wrap_help"] }
 merge = { version = "0.1.0", optional = true }
 
 # local backend
