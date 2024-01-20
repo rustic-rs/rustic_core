@@ -165,6 +165,7 @@ pub(crate) mod progress;
 /// Structs which are saved in JSON or binary format in the repository
 pub mod repofile;
 pub(crate) mod repository;
+pub mod vfs;
 
 // rustic_core Public API
 pub use crate::{
