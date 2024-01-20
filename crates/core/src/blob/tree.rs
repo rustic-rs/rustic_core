@@ -1,6 +1,6 @@
 use std::{
     cmp::Ordering,
-    collections::{BinaryHeap, HashSet},
+    collections::{BTreeSet, BinaryHeap},
     ffi::{OsStr, OsString},
     mem,
     path::{Component, Path, PathBuf, Prefix},
@@ -445,7 +445,7 @@ where
 #[derive(Debug)]
 pub struct TreeStreamerOnce<P> {
     /// The visited tree IDs
-    visited: HashSet<Id>,
+    visited: BTreeSet<Id>,
     /// The queue to send tree IDs to
     queue_in: Option<Sender<(PathBuf, Id, usize)>>,
     /// The queue to receive trees from
@@ -504,7 +504,7 @@ impl<P: Progress> TreeStreamerOnce<P> {
 
         let counter = vec![0; ids.len()];
         let mut streamer = Self {
-            visited: HashSet::new(),
+            visited: BTreeSet::new(),
             queue_in: Some(in_tx),
             queue_out: out_rx,
             p,

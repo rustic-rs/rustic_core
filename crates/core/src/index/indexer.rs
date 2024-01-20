@@ -1,5 +1,5 @@
 use std::{
-    collections::HashSet,
+    collections::BTreeSet,
     sync::{Arc, RwLock},
     time::SystemTime,
 };
@@ -37,7 +37,7 @@ where
     /// The time the indexer was created.
     created: SystemTime,
     /// The set of indexed blob ids.
-    indexed: Option<HashSet<Id>>,
+    indexed: Option<BTreeSet<Id>>,
 }
 
 impl<BE: DecryptWriteBackend> Indexer<BE> {
@@ -56,7 +56,7 @@ impl<BE: DecryptWriteBackend> Indexer<BE> {
             file: IndexFile::default(),
             count: 0,
             created: SystemTime::now(),
-            indexed: Some(HashSet::new()),
+            indexed: Some(BTreeSet::new()),
         }
     }
 
