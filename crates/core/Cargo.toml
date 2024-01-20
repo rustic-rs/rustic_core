@@ -72,7 +72,7 @@ binrw = "0.13.3"
 hex = { version = "0.4.3", features = ["serde"] }
 integer-sqrt = "0.1.5"
 serde = { version = "1.0.195" }
-serde-aux = "4.3.1"
+serde-aux = "4.4.0"
 serde_derive = "1.0.195"
 serde_json = "1.0.111"
 serde_with = { version = "3.4.0", features = ["base64"] }
