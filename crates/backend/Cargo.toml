@@ -89,11 +89,11 @@ tokio = { version = "1.35.1", optional = true, default-features = false }
 
 [target.'cfg(not(windows))'.dependencies]
 # opendal backend - sftp is not supported on windows, see https://github.com/apache/incubator-opendal/issues/2963
-opendal = { version = "0.44.1", features = ["services-b2", "services-sftp", "services-swift"], optional = true }
+opendal = { version = "0.44.2", features = ["services-b2", "services-sftp", "services-swift"], optional = true }
 
 [target.'cfg(windows)'.dependencies]
 # opendal backend
-opendal = { version = "0.44.1", features = ["services-b2", "services-swift"], optional = true }
+opendal = { version = "0.44.2", features = ["services-b2", "services-swift"], optional = true }
 
 [dev-dependencies]
 rstest = "0.18.2"
