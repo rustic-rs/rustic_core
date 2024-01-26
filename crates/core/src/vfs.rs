@@ -319,12 +319,8 @@ impl OpenFile {
 
         let mut result = BytesMut::with_capacity(length);
 
-        let cache = repo.blob_cache();
         while length > 0 && i < self.content.len() {
-            let data = cache.get_or_insert_with(&self.content[i].id, || {
-                repo.index()
-                    .blob_from_backend(repo.dbe(), BlobType::Data, &self.content[i].id)
-            })?;
+            let data = repo.get_blob_cached(&self.content[i].id, BlobType::Data)?;
             if offset > data.len() {
                 // we cannot read behind the blob. This only happens if offset is too large to fit in the last blob
                 break;

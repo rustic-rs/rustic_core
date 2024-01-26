@@ -35,12 +35,8 @@ pub(crate) fn dump<P, S: IndexedFull>(
         return Err(CommandErrorKind::DumpNotSupported(node.node_type.clone()).into());
     }
 
-    let cache = repo.blob_cache();
     for id in node.content.as_ref().unwrap() {
-        let data = cache.get_or_insert_with(id, || {
-            repo.index()
-                .blob_from_backend(repo.dbe(), BlobType::Data, id)
-        })?;
+        let data = repo.get_blob_cached(&self.content[i].id, BlobType::Data)?;
         w.write_all(&data)?;
     }
     Ok(())
