@@ -97,7 +97,7 @@ clap = { version = "4.4.18", optional = true, features = ["derive", "env", "wrap
 merge = { version = "0.1.0", optional = true }
 
 # vfs support
-dav-server = { version = "0.5", default-features = false, optional = true }
+dav-server = { version = "0.5.8", default-features = false, optional = true }
 futures = { version = "0.3", optional = true }
 runtime-format = "0.1.3"
 
