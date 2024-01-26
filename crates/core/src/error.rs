@@ -10,7 +10,6 @@ use std::{
     ops::RangeInclusive,
     path::{PathBuf, StripPrefixError},
     str::Utf8Error,
-    time::SystemTimeError,
 };
 
 #[cfg(not(windows))]
@@ -301,7 +300,7 @@ pub enum RepositoryErrorKind {
 }
 
 /// [`IndexErrorKind`] describes the errors that can be returned by processing Indizes
-#[derive(Error, Debug, Display)]
+#[derive(Error, Debug, Display, Clone, Copy)]
 pub enum IndexErrorKind {
     /// blob not found in index
     BlobInIndexNotFound,
@@ -309,8 +308,6 @@ pub enum IndexErrorKind {
     GettingBlobIndexEntryFromBackendFailed,
     /// saving IndexFile failed
     SavingIndexFileFailed,
-    /// couldn't get elapsed time from system time: {0:?}
-    CouldNotGetElapsedTimeFromSystemTime(#[from] SystemTimeError),
 }
 
 /// [`BackendAccessErrorKind`] describes the errors that can be returned by the various Backends
@@ -463,8 +460,6 @@ pub enum PackerErrorKind {
     SendingCrossbeamMessageFailedForIndexPack(
         #[from] crossbeam_channel::SendError<(bytes::Bytes, IndexPack)>,
     ),
-    /// couldn't get elapsed time from system time: `{0:?}`
-    CouldNotGetElapsedTimeFromSystemTime(#[from] SystemTimeError),
     /// couldn't create binary representation for pack header: `{0:?}`
     CouldNotCreateBinaryRepresentationForHeader(#[from] PackFileErrorKind),
     /// failed to write bytes in backend: `{0:?}`

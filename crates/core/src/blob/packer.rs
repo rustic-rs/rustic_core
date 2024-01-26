@@ -1,9 +1,10 @@
 use integer_sqrt::IntegerSquareRoot;
+use log::warn;
 
 use std::{
     num::NonZeroU32,
     sync::{Arc, RwLock},
-    time::SystemTime,
+    time::{Duration, SystemTime},
 };
 
 use bytes::{Bytes, BytesMut};
@@ -485,10 +486,8 @@ impl<BE: DecryptWriteBackend> RawPacker<BE> {
     /// # Errors
     ///
     /// * [`PackerErrorKind::IntConversionFailed`] - If converting the data length to u64 fails
-    /// * [`PackerErrorKind::CouldNotGetElapsedTimeFromSystemTime`] - If elapsed time could not be retrieved from system time
     ///
     /// [`PackerErrorKind::IntConversionFailed`]: crate::error::PackerErrorKind::IntConversionFailed
-    /// [`PackerErrorKind::CouldNotGetElapsedTimeFromSystemTime`]: crate::error::PackerErrorKind::CouldNotGetElapsedTimeFromSystemTime
     fn add_raw(
         &mut self,
         data: &[u8],
@@ -513,13 +512,13 @@ impl<BE: DecryptWriteBackend> RawPacker<BE> {
         self.count += 1;
 
         // check if PackFile needs to be saved
+        let elapsed = self.created.elapsed().unwrap_or_else(|err| {
+            warn!("couldn't get elapsed time from system time: {err:?}");
+            Duration::ZERO
+        });
         if self.count >= constants::MAX_COUNT
             || self.size >= size_limit
-            || self
-                .created
-                .elapsed()
-                .map_err(PackerErrorKind::CouldNotGetElapsedTimeFromSystemTime)?
-                >= constants::MAX_AGE
+            || elapsed >= constants::MAX_AGE
         {
             self.pack_sizer.add_size(self.index.pack_size());
             self.save()?;
