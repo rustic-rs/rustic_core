@@ -173,7 +173,7 @@ impl<P: Debug + Send + Sync + 'static, S: IndexedFull + Debug + Send + Sync + 's
             }
 
             let node = self.node_from_path(path)?;
-            if let FilePolicy::Forbidden = self.inner.vfs.file_policy {
+            if matches!(self.inner.vfs.file_policy, FilePolicy::Forbidden) {
                 return Err(FsError::Forbidden);
             }
 

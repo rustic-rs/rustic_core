@@ -115,6 +115,8 @@ impl VfsTree {
 }
 
 #[derive(Debug)]
+#[non_exhaustive]
+#[allow(missing_copy_implementations)]
 /// Policy to describe how to handle access to a file within the [`Vfs`]
 pub enum FilePolicy {
     /// Read the file

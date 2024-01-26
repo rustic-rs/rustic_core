@@ -1107,6 +1107,7 @@ impl quick_cache::Weighter<Id, Bytes> for BytesWeighter {
 
 /// A repository which is indexed such that all blob information is fully contained in the index.
 pub trait IndexedFull: IndexedIds {
+    /// Get a blob from the internal cache blob or insert it with the given function
     fn get_blob_or_insert_with(
         &self,
         id: &Id,
@@ -1425,11 +1426,9 @@ impl<P: ProgressBars, S: IndexedIds> Repository<P, S> {
     }
 }
 impl<P, S: IndexedFull> Repository<P, S> {
+    /// Get a blob utilizing the internal blob cache
     pub fn get_blob_cached(&self, id: &Id, tpe: BlobType) -> RusticResult<Bytes> {
-        self.get_blob_or_insert_with(id, || {
-            self.index()
-                .blob_from_backend(self.dbe(), BlobType::Data, id)
-        })
+        self.get_blob_or_insert_with(id, || self.index().blob_from_backend(self.dbe(), tpe, id))
     }
 }
 
