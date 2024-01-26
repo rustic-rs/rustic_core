@@ -6,14 +6,14 @@ use std::sync::{Arc, OnceLock};
 use std::time::SystemTime;
 
 use crate::repofile::Node;
-use crate::{IndexedFull, Repository};
+use crate::repository::{IndexedFull, Repository};
 use bytes::{Buf, Bytes};
 use futures::FutureExt;
 
 use dav_server::davpath::DavPath;
 use dav_server::fs::*;
 
-use super::{OpenFile, Vfs};
+use super::{FilePolicy, OpenFile, Vfs};
 
 fn now() -> SystemTime {
     static NOW: OnceLock<SystemTime> = OnceLock::new();
@@ -173,6 +173,10 @@ impl<P: Debug + Send + Sync + 'static, S: IndexedFull + Debug + Send + Sync + 's
             }
 
             let node = self.node_from_path(path)?;
+            if let FilePolicy::Forbidden = self.inner.vfs.file_policy {
+                return Err(FsError::Forbidden);
+            }
+
             let open = self
                 .inner
                 .repo

@@ -115,13 +115,26 @@ impl VfsTree {
 }
 
 #[derive(Debug)]
+/// Policy to describe how to handle access to a file within the [`Vfs`]
+pub enum FilePolicy {
+    /// Read the file
+    Read,
+    /// Don't allow reading the file
+    Forbidden,
+}
+
+#[derive(Debug)]
 /// A virtual file system which offers repository contents
-pub struct Vfs(VfsTree);
+pub struct Vfs {
+    tree: VfsTree,
+    file_policy: FilePolicy,
+}
 
 impl Vfs {
     /// Create a new [`Vfs`] from a directory [`Node`].
-    pub fn from_dirnode(node: Node) -> Self {
-        Self(VfsTree::RusticTree(node.subtree.unwrap()))
+    pub fn from_dirnode(node: Node, file_policy: FilePolicy) -> Self {
+        let tree = VfsTree::RusticTree(node.subtree.unwrap());
+        Self { tree, file_policy }
     }
 
     /// Create a new [`Vfs`] from a list of snapshots.
@@ -131,9 +144,10 @@ impl Vfs {
         time_template: String,
         latest_option: Latest,
         id_snap_option: IdenticalSnapshot,
+        file_policy: FilePolicy,
     ) -> anyhow::Result<Self> {
         snapshots.sort_unstable();
-        let mut root = VfsTree::new();
+        let mut tree = VfsTree::new();
 
         // to handle identical trees
         let mut last_parent = None;
@@ -172,10 +186,10 @@ impl Vfs {
                     && last_tree == snap.tree
                 {
                     if let Some(name) = last_name {
-                        root.add_tree(path, VfsTree::Link(name))?;
+                        tree.add_tree(path, VfsTree::Link(name))?;
                     }
                 } else {
-                    root.add_tree(path, VfsTree::RusticTree(snap.tree))?;
+                    tree.add_tree(path, VfsTree::RusticTree(snap.tree))?;
                 }
             }
             last_parent = parent_path;
@@ -190,20 +204,20 @@ impl Vfs {
                 for (path, target) in dirs_for_link {
                     if let (Some(mut path), Some(target)) = (path, target) {
                         path.push("latest");
-                        root.add_tree(&path, VfsTree::Link(target))?;
+                        tree.add_tree(&path, VfsTree::Link(target))?;
                     }
                 }
             }
             Latest::AsDir => {
-                for (path, tree) in dirs_for_snap {
+                for (path, subtree) in dirs_for_snap {
                     if let Some(mut path) = path {
                         path.push("latest");
-                        root.add_tree(&path, VfsTree::RusticTree(tree))?;
+                        tree.add_tree(&path, VfsTree::RusticTree(subtree))?;
                     }
                 }
             }
         }
-        Ok(Self(root))
+        Ok(Self { tree, file_policy })
     }
 
     /// Get a [`Node`] from the specified path.
@@ -212,7 +226,7 @@ impl Vfs {
         repo: &Repository<P, S>,
         path: &Path,
     ) -> anyhow::Result<Node> {
-        let (tree, path) = self.0.get_path(path)?;
+        let (tree, path) = self.tree.get_path(path)?;
         let meta = Metadata::default();
         match tree {
             VfsTree::RusticTree(tree_id) => Ok(repo.node_from_path(*tree_id, &path.unwrap())?),
@@ -237,7 +251,7 @@ impl Vfs {
         repo: &Repository<P, S>,
         path: &Path,
     ) -> anyhow::Result<Vec<Node>> {
-        let (tree, path) = self.0.get_path(path)?;
+        let (tree, path) = self.tree.get_path(path)?;
 
         let result = match tree {
             VfsTree::RusticTree(tree_id) => {
