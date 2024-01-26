@@ -4,8 +4,7 @@ use crate::{
     backend::node::{Node, NodeType},
     blob::BlobType,
     error::{CommandErrorKind, RusticResult},
-    index::ReadIndex,
-    repository::{IndexedFull, IndexedTree, Repository},
+    repository::{IndexedFull, Repository},
 };
 
 /// Dumps the contents of a file.
@@ -36,7 +35,7 @@ pub(crate) fn dump<P, S: IndexedFull>(
     }
 
     for id in node.content.as_ref().unwrap() {
-        let data = repo.get_blob_cached(&self.content[i].id, BlobType::Data)?;
+        let data = repo.get_blob_cached(&id, BlobType::Data)?;
         w.write_all(&data)?;
     }
     Ok(())
