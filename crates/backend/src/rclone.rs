@@ -1,15 +1,19 @@
 use std::{
+    collections::HashMap,
     io::{BufRead, BufReader},
     process::{Child, Command, Stdio},
+    thread::JoinHandle,
 };
 
 use anyhow::Result;
 use bytes::Bytes;
+use itertools::Itertools;
 use log::{debug, info, warn};
 use rand::{
     distributions::{Alphanumeric, DistString},
     thread_rng,
 };
+use shell_words::split;
 
 use crate::{error::RcloneErrorKind, rest::RestBackend};
 
@@ -29,6 +33,8 @@ pub struct RcloneBackend {
     url: String,
     /// The child data contains the child process and is used to kill the child process when the backend is dropped.
     child: Child,
+    /// The [`JoinHandle`] of the thread printing rclone's output
+    handle: Option<JoinHandle<()>>,
 }
 
 impl Drop for RcloneBackend {
@@ -36,6 +42,7 @@ impl Drop for RcloneBackend {
     fn drop(&mut self) {
         debug!("killing rclone.");
         self.child.kill().unwrap();
+        self.handle.take().map(JoinHandle::join);
     }
 }
 
@@ -46,7 +53,7 @@ impl Drop for RcloneBackend {
 /// * [`RcloneErrorKind::FromIoError`] - If the rclone version could not be determined.
 /// * [`RcloneErrorKind::FromUtf8Error`] - If the rclone version could not be determined.
 /// * [`RcloneErrorKind::NoOutputForRcloneVersion`] - If the rclone version could not be determined.
-/// * [`RcloneErrorKind::FromParseIntError`] - If the rclone version could not be determined.
+/// * [`RcloneErrorKind::FromParseVersion`] - If the rclone version could not be determined.
 ///
 /// # Returns
 ///
@@ -55,7 +62,7 @@ impl Drop for RcloneBackend {
 /// [`RcloneErrorKind::FromIoError`]: RcloneErrorKind::FromIoError
 /// [`RcloneErrorKind::FromUtf8Error`]: RcloneErrorKind::FromUtf8Error
 /// [`RcloneErrorKind::NoOutputForRcloneVersion`]: RcloneErrorKind::NoOutputForRcloneVersion
-/// [`RcloneErrorKind::FromParseIntError`]: RcloneErrorKind::FromParseIntError
+/// [`RcloneErrorKind::FromParseVersion`]: RcloneErrorKind::FromParseVersion
 fn rclone_version() -> Result<(i32, i32, i32)> {
     let rclone_version_output = Command::new("rclone")
         .arg("version")
@@ -69,17 +76,12 @@ fn rclone_version() -> Result<(i32, i32, i32)> {
         .ok_or_else(|| RcloneErrorKind::NoOutputForRcloneVersion)?
         .trim_start_matches(|c: char| !c.is_numeric());
 
-    let versions: Vec<&str> = rclone_version.split(&['.', '-', ' '][..]).collect();
-    let major = versions[0]
-        .parse::<i32>()
-        .map_err(RcloneErrorKind::FromParseIntError)?;
-    let minor = versions[1]
-        .parse::<i32>()
-        .map_err(RcloneErrorKind::FromParseIntError)?;
-    let patch = versions[2]
-        .parse::<i32>()
-        .map_err(RcloneErrorKind::FromParseIntError)?;
-    Ok((major, minor, patch))
+    let versions = rclone_version
+        .split(&['.', '-', ' '][..])
+        .filter_map(|v| v.parse().ok())
+        .collect_tuple()
+        .ok_or_else(|| RcloneErrorKind::FromParseVersion(rclone_version.to_string()))?;
+    Ok(versions)
 }
 
 impl RcloneBackend {
@@ -100,41 +102,51 @@ impl RcloneBackend {
     /// [`RcloneErrorKind::NoStdOutForRclone`]: RcloneErrorKind::NoStdOutForRclone
     /// [`RcloneErrorKind::RCloneExitWithBadStatus`]: RcloneErrorKind::RCloneExitWithBadStatus
     /// [`RcloneErrorKind::UrlNotStartingWithHttp`]: RcloneErrorKind::UrlNotStartingWithHttp
-    pub fn new(
-        url: impl AsRef<str>,
-        options: impl IntoIterator<Item = (String, String)>,
-    ) -> Result<Self> {
-        match rclone_version() {
-            Ok((major, minor, patch)) => {
-                if major
-                    .cmp(&1)
-                    .then(minor.cmp(&52))
-                    .then(patch.cmp(&2))
-                    .is_lt()
-                {
-                    // TODO: This should be an error, and explicitly agreed to with a flag passed to `rustic`,
-                    // check #812 for details
-                    // for rclone < 1.52.2 setting user/password via env variable doesn't work. This means
-                    // we are setting up an rclone without authentication which is a security issue!
-                    // (however, it still works, so we give a warning)
-                    warn!(
-                "Using rclone without authentication! Upgrade to rclone >= 1.52.2 (current version: {major}.{minor}.{patch})!"
-            );
+    pub fn new(url: impl AsRef<str>, options: HashMap<String, String>) -> Result<Self> {
+        let rclone_command = options.get("rclone-command");
+        let use_password = options
+            .get("use-password")
+            .map(|v| v.parse())
+            .transpose()?
+            .unwrap_or(true);
+
+        if use_password && rclone_command.is_none() {
+            // if we want to use a password and rclone_command is not explicitely set, we check for a rclone version supporting
+            // user/password via env variables
+            match rclone_version() {
+                Ok(v) => {
+                    if v < (1, 52, 2) {
+                        // TODO: This should be an error, and explicitly agreed to with a flag passed to `rustic`,
+                        // check #812 for details
+                        // for rclone < 1.52.2 setting user/password via env variable doesn't work. This means
+                        // we are setting up an rclone without authentication which is a security issue!
+                        // (however, it still works, so we give a warning)
+                        warn!("Using rclone without authentication! Upgrade to rclone >= 1.52.2 (current version: {}.{}.{})!", v.0, v.1, v.2);
+                    }
                 }
+                Err(err) => warn!("Could not determine rclone version: {err}"),
             }
-            Err(err) => warn!("Could not determine rclone version: {err}"),
         }
 
         let user = Alphanumeric.sample_string(&mut thread_rng(), 12);
         let password = Alphanumeric.sample_string(&mut thread_rng(), 12);
 
-        let args = ["serve", "restic", url.as_ref(), "--addr", "localhost:0"];
-        debug!("starting rclone with args {args:?}");
+        let mut rclone_command = split(
+            rclone_command
+                .map(String::as_str)
+                .unwrap_or("rclone serve restic --addr localhost:0"),
+        )?;
+        rclone_command.push(url.as_ref().to_string());
+        debug!("starting rclone via {rclone_command:?}");
 
-        let mut child = Command::new("rclone")
-            .env("RCLONE_USER", &user)
-            .env("RCLONE_PASS", &password)
-            .args(args)
+        let mut command = Command::new(&rclone_command[0]);
+        if use_password {
+            command
+                .env("RCLONE_USER", &user)
+                .env("RCLONE_PASS", &password);
+        }
+        let mut child = command
+            .args(&rclone_command[1..])
             .stderr(Stdio::piped())
             .spawn()
             .map_err(RcloneErrorKind::FromIoError)?;
@@ -145,28 +157,44 @@ impl RcloneBackend {
                 .take()
                 .ok_or_else(|| RcloneErrorKind::NoStdOutForRclone)?,
         );
-        let rest_url = loop {
-            if let Some(status) = child.try_wait().map_err(RcloneErrorKind::FromIoError)? {
-                return Err(RcloneErrorKind::RCloneExitWithBadStatus(status).into());
-            }
-            let mut line = String::new();
-            _ = stderr
-                .read_line(&mut line)
-                .map_err(RcloneErrorKind::FromIoError)?;
-            match line.find(constants::SEARCHSTRING) {
-                Some(result) => {
-                    if let Some(url) = line.get(result + constants::SEARCHSTRING.len()..) {
-                        // rclone > 1.61 adds brackets around the url, so remove those
-                        let brackets: &[_] = &['[', ']'];
-                        break url.trim_end().trim_matches(brackets).to_string();
+
+        let mut rest_url = match options.get("rest-url") {
+            None => {
+                loop {
+                    if let Some(status) = child.try_wait().map_err(RcloneErrorKind::FromIoError)? {
+                        return Err(RcloneErrorKind::RCloneExitWithBadStatus(status).into());
+                    }
+                    let mut line = String::new();
+                    _ = stderr
+                        .read_line(&mut line)
+                        .map_err(RcloneErrorKind::FromIoError)?;
+                    match line.find(constants::SEARCHSTRING) {
+                        Some(result) => {
+                            if let Some(url) = line.get(result + constants::SEARCHSTRING.len()..) {
+                                // rclone > 1.61 adds brackets around the url, so remove those
+                                let brackets: &[_] = &['[', ']'];
+                                break url.trim_end().trim_matches(brackets).to_string();
+                            }
+                        }
+                        None if !line.is_empty() => info!("rclone output: {line}"),
+                        _ => {}
                     }
                 }
-                None if !line.is_empty() => info!("rclone output: {line}"),
-                _ => {}
             }
+            Some(url) => url.to_string(),
         };
 
-        let _join_handle = std::thread::spawn(move || loop {
+        if use_password {
+            if !rest_url.starts_with("http://") {
+                return Err(RcloneErrorKind::UrlNotStartingWithHttp(rest_url).into());
+            }
+            rest_url = format!("http://{user}:{password}@{}", &rest_url[7..]);
+        }
+
+        debug!("using REST backend with url {}.", url.as_ref());
+        let rest = RestBackend::new(rest_url, options)?;
+
+        let handle = Some(std::thread::spawn(move || loop {
             let mut line = String::new();
             if stderr.read_line(&mut line).unwrap() == 0 {
                 break;
@@ -174,21 +202,13 @@ impl RcloneBackend {
             if !line.is_empty() {
                 info!("rclone output: {line}");
             }
-        });
+        }));
 
-        if !rest_url.starts_with("http://") {
-            return Err(RcloneErrorKind::UrlNotStartingWithHttp(rest_url).into());
-        }
-
-        let rest_url =
-            "http://".to_string() + user.as_str() + ":" + password.as_str() + "@" + &rest_url[7..];
-
-        debug!("using REST backend with url {}.", url.as_ref());
-        let rest = RestBackend::new(rest_url, options)?;
         Ok(Self {
             child,
             url: String::from(url.as_ref()),
             rest,
+            handle,
         })
     }
 }
@@ -196,9 +216,7 @@ impl RcloneBackend {
 impl ReadBackend for RcloneBackend {
     /// Returns the location of the backend.
     fn location(&self) -> String {
-        let mut location = "rclone:".to_string();
-        location.push_str(&self.url);
-        location
+        "rclone:".to_string() + &self.url
     }
 
     /// Returns the size of the given file.
