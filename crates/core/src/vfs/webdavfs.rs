@@ -55,12 +55,6 @@ where
 }
 */
 
-/// DAV Filesystem implementation.
-#[derive(Debug)]
-pub struct WebDavFS<P, S> {
-    inner: Arc<DavFsInner<P, S>>,
-}
-
 // inner struct.
 struct DavFsInner<P, S> {
     repo: Repository<P, S>,
@@ -72,21 +66,11 @@ impl<P, S> Debug for DavFsInner<P, S> {
     }
 }
 
-struct DavFsFile<P, S> {
-    node: Node,
-    open: OpenFile,
-    fs: Arc<DavFsInner<P, S>>,
-    seek: usize,
+/// DAV Filesystem implementation.
+#[derive(Debug)]
+pub struct WebDavFS<P, S> {
+    inner: Arc<DavFsInner<P, S>>,
 }
-impl<P, S> Debug for DavFsFile<P, S> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
-        write!(f, "DavFile")
-    }
-}
-
-struct DavFsDirEntry(Node);
-#[derive(Clone, Debug)]
-struct DavFsMetaData(Node);
 
 impl<P, S: IndexedFull> WebDavFS<P, S> {
     pub(crate) fn new(repo: Repository<P, S>, root: Vfs) -> Box<Self> {
@@ -120,8 +104,7 @@ impl<P, S: IndexedFull> Clone for WebDavFS<P, S> {
         }
     }
 }
-// This implementation is basically a bunch of boilerplate to
-// wrap the std::fs call in self.blocking() calls.
+
 impl<P: Debug + Send + Sync + 'static, S: IndexedFull + Debug + Send + Sync + 'static> DavFileSystem
     for WebDavFS<P, S>
 {
@@ -138,8 +121,6 @@ impl<P: Debug + Send + Sync + 'static, S: IndexedFull + Debug + Send + Sync + 's
         .boxed()
     }
 
-    // read_dir is a bit more involved - but not much - than a simple wrapper,
-    // because it returns a stream.
     fn read_dir<'a>(
         &'a self,
         davpath: &'a DavPath,
@@ -194,6 +175,8 @@ impl<P: Debug + Send + Sync + 'static, S: IndexedFull + Debug + Send + Sync + 's
     }
 }
 
+struct DavFsDirEntry(Node);
+
 impl DavDirEntry for DavFsDirEntry {
     fn metadata(&self) -> FsFuture<'_, Box<dyn DavMetaData>> {
         async move {
@@ -216,6 +199,18 @@ impl DavDirEntry for DavFsDirEntry {
             .to_string_lossy()
             .to_string()
             .into_bytes()
+    }
+}
+
+struct DavFsFile<P, S> {
+    node: Node,
+    open: OpenFile,
+    fs: Arc<DavFsInner<P, S>>,
+    seek: usize,
+}
+impl<P, S> Debug for DavFsFile<P, S> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
+        write!(f, "DavFile")
     }
 }
 
@@ -265,6 +260,9 @@ impl<P: Debug + Send + Sync, S: IndexedFull + Debug + Send + Sync> DavFile for D
         async move { Ok(()) }.boxed()
     }
 }
+
+#[derive(Clone, Debug)]
+struct DavFsMetaData(Node);
 
 impl DavMetaData for DavFsMetaData {
     fn len(&self) -> u64 {

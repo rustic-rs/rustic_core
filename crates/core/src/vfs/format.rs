@@ -4,9 +4,9 @@ use crate::repofile::SnapshotFile;
 
 use runtime_format::{FormatKey, FormatKeyError};
 
-pub struct FormattedSnapshot<'a> {
-    pub snap: &'a SnapshotFile,
-    pub timeformat: &'a str,
+pub(crate) struct FormattedSnapshot<'a> {
+    pub(crate) snap: &'a SnapshotFile,
+    pub(crate) timeformat: &'a str,
 }
 
 impl<'a> FormatKey for FormattedSnapshot<'a> {
