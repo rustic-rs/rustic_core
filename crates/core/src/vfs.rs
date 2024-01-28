@@ -11,6 +11,7 @@ use std::{
 use anyhow::{anyhow, bail};
 use bytes::{Bytes, BytesMut};
 use runtime_format::FormatArgs;
+use strum::EnumString;
 
 #[cfg(feature = "webdav")]
 /// A struct which enables `WebDAV` access to a [`Vfs`] using [`dav-server`]
@@ -114,9 +115,9 @@ impl VfsTree {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy, EnumString)]
+#[strum(ascii_case_insensitive)]
 #[non_exhaustive]
-#[allow(missing_copy_implementations)]
 /// Policy to describe how to handle access to a file within the [`Vfs`]
 pub enum FilePolicy {
     /// Read the file

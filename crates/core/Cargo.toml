@@ -113,6 +113,7 @@ humantime = "2.1.0"
 itertools = "0.12.0"
 quick_cache = "0.4.0"
 zstd = "0.13.0"
+strum = { version = "0.26.1", features = ["derive"] }
 
 [target.'cfg(not(windows))'.dependencies]
 sha2 = { version = "0.10", features = ["asm"] }
