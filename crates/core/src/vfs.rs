@@ -301,24 +301,30 @@ pub struct OpenFile {
 #[derive(Debug)]
 struct BlobInfo {
     id: Id,
-    cumsize: usize,
+    starts_at: usize,
 }
 
 impl OpenFile {
     /// Create an `OpenFile` from a `Node`
     pub fn from_node<P, S: IndexedFull>(repo: &Repository<P, S>, node: &Node) -> Self {
         let mut start = 0;
-        let content = node
+        let mut content: Vec<_> = node
             .content
             .as_ref()
             .unwrap()
             .iter()
             .map(|id| {
-                let cumsize = start;
+                let starts_at = start;
                 start += repo.index().get_data(id).unwrap().data_length() as usize;
-                BlobInfo { id: *id, cumsize }
+                BlobInfo { id: *id, starts_at }
             })
             .collect();
+
+        // content is assumed to be partioned, so we add a starts_at:MAX entry
+        content.push(BlobInfo {
+            id: Id::default(),
+            starts_at: usize::MAX,
+        });
 
         Self { content }
     }
@@ -330,10 +336,10 @@ impl OpenFile {
         mut offset: usize,
         mut length: usize,
     ) -> RusticResult<Bytes> {
-        // find the start of relevant blobs
-        let mut i = self.content.partition_point(|c| c.cumsize <= offset) - 1;
-        offset -= self.content[i].cumsize;
-
+        // find the start of relevant blobs => find the largest index such that self.content[i].starts_at <= offset, but
+        // self.content[i+1] > offset  (note that a last dummy element has been added)
+        let mut i = self.content.partition_point(|c| c.starts_at <= offset) - 1;
+        offset -= self.content[i].starts_at;
         let mut result = BytesMut::with_capacity(length);
 
         while length > 0 && i < self.content.len() {
