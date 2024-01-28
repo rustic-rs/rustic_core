@@ -238,6 +238,7 @@ impl<P: Debug + Send + Sync, S: IndexedFull + Debug + Send + Sync> DavFile for D
                 .repo
                 .read_file_at(&self.open, self.seek, count)
                 .map_err(|_| FsError::GeneralFailure)?;
+            self.seek += data.len();
             Ok(data)
         }
         .boxed()
