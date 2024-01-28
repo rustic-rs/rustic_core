@@ -35,7 +35,7 @@ pub enum IdenticalSnapshot {
 }
 
 #[derive(Debug, Clone, Copy)]
-/// `Lates` describes wheter a `latest` entry should be added.
+/// `Latest` describes whether a `latest` entry should be added.
 pub enum Latest {
     /// Don't add a `latest` entry
     No,
