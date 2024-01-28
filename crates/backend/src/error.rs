@@ -1,8 +1,4 @@
-use std::{
-    num::{ParseIntError, TryFromIntError},
-    process::ExitStatus,
-    str::Utf8Error,
-};
+use std::{num::TryFromIntError, process::ExitStatus, str::Utf8Error};
 
 use displaydoc::Display;
 use thiserror::Error;
@@ -56,9 +52,8 @@ pub enum RcloneErrorKind {
     /// utf8 error: `{0:?}`
     #[error(transparent)]
     FromUtf8Error(#[from] Utf8Error),
-    /// `{0:?}`
-    #[error(transparent)]
-    FromParseIntError(#[from] ParseIntError),
+    /// error parsing verision number from `{0:?}`
+    FromParseVersion(String),
 }
 
 /// [`RestErrorKind`] describes the errors that can be returned while dealing with the REST API
