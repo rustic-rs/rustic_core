@@ -1186,7 +1186,7 @@ impl<P, S: IndexedTree> IndexedTree for Repository<P, S> {
 
 #[derive(Clone, Copy, Debug)]
 /// Defines a weighted cache with weight equal to the length of the blob size
-pub struct BytesWeighter;
+pub(crate) struct BytesWeighter;
 
 impl quick_cache::Weighter<Id, Bytes> for BytesWeighter {
     fn weight(&self, _key: &Id, val: &Bytes) -> u32 {
