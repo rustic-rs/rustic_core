@@ -59,6 +59,16 @@ enum VfsTree {
     VirtualTree(BTreeMap<OsString, VfsTree>),
 }
 
+/// A resolved path within a [`Vfs`]
+enum VfsPath<'a> {
+    /// Path is within repository, give the tree [`Id`] and remaining path.
+    RusticPath(&'a Id, PathBuf),
+    /// Path is the given symlink
+    Link(&'a OsString),
+    /// Path is the given virtual tree
+    VirtualTree(&'a BTreeMap<OsString, VfsTree>),
+}
+
 impl VfsTree {
     fn new() -> Self {
         Self::VirtualTree(BTreeMap::new())
@@ -85,7 +95,7 @@ impl VfsTree {
     fn add_tree(&mut self, path: &Path, new_tree: Self) -> RusticResult<()> {
         let mut tree = self;
         let mut components = path.components();
-        let Component::Normal(last) = components.next_back().unwrap() else {
+        let Some(Component::Normal(last)) = components.next_back() else {
             return Err(VfsErrorKind::OnlyNormalPathsAreAllowed.into());
         };
 
@@ -125,14 +135,14 @@ impl VfsTree {
     /// # Returns
     ///
     /// If the path is within a real repository tree, this returns the [`VfsTree::RusticTree`] and the remaining path
-    fn get_path(&self, path: &Path) -> RusticResult<(&Self, Option<PathBuf>)> {
+    fn get_path(&self, path: &Path) -> RusticResult<VfsPath<'_>> {
         let mut tree = self;
         let mut components = path.components();
         loop {
             match tree {
-                Self::RusticTree(_) => {
+                Self::RusticTree(id) => {
                     let path: PathBuf = components.collect();
-                    return Ok((tree, Some(path)));
+                    return Ok(VfsPath::RusticPath(id, path));
                 }
                 Self::VirtualTree(vtree) => match components.next() {
                     Some(std::path::Component::Normal(name)) => {
@@ -143,12 +153,12 @@ impl VfsTree {
                         };
                     }
                     None => {
-                        return Ok((tree, None));
+                        return Ok(VfsPath::VirtualTree(vtree));
                     }
 
                     _ => {}
                 },
-                Self::Link(_) => return Ok((tree, None)),
+                Self::Link(target) => return Ok(VfsPath::Link(target)),
             }
         }
     }
@@ -298,14 +308,13 @@ impl Vfs {
         repo: &Repository<P, S>,
         path: &Path,
     ) -> RusticResult<Node> {
-        let (tree, path) = self.tree.get_path(path)?;
         let meta = Metadata::default();
-        match tree {
-            VfsTree::RusticTree(tree_id) => Ok(repo.node_from_path(*tree_id, &path.unwrap())?),
-            VfsTree::VirtualTree(_) => {
+        match self.tree.get_path(path)? {
+            VfsPath::RusticPath(tree_id, path) => Ok(repo.node_from_path(*tree_id, &path)?),
+            VfsPath::VirtualTree(_) => {
                 Ok(Node::new(String::new(), NodeType::Dir, meta, None, None))
             }
-            VfsTree::Link(target) => {
+            VfsPath::Link(target) => {
                 return Ok(Node::new(
                     String::new(),
                     NodeType::from_link(Path::new(target)),
@@ -338,11 +347,9 @@ impl Vfs {
         repo: &Repository<P, S>,
         path: &Path,
     ) -> RusticResult<Vec<Node>> {
-        let (tree, path) = self.tree.get_path(path)?;
-
-        let result = match tree {
-            VfsTree::RusticTree(tree_id) => {
-                let node = repo.node_from_path(*tree_id, &path.unwrap())?;
+        let result = match self.tree.get_path(path)? {
+            VfsPath::RusticPath(tree_id, path) => {
+                let node = repo.node_from_path(*tree_id, &path)?;
                 if node.is_dir() {
                     let tree = repo.get_tree(&node.subtree.unwrap())?;
                     tree.nodes
@@ -350,7 +357,7 @@ impl Vfs {
                     Vec::new()
                 }
             }
-            VfsTree::VirtualTree(vtree) => vtree
+            VfsPath::VirtualTree(vtree) => vtree
                 .iter()
                 .map(|(name, tree)| {
                     let node_type = match tree {
@@ -360,7 +367,7 @@ impl Vfs {
                     Node::new_node(name, node_type, Metadata::default())
                 })
                 .collect(),
-            VfsTree::Link(str) => {
+            VfsPath::Link(str) => {
                 return Err(VfsErrorKind::NoDirectoryEntriesForSymlinkFound(str.clone()).into());
             }
         };
@@ -395,7 +402,7 @@ struct BlobInfo {
 }
 
 impl OpenFile {
-    /// Create an `OpenFile` from a `Node`
+    /// Create an `OpenFile` from a file `Node`
     pub fn from_node<P, S: IndexedFull>(repo: &Repository<P, S>, node: &Node) -> Self {
         let mut start = 0;
         let mut content: Vec<_> = node
