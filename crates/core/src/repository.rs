@@ -1264,6 +1264,12 @@ impl<S: Open> IndexedFull for IndexedStatus<FullIndex, S> {
 }
 
 impl<P, S: IndexedFull> IndexedFull for Repository<P, S> {
+    /// Get a blob from the internal cache blob or insert it with the given function
+    ///
+    /// # Arguments
+    ///
+    /// * `id` - The [`Id`] of the blob to get
+    /// * `with` - The function which fetches the blob from the repository if it is not contained in the cache
     fn get_blob_or_insert_with(
         &self,
         id: &Id,
@@ -1586,11 +1592,13 @@ impl<P, S: IndexedFull> Repository<P, S> {
     ///
     /// # Errors
     ///
-    /// TODO: Document errors
+    /// * [`IndexErrorKind::BlobInIndexNotFound`] - If the blob is not found in the index
     ///
     /// # Returns
     ///
     /// The cached blob in bytes.
+    ///
+    /// [`IndexErrorKind::BlobInIndexNotFound`]: crate::error::IndexErrorKind::BlobInIndexNotFound
     pub fn get_blob_cached(&self, id: &Id, tpe: BlobType) -> RusticResult<Bytes> {
         self.get_blob_or_insert_with(id, || self.index().blob_from_backend(self.dbe(), tpe, id))
     }
@@ -1606,11 +1614,13 @@ impl<P: ProgressBars, S: IndexedFull> Repository<P, S> {
     ///
     /// # Errors
     ///
-    /// TODO: Document errors
+    /// * [`IdErrorKind::HexError`] - If the string is not a valid hexadecimal string
     ///
     /// # Returns
     ///
     /// The raw blob in bytes.
+    ///
+    /// [`IdErrorKind::HexError`]: crate::error::IdErrorKind::HexError
     pub fn cat_blob(&self, tpe: BlobType, id: &str) -> RusticResult<Bytes> {
         commands::cat::cat_blob(self, tpe, id)
     }
@@ -1628,7 +1638,9 @@ impl<P: ProgressBars, S: IndexedFull> Repository<P, S> {
     ///
     /// # Errors
     ///
-    /// TODO: Document errors
+    /// * [`CommandErrorKind::DumpNotSupported`] - If the node is not a file.
+    ///
+    /// [`CommandErrorKind::DumpNotSupported`]: crate::error::CommandErrorKind::DumpNotSupported
     pub fn dump(&self, node: &Node, w: &mut impl Write) -> RusticResult<()> {
         commands::dump::dump(self, node, w)
     }
@@ -1648,11 +1660,15 @@ impl<P: ProgressBars, S: IndexedFull> Repository<P, S> {
     ///
     /// # Errors
     ///
-    /// TODO: Document errors
+    /// * [`CommandErrorKind::ErrorCreating`] - If a directory could not be created.
+    /// * [`CommandErrorKind::ErrorCollecting`] - If the restore information could not be collected.
     ///
     /// # Returns
     ///
     /// The restore plan.
+    ///
+    /// [`CommandErrorKind::ErrorCreating`]: crate::error::CommandErrorKind::ErrorCreating
+    /// [`CommandErrorKind::ErrorCollecting`]: crate::error::CommandErrorKind::ErrorCollecting
     pub fn prepare_restore(
         &self,
         opts: &RestoreOptions,
