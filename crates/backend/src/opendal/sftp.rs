@@ -54,16 +54,16 @@ impl WriteBackend for SftpBackend {
 }
 
 impl SftpBackend {
-    /// Create a new S3 backend.
+    /// Create a new SFTP backend.
     ///
     /// # Arguments
     ///
-    /// * `path` - The path to the s3 bucket
-    /// * `options` - Additional options for the s3 backend
+    /// * `path` - The path to the sftp server
+    /// * `options` - Additional options for the SFTP backend
     ///
     /// # Notes
     ///
-    /// The path should be something like "`https://s3.amazonaws.com/bucket/my/repopath`"
+    /// The path should be something like "`sftp://user@host:port/path`"
     pub fn new(path: impl AsRef<str>, mut options: HashMap<String, String>) -> Result<Self> {
         let url = Url::parse(&("sftp://".to_string() + path.as_ref()))?;
 
