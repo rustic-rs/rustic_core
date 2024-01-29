@@ -47,9 +47,13 @@ pub enum Latest {
 }
 
 #[derive(Debug)]
+/// A potentially virtual tree in the [`Vfs`]
 enum VfsTree {
+    /// A repository tree; id of the tree
     RusticTree(Id),
+    /// A symlink to the given link target
     Link(OsString),
+    /// A purely virtual tree containing subtrees
     VirtualTree(BTreeMap<OsString, VfsTree>),
 }
 
@@ -58,6 +62,7 @@ impl VfsTree {
         Self::VirtualTree(BTreeMap::new())
     }
 
+    /// Add some tree to this root tree at the given path
     fn add_tree(&mut self, path: &Path, new_tree: Self) -> anyhow::Result<()> {
         let mut tree = self;
         let mut components = path.components();
@@ -88,6 +93,8 @@ impl VfsTree {
         Ok(())
     }
 
+    /// Get the tree at this given path.
+    /// If the path is within a real repository tree, this returns the [`VfsTree::RusticTree`] and the remaining path
     fn get_path(&self, path: &Path) -> anyhow::Result<(&Self, Option<PathBuf>)> {
         let mut tree = self;
         let mut components = path.components();
@@ -129,7 +136,9 @@ pub enum FilePolicy {
 #[derive(Debug)]
 /// A virtual file system which offers repository contents
 pub struct Vfs {
+    /// The root tree
     tree: VfsTree,
+    /// File policy to be used when accessing this tree
     file_policy: FilePolicy,
 }
 
@@ -300,7 +309,9 @@ pub struct OpenFile {
 // Information about the blob: 1) The id 2) The cumulated sizes of all blobs prior to this one, a.k.a the starting point of this blob.
 #[derive(Debug)]
 struct BlobInfo {
+    // [`Id`] of the blob
     id: Id,
+    // the start position of this blob within the file
     starts_at: usize,
 }
 

@@ -1013,6 +1013,7 @@ impl<P: ProgressBars, S: Open> Repository<P, S> {
             open: self.status,
             index,
             index_data: FullIndex {
+                // TODO: Make cache size (32MB currently) customizable!
                 cache: quick_cache::sync::Cache::with_weighter(32, 32000000, BytesWeighter {}),
             },
         };
@@ -1098,6 +1099,7 @@ impl<P, S: IndexedTree> IndexedTree for Repository<P, S> {
 #[derive(Clone, Copy, Debug)]
 pub struct BytesWeighter;
 
+// define a weighted cache with weight equal to the length of the blob size
 impl quick_cache::Weighter<Id, Bytes> for BytesWeighter {
     fn weight(&self, _key: &Id, val: &Bytes) -> u32 {
         // Be cautions out about zero weights!
@@ -1108,6 +1110,11 @@ impl quick_cache::Weighter<Id, Bytes> for BytesWeighter {
 /// A repository which is indexed such that all blob information is fully contained in the index.
 pub trait IndexedFull: IndexedIds {
     /// Get a blob from the internal cache blob or insert it with the given function
+    ///
+    /// # Arguments
+    ///
+    /// * `id` - The [`Id`] of the blob to get
+    /// * `with` - The function which fetches the blob from the repository if it is not contained in the cache
     fn get_blob_or_insert_with(
         &self,
         id: &Id,
@@ -1127,14 +1134,19 @@ pub struct IndexedStatus<T, S: Open> {
     open: S,
     /// The index backend
     index: GlobalIndex,
-    /// The marker for the type of index
+    /// Additional index data used for the specific index status
     index_data: T,
 }
 
 #[derive(Debug, Clone, Copy)]
+/// A index containing only [`Id`]s
 pub struct IdIndex;
 
 #[derive(Debug)]
+/// A full index containing [`Id`]s and locations for tree and data blobs.
+///
+/// As we usually use this to access data blobs from the repository, we also have defined a blob cache for
+/// repositories with full index.
 pub struct FullIndex {
     cache: quick_cache::sync::Cache<Id, Bytes, BytesWeighter>,
 }
@@ -1215,7 +1227,7 @@ impl<P, S: IndexedFull> Repository<P, S> {
     ///
     /// # Arguments
     ///
-    /// * `openfile` - The opend file
+    /// * `openfile` - The opened file
     /// * `offset` - The offset to start reading
     /// * `length` - The length to read
     pub fn read_file_at(
