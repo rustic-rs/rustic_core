@@ -727,7 +727,7 @@ pub enum VfsErrorKind {
     /// Only normal paths allowed
     OnlyNormalPathsAreAllowed,
     /// Name `{0:?}`` doesn't exist
-    NameDoesntExist(OsString),
+    NameDoesNotExist(OsString),
 }
 
 trait RusticErrorMarker: Error {}

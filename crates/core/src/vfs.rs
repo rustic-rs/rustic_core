@@ -80,8 +80,8 @@ impl VfsTree {
     ///
     /// `Ok(())` if the tree was added successfully
     ///
-    /// [`VfsErrorKind::DirectoryExistsAsNonVirtual`] : `crate::error::VfsErrorKind::DirectoryExistsAsNonVirtual`
-    /// [`VfsErrorKind::OnlyNormalPathsAreAllowed`] : `crate::error::VfsErrorKind::OnlyNormalPathsAreAllowed`
+    /// [`VfsErrorKind::DirectoryExistsAsNonVirtual`]: crate::error::VfsErrorKind::DirectoryExistsAsNonVirtual
+    /// [`VfsErrorKind::OnlyNormalPathsAreAllowed`]: crate::error::VfsErrorKind::OnlyNormalPathsAreAllowed
     fn add_tree(&mut self, path: &Path, new_tree: Self) -> RusticResult<()> {
         let mut tree = self;
         let mut components = path.components();
@@ -120,7 +120,7 @@ impl VfsTree {
     ///
     /// # Errors
     ///
-    ///     ///
+    // TODO: Document errors
     ///
     /// # Returns
     ///
@@ -139,7 +139,7 @@ impl VfsTree {
                         if let Some(new_tree) = vtree.get(name) {
                             tree = new_tree;
                         } else {
-                            return Err(VfsErrorKind::NameDoesntExist(name.to_os_string()).into());
+                            return Err(VfsErrorKind::NameDoesNotExist(name.to_os_string()).into());
                         };
                     }
                     None => {
@@ -180,6 +180,22 @@ impl Vfs {
     }
 
     /// Create a new [`Vfs`] from a list of snapshots.
+    ///
+    /// # Arguments
+    ///
+    /// * `snapshots` - The snapshots to create the [`Vfs`] from
+    /// * `path_template` - The template for the path of the snapshots
+    /// * `time_template` - The template for the time of the snapshots
+    /// * `latest_option` - Whether to add a `latest` entry
+    /// * `id_snap_option` - Whether to add a link to identical snapshots
+    ///
+    /// # Errors
+    ///
+    /// * [`VfsErrorKind::OnlyNormalPathsAreAllowed`] if the path is not a normal path
+    /// * [`VfsErrorKind::DirectoryExistsAsNonVirtual`] if the path is a directory in the repository
+    ///
+    /// [`VfsErrorKind::DirectoryExistsAsNonVirtual`]: crate::error::VfsErrorKind::DirectoryExistsAsNonVirtual
+    /// [`VfsErrorKind::OnlyNormalPathsAreAllowed`]: crate::error::VfsErrorKind::OnlyNormalPathsAreAllowed
     pub fn from_snapshots(
         mut snapshots: Vec<SnapshotFile>,
         path_template: String,
@@ -262,6 +278,21 @@ impl Vfs {
     }
 
     /// Get a [`Node`] from the specified path.
+    ///
+    /// # Arguments
+    ///
+    /// * `repo` - The repository to get the [`Node`] from
+    /// * `path` - The path to get the [`Tree`] at
+    ///
+    /// # Errors
+    ///
+    /// * [`VfsErrorKind::NameDoesNotExist`] - if the component name doesn't exist
+    ///
+    /// # Returns
+    ///
+    /// The [`Node`] at the specified path
+    ///
+    /// [`VfsErrorKind::NameDoesNotExist`]: crate::error::VfsErrorKind::NameDoesNotExist
     pub fn node_from_path<P, S: IndexedFull>(
         &self,
         repo: &Repository<P, S>,
@@ -287,6 +318,21 @@ impl Vfs {
     }
 
     /// Get a list of [`Node`]s from the specified directory path.
+    ///
+    /// # Arguments
+    ///
+    /// * `repo` - The repository to get the [`Node`] from
+    /// * `path` - The path to get the [`Tree`] at
+    ///
+    /// # Errors
+    ///
+    /// * [`VfsErrorKind::NameDoesNotExist`] - if the component name doesn't exist
+    ///
+    /// # Returns
+    ///
+    /// The list of [`Node`]s at the specified path
+    ///
+    /// [`VfsErrorKind::NameDoesNotExist`]: crate::error::VfsErrorKind::NameDoesNotExist
     pub fn dir_entries_from_path<P, S: IndexedFull>(
         &self,
         repo: &Repository<P, S>,

@@ -582,7 +582,7 @@ impl<P, S> Repository<P, S> {
     ///
     /// # Errors
     ///
-    /// TODO: Document errors
+    // TODO: Document errors
     pub fn init_with_config(
         self,
         password: &str,
@@ -654,7 +654,7 @@ impl<P, S> Repository<P, S> {
     ///
     /// # Errors
     ///
-    /// TODO: Document errors
+    // TODO: Document errors
     pub fn list(&self, tpe: FileType) -> RusticResult<impl Iterator<Item = Id>> {
         Ok(self
             .be
@@ -849,7 +849,7 @@ impl<P: ProgressBars, S: Open> Repository<P, S> {
     ///
     /// # Errors
     ///
-    /// TODO: Document errors
+    // TODO: Document errors
     ///
     /// # Returns
     ///
@@ -908,7 +908,7 @@ impl<P: ProgressBars, S: Open> Repository<P, S> {
     ///
     /// # Errors
     ///
-    /// TODO: Document errors
+    // TODO: Document errors
     pub fn get_snapshots<T: AsRef<str>>(&self, ids: &[T]) -> RusticResult<Vec<SnapshotFile>> {
         let p = self.pb.progress_counter("getting snapshots...");
         SnapshotFile::from_ids(self.dbe(), ids, &p)
@@ -918,7 +918,7 @@ impl<P: ProgressBars, S: Open> Repository<P, S> {
     ///
     /// # Errors
     ///
-    /// TODO: Document errors
+    // TODO: Document errors
     pub fn get_all_snapshots(&self) -> RusticResult<Vec<SnapshotFile>> {
         self.get_matching_snapshots(|_| true)
     }
@@ -931,7 +931,7 @@ impl<P: ProgressBars, S: Open> Repository<P, S> {
     ///
     /// # Errors
     ///
-    /// TODO: Document errors
+    // TODO: Document errors
     pub fn get_matching_snapshots(
         &self,
         filter: impl FnMut(&SnapshotFile) -> bool,
@@ -950,7 +950,7 @@ impl<P: ProgressBars, S: Open> Repository<P, S> {
     ///
     /// # Errors
     ///
-    /// TODO: Document errors
+    // TODO: Document errors
     ///
     /// # Returns
     ///
@@ -973,7 +973,7 @@ impl<P: ProgressBars, S: Open> Repository<P, S> {
     ///
     /// # Errors
     ///
-    /// TODO: Document errors
+    // TODO: Document errors
     ///
     /// # Note
     ///
@@ -996,7 +996,7 @@ impl<P: ProgressBars, S: Open> Repository<P, S> {
     ///
     /// # Errors
     ///
-    /// TODO: Document errors
+    // TODO: Document errors
     ///
     /// # Panics
     ///
@@ -1036,7 +1036,7 @@ impl<P: ProgressBars, S: Open> Repository<P, S> {
     ///
     /// # Errors
     ///
-    /// TODO: Document errors
+    // TODO: Document errors
     pub fn check(&self, opts: CheckOptions) -> RusticResult<()> {
         opts.run(self)
     }
@@ -1049,7 +1049,7 @@ impl<P: ProgressBars, S: Open> Repository<P, S> {
     ///
     /// # Errors
     ///
-    /// TODO: Document errors
+    // TODO: Document errors
     ///
     /// # Returns
     ///
@@ -1062,7 +1062,7 @@ impl<P: ProgressBars, S: Open> Repository<P, S> {
     ///
     /// # Errors
     ///
-    /// TODO: Document errors
+    // TODO: Document errors
     ///
     /// # Note
     ///
@@ -1095,7 +1095,7 @@ impl<P: ProgressBars, S: Open> Repository<P, S> {
     ///
     /// # Errors
     ///
-    /// TODO: Document errors
+    // TODO: Document errors
     ///
     /// # Returns
     ///
@@ -1133,7 +1133,7 @@ impl<P: ProgressBars, S: Open> Repository<P, S> {
     ///
     /// # Errors
     ///
-    /// TODO: Document errors
+    // TODO: Document errors
     ///
     /// # Returns
     ///
@@ -1159,7 +1159,7 @@ impl<P: ProgressBars, S: Open> Repository<P, S> {
     ///
     /// # Errors
     ///
-    /// TODO: Document errors
+    // TODO: Document errors
     pub fn repair_index(&self, opts: &RepairIndexOptions, dry_run: bool) -> RusticResult<()> {
         opts.repair(self, dry_run)
     }
@@ -1322,7 +1322,7 @@ impl<P, S: IndexedFull> Repository<P, S> {
     ///
     /// # Errors
     ///
-    /// TODO: Document errors
+    // TODO: Document errors
     pub fn open_file(&self, node: &Node) -> RusticResult<OpenFile> {
         Ok(OpenFile::from_node(self, node))
     }
@@ -1337,7 +1337,7 @@ impl<P, S: IndexedFull> Repository<P, S> {
     ///
     /// # Errors
     ///
-    /// TODO: Document errors
+    // TODO: Document errors
     pub fn read_file_at(
         &self,
         open_file: &OpenFile,
@@ -1357,7 +1357,7 @@ impl<P, S: IndexedTree> Repository<P, S> {
     ///
     /// # Errors
     ///
-    /// TODO: Document errors
+    // TODO: Document errors
     pub fn get_tree(&self, id: &Id) -> RusticResult<Tree> {
         Tree::from_backend(self.dbe(), self.index(), *id)
     }
@@ -1373,7 +1373,7 @@ impl<P, S: IndexedTree> Repository<P, S> {
     ///
     /// # Errors
     ///
-    /// TODO: Document errors
+    // TODO: Document errors
     pub fn node_from_path(&self, root_tree: Id, path: &Path) -> RusticResult<Node> {
         Tree::node_from_path(self.dbe(), self.index(), root_tree, Path::new(path))
     }
@@ -1422,7 +1422,7 @@ impl<P: ProgressBars, S: IndexedTree> Repository<P, S> {
     ///
     /// # Errors
     ///
-    /// TODO: Document errors
+    // TODO: Document errors
     pub fn node_from_snapshot_and_path(
         &self,
         snap: &SnapshotFile,
@@ -1441,7 +1441,7 @@ impl<P: ProgressBars, S: IndexedTree> Repository<P, S> {
     ///
     /// # Errors
     ///
-    /// TODO: Document errors
+    // TODO: Document errors
     pub fn cat_tree(
         &self,
         snap: &str,
@@ -1468,7 +1468,7 @@ impl<P: ProgressBars, S: IndexedTree> Repository<P, S> {
     ///
     /// # Errors
     ///
-    /// TODO: Document errors
+    // TODO: Document errors
     pub fn ls(
         &self,
         node: &Node,
@@ -1488,7 +1488,7 @@ impl<P: ProgressBars, S: IndexedTree> Repository<P, S> {
     ///
     /// # Errors
     ///
-    /// TODO: Document errors
+    // TODO: Document errors
     pub fn restore(
         &self,
         restore_infos: RestorePlan,
@@ -1512,7 +1512,7 @@ impl<P: ProgressBars, S: IndexedTree> Repository<P, S> {
     ///
     /// # Errors
     ///
-    /// TODO: Document errors
+    // TODO: Document errors
     ///
     /// # Returns
     ///
@@ -1539,7 +1539,7 @@ impl<P: ProgressBars, S: IndexedTree> Repository<P, S> {
     ///
     /// # Errors
     ///
-    /// TODO: Document errors
+    // TODO: Document errors
     ///
     /// # Returns
     ///
@@ -1567,7 +1567,7 @@ impl<P: ProgressBars, S: IndexedIds> Repository<P, S> {
     ///
     /// # Errors
     ///
-    /// TODO: Document errors
+    // TODO: Document errors
     ///
     /// # Returns
     ///  
@@ -1691,16 +1691,16 @@ impl<P: ProgressBars, S: IndexedFull> Repository<P, S> {
     /// * `repo_dest` - The destination repository
     /// * `snapshots` - The snapshots to copy
     ///
+    /// # Errors
+    ///
+    // TODO: Document errors
+    ///
     /// # Note
     ///
     /// This command copies snapshots even if they already exist. For already existing snapshots, a
     /// copy will be created in the destination repository.
     ///
     /// To omit already existing snapshots, use `relevant_copy_snapshots` and filter out the non-relevant ones.
-    ///
-    /// # Errors
-    ///
-    /// TODO: Document errors
     pub fn copy<'a, Q: ProgressBars, R: IndexedIds>(
         &self,
         repo_dest: &Repository<Q, R>,
@@ -1725,7 +1725,7 @@ impl<P: ProgressBars, S: IndexedFull> Repository<P, S> {
     ///
     /// # Errors
     ///
-    /// TODO: Document errors
+    // TODO: Document errors
     pub fn repair_snapshots(
         &self,
         opts: &RepairSnapshotsOptions,

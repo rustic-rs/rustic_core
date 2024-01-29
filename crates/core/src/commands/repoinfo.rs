@@ -206,7 +206,7 @@ pub(crate) fn collect_file_info(be: &impl ReadBackend) -> RusticResult<Vec<RepoF
 ///
 /// # Errors
 ///
-/// TODO: Document errors
+// TODO: Document errors
 pub(crate) fn collect_file_infos<P: ProgressBars, S>(
     repo: &Repository<P, S>,
 ) -> RusticResult<RepoFileInfos> {

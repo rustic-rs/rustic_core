@@ -37,6 +37,10 @@ pub struct CopySnapshot {
 /// * `repo` - The repository to copy from
 /// * `repo_dest` - The repository to copy to
 /// * `snapshots` - The snapshots to copy
+///
+/// # Errors
+///
+// TODO: Document errors
 pub(crate) fn copy<'a, Q, R: IndexedFull, P: ProgressBars, S: IndexedIds>(
     repo: &Repository<Q, R>,
     repo_dest: &Repository<P, S>,
@@ -144,6 +148,10 @@ pub(crate) fn copy<'a, Q, R: IndexedFull, P: ProgressBars, S: IndexedIds>(
 /// * `snaps` - The snapshots to filter
 /// * `dest_repo` - The destination repository
 /// * `filter` - The filter to apply to the snapshots
+///
+/// # Errors
+///
+// TODO: Document errors
 ///
 /// # Returns
 ///
