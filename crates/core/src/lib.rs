@@ -96,6 +96,11 @@ This crate exposes a few features for controlling dependency usage.
 
 #![allow(dead_code)]
 #![forbid(unsafe_code)]
+// TODO: Enable when we're ready to fix all unwraps
+// Better case, we replace them with expect() and a good message
+// Best case, we replace them with good error handling
+// #![deny(clippy::unwrap_used)]
+// #![deny(clippy::expect_used)]
 #![warn(
     // TODO: frequently check
     // unreachable_pub,
@@ -165,6 +170,8 @@ pub(crate) mod progress;
 /// Structs which are saved in JSON or binary format in the repository
 pub mod repofile;
 pub(crate) mod repository;
+/// Virtual File System support - allows to act on the repository like on a file system
+pub mod vfs;
 
 // rustic_core Public API
 pub use crate::{

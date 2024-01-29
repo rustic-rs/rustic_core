@@ -244,13 +244,13 @@ where
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ExtendedAttribute {
     /// Name of the extended attribute
-    pub(crate) name: String,
+    pub name: String,
     /// Value of the extended attribute
     #[serde(
         serialize_with = "Base64::<Standard,Padded>::serialize_as",
         deserialize_with = "deserialize_value"
     )]
-    pub(crate) value: Vec<u8>,
+    pub value: Vec<u8>,
 }
 
 pub(crate) fn is_default<T: Default + PartialEq>(t: &T) -> bool {
@@ -270,7 +270,7 @@ impl Node {
     ///
     /// The created [`Node`]
     #[must_use]
-    pub(crate) fn new_node(name: &OsStr, node_type: NodeType, meta: Metadata) -> Self {
+    pub fn new_node(name: &OsStr, node_type: NodeType, meta: Metadata) -> Self {
         Self {
             name: escape_filename(name),
             node_type,

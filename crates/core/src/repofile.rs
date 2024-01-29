@@ -17,7 +17,7 @@ pub trait RepoFile: Serialize + DeserializeOwned + Sized + Send + Sync + 'static
 pub use {
     crate::{
         backend::{
-            node::{Node, NodeType},
+            node::{Metadata, Node, NodeType},
             FileType, ALL_FILE_TYPES,
         },
         blob::{tree::Tree, BlobType, ALL_BLOB_TYPES},

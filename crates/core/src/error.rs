@@ -156,6 +156,10 @@ pub enum RusticErrorKind {
     #[error(transparent)]
     ArchiverError(#[from] ArchiverErrorKind),
 
+    /// [`VfsErrorKind`] describes the errors that can be returned from the Virtual File System
+    #[error(transparent)]
+    VfsError(#[from] VfsErrorKind),
+
     /// [`std::io::Error`]
     #[error(transparent)]
     StdIo(#[from] std::io::Error),
@@ -706,11 +710,24 @@ pub enum ArchiverErrorKind {
     /// `{0:?}`
     #[error(transparent)]
     FromStdIo(#[from] std::io::Error),
-    /// `{0:?}
+    /// `{0:?}`
     #[error(transparent)]
     FromStripPrefix(#[from] StripPrefixError),
     /// conversion from `u64` to `usize` failed: `{0:?}`
     ConversionFromU64ToUsizeFailed(TryFromIntError),
+}
+
+/// [`VfsErrorKind`] describes the errors that can be returned from the Virtual File System
+#[derive(Error, Debug, Display)]
+pub enum VfsErrorKind {
+    /// No directory entries for symlink found: `{0:?}`
+    NoDirectoryEntriesForSymlinkFound(OsString),
+    /// Directory exists as non-virtual directory
+    DirectoryExistsAsNonVirtual,
+    /// Only normal paths allowed
+    OnlyNormalPathsAreAllowed,
+    /// Name `{0:?}`` doesn't exist
+    NameDoesNotExist(OsString),
 }
 
 trait RusticErrorMarker: Error {}
@@ -736,6 +753,7 @@ impl RusticErrorMarker for NodeErrorKind {}
 impl RusticErrorMarker for StdInErrorKind {}
 impl RusticErrorMarker for ArchiverErrorKind {}
 impl RusticErrorMarker for CommandErrorKind {}
+impl RusticErrorMarker for VfsErrorKind {}
 impl RusticErrorMarker for std::io::Error {}
 
 impl<E> From<E> for RusticError
