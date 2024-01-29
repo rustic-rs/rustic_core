@@ -407,6 +407,7 @@ pub struct OpenFile {
 struct BlobInfo {
     // [`Id`] of the blob
     id: Id,
+
     // the start position of this blob within the file
     starts_at: usize,
 }
