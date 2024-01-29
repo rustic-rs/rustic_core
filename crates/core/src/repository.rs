@@ -579,6 +579,10 @@ impl<P, S> Repository<P, S> {
     /// * `password` - The password to use
     /// * `key_opts` - The options to use for the key
     /// * `config` - The config file to use
+    ///
+    /// # Errors
+    ///
+    /// TODO: Document errors
     pub fn init_with_config(
         self,
         password: &str,
@@ -647,6 +651,10 @@ impl<P, S> Repository<P, S> {
     /// # Arguments
     ///
     /// * `tpe` - The type of the files to list
+    ///
+    /// # Errors
+    ///
+    /// TODO: Document errors
     pub fn list(&self, tpe: FileType) -> RusticResult<impl Iterator<Item = Id>> {
         Ok(self
             .be
@@ -839,6 +847,10 @@ impl<P: ProgressBars, S: Open> Repository<P, S> {
     /// * `group_by` - The criterion to group by
     /// * `filter` - The filter to use
     ///
+    /// # Errors
+    ///
+    /// TODO: Document errors
+    ///
     /// # Returns
     ///
     /// If `ids` are given, this will try to resolve the ids (or `latest` with respect to the given filter) and return a single group
@@ -893,12 +905,20 @@ impl<P: ProgressBars, S: Open> Repository<P, S> {
     ///
     /// `ids` may contain part of snapshots id which will be resolved.
     /// However, "latest" is not supported in this function.
+    ///
+    /// # Errors
+    ///
+    /// TODO: Document errors
     pub fn get_snapshots<T: AsRef<str>>(&self, ids: &[T]) -> RusticResult<Vec<SnapshotFile>> {
         let p = self.pb.progress_counter("getting snapshots...");
         SnapshotFile::from_ids(self.dbe(), ids, &p)
     }
 
     /// Get all snapshots from the repository
+    ///
+    /// # Errors
+    ///
+    /// TODO: Document errors
     pub fn get_all_snapshots(&self) -> RusticResult<Vec<SnapshotFile>> {
         self.get_matching_snapshots(|_| true)
     }
@@ -908,6 +928,10 @@ impl<P: ProgressBars, S: Open> Repository<P, S> {
     /// # Arguments
     ///
     /// * `filter` - The filter to use
+    ///
+    /// # Errors
+    ///
+    /// TODO: Document errors
     pub fn get_matching_snapshots(
         &self,
         filter: impl FnMut(&SnapshotFile) -> bool,
@@ -924,9 +948,13 @@ impl<P: ProgressBars, S: Open> Repository<P, S> {
     /// * `group_by` - The criterion to group by
     /// * `filter` - The filter to use
     ///
+    /// # Errors
+    ///
+    /// TODO: Document errors
+    ///
     /// # Returns
     ///
-    ///
+    /// The groups of snapshots to forget
     pub fn get_forget_snapshots(
         &self,
         keep: &KeepOptions,
@@ -942,6 +970,10 @@ impl<P: ProgressBars, S: Open> Repository<P, S> {
     ///
     /// * `filter` - The filter to use
     /// * `snaps` - The snapshots to check
+    ///
+    /// # Errors
+    ///
+    /// TODO: Document errors
     ///
     /// # Note
     ///
@@ -961,6 +993,10 @@ impl<P: ProgressBars, S: Open> Repository<P, S> {
     /// # Arguments
     ///
     /// * `ids` - The ids of the snapshots to remove
+    ///
+    /// # Errors
+    ///
+    /// TODO: Document errors
     ///
     /// # Panics
     ///
@@ -997,6 +1033,10 @@ impl<P: ProgressBars, S: Open> Repository<P, S> {
     /// # Arguments
     ///
     /// * `opts` - The options to use
+    ///
+    /// # Errors
+    ///
+    /// TODO: Document errors
     pub fn check(&self, opts: CheckOptions) -> RusticResult<()> {
         opts.run(self)
     }
@@ -1006,11 +1046,23 @@ impl<P: ProgressBars, S: Open> Repository<P, S> {
     /// # Arguments
     ///
     /// * `opts` - The options to use
+    ///
+    /// # Errors
+    ///
+    /// TODO: Document errors
+    ///
+    /// # Returns
+    ///
+    /// The plan about what should be pruned and/or repacked.
     pub fn prune_plan(&self, opts: &PruneOptions) -> RusticResult<PrunePlan> {
         opts.get_plan(self)
     }
 
     /// Turn the repository into the `IndexedFull` state by reading and storing the index
+    ///
+    /// # Errors
+    ///
+    /// TODO: Document errors
     ///
     /// # Note
     ///
@@ -1041,6 +1093,16 @@ impl<P: ProgressBars, S: Open> Repository<P, S> {
 
     /// Turn the repository into the `IndexedIds` state by reading and storing a size-optimized index
     ///
+    /// # Errors
+    ///
+    /// TODO: Document errors
+    ///
+    /// # Returns
+    ///
+    /// The repository in the `IndexedIds` state
+    ///
+    /// # Note
+    ///
     /// This saves only the `Id`s for data blobs. Therefore, not all operations are possible on the repository.
     /// However, operations which add data are fully functional.
     pub fn to_indexed_ids(self) -> RusticResult<Repository<P, IndexedStatus<IdIndex, S>>> {
@@ -1068,6 +1130,14 @@ impl<P: ProgressBars, S: Open> Repository<P, S> {
     }
 
     /// Read all files of a given [`RepoFile`]
+    ///
+    /// # Errors
+    ///
+    /// TODO: Document errors
+    ///
+    /// # Returns
+    ///
+    /// An iterator over all files of the given type
     pub fn stream_files<F: RepoFile>(
         &self,
     ) -> RusticResult<impl Iterator<Item = RusticResult<(Id, F)>>> {
@@ -1086,6 +1156,10 @@ impl<P: ProgressBars, S: Open> Repository<P, S> {
     ///
     /// * `opts` - The options to use
     /// * `dry_run` - If true, only print what would be done
+    ///
+    /// # Errors
+    ///
+    /// TODO: Document errors
     pub fn repair_index(&self, opts: &RepairIndexOptions, dry_run: bool) -> RusticResult<()> {
         opts.repair(self, dry_run)
     }
@@ -1094,6 +1168,7 @@ impl<P: ProgressBars, S: Open> Repository<P, S> {
 /// A repository which is indexed such that all tree blobs are contained in the index.
 pub trait IndexedTree: Open {
     type I: ReadGlobalIndex;
+
     fn index(&self) -> &Self::I;
 }
 
@@ -1103,15 +1178,16 @@ pub trait IndexedIds: IndexedTree {}
 
 impl<P, S: IndexedTree> IndexedTree for Repository<P, S> {
     type I = S::I;
+
     fn index(&self) -> &Self::I {
         self.status.index()
     }
 }
 
 #[derive(Clone, Copy, Debug)]
+/// Defines a weighted cache with weight equal to the length of the blob size
 pub struct BytesWeighter;
 
-// define a weighted cache with weight equal to the length of the blob size
 impl quick_cache::Weighter<Id, Bytes> for BytesWeighter {
     fn weight(&self, _key: &Id, val: &Bytes) -> u32 {
         // Be cautions out about zero weights!
@@ -1201,9 +1277,11 @@ impl<T, S: Open> Open for IndexedStatus<T, S> {
     fn cache(&self) -> Option<&Cache> {
         self.open.cache()
     }
+
     fn dbe(&self) -> &DecryptBackend<Key> {
         self.open.dbe()
     }
+
     fn config(&self) -> &ConfigFile {
         self.open.config()
     }
@@ -1235,6 +1313,10 @@ impl<P, S: IndexedFull> Repository<P, S> {
     /// # Arguments
     ///
     /// * `node` - The node to open
+    ///
+    /// # Errors
+    ///
+    /// TODO: Document errors
     pub fn open_file(&self, node: &Node) -> RusticResult<OpenFile> {
         Ok(OpenFile::from_node(self, node))
     }
@@ -1246,6 +1328,10 @@ impl<P, S: IndexedFull> Repository<P, S> {
     /// * `open_file` - The opened file
     /// * `offset` - The offset to start reading
     /// * `length` - The length to read
+    ///
+    /// # Errors
+    ///
+    /// TODO: Document errors
     pub fn read_file_at(
         &self,
         open_file: &OpenFile,
@@ -1262,6 +1348,10 @@ impl<P, S: IndexedTree> Repository<P, S> {
     /// # Arguments
     ///
     /// * `id` - The `Id` of the tree
+    ///
+    /// # Errors
+    ///
+    /// TODO: Document errors
     pub fn get_tree(&self, id: &Id) -> RusticResult<Tree> {
         Tree::from_backend(self.dbe(), self.index(), *id)
     }
@@ -1274,6 +1364,10 @@ impl<P, S: IndexedTree> Repository<P, S> {
     ///
     /// * `root_tree` - The `Id` of the root tree
     /// * `path` - The path
+    ///
+    /// # Errors
+    ///
+    /// TODO: Document errors
     pub fn node_from_path(&self, root_tree: Id, path: &Path) -> RusticResult<Node> {
         Tree::node_from_path(self.dbe(), self.index(), root_tree, Path::new(path))
     }
@@ -1319,6 +1413,10 @@ impl<P: ProgressBars, S: IndexedTree> Repository<P, S> {
     ///
     /// * `snap` - The snapshot to use
     /// * `path` - The path to the node
+    ///
+    /// # Errors
+    ///
+    /// TODO: Document errors
     pub fn node_from_snapshot_and_path(
         &self,
         snap: &SnapshotFile,
@@ -1334,6 +1432,10 @@ impl<P: ProgressBars, S: IndexedTree> Repository<P, S> {
     ///
     /// * `snap` - The snapshot to use
     /// * `sn_filter` - The filter to use
+    ///
+    /// # Errors
+    ///
+    /// TODO: Document errors
     pub fn cat_tree(
         &self,
         snap: &str,
@@ -1357,6 +1459,10 @@ impl<P: ProgressBars, S: IndexedTree> Repository<P, S> {
     /// # Note
     ///
     /// The `PathBuf` returned will be relative to the given `node`.
+    ///
+    /// # Errors
+    ///
+    /// TODO: Document errors
     pub fn ls(
         &self,
         node: &Node,
@@ -1373,6 +1479,10 @@ impl<P: ProgressBars, S: IndexedTree> Repository<P, S> {
     /// * `opts` - The options to use
     /// * `node_streamer` - The node streamer to use
     /// * `dest` - The destination to use
+    ///
+    /// # Errors
+    ///
+    /// TODO: Document errors
     pub fn restore(
         &self,
         restore_infos: RestorePlan,
@@ -1393,6 +1503,10 @@ impl<P: ProgressBars, S: IndexedTree> Repository<P, S> {
     /// * `trees` - The trees to merge
     /// * `cmp` - The comparison function to use for merge conflicts
     /// * `summary` - The summary to use
+    ///
+    /// # Errors
+    ///
+    /// TODO: Document errors
     ///
     /// # Returns
     ///
@@ -1416,6 +1530,10 @@ impl<P: ProgressBars, S: IndexedTree> Repository<P, S> {
     /// * `snaps` - The snapshots to merge
     /// * `cmp` - The comparison function to use for merge conflicts
     /// * `snap` - The snapshot to save
+    ///
+    /// # Errors
+    ///
+    /// TODO: Document errors
     ///
     /// # Returns
     ///
@@ -1441,6 +1559,10 @@ impl<P: ProgressBars, S: IndexedIds> Repository<P, S> {
     /// * `source` - The source to backup
     /// * `snap` - The snapshot to modify and save
     ///
+    /// # Errors
+    ///
+    /// TODO: Document errors
+    ///
     /// # Returns
     ///  
     /// The saved snapshot.
@@ -1453,8 +1575,22 @@ impl<P: ProgressBars, S: IndexedIds> Repository<P, S> {
         commands::backup::backup(self, opts, source, snap)
     }
 }
+
 impl<P, S: IndexedFull> Repository<P, S> {
     /// Get a blob utilizing the internal blob cache
+    ///
+    /// # Arguments
+    ///
+    /// * `id` - The id of the blob
+    /// * `tpe` - The type of the blob
+    ///
+    /// # Errors
+    ///
+    /// TODO: Document errors
+    ///
+    /// # Returns
+    ///
+    /// The cached blob in bytes.
     pub fn get_blob_cached(&self, id: &Id, tpe: BlobType) -> RusticResult<Bytes> {
         self.get_blob_or_insert_with(id, || self.index().blob_from_backend(self.dbe(), tpe, id))
     }
@@ -1467,6 +1603,14 @@ impl<P: ProgressBars, S: IndexedFull> Repository<P, S> {
     ///
     /// * `tpe` - The type of the blob
     /// * `id` - The id of the blob
+    ///
+    /// # Errors
+    ///
+    /// TODO: Document errors
+    ///
+    /// # Returns
+    ///
+    /// The raw blob in bytes.
     pub fn cat_blob(&self, tpe: BlobType, id: &str) -> RusticResult<Bytes> {
         commands::cat::cat_blob(self, tpe, id)
     }
@@ -1481,6 +1625,10 @@ impl<P: ProgressBars, S: IndexedFull> Repository<P, S> {
     /// # Note
     ///
     /// Currently, only regular file nodes are supported.
+    ///
+    /// # Errors
+    ///
+    /// TODO: Document errors
     pub fn dump(&self, node: &Node, w: &mut impl Write) -> RusticResult<()> {
         commands::dump::dump(self, node, w)
     }
@@ -1497,6 +1645,14 @@ impl<P: ProgressBars, S: IndexedFull> Repository<P, S> {
     /// * `node_streamer` - The node streamer to use
     /// * `dest` - The destination to use
     /// * `dry_run` - If true, only print what would be done
+    ///
+    /// # Errors
+    ///
+    /// TODO: Document errors
+    ///
+    /// # Returns
+    ///
+    /// The restore plan.
     pub fn prepare_restore(
         &self,
         opts: &RestoreOptions,
@@ -1525,6 +1681,10 @@ impl<P: ProgressBars, S: IndexedFull> Repository<P, S> {
     /// copy will be created in the destination repository.
     ///
     /// To omit already existing snapshots, use `relevant_copy_snapshots` and filter out the non-relevant ones.
+    ///
+    /// # Errors
+    ///
+    /// TODO: Document errors
     pub fn copy<'a, Q: ProgressBars, R: IndexedIds>(
         &self,
         repo_dest: &Repository<Q, R>,
@@ -1546,6 +1706,10 @@ impl<P: ProgressBars, S: IndexedFull> Repository<P, S> {
     /// # Warning
     ///
     /// If you remove the original snapshots, you may loose data!
+    ///
+    /// # Errors
+    ///
+    /// TODO: Document errors
     pub fn repair_snapshots(
         &self,
         opts: &RepairSnapshotsOptions,
