@@ -224,6 +224,8 @@ impl<P: Debug + Send + Sync + 'static, S: IndexedFull + Debug + Send + Sync + 's
     }
 }
 
+/// A [`DavDirEntry`] implementation for [`Node`]s.
+#[derive(Clone, Debug)]
 struct DavFsDirEntry(Node);
 
 impl DavDirEntry for DavFsDirEntry {
@@ -251,12 +253,23 @@ impl DavDirEntry for DavFsDirEntry {
     }
 }
 
+/// A [`DavFile`] implementation for [`Node`]s.
+///
+/// This is a read-only file.
 struct DavFsFile<P, S> {
+    /// The [`Node`] this file is for
     node: Node,
+
+    /// The [`OpenFile`] for this file
     open: OpenFile,
+
+    /// The [`DavFsInner`] this file belongs to
     fs: Arc<DavFsInner<P, S>>,
+
+    /// The current seek position
     seek: usize,
 }
+
 impl<P, S> Debug for DavFsFile<P, S> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
         write!(f, "DavFile")
@@ -323,6 +336,7 @@ impl<P: Debug + Send + Sync, S: IndexedFull + Debug + Send + Sync> DavFile for D
     }
 }
 
+/// A [`DavMetaData`] implementation for [`Node`]s.
 #[derive(Clone, Debug)]
 struct DavFsMetaData(Node);
 
