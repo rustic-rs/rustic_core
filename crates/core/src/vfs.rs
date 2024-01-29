@@ -157,7 +157,7 @@ impl VfsTree {
 #[derive(Debug, Clone, Copy, EnumString)]
 #[strum(ascii_case_insensitive)]
 #[non_exhaustive]
-/// Policy to describe how to handle access to a file within the [`Vfs`]
+/// Policy to describe how to handle access to a file
 pub enum FilePolicy {
     /// Read the file
     Read,
@@ -170,15 +170,13 @@ pub enum FilePolicy {
 pub struct Vfs {
     /// The root tree
     tree: VfsTree,
-    /// File policy to be used when accessing this tree
-    file_policy: FilePolicy,
 }
 
 impl Vfs {
     /// Create a new [`Vfs`] from a directory [`Node`].
-    pub fn from_dirnode(node: Node, file_policy: FilePolicy) -> Self {
+    pub fn from_dirnode(node: Node) -> Self {
         let tree = VfsTree::RusticTree(node.subtree.unwrap());
-        Self { tree, file_policy }
+        Self { tree }
     }
 
     /// Create a new [`Vfs`] from a list of snapshots.
@@ -188,7 +186,6 @@ impl Vfs {
         time_template: String,
         latest_option: Latest,
         id_snap_option: IdenticalSnapshot,
-        file_policy: FilePolicy,
     ) -> RusticResult<Self> {
         snapshots.sort_unstable();
         let mut tree = VfsTree::new();
@@ -261,7 +258,7 @@ impl Vfs {
                 }
             }
         }
-        Ok(Self { tree, file_policy })
+        Ok(Self { tree })
     }
 
     /// Get a [`Node`] from the specified path.
@@ -326,8 +323,12 @@ impl Vfs {
 
     #[cfg(feature = "webdav")]
     /// Turn the [`Vfs`] into a [`WebDavFS`]
-    pub fn into_webdav_fs<P, S: IndexedFull>(self, repo: Repository<P, S>) -> Box<WebDavFS<P, S>> {
-        WebDavFS::new(repo, self)
+    pub fn into_webdav_fs<P, S: IndexedFull>(
+        self,
+        repo: Repository<P, S>,
+        file_policy: FilePolicy,
+    ) -> Box<WebDavFS<P, S>> {
+        WebDavFS::new(repo, self, file_policy)
     }
 }
 

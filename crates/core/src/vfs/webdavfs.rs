@@ -59,6 +59,7 @@ where
 struct DavFsInner<P, S> {
     repo: Repository<P, S>,
     vfs: Vfs,
+    file_policy: FilePolicy,
 }
 impl<P, S> Debug for DavFsInner<P, S> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
@@ -73,8 +74,12 @@ pub struct WebDavFS<P, S> {
 }
 
 impl<P, S: IndexedFull> WebDavFS<P, S> {
-    pub(crate) fn new(repo: Repository<P, S>, root: Vfs) -> Box<Self> {
-        let inner = DavFsInner { repo, vfs: root };
+    pub(crate) fn new(repo: Repository<P, S>, vfs: Vfs, file_policy: FilePolicy) -> Box<Self> {
+        let inner = DavFsInner {
+            repo,
+            vfs,
+            file_policy,
+        };
         Box::new({
             Self {
                 inner: Arc::new(inner),
@@ -154,7 +159,7 @@ impl<P: Debug + Send + Sync + 'static, S: IndexedFull + Debug + Send + Sync + 's
             }
 
             let node = self.node_from_path(path)?;
-            if matches!(self.inner.vfs.file_policy, FilePolicy::Forbidden) {
+            if matches!(self.inner.file_policy, FilePolicy::Forbidden) {
                 return Err(FsError::Forbidden);
             }
 
