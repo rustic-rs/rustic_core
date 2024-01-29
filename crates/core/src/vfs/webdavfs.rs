@@ -25,41 +25,6 @@ fn now() -> SystemTime {
     *NOW.get_or_init(SystemTime::now)
 }
 
-// TODO: add blocking() to operation which may block!!
-/*
-#[derive(Clone, Copy)]
-enum RuntimeType {
-    Basic,
-    ThreadPool,
-}
-
-impl RuntimeType {
-    fn get() -> Self {
-        static RUNTIME_TYPE: OnceLock<RuntimeType> = OnceLock::new();
-        *RUNTIME_TYPE.get_or_init(|| {
-            let dbg = format!("{:?}", tokio::runtime::Handle::current());
-            if dbg.contains("ThreadPool") {
-                Self::ThreadPool
-            } else {
-                Self::Basic
-            }
-        })
-    }
-}
-
-// Run some code via block_in_place() or spawn_blocking().
-async fn blocking<F, R>(func: F) -> R
-where
-    F: FnOnce() -> R + Send + 'static,
-    R: Send + 'static,
-{
-    match RuntimeType::get() {
-        RuntimeType::Basic => tokio::task::spawn_blocking(func).await.unwrap(),
-        RuntimeType::ThreadPool => tokio::task::block_in_place(func),
-    }
-}
-*/
-
 /// The inner state of a [`WebDavFS`] instance.
 struct DavFsInner<P, S> {
     /// The [`Repository`] to use
