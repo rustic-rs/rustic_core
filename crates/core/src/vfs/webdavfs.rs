@@ -60,12 +60,18 @@ where
 }
 */
 
-// inner struct.
+/// The inner state of a [`WebDavFS`] instance.
 struct DavFsInner<P, S> {
+    /// The [`Repository`] to use
     repo: Repository<P, S>,
+
+    /// The [`Vfs`] to use
     vfs: Vfs,
+
+    /// The [`FilePolicy`] to use
     file_policy: FilePolicy,
 }
+
 impl<P, S> Debug for DavFsInner<P, S> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
         write!(f, "DavFS")
