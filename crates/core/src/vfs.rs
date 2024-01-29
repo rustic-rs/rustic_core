@@ -40,31 +40,31 @@ pub enum IdenticalSnapshot {
 #[derive(Debug, Clone, Copy)]
 /// `Latest` describes whether a `latest` entry should be added.
 pub enum Latest {
-    /// Don't add a `latest` entry
-    No,
-    /// Add `latest` as symlink
-    AsLink,
     /// Add `latest` as directory with identical content as the last snapshot by time.
     AsDir,
+    /// Add `latest` as symlink
+    AsLink,
+    /// Don't add a `latest` entry
+    No,
 }
 
 #[derive(Debug)]
 /// A potentially virtual tree in the [`Vfs`]
 enum VfsTree {
-    /// A repository tree; id of the tree
-    RusticTree(Id),
     /// A symlink to the given link target
     Link(OsString),
+    /// A repository tree; id of the tree
+    RusticTree(Id),
     /// A purely virtual tree containing subtrees
     VirtualTree(BTreeMap<OsString, VfsTree>),
 }
 
 /// A resolved path within a [`Vfs`]
 enum VfsPath<'a> {
-    /// Path is within repository, give the tree [`Id`] and remaining path.
-    RusticPath(&'a Id, PathBuf),
     /// Path is the given symlink
     Link(&'a OsString),
+    /// Path is within repository, give the tree [`Id`] and remaining path.
+    RusticPath(&'a Id, PathBuf),
     /// Path is the given virtual tree
     VirtualTree(&'a BTreeMap<OsString, VfsTree>),
 }
