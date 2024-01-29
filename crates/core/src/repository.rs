@@ -58,7 +58,10 @@ use crate::{
 };
 
 mod constants {
+    /// Estimated item capacity used for cache in [`FullIndex`]
     pub(super) const ESTIMATED_ITEM_CAPACITY: usize = 32;
+
+    /// Estimated weight capacity used for cache in [`FullIndex`]
     pub(super) const WEIGHT_CAPACITY: u64 = 32_000_000;
 }
 
