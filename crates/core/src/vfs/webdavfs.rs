@@ -10,8 +10,13 @@ use crate::repository::{IndexedFull, Repository};
 use bytes::{Buf, Bytes};
 use futures::FutureExt;
 
-use dav_server::davpath::DavPath;
-use dav_server::fs::*;
+use dav_server::{
+    davpath::DavPath,
+    fs::{
+        DavDirEntry, DavFile, DavFileSystem, DavMetaData, FsError, FsFuture, FsResult, FsStream,
+        OpenOptions, ReadDirMeta,
+    },
+};
 
 use super::{FilePolicy, OpenFile, Vfs};
 
@@ -74,17 +79,17 @@ pub struct WebDavFS<P, S> {
 }
 
 impl<P, S: IndexedFull> WebDavFS<P, S> {
-    pub(crate) fn new(repo: Repository<P, S>, vfs: Vfs, file_policy: FilePolicy) -> Box<Self> {
+    pub(crate) fn new(repo: Repository<P, S>, vfs: Vfs, file_policy: FilePolicy) -> Self {
         let inner = DavFsInner {
             repo,
             vfs,
             file_policy,
         };
-        Box::new({
+
             Self {
                 inner: Arc::new(inner),
             }
-        })
+
     }
 
     fn node_from_path(&self, path: &DavPath) -> Result<Node, FsError> {
@@ -252,9 +257,21 @@ impl<P: Debug + Send + Sync, S: IndexedFull + Debug + Send + Sync> DavFile for D
     fn seek(&mut self, pos: SeekFrom) -> FsFuture<'_, u64> {
         async move {
             match pos {
-                SeekFrom::Start(start) => self.seek = start as usize,
-                SeekFrom::Current(delta) => self.seek = (self.seek as i64 + delta) as usize,
-                SeekFrom::End(end) => self.seek = (self.node.meta.size as i64 + end) as usize,
+                SeekFrom::Start(start) => {
+                    self.seek = usize::try_from(start).expect("usize overflow should not happen");
+                }
+                SeekFrom::Current(delta) => {
+                    self.seek = usize::try_from(
+                        i64::try_from(self.seek).expect("i64 wrapped around") + delta,
+                    )
+                    .expect("usize overflow should not happen");
+                }
+                SeekFrom::End(end) => {
+                    self.seek = usize::try_from(
+                        i64::try_from(self.node.meta.size).expect("i64 wrapped around") + end,
+                    )
+                    .expect("usize overflow should not happen");
+                }
             }
 
             Ok(self.seek as u64)
@@ -278,14 +295,14 @@ impl DavMetaData for DavFsMetaData {
         Ok(now())
     }
     fn modified(&self) -> FsResult<SystemTime> {
-        Ok(self.0.meta.mtime.map(SystemTime::from).unwrap_or_else(now))
+        Ok(self.0.meta.mtime.map_or_else(now, SystemTime::from))
     }
     fn accessed(&self) -> FsResult<SystemTime> {
-        Ok(self.0.meta.atime.map(SystemTime::from).unwrap_or_else(now))
+        Ok(self.0.meta.atime.map_or_else(now, SystemTime::from))
     }
 
     fn status_changed(&self) -> FsResult<SystemTime> {
-        Ok(self.0.meta.ctime.map(SystemTime::from).unwrap_or_else(now))
+        Ok(self.0.meta.ctime.map_or_else(now, SystemTime::from))
     }
 
     fn is_dir(&self) -> bool {

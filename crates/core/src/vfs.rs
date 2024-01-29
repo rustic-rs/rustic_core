@@ -102,8 +102,8 @@ impl VfsTree {
         for comp in components {
             if let Component::Normal(name) = comp {
                 match tree {
-                    Self::VirtualTree(vtree) => {
-                        tree = vtree
+                    Self::VirtualTree(virtual_tree) => {
+                        tree = virtual_tree
                             .entry(name.to_os_string())
                             .or_insert(Self::VirtualTree(BTreeMap::new()));
                     }
@@ -114,11 +114,11 @@ impl VfsTree {
             }
         }
 
-        let Self::VirtualTree(vtree) = tree else {
+        let Self::VirtualTree(virtual_tree) = tree else {
             return Err(VfsErrorKind::DirectoryExistsAsNonVirtual.into());
         };
 
-        _ = vtree.insert(last.to_os_string(), new_tree);
+        _ = virtual_tree.insert(last.to_os_string(), new_tree);
         Ok(())
     }
 
@@ -144,16 +144,16 @@ impl VfsTree {
                     let path: PathBuf = components.collect();
                     return Ok(VfsPath::RusticPath(id, path));
                 }
-                Self::VirtualTree(vtree) => match components.next() {
+                Self::VirtualTree(virtual_tree) => match components.next() {
                     Some(std::path::Component::Normal(name)) => {
-                        if let Some(new_tree) = vtree.get(name) {
+                        if let Some(new_tree) = virtual_tree.get(name) {
                             tree = new_tree;
                         } else {
                             return Err(VfsErrorKind::NameDoesNotExist(name.to_os_string()).into());
                         };
                     }
                     None => {
-                        return Ok(VfsPath::VirtualTree(vtree));
+                        return Ok(VfsPath::VirtualTree(virtual_tree));
                     }
 
                     _ => {}
@@ -208,8 +208,8 @@ impl Vfs {
     /// [`VfsErrorKind::OnlyNormalPathsAreAllowed`]: crate::error::VfsErrorKind::OnlyNormalPathsAreAllowed
     pub fn from_snapshots(
         mut snapshots: Vec<SnapshotFile>,
-        path_template: String,
-        time_template: String,
+        path_template: &str,
+        time_template: &str,
         latest_option: Latest,
         id_snap_option: IdenticalSnapshot,
     ) -> RusticResult<Self> {
@@ -227,10 +227,10 @@ impl Vfs {
 
         for snap in snapshots {
             let path = FormatArgs::new(
-                path_template.as_str(),
+                path_template,
                 &FormattedSnapshot {
                     snap: &snap,
-                    timeformat: &time_template,
+                    time_format: time_template,
                 },
             )
             .to_string();
@@ -357,7 +357,7 @@ impl Vfs {
                     Vec::new()
                 }
             }
-            VfsPath::VirtualTree(vtree) => vtree
+            VfsPath::VirtualTree(virtual_tree) => virtual_tree
                 .iter()
                 .map(|(name, tree)| {
                     let node_type = match tree {
@@ -381,7 +381,7 @@ impl Vfs {
         repo: Repository<P, S>,
         file_policy: FilePolicy,
     ) -> Box<WebDavFS<P, S>> {
-        WebDavFS::new(repo, self, file_policy)
+        Box::new(WebDavFS::new(repo, self, file_policy))
     }
 }
 
@@ -403,6 +403,19 @@ struct BlobInfo {
 
 impl OpenFile {
     /// Create an `OpenFile` from a file `Node`
+    ///
+    /// # Arguments
+    ///
+    /// * `repo` - The repository to create the `OpenFile` for
+    /// * `node` - The `Node` to create the `OpenFile` for
+    ///
+    /// # Errors
+    ///
+    // TODO: Document errors
+    ///
+    /// # Returns
+    ///
+    /// The created `OpenFile`
     pub fn from_node<P, S: IndexedFull>(repo: &Repository<P, S>, node: &Node) -> Self {
         let mut start = 0;
         let mut content: Vec<_> = node
@@ -427,6 +440,20 @@ impl OpenFile {
     }
 
     /// Read the `OpenFile` at the given `offset` from the `repo`.
+    ///
+    /// # Arguments
+    ///
+    /// * `repo` - The repository to read the `OpenFile` from
+    /// * `offset` - The offset to read the `OpenFile` from
+    /// * `length` - The length until to read the `OpenFile`
+    ///
+    /// # Errors
+    ///
+    // TODO: Document errors
+    ///
+    /// # Returns
+    ///
+    /// The read bytes from the given offset and length
     pub fn read_at<P, S: IndexedFull>(
         &self,
         repo: &Repository<P, S>,
