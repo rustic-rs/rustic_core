@@ -8,7 +8,6 @@ use std::{
     path::{Component, Path, PathBuf},
 };
 
-use anyhow::{anyhow, bail};
 use bytes::{Bytes, BytesMut};
 use runtime_format::FormatArgs;
 use strum::EnumString;
@@ -17,7 +16,10 @@ use strum::EnumString;
 /// A struct which enables `WebDAV` access to a [`Vfs`] using [`dav-server`]
 pub use webdavfs::WebDavFS;
 
-use crate::repofile::{BlobType, Metadata, Node, NodeType, SnapshotFile};
+use crate::{
+    error::VfsErrorKind,
+    repofile::{BlobType, Metadata, Node, NodeType, SnapshotFile},
+};
 use crate::{
     index::ReadIndex,
     repository::{IndexedFull, IndexedTree, Repository},
@@ -63,11 +65,28 @@ impl VfsTree {
     }
 
     /// Add some tree to this root tree at the given path
-    fn add_tree(&mut self, path: &Path, new_tree: Self) -> anyhow::Result<()> {
+    ///
+    /// # Arguments
+    ///
+    /// * `path` - The path to add the tree to
+    /// * `new_tree` - The tree to add
+    ///
+    /// # Errors
+    ///
+    /// * [`VfsErrorKind::OnlyNormalPathsAreAllowed`] if the path is not a normal path
+    /// * [`VfsErrorKind::DirectoryExistsAsNonVirtual`] if the path is a directory in the repository
+    ///
+    /// # Returns
+    ///
+    /// `Ok(())` if the tree was added successfully
+    ///
+    /// [`VfsErrorKind::DirectoryExistsAsNonVirtual`] : `crate::error::VfsErrorKind::DirectoryExistsAsNonVirtual`
+    /// [`VfsErrorKind::OnlyNormalPathsAreAllowed`] : `crate::error::VfsErrorKind::OnlyNormalPathsAreAllowed`
+    fn add_tree(&mut self, path: &Path, new_tree: Self) -> RusticResult<()> {
         let mut tree = self;
         let mut components = path.components();
         let Component::Normal(last) = components.next_back().unwrap() else {
-            bail!("only normal paths allowed!");
+            return Err(VfsErrorKind::OnlyNormalPathsAreAllowed.into());
         };
 
         for comp in components {
@@ -79,14 +98,14 @@ impl VfsTree {
                             .or_insert(Self::VirtualTree(BTreeMap::new()));
                     }
                     _ => {
-                        bail!("dir exists as non-virtual dir")
+                        return Err(VfsErrorKind::DirectoryExistsAsNonVirtual.into());
                     }
                 }
             }
         }
 
         let Self::VirtualTree(vtree) = tree else {
-            bail!("dir exists as non-virtual dir!")
+            return Err(VfsErrorKind::DirectoryExistsAsNonVirtual.into());
         };
 
         _ = vtree.insert(last.to_os_string(), new_tree);
@@ -94,8 +113,19 @@ impl VfsTree {
     }
 
     /// Get the tree at this given path.
+    ///
+    /// # Arguments
+    ///
+    /// * `path` - The path to get the tree for
+    ///
+    /// # Errors
+    ///
+    ///     ///
+    ///
+    /// # Returns
+    ///
     /// If the path is within a real repository tree, this returns the [`VfsTree::RusticTree`] and the remaining path
-    fn get_path(&self, path: &Path) -> anyhow::Result<(&Self, Option<PathBuf>)> {
+    fn get_path(&self, path: &Path) -> RusticResult<(&Self, Option<PathBuf>)> {
         let mut tree = self;
         let mut components = path.components();
         loop {
@@ -106,9 +136,11 @@ impl VfsTree {
                 }
                 Self::VirtualTree(vtree) => match components.next() {
                     Some(std::path::Component::Normal(name)) => {
-                        tree = vtree
-                            .get(name)
-                            .ok_or_else(|| anyhow!("name {:?} doesn't exist", name))?;
+                        if let Some(new_tree) = vtree.get(name) {
+                            tree = new_tree;
+                        } else {
+                            return Err(VfsErrorKind::NameDoesntExist(name.to_os_string()).into());
+                        };
                     }
                     None => {
                         return Ok((tree, None));
@@ -157,7 +189,7 @@ impl Vfs {
         latest_option: Latest,
         id_snap_option: IdenticalSnapshot,
         file_policy: FilePolicy,
-    ) -> anyhow::Result<Self> {
+    ) -> RusticResult<Self> {
         snapshots.sort_unstable();
         let mut tree = VfsTree::new();
 
@@ -237,7 +269,7 @@ impl Vfs {
         &self,
         repo: &Repository<P, S>,
         path: &Path,
-    ) -> anyhow::Result<Node> {
+    ) -> RusticResult<Node> {
         let (tree, path) = self.tree.get_path(path)?;
         let meta = Metadata::default();
         match tree {
@@ -262,7 +294,7 @@ impl Vfs {
         &self,
         repo: &Repository<P, S>,
         path: &Path,
-    ) -> anyhow::Result<Vec<Node>> {
+    ) -> RusticResult<Vec<Node>> {
         let (tree, path) = self.tree.get_path(path)?;
 
         let result = match tree {
@@ -285,8 +317,8 @@ impl Vfs {
                     Node::new_node(name, node_type, Metadata::default())
                 })
                 .collect(),
-            VfsTree::Link(_) => {
-                bail!("no dir entries for symlink!");
+            VfsTree::Link(str) => {
+                return Err(VfsErrorKind::NoDirectoryEntriesForSymlinkFound(str.clone()).into());
             }
         };
         Ok(result)
