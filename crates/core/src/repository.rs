@@ -1219,16 +1219,18 @@ pub trait IndexedFull: IndexedIds {
 /// * `S` - The type of the open status
 #[derive(Debug)]
 pub struct IndexedStatus<T, S: Open> {
-    /// The open status
-    open: S,
     /// The index backend
     index: GlobalIndex,
     /// Additional index data used for the specific index status
     index_data: T,
+    /// The open status
+    open: S,
 }
 
 #[derive(Debug, Clone, Copy)]
-/// A index containing only [`Id`]s
+/// A type of an index, that only contains [`Id`]s.
+///
+/// Used for the [`IndexedIds`] state of a repository in [`IndexedStatus`].
 pub struct IdIndex;
 
 #[derive(Debug)]
@@ -1358,7 +1360,15 @@ impl<P, S: IndexedTree> Repository<P, S> {
     ///
     /// # Errors
     ///
-    // TODO: Document errors
+    /// * [`TreeErrorKind::BlobIdNotFound`] - If the tree ID is not found in the backend.
+    /// * [`TreeErrorKind::DeserializingTreeFailed`] - If deserialization fails.
+    ///
+    /// # Returns
+    ///
+    /// The tree with the given `Id`
+    ///
+    /// [`TreeErrorKind::BlobIdNotFound`]: crate::error::TreeErrorKind::BlobIdNotFound
+    /// [`TreeErrorKind::DeserializingTreeFailed`]: crate::error::TreeErrorKind::DeserializingTreeFailed
     pub fn get_tree(&self, id: &Id) -> RusticResult<Tree> {
         Tree::from_backend(self.dbe(), self.index(), *id)
     }
@@ -1374,7 +1384,13 @@ impl<P, S: IndexedTree> Repository<P, S> {
     ///
     /// # Errors
     ///
-    // TODO: Document errors
+    /// * [`TreeErrorKind::NotADirectory`] - If the path is not a directory.
+    /// * [`TreeErrorKind::PathNotFound`] - If the path is not found.
+    /// * [`TreeErrorKind::PathIsNotUtf8Conform`] - If the path is not UTF-8 conform.
+    ///
+    /// [`TreeErrorKind::NotADirectory`]: crate::error::TreeErrorKind::NotADirectory
+    /// [`TreeErrorKind::PathNotFound`]: crate::error::TreeErrorKind::PathNotFound
+    /// [`TreeErrorKind::PathIsNotUtf8Conform`]: crate::error::TreeErrorKind::PathIsNotUtf8Conform
     pub fn node_from_path(&self, root_tree: Id, path: &Path) -> RusticResult<Node> {
         Tree::node_from_path(self.dbe(), self.index(), root_tree, Path::new(path))
     }
