@@ -73,12 +73,26 @@ impl<P, S> Debug for DavFsInner<P, S> {
 }
 
 /// DAV Filesystem implementation.
+///
+/// This is the main entry point for the DAV filesystem.
+/// It implements [`DavFileSystem`] and can be used to serve a [`Repository`] via DAV.
 #[derive(Debug)]
 pub struct WebDavFS<P, S> {
     inner: Arc<DavFsInner<P, S>>,
 }
 
 impl<P, S: IndexedFull> WebDavFS<P, S> {
+    /// Create a new [`WebDavFS`] instance.
+    ///
+    /// # Arguments
+    ///
+    /// * `repo` - The [`Repository`] to use
+    /// * `vfs` - The [`Vfs`] to use
+    /// * `file_policy` - The [`FilePolicy`] to use
+    ///
+    /// # Returns
+    ///
+    /// A new [`WebDavFS`] instance
     pub(crate) fn new(repo: Repository<P, S>, vfs: Vfs, file_policy: FilePolicy) -> Self {
         let inner = DavFsInner {
             repo,
