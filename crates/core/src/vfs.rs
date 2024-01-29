@@ -377,6 +377,15 @@ impl Vfs {
 
     #[cfg(feature = "webdav")]
     /// Turn the [`Vfs`] into a [`WebDavFS`]
+    ///
+    /// # Arguments
+    ///
+    /// * `repo` - The repository to use
+    /// * `file_policy` - The policy to use for files
+    ///
+    /// # Returns
+    ///
+    /// The boxed [`WebDavFS`] for the [`Vfs`]
     pub fn into_webdav_fs<P, S: IndexedFull>(
         self,
         repo: Repository<P, S>,
