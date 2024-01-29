@@ -169,10 +169,10 @@ impl VfsTree {
 #[non_exhaustive]
 /// Policy to describe how to handle access to a file
 pub enum FilePolicy {
-    /// Read the file
-    Read,
     /// Don't allow reading the file
     Forbidden,
+    /// Read the file
+    Read,
 }
 
 #[derive(Debug)]
