@@ -57,6 +57,11 @@ use crate::{
     RepositoryBackends, RusticResult,
 };
 
+mod constants {
+    pub(super) const ESTIMATED_ITEM_CAPACITY: usize = 32;
+    pub(super) const WEIGHT_CAPACITY: u64 = 32_000_000;
+}
+
 /// Options for using and opening a [`Repository`]
 #[serde_as]
 #[cfg_attr(feature = "clap", derive(clap::Parser))]
@@ -1014,7 +1019,11 @@ impl<P: ProgressBars, S: Open> Repository<P, S> {
             index,
             index_data: FullIndex {
                 // TODO: Make cache size (32MB currently) customizable!
-                cache: quick_cache::sync::Cache::with_weighter(32, 32000000, BytesWeighter {}),
+                cache: quick_cache::sync::Cache::with_weighter(
+                    constants::ESTIMATED_ITEM_CAPACITY,
+                    constants::WEIGHT_CAPACITY,
+                    BytesWeighter {},
+                ),
             },
         };
         Ok(Repository {
