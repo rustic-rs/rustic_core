@@ -1169,7 +1169,9 @@ impl<T, S: Open> IndexedTree for IndexedStatus<T, S> {
 }
 
 impl<S: Open> IndexedIds for IndexedStatus<IdIndex, S> {}
+
 impl<S: Open> IndexedIds for IndexedStatus<FullIndex, S> {}
+
 impl<P, S: IndexedFull> IndexedIds for Repository<P, S> {}
 
 impl<S: Open> IndexedFull for IndexedStatus<FullIndex, S> {
@@ -1181,6 +1183,7 @@ impl<S: Open> IndexedFull for IndexedStatus<FullIndex, S> {
         self.index_data.cache.get_or_insert_with(id, with)
     }
 }
+
 impl<P, S: IndexedFull> IndexedFull for Repository<P, S> {
     fn get_blob_or_insert_with(
         &self,
@@ -1223,6 +1226,7 @@ impl<P, S: IndexedFull> Repository<P, S> {
             .ok_or_else(|| RepositoryErrorKind::IdNotFound(*id))?;
         Ok(ie)
     }
+
     /// Open a file in the repository for reading
     ///
     /// # Arguments
@@ -1236,16 +1240,16 @@ impl<P, S: IndexedFull> Repository<P, S> {
     ///
     /// # Arguments
     ///
-    /// * `openfile` - The opened file
+    /// * `open_file` - The opened file
     /// * `offset` - The offset to start reading
     /// * `length` - The length to read
     pub fn read_file_at(
         &self,
-        openfile: &OpenFile,
+        open_file: &OpenFile,
         offset: usize,
         length: usize,
     ) -> RusticResult<Bytes> {
-        openfile.read_at(self, offset, length)
+        open_file.read_at(self, offset, length)
     }
 }
 
