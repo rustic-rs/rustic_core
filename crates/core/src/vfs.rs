@@ -59,6 +59,7 @@ enum VfsTree {
     VirtualTree(BTreeMap<OsString, VfsTree>),
 }
 
+#[derive(Debug)]
 /// A resolved path within a [`Vfs`]
 enum VfsPath<'a> {
     /// Path is the given symlink
@@ -70,6 +71,7 @@ enum VfsPath<'a> {
 }
 
 impl VfsTree {
+    /// Create a new [`VfsTree`]
     fn new() -> Self {
         Self::VirtualTree(BTreeMap::new())
     }

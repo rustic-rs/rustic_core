@@ -710,7 +710,7 @@ pub enum ArchiverErrorKind {
     /// `{0:?}`
     #[error(transparent)]
     FromStdIo(#[from] std::io::Error),
-    /// `{0:?}
+    /// `{0:?}`
     #[error(transparent)]
     FromStripPrefix(#[from] StripPrefixError),
     /// conversion from `u64` to `usize` failed: `{0:?}`

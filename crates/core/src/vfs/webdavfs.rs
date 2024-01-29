@@ -91,6 +91,19 @@ impl<P, S: IndexedFull> WebDavFS<P, S> {
         }
     }
 
+    /// Get a [`Node`] from the specified [`DavPath`].
+    ///
+    /// # Arguments
+    ///
+    /// * `path` - The path to get the [`Tree`] at
+    ///
+    /// # Errors
+    ///
+    /// * [`FsError::GeneralFailure`] - If the [`Tree`] could not be found
+    ///
+    /// # Returns
+    ///
+    /// The [`Node`] at the specified path
     fn node_from_path(&self, path: &DavPath) -> Result<Node, FsError> {
         self.inner
             .vfs
@@ -98,6 +111,19 @@ impl<P, S: IndexedFull> WebDavFS<P, S> {
             .map_err(|_| FsError::GeneralFailure)
     }
 
+    /// Get a list of [`Node`]s from the specified directory path.
+    ///
+    /// # Arguments
+    ///
+    /// * `path` - The path to get the [`Tree`] at
+    ///
+    /// # Errors
+    ///
+    /// * [`FsError::GeneralFailure`] - If the [`Tree`] could not be found
+    ///
+    /// # Returns
+    ///
+    /// The list of [`Node`]s at the specified path
     fn dir_entries_from_path(&self, path: &DavPath) -> Result<Vec<Node>, FsError> {
         self.inner
             .vfs
