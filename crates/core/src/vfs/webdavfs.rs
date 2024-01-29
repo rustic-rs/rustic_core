@@ -86,10 +86,9 @@ impl<P, S: IndexedFull> WebDavFS<P, S> {
             file_policy,
         };
 
-            Self {
-                inner: Arc::new(inner),
-            }
-
+        Self {
+            inner: Arc::new(inner),
+        }
     }
 
     fn node_from_path(&self, path: &DavPath) -> Result<Node, FsError> {
