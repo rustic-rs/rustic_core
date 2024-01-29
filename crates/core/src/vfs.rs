@@ -14,7 +14,7 @@ use strum::EnumString;
 
 #[cfg(feature = "webdav")]
 /// A struct which enables `WebDAV` access to a [`Vfs`] using [`dav-server`]
-pub use webdavfs::WebDavFS;
+pub use crate::vfs::webdavfs::WebDavFS;
 
 use crate::{
     error::VfsErrorKind,
@@ -23,10 +23,9 @@ use crate::{
 use crate::{
     index::ReadIndex,
     repository::{IndexedFull, IndexedTree, Repository},
+    vfs::format::FormattedSnapshot,
     Id, RusticResult,
 };
-
-use format::FormattedSnapshot;
 
 #[derive(Debug, Clone, Copy)]
 /// `IdenticalSnapshot` describes how to handle identical snapshots.
