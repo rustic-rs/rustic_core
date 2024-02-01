@@ -2,7 +2,7 @@
 
 All notable changes to this project will be documented in this file.
 
-## [0.2.0] - 2024-02-01
+## [rustic_core-v0.2.0] - 2024-02-01
 
 ### Bug Fixes
 
@@ -76,11 +76,15 @@ All notable changes to this project will be documented in this file.
   ([#134](https://github.com/rustic-rs/rustic_core/issues/134))
 - Don't abort on negative elapsed time in packer/indexer
   ([#138](https://github.com/rustic-rs/rustic_core/issues/138))
+- Clippy missing backticks for item
 
 ### Documentation
 
 - Fix c&p for SftpBackend
 - Update examples and other minor things
+- Update Changelog
+- Update intra doc links
+- Add features and fix intra-doc links
 
 ### Features
 
@@ -90,6 +94,12 @@ All notable changes to this project will be documented in this file.
   ([#139](https://github.com/rustic-rs/rustic_core/issues/139))
 - Add vfs and webdav fs
   ([#106](https://github.com/rustic-rs/rustic_core/issues/106))
+
+### Generated
+
+- Updated Public API fixtures for linux
+- Updated Public API fixtures for macos
+- Updated Public API fixtures for windows
 
 ### Miscellaneous Tasks
 
@@ -101,6 +111,8 @@ All notable changes to this project will be documented in this file.
 - Activate automerge for github action digest update
 - Release
 - Add rustic_backend to release-pr workflow
+- Update dependencies
+- Fix directory for public api fixtures for core
 
 ### Backend
 
@@ -130,7 +142,7 @@ All notable changes to this project will be documented in this file.
 - Change default of max-repack to 10%
   ([#64](https://github.com/rustic-rs/rustic_core/issues/64))
 
-## [0.1.2] - 2023-11-13
+## [rustic_core-v0.1.2] - 2023-11-13
 
 ### Bug Fixes
 
@@ -234,6 +246,12 @@ All notable changes to this project will be documented in this file.
 - Remove doubling workflows from renovate PR und Push
 - Compile dependencies with optimizations in dev mode
 - Update dprint plugins
+- Update changelog
+- Prepare release
+
+### Release
+
+- Rustic_core v0.1.1 ([#2](https://github.com/rustic-rs/rustic_core/issues/2))
 
 ### Restore
 
