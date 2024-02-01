@@ -197,6 +197,7 @@ impl<BE: DecryptWriteBackend> Packer<BE> {
                 let status = rx
                     .into_iter()
                     .readahead_scoped(scope)
+                    // early check if id is already contained
                     .filter(|(_, id, _)| !indexer.read().unwrap().has(id))
                     .filter(|(_, id, _)| !raw_packer.read().unwrap().has(id))
                     .readahead_scoped(scope)
@@ -225,6 +226,14 @@ impl<BE: DecryptWriteBackend> Packer<BE> {
                         },
                     )
                     .readahead_scoped(scope)
+                    // check again if id is already contained
+                    // TODO: We may still save duplicate blobs - the indexer is only updated when the packfile write has completed
+                    .filter(|res| {
+                        res.as_ref().map_or_else(
+                            |_| true,
+                            |(_, id, _, _, _)| !indexer.read().unwrap().has(id),
+                        )
+                    })
                     .try_for_each(|item: RusticResult<_>| {
                         let (data, id, data_len, ul, size_limit) = item?;
                         raw_packer
@@ -496,6 +505,9 @@ impl<BE: DecryptWriteBackend> RawPacker<BE> {
         uncompressed_length: Option<NonZeroU32>,
         size_limit: Option<u32>,
     ) -> RusticResult<()> {
+        if self.has(id) {
+            return Ok(());
+        }
         self.stats.blobs += 1;
         self.stats.data += data_len;
         let data_len_packed: u64 = data
