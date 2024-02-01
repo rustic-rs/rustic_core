@@ -8,6 +8,7 @@ on:
         type: choice
         options:
           - rustic_core
+          - rustic_backend
       version:
         description: Version to release
         required: true
