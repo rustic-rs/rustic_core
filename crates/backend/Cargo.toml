@@ -1,6 +1,6 @@
 [package]
 name = "rustic_backend"
-version = "0.1.0"
+version = "0.1.1"
 authors = ["the rustic-rs team"]
 categories = ["Algorithms", "Data structures", "Filesystem"]
 documentation = "https://docs.rs/rustic_backend"
