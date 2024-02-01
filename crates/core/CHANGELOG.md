@@ -6,42 +6,76 @@ All notable changes to this project will be documented in this file.
 
 ### Bug Fixes
 
-- Update rust crate itertools to 0.12.0 ([#57](https://github.com/rustic-rs/rustic_core/issues/57))
-- Update rust crate enum-map to 2.7.2 ([#60](https://github.com/rustic-rs/rustic_core/issues/60))
-- Update rust crate enum-map-derive to 0.16.0 ([#62](https://github.com/rustic-rs/rustic_core/issues/62))
-- Update serde monorepo to 1.0.193 ([#66](https://github.com/rustic-rs/rustic_core/issues/66))
-- Update rust crate url to 2.5.0 ([#67](https://github.com/rustic-rs/rustic_core/issues/67))
-- Update rust crate enum-map-derive to 0.17.0 ([#69](https://github.com/rustic-rs/rustic_core/issues/69))
-- Update rust crate enum-map to 2.7.3 ([#68](https://github.com/rustic-rs/rustic_core/issues/68))
-- Update rust crate binrw to 0.13.2 ([#71](https://github.com/rustic-rs/rustic_core/issues/71))
+- Update rust crate itertools to 0.12.0
+  ([#57](https://github.com/rustic-rs/rustic_core/issues/57))
+- Update rust crate enum-map to 2.7.2
+  ([#60](https://github.com/rustic-rs/rustic_core/issues/60))
+- Update rust crate enum-map-derive to 0.16.0
+  ([#62](https://github.com/rustic-rs/rustic_core/issues/62))
+- Update serde monorepo to 1.0.193
+  ([#66](https://github.com/rustic-rs/rustic_core/issues/66))
+- Update rust crate url to 2.5.0
+  ([#67](https://github.com/rustic-rs/rustic_core/issues/67))
+- Update rust crate enum-map-derive to 0.17.0
+  ([#69](https://github.com/rustic-rs/rustic_core/issues/69))
+- Update rust crate enum-map to 2.7.3
+  ([#68](https://github.com/rustic-rs/rustic_core/issues/68))
+- Update rust crate binrw to 0.13.2
+  ([#71](https://github.com/rustic-rs/rustic_core/issues/71))
 - Remove unmaintained `actions-rs` ci actions
-- Update rust crate cachedir to 0.3.1 ([#84](https://github.com/rustic-rs/rustic_core/issues/84))
-- Update rust crate clap to 4.4.11 ([#81](https://github.com/rustic-rs/rustic_core/issues/81))
-- Update rust crate filetime to 0.2.23 ([#87](https://github.com/rustic-rs/rustic_core/issues/87))
-- Update rust crate serde-aux to 4.3.1 ([#91](https://github.com/rustic-rs/rustic_core/issues/91))
-- Update rust crate crossbeam-channel to 0.5.9 ([#93](https://github.com/rustic-rs/rustic_core/issues/93))
-- Update rust crate thiserror to 1.0.51 ([#95](https://github.com/rustic-rs/rustic_core/issues/95))
-- Update rust crate reqwest to 0.11.23 ([#99](https://github.com/rustic-rs/rustic_core/issues/99))
-- Update rust crate crossbeam-channel to 0.5.10 ([#107](https://github.com/rustic-rs/rustic_core/issues/107))
-- Update rust crate thiserror to 1.0.52 ([#108](https://github.com/rustic-rs/rustic_core/issues/108))
-- Don't produce error when initializing a new hot/cold repository ([#112](https://github.com/rustic-rs/rustic_core/issues/112))
+- Update rust crate cachedir to 0.3.1
+  ([#84](https://github.com/rustic-rs/rustic_core/issues/84))
+- Update rust crate clap to 4.4.11
+  ([#81](https://github.com/rustic-rs/rustic_core/issues/81))
+- Update rust crate filetime to 0.2.23
+  ([#87](https://github.com/rustic-rs/rustic_core/issues/87))
+- Update rust crate serde-aux to 4.3.1
+  ([#91](https://github.com/rustic-rs/rustic_core/issues/91))
+- Update rust crate crossbeam-channel to 0.5.9
+  ([#93](https://github.com/rustic-rs/rustic_core/issues/93))
+- Update rust crate thiserror to 1.0.51
+  ([#95](https://github.com/rustic-rs/rustic_core/issues/95))
+- Update rust crate reqwest to 0.11.23
+  ([#99](https://github.com/rustic-rs/rustic_core/issues/99))
+- Update rust crate crossbeam-channel to 0.5.10
+  ([#107](https://github.com/rustic-rs/rustic_core/issues/107))
+- Update rust crate thiserror to 1.0.52
+  ([#108](https://github.com/rustic-rs/rustic_core/issues/108))
+- Don't produce error when initializing a new hot/cold repository
+  ([#112](https://github.com/rustic-rs/rustic_core/issues/112))
 - Add missing Serialize derive on KeepOptions
-- Repair index: Don't set "to-delete" flag for newly read pack files ([#113](https://github.com/rustic-rs/rustic_core/issues/113))
-- Update rust crate clap to 4.4.12 ([#114](https://github.com/rustic-rs/rustic_core/issues/114))
-- Update rust crate serde_json to 1.0.110 ([#115](https://github.com/rustic-rs/rustic_core/issues/115))
-- Update rust crate thiserror to 1.0.56 ([#116](https://github.com/rustic-rs/rustic_core/issues/116))
-- Update serde monorepo to 1.0.194 ([#117](https://github.com/rustic-rs/rustic_core/issues/117))
-- Update rust crate cached to 0.47.0 ([#119](https://github.com/rustic-rs/rustic_core/issues/119))
-- Update rust crate serde_json to 1.0.111 ([#120](https://github.com/rustic-rs/rustic_core/issues/120))
-- Update rust crate clap to 4.4.13 ([#121](https://github.com/rustic-rs/rustic_core/issues/121))
-- Update rust crate ignore to 0.4.22 ([#123](https://github.com/rustic-rs/rustic_core/issues/123))
-- Update serde monorepo to 1.0.195 ([#124](https://github.com/rustic-rs/rustic_core/issues/124))
-- Update rust crate serde-aux to 4.4.0 ([#132](https://github.com/rustic-rs/rustic_core/issues/132))
-- Update rust crate clap to 4.4.18 ([#130](https://github.com/rustic-rs/rustic_core/issues/130))
-- Update rust crate rayon to 1.8.1 ([#131](https://github.com/rustic-rs/rustic_core/issues/131))
-- Update rust crate opendal to 0.44.2 ([#133](https://github.com/rustic-rs/rustic_core/issues/133))
-- Update rust crate serde_with to 3.5.0 ([#134](https://github.com/rustic-rs/rustic_core/issues/134))
-- Don't abort on negative elapsed time in packer/indexer ([#138](https://github.com/rustic-rs/rustic_core/issues/138))
+- Repair index: Don't set "to-delete" flag for newly read pack files
+  ([#113](https://github.com/rustic-rs/rustic_core/issues/113))
+- Update rust crate clap to 4.4.12
+  ([#114](https://github.com/rustic-rs/rustic_core/issues/114))
+- Update rust crate serde_json to 1.0.110
+  ([#115](https://github.com/rustic-rs/rustic_core/issues/115))
+- Update rust crate thiserror to 1.0.56
+  ([#116](https://github.com/rustic-rs/rustic_core/issues/116))
+- Update serde monorepo to 1.0.194
+  ([#117](https://github.com/rustic-rs/rustic_core/issues/117))
+- Update rust crate cached to 0.47.0
+  ([#119](https://github.com/rustic-rs/rustic_core/issues/119))
+- Update rust crate serde_json to 1.0.111
+  ([#120](https://github.com/rustic-rs/rustic_core/issues/120))
+- Update rust crate clap to 4.4.13
+  ([#121](https://github.com/rustic-rs/rustic_core/issues/121))
+- Update rust crate ignore to 0.4.22
+  ([#123](https://github.com/rustic-rs/rustic_core/issues/123))
+- Update serde monorepo to 1.0.195
+  ([#124](https://github.com/rustic-rs/rustic_core/issues/124))
+- Update rust crate serde-aux to 4.4.0
+  ([#132](https://github.com/rustic-rs/rustic_core/issues/132))
+- Update rust crate clap to 4.4.18
+  ([#130](https://github.com/rustic-rs/rustic_core/issues/130))
+- Update rust crate rayon to 1.8.1
+  ([#131](https://github.com/rustic-rs/rustic_core/issues/131))
+- Update rust crate opendal to 0.44.2
+  ([#133](https://github.com/rustic-rs/rustic_core/issues/133))
+- Update rust crate serde_with to 3.5.0
+  ([#134](https://github.com/rustic-rs/rustic_core/issues/134))
+- Don't abort on negative elapsed time in packer/indexer
+  ([#138](https://github.com/rustic-rs/rustic_core/issues/138))
 
 ### Documentation
 
@@ -50,9 +84,12 @@ All notable changes to this project will be documented in this file.
 
 ### Features
 
-- Add `--custom-ignorefile` command line flag ([#74](https://github.com/rustic-rs/rustic_core/issues/74))
-- Add options rclone-command, use-password, rest-url to rclone backend ([#139](https://github.com/rustic-rs/rustic_core/issues/139))
-- Add vfs and webdav fs ([#106](https://github.com/rustic-rs/rustic_core/issues/106))
+- Add `--custom-ignorefile` command line flag
+  ([#74](https://github.com/rustic-rs/rustic_core/issues/74))
+- Add options rclone-command, use-password, rest-url to rclone backend
+  ([#139](https://github.com/rustic-rs/rustic_core/issues/139))
+- Add vfs and webdav fs
+  ([#106](https://github.com/rustic-rs/rustic_core/issues/106))
 
 ### Miscellaneous Tasks
 
@@ -71,21 +108,27 @@ All notable changes to this project will be documented in this file.
 
 ### Backup
 
-- Add option to omit identical backups ([#56](https://github.com/rustic-rs/rustic_core/issues/56))
-- Run size scanning parallel to backup; add no-scan option ([#97](https://github.com/rustic-rs/rustic_core/issues/97))
+- Add option to omit identical backups
+  ([#56](https://github.com/rustic-rs/rustic_core/issues/56))
+- Run size scanning parallel to backup; add no-scan option
+  ([#97](https://github.com/rustic-rs/rustic_core/issues/97))
 
 ### Cache
 
-- Don't write warnings if cache files don't exist ([#100](https://github.com/rustic-rs/rustic_core/issues/100))
+- Don't write warnings if cache files don't exist
+  ([#100](https://github.com/rustic-rs/rustic_core/issues/100))
 
 ### Copy
 
-- Add better progress ([#94](https://github.com/rustic-rs/rustic_core/issues/94))
+- Add better progress
+  ([#94](https://github.com/rustic-rs/rustic_core/issues/94))
 
 ### Prune
 
-- Add option early_delete_index ([#63](https://github.com/rustic-rs/rustic_core/issues/63))
-- Change default of max-repack to 10% ([#64](https://github.com/rustic-rs/rustic_core/issues/64))
+- Add option early_delete_index
+  ([#63](https://github.com/rustic-rs/rustic_core/issues/63))
+- Change default of max-repack to 10%
+  ([#64](https://github.com/rustic-rs/rustic_core/issues/64))
 
 ## [0.1.2] - 2023-11-13
 
