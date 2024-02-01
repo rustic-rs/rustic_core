@@ -65,14 +65,14 @@ pub(crate) fn copy<'a, Q, R: IndexedFull, P: ProgressBars, S: IndexedIds>(
         BlobType::Data,
         indexer.clone(),
         repo_dest.config(),
-        index.total_size(BlobType::Data),
+        index_dest.total_size(BlobType::Data),
     )?;
     let tree_packer = Packer::new(
         be_dest.clone(),
         BlobType::Tree,
         indexer.clone(),
         repo_dest.config(),
-        index.total_size(BlobType::Tree),
+        index_dest.total_size(BlobType::Tree),
     )?;
 
     let p = pb.progress_bytes("copying blobs...");
