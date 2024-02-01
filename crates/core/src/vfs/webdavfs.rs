@@ -89,6 +89,8 @@ impl<P, S: IndexedFull> WebDavFS<P, S> {
     /// # Returns
     ///
     /// The [`Node`] at the specified path
+    ///
+    /// [`Tree`]: crate::repofile::Tree
     fn node_from_path(&self, path: &DavPath) -> Result<Node, FsError> {
         self.inner
             .vfs
@@ -109,6 +111,8 @@ impl<P, S: IndexedFull> WebDavFS<P, S> {
     /// # Returns
     ///
     /// The list of [`Node`]s at the specified path
+    ///
+    /// [`Tree`]: crate::repofile::Tree
     fn dir_entries_from_path(&self, path: &DavPath) -> Result<Vec<Node>, FsError> {
         self.inner
             .vfs

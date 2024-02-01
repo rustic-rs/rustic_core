@@ -397,7 +397,7 @@ impl RestoreOptions {
 }
 
 /// [`restore_contents`] restores all files contents as described by `file_infos`
-/// using the [`DecryptReadBackend`] `be` and writing them into the [`LocalBackend`] `dest`.
+/// using the [`DecryptReadBackend`] `be` and writing them into the [`LocalDestination`] `dest`.
 ///
 /// # Type Parameters
 ///
@@ -417,7 +417,6 @@ impl RestoreOptions {
 ///
 /// [`CommandErrorKind::ErrorSettingLength`]: crate::error::CommandErrorKind::ErrorSettingLength
 /// [`CommandErrorKind::FromRayonError`]: crate::error::CommandErrorKind::FromRayonError
-/// [`LocalBackend`]: crate::backend::local::LocalBackend
 fn restore_contents<P: ProgressBars, S: Open>(
     repo: &Repository<P, S>,
     dest: &LocalDestination,

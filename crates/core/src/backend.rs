@@ -440,6 +440,8 @@ pub trait WriteSource: Clone {
 /// # Note
 ///
 /// This struct is used to initialize a [`Repository`].
+///
+/// [`Repository`]: crate::Repository
 #[derive(Debug, Clone)]
 pub struct RepositoryBackends {
     /// The main repository of this [`RepositoryBackends`].

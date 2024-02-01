@@ -58,10 +58,10 @@ use crate::{
 };
 
 mod constants {
-    /// Estimated item capacity used for cache in [`FullIndex`]
+    /// Estimated item capacity used for cache in [`FullIndex`](super::FullIndex)
     pub(super) const ESTIMATED_ITEM_CAPACITY: usize = 32;
 
-    /// Estimated weight capacity used for cache in [`FullIndex`]
+    /// Estimated weight capacity used for cache in [`FullIndex`](super::FullIndex) (in bytes)
     pub(super) const WEIGHT_CAPACITY: u64 = 32_000_000;
 }
 
@@ -276,6 +276,7 @@ impl Repository<NoProgressBars, ()> {
     /// * [`RepositoryErrorKind::NoIDSpecified`] - If the warm-up command does not contain `%id`
     /// * [`BackendAccessErrorKind::BackendLoadError`] - If the specified backend cannot be loaded, e.g. is not supported
     ///
+    /// [`BackendAccessErrorKind::BackendLoadError`]: crate::error::BackendAccessErrorKind::BackendLoadError
     pub fn new(opts: &RepositoryOptions, backends: RepositoryBackends) -> RusticResult<Self> {
         Self::new_with_progress(opts, backends, NoProgressBars {})
     }
