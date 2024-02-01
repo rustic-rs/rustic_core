@@ -304,6 +304,7 @@ impl Vfs {
     /// The [`Node`] at the specified path
     ///
     /// [`VfsErrorKind::NameDoesNotExist`]: crate::error::VfsErrorKind::NameDoesNotExist
+    /// [`Tree`]: crate::repofile::Tree
     pub fn node_from_path<P, S: IndexedFull>(
         &self,
         repo: &Repository<P, S>,

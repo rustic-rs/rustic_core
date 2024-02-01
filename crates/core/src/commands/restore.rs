@@ -417,7 +417,6 @@ impl RestoreOptions {
 ///
 /// [`CommandErrorKind::ErrorSettingLength`]: crate::error::CommandErrorKind::ErrorSettingLength
 /// [`CommandErrorKind::FromRayonError`]: crate::error::CommandErrorKind::FromRayonError
-/// [`LocalBackend`]: crate::backend::local::LocalBackend
 fn restore_contents<P: ProgressBars, S: Open>(
     repo: &Repository<P, S>,
     dest: &LocalDestination,

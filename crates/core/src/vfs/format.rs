@@ -6,7 +6,8 @@ use runtime_format::{FormatKey, FormatKeyError};
 
 /// A formatted snapshot.
 ///
-/// To be used with [`runtime_format::format`].
+/// To be formatted with [`runtime_format`].
+///
 /// The following keys are available:
 /// - `id`: the snapshot id
 /// - `long_id`: the snapshot id as a string
