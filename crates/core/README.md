@@ -45,14 +45,20 @@ rustic_core = "0.2"
 
 This crate exposes a few features for controlling dependency usage:
 
-- **cli** - Enables support for CLI features by enabling `merge` and `clap`
+- **cli** - Enables support for CLI features by enabling `clap` and `merge`
   features. *This feature is disabled by default*.
+
+- **clap** - Enables a dependency on the `clap` crate and enables parsing from
+  the commandline. *This feature is disabled by default*.
+
 - **merge** - Enables support for merging multiple values into one, which
   enables the `merge` dependency. This is needed for parsing commandline
   arguments and merging them into one (e.g. `config`). *This feature is disabled
   by default*.
-- **clap** - Enables a dependency on the `clap` crate and enables parsing from
-  the commandline. *This feature is disabled by default*.
+
+- **webdav** - Enables a dependency on the `dav-server` and `futures` crate.
+  This enables us to run a WebDAV server asynchronously on the commandline.
+  *This feature is disabled by default*.
 
 ## Examples
 

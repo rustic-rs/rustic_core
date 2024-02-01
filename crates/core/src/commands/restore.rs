@@ -397,7 +397,7 @@ impl RestoreOptions {
 }
 
 /// [`restore_contents`] restores all files contents as described by `file_infos`
-/// using the [`DecryptReadBackend`] `be` and writing them into the [`LocalBackend`] `dest`.
+/// using the [`DecryptReadBackend`] `be` and writing them into the [`LocalDestination`] `dest`.
 ///
 /// # Type Parameters
 ///
