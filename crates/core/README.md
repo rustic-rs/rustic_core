@@ -18,8 +18,7 @@ document.
 
 **Note**: `rustic_core` is in an early development stage and its API is subject
 to change in the next releases. If you want to give feedback on that, please
-open a thread in our
-[discussions](https://github.com/rustic-rs/rustic/discussions).
+open an [issue](https://github.com/rustic-rs/rustic_core/issues).
 
 ## Contact
 

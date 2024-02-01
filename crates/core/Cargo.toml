@@ -1,7 +1,7 @@
 [package]
 name = "rustic_core"
 version = "0.2.0"
-authors = ["Alexander Weiss"]
+authors = ["the rustic-rs team"]
 categories = [
   "Algorithms",
   "Compression",
