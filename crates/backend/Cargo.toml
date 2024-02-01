@@ -58,13 +58,13 @@ log = "0.4.20"
 bytes = "1.5.0"
 derive_setters = "0.1.6"
 humantime = "2.1.0"
-itertools = "0.12.0"
-strum = "0.25"
-strum_macros = "0.25"
+itertools = "0.12.1"
+strum = "0.26"
+strum_macros = "0.26"
 
 # general / backend choosing
 hex = { version = "0.4.3", features = ["serde"] }
-serde = { version = "1.0.195" }
+serde = { version = "1.0.196" }
 url = "2.5.0"
 
 # cli support
@@ -78,7 +78,7 @@ walkdir = "2.4.0"
 
 # rest backend
 backoff = { version = "0.4.0", optional = true }
-reqwest = { version = "0.11.23", default-features = false, features = ["json", "rustls-tls-native-roots", "stream", "blocking"], optional = true }
+reqwest = { version = "0.11.24", default-features = false, features = ["json", "rustls-tls-native-roots", "stream", "blocking"], optional = true }
 
 # rclone backend
 rand = { version = "0.8.5", optional = true }
