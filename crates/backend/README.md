@@ -47,12 +47,30 @@ This crate exposes a few features for controlling dependency usage:
 
 - **cli** - Enables support for CLI features by enabling `merge` and `clap`
   features. *This feature is disabled by default*.
+
+- **clap** - Enables a dependency on the `clap` crate and enables parsing from
+  the commandline. *This feature is disabled by default*.
+
 - **merge** - Enables support for merging multiple values into one, which
   enables the `merge` dependency. This is needed for parsing commandline
   arguments and merging them into one (e.g. `config`). *This feature is disabled
   by default*.
-- **clap** - Enables a dependency on the `clap` crate and enables parsing from
-  the commandline. *This feature is disabled by default*.
+
+### Backend-related features
+
+- **opendal** - Enables support for the `opendal` backend. *This feature is
+  enabled by default*.
+- **rclone** - Enables support for the `rclone` backend. *This feature is
+  enabled by default*.
+
+- **rest** - Enables support for the `rest` backend. *This feature is enabled by
+  default*.
+
+- **sftp** - Enables support for the `sftp` backend. Windows is not yet
+  supported. *This feature is enabled by default*.
+
+- **s3** - Enables support for the `s3` backend. *This feature is enabled by
+  default*.
 
 ## Examples
 
