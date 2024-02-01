@@ -95,7 +95,7 @@ This crate exposes a few features for controlling dependency usage.
   by default*.
 
 - **webdav** - Enables a dependency on the `dav-server` and `futures` crate.
-  This enables us to run a WebDAV server asynchronously on the commandline.
+  This enables us to run a `WebDAV` server asynchronously on the commandline.
   *This feature is disabled by default*.
 */
 
