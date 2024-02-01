@@ -134,6 +134,8 @@ All notable changes to this project will be documented in this file.
 
 - Add better progress
   ([#94](https://github.com/rustic-rs/rustic_core/issues/94))
+- Double-check for duplicate blobs
+  ([#148](https://github.com/rustic-rs/rustic_core/issues/148))
 
 ### Prune
 
@@ -258,7 +260,7 @@ All notable changes to this project will be documented in this file.
 - Add caching for user/group names
   ([#33](https://github.com/rustic-rs/rustic_core/issues/33))
 
-## [0.1.1] - 2023-09-18
+## [rustic_core-v0.1.1] - 2023-09-18
 
 ### Bug Fixes
 
