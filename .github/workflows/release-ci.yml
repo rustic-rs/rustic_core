@@ -5,6 +5,9 @@ on:
     branches:
       - "release/**"
 
+env:
+  BRANCH_NAME: ${{ github.head_ref || github.ref_name }} 
+
 jobs:
   semver-check:
     name: Check SemVer
@@ -25,9 +28,16 @@ jobs:
       - uses: Swatinem/rust-cache@23bce251a8cd2ffc3c1075eaa2367cf899916d84 # v2
 
       - name: Check semver
+        if: contains(env.BRANCH_NAME, 'rustic_core')
         uses: obi1kenobi/cargo-semver-checks-action@e275dda72e250d4df5b564e969e1348d67fefa52 # v2
         with:
           package: rustic_core
+          
+      - name: Check semver
+        if: contains(env.BRANCH_NAME, 'rustic_backend')
+        uses: obi1kenobi/cargo-semver-checks-action@e275dda72e250d4df5b564e969e1348d67fefa52 # v2
+        with:
+          package: rustic_backend
 
   public-api:
     name: Check for breaking Public API changes
