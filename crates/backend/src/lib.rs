@@ -5,31 +5,29 @@ A library for supporting various backends in rustic.
 
 This section gives a brief overview of the primary types in this crate:
 
-<!-- OLD, KEPT AS TEMPLATE
+`rustic_backend` is a support crate for `rustic_core` which provides a way to access a
+repository using different backends.
 
-The main type is the [`Repository`] type which describes a way to access a repository.
-It can be in different states and allows - depending on the state - various high-level
-actions to be performed on the repository like listing snapshots, backing up or restoring.
+The primary types in this crate are:
 
-Besides this, various `*Option` types exist which allow to specify options for accessing a
-[`Repository`] or for the methods used within a [`Repository`]. Those types usually offer
-setter methods as well as implement [`serde::Serialize`] and [`serde::Deserialize`].
+- `BackendOptions` - A struct for configuring the backends to use.
+- `SupportedBackend` - An enum for the supported backends.
 
-Other main types are typically result types obtained by [`Repository`] methods which sometimes
-are also needed as input for other [`Repository`] method, like computing a [`PrunePlan`] and
-performing it.
+The following backends are currently supported and can be enabled with features:
 
-There are also lower level data types which represent the stored repository format or
-help accessing/writing it. Those are collected in the [`repofile`] module. These types typically
-implement [`serde::Serialize`] and [`serde::Deserialize`]. -->
+- `LocalBackend` - A backend for accessing the local filesystem.
+- `OpenDALBackend` - A backend for accessing the OpenDAL filesystem.
+- `RcloneBackend` - A backend for accessing the Rclone filesystem.
+- `RestBackend` - A backend for accessing the REST API.
+- `SftpBackend` - A backend for accessing the SFTP filesystem.
+- `S3Backend` - A backend for accessing the S3 filesystem.
 
-# Example
+## Usage & Examples
 
-```rust
-<TODO> EXAMPLE!
-```
+Due to being a support crate for `rustic_core`, there are no examples here.
+Please check the examples in the [`rustic_core`](https://crates.io/crates/rustic_core) crate.
 
-# Crate features
+## Crate features
 
 This crate exposes a few features for controlling dependency usage:
 
