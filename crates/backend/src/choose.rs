@@ -1,4 +1,4 @@
-//! This module contains the trait [`BackendChoice`] and the function [`get_backend`] to choose a backend from a given url.
+//! This module contains [`BackendOptions`] and helpers to choose a backend from a given url.
 use anyhow::{anyhow, Result};
 use derive_setters::Setters;
 use std::{collections::HashMap, sync::Arc};
@@ -67,7 +67,7 @@ pub struct BackendOptions {
 
 /// Overwrite the left value with the right value
 ///
-/// This is used for merging [`RepositoryOptions`] and [`ConfigOptions`]
+/// This is used for merging config values, e.g. [`BackendOptions`].
 ///
 /// # Arguments
 ///
