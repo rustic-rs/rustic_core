@@ -6,8 +6,8 @@ resolver = "2"
 rust-version = "1.71.1"
 
 [workspace.dependencies]
-rustic_backend = { path = "crates/backend" }
-rustic_core = { path = "crates/core" }
+rustic_backend = { git = "https://github.com/rustic-rs/rustic_core/" }
+rustic_core = { git = "https://github.com/rustic-rs/rustic_core/" }
 simplelog = "0.12.1"
 
 # see: https://nnethercote.github.io/perf-book/build-configuration.html
