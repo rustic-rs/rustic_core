@@ -44,7 +44,7 @@ sftp = ["opendal"]
 
 [dependencies]
 # core
-rustic_core = "0.2.0"
+rustic_core = "0.2"
 
 # errors
 anyhow = "1.0.79"
