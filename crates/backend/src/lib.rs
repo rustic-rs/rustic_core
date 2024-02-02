@@ -10,17 +10,17 @@ repository using different backends.
 
 The primary types in this crate are:
 
-- `BackendOptions` - A struct for configuring the backends to use.
+- `BackendOptions` - A struct for configuring options for a used backend.
 - `SupportedBackend` - An enum for the supported backends.
 
 The following backends are currently supported and can be enabled with features:
 
-- `LocalBackend` - A backend for accessing the local filesystem.
-- `OpenDALBackend` - A backend for accessing the OpenDAL filesystem.
-- `RcloneBackend` - A backend for accessing the Rclone filesystem.
-- `RestBackend` - A backend for accessing the REST API.
-- `SftpBackend` - A backend for accessing the SFTP filesystem.
-- `S3Backend` - A backend for accessing the S3 filesystem.
+- `LocalBackend` - Backend for accessing a local filesystem.
+- `OpenDALBackend` - Backend for accessing a OpenDAL filesystem.
+- `RcloneBackend` - Backend for accessing a Rclone filesystem.
+- `RestBackend` - Backend for accessing a REST API.
+- `SftpBackend` - Backend for accessing a SFTP filesystem.
+- `S3Backend` - Backend for accessing a S3 filesystem.
 
 ## Usage & Examples
 
