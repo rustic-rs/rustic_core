@@ -11,10 +11,16 @@
 
 ## About
 
-This library is powering [rustic-rs](https://crates.io/crates/rustic-rs). A
-backup tool that provides fast, encrypted, deduplicated backups. It reads and
-writes the `restic` repository format, which is described in their design
-document.
+This library is a part of the [rustic](https://rustic.cli.rs) project and
+provides a set of backends for the
+[`rustic_core`](https://crates.io/crates/rustic_core) library. It is used to
+interact with various storage backends, such as `s3`, `rclone`, `rest`, `sftp`,
+and in general `opendal`.
+
+The goal of this library is to provide a unified interface for interacting with
+various backends, so that the
+[`rustic_core`](https://crates.io/crates/rustic_core) library can be used to
+interact with them in a consistent way.
 
 **Note**: `rustic_backend` is in an early development stage and its API is
 subject to change in the next releases. If you want to give feedback on that,
@@ -72,9 +78,12 @@ This crate exposes a few features for controlling dependency usage:
 - **s3** - Enables support for the `s3` backend. *This feature is enabled by
   default*.
 
-## Examples
+## Usage & Examples
 
-<TODO>
+Due to being a support crate for
+[`rustic_core`](https://crates.io/crates/rustic_core), there are no examples
+here. Please check the examples in the
+[`rustic_core`](https://crates.io/crates/rustic_core) crate.
 
 ## Contributing
 
