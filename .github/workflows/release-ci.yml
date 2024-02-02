@@ -67,7 +67,9 @@ jobs:
         with:
           toolchain: stable
       - uses: Swatinem/rust-cache@23bce251a8cd2ffc3c1075eaa2367cf899916d84 # v2
+      # FIXME: For now this is only for rustic core, we need to decide if we want to run this branched for each package
       - name: Run Cargo Test
+        if: contains(env.BRANCH_NAME, 'rustic_core')
         run: cargo test -r --test public_api -- --ignored
 
   result:
