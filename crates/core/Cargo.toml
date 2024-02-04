@@ -141,4 +141,4 @@ rustdoc-json = "0.8.9"
 rustic_backend = { workspace = true }
 rustup-toolchain = "0.1.6"
 simplelog = "0.12.1"
-tempfile = "3.9.0"
+tempfile = { workspace = true }

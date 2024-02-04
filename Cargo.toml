@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/core", "crates/backend", "examples/*"]
+members = ["crates/core", "crates/backend", "crates/testing", "examples/*"]
 resolver = "2"
 
 [workspace.package]
@@ -9,6 +9,10 @@ rust-version = "1.71.1"
 rustic_backend = { path = "crates/backend" }
 rustic_core = { path = "crates/core" }
 simplelog = "0.12.1"
+aho-corasick = "1.1.2"
+
+# dev-dependencies
+tempfile = "3.9.0"
 
 # see: https://nnethercote.github.io/perf-book/build-configuration.html
 [profile.dev]
