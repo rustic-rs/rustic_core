@@ -1,0 +1,23 @@
+[package]
+name = "rustic_config"
+version = "0.1.0"
+authors = ["the rustic-rs team"]
+categories = [
+  "Command-Line-Utilities",
+]
+documentation = "https://docs.rs/rustic_config"
+edition = "2021"
+homepage = "https://rustic.cli.rs/"
+include = ["src/**/*", "LICENSE-*", "README.md"]
+keywords = ["backup", "restic", "deduplication", "encryption", "library"]
+license = "Apache-2.0 OR MIT"
+publish = true
+readme = "README.md"
+repository = "https://github.com/rustic-rs/rustic_core"
+resolver = "2"
+rust-version = { workspace = true }
+description = """
+rustic_config - library for configuration support in rustic-rs
+"""
+
+[dependencies]
