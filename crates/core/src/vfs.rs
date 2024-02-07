@@ -1,4 +1,6 @@
 mod format;
+#[cfg(feature = "fuse")]
+mod fusefs;
 #[cfg(feature = "webdav")]
 mod webdavfs;
 
@@ -12,6 +14,8 @@ use bytes::{Bytes, BytesMut};
 use runtime_format::FormatArgs;
 use strum::EnumString;
 
+#[cfg(feature = "fuse")]
+pub use crate::vfs::fusefs::FuseFS;
 #[cfg(feature = "webdav")]
 /// A struct which enables `WebDAV` access to a [`Vfs`] using [`dav-server`]
 pub use crate::vfs::webdavfs::WebDavFS;
@@ -388,6 +392,11 @@ impl Vfs {
             }
         };
         Ok(result)
+    }
+
+    #[cfg(feature = "fuse")]
+    pub fn into_fuse_fs<P, S: IndexedFull>(self, repo: Repository<P, S>) -> FuseFS<P, S> {
+        FuseFS::new(repo, self)
     }
 
     #[cfg(feature = "webdav")]
