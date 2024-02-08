@@ -450,8 +450,6 @@ pub enum PackerErrorKind {
     CryptoError(#[from] CryptoErrorKind),
     /// could not compress due to unsupported config version: `{0:?}`
     ConfigVersionNotSupported(#[from] ConfigFileErrorKind),
-    /// conversion for integer failed: `{0:?}`
-    IntConversionFailed(#[from] TryFromIntError),
     /// compressing data failed: `{0:?}`
     CompressingDataFailed(#[from] std::io::Error),
     /// getting total size failed
@@ -476,6 +474,8 @@ pub enum PackerErrorKind {
     PartiallyReadingDataFailed(PackFileErrorKind),
     /// failed to add index pack: {0:?}
     AddingIndexPackFailed(#[from] IndexErrorKind),
+    /// conversion for integer failed: `{0:?}`
+    IntConversionFailed(#[from] TryFromIntError),
 }
 
 /// [`TreeErrorKind`] describes the errors that can come up dealing with Trees
@@ -569,6 +569,10 @@ pub enum CryptBackendErrorKind {
     EncryptingDataFailed,
     /// Compressing and appending data failed: `{0:?}`
     CopyEncodingDataFailed(std::io::Error),
+    /// conversion for integer failed: `{0:?}`
+    IntConversionFailed(#[from] TryFromIntError),
+    /// Extra check failed: After decrypting/decompressing the data doesn't match any longer!
+    ExtraCheckFailed,
 }
 
 /// [`IgnoreErrorKind`] describes the errors that can be returned by a Ignore action in Backends

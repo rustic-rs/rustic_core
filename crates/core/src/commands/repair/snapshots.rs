@@ -180,7 +180,7 @@ impl RepairSnapshotsOptions {
     /// # Returns
     ///
     /// A tuple containing the change status and the id of the repaired tree
-    fn repair_tree<BE: DecryptWriteBackend>(
+    fn repair_tree<BE: DecryptFullBackend>(
         &self,
         be: &impl DecryptFullBackend,
         index: &impl ReadGlobalIndex,

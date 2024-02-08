@@ -4,7 +4,7 @@ use anyhow::Result;
 use bytes::Bytes;
 use crossbeam_channel::{unbounded, Receiver};
 use rayon::prelude::*;
-use zstd::stream::{copy_encode, decode_all};
+use zstd::stream::{copy_encode, decode_all, encode_all};
 
 pub use zstd::compression_level_range;
 
@@ -199,6 +199,8 @@ pub trait DecryptWriteBackend: WriteBackend + Clone + 'static {
     /// The hash of the written data.
     fn hash_write_full(&self, tpe: FileType, data: &[u8]) -> RusticResult<Id>;
 
+    fn process_data(&self, data: &[u8]) -> RusticResult<(Vec<u8>, u32, Option<NonZeroU32>)>;
+
     /// Writes the given data to the backend without compression and returns the id of the data.
     ///
     /// # Arguments
@@ -319,6 +321,7 @@ pub trait DecryptWriteBackend: WriteBackend + Clone + 'static {
     }
 
     fn set_zstd(&mut self, zstd: Option<i32>);
+    fn set_extra_check(&mut self, extra_check: bool);
 }
 
 /// A backend that can decrypt data.
@@ -334,6 +337,8 @@ pub struct DecryptBackend<C: CryptoKey> {
     key: C,
     /// The compression level to use for zstd.
     zstd: Option<i32>,
+    /// The whether do do an extra check by decompressing and decrypting the data
+    extra_check: bool,
 }
 
 impl<C: CryptoKey> DecryptBackend<C> {
@@ -356,7 +361,18 @@ impl<C: CryptoKey> DecryptBackend<C> {
             be,
             key,
             zstd: None,
+            extra_check: false,
         }
+    }
+
+    fn decrypt_file(&self, data: &[u8]) -> RusticResult<Vec<u8>> {
+        let decrypted = self.decrypt(data)?;
+        Ok(match decrypted.first() {
+            Some(b'{' | b'[') => decrypted, // not compressed
+            Some(2) => decode_all(&decrypted[1..])
+                .map_err(CryptBackendErrorKind::DecodingZstdCompressedDataFailed)?, // 2 indicates compressed data following
+            _ => return Err(CryptBackendErrorKind::DecryptionNotSupportedForBackend)?,
+        })
     }
 }
 
@@ -386,7 +402,7 @@ impl<C: CryptoKey> DecryptWriteBackend for DecryptBackend<C> {
     ///
     /// [`CryptBackendErrorKind::CopyEncodingDataFailed`]: crate::error::CryptBackendErrorKind::CopyEncodingDataFailed
     fn hash_write_full(&self, tpe: FileType, data: &[u8]) -> RusticResult<Id> {
-        let data = match self.zstd {
+        let data_encrypted = match self.zstd {
             Some(level) => {
                 let mut out = vec![2_u8];
                 copy_encode(data, &mut out, level)
@@ -395,10 +411,39 @@ impl<C: CryptoKey> DecryptWriteBackend for DecryptBackend<C> {
             }
             None => self.key().encrypt_data(data)?,
         };
-        let id = hash(&data);
-        self.write_bytes(tpe, &id, false, data.into())
+        if self.extra_check {
+            let check_data = self.decrypt_file(&data_encrypted)?;
+            if data != check_data {
+                return Err(CryptBackendErrorKind::ExtraCheckFailed.into());
+            }
+        }
+        let id = hash(&data_encrypted);
+        self.write_bytes(tpe, &id, false, data_encrypted.into())
             .map_err(RusticErrorKind::Backend)?;
         Ok(id)
+    }
+
+    fn process_data(&self, data: &[u8]) -> RusticResult<(Vec<u8>, u32, Option<NonZeroU32>)> {
+        let data_len: u32 = data
+            .len()
+            .try_into()
+            .map_err(CryptBackendErrorKind::IntConversionFailed)?;
+        let (data_encrypted, uncompressed_length) = match self.zstd {
+            None => (self.key.encrypt_data(data)?, None),
+            // compress if requested
+            Some(level) => (
+                self.key.encrypt_data(&encode_all(data, level)?)?,
+                NonZeroU32::new(data_len),
+            ),
+        };
+        if self.extra_check {
+            let data_check =
+                self.read_encrypted_from_partial(&data_encrypted, uncompressed_length)?;
+            if data != data_check {
+                return Err(CryptBackendErrorKind::ExtraCheckFailed.into());
+            }
+        }
+        Ok((data_encrypted, data_len, uncompressed_length))
     }
 
     /// Sets the compression level to use for zstd.
@@ -408,6 +453,15 @@ impl<C: CryptoKey> DecryptWriteBackend for DecryptBackend<C> {
     /// * `zstd` - The compression level to use for zstd.
     fn set_zstd(&mut self, zstd: Option<i32>) {
         self.zstd = zstd;
+    }
+
+    /// Sets `extra_check`, i.e. whether to do an extra check after compressing/encrypting
+    ///
+    /// # Arguments
+    ///
+    /// * `extra_echeck` - The compression level to use for zstd.
+    fn set_extra_check(&mut self, extra_check: bool) {
+        self.extra_check = extra_check;
     }
 }
 
@@ -440,15 +494,8 @@ impl<C: CryptoKey> DecryptReadBackend for DecryptBackend<C> {
     /// [`CryptBackendErrorKind::DecryptionNotSupportedForBackend`]: crate::error::CryptBackendErrorKind::DecryptionNotSupportedForBackend
     /// [`CryptBackendErrorKind::DecodingZstdCompressedDataFailed`]: crate::error::CryptBackendErrorKind::DecodingZstdCompressedDataFailed
     fn read_encrypted_full(&self, tpe: FileType, id: &Id) -> RusticResult<Bytes> {
-        let decrypted =
-            self.decrypt(&self.read_full(tpe, id).map_err(RusticErrorKind::Backend)?)?;
-        Ok(match decrypted.first() {
-            Some(b'{' | b'[') => decrypted, // not compressed
-            Some(2) => decode_all(&decrypted[1..])
-                .map_err(CryptBackendErrorKind::DecodingZstdCompressedDataFailed)?, // 2 indicates compressed data following
-            _ => return Err(CryptBackendErrorKind::DecryptionNotSupportedForBackend)?,
-        }
-        .into())
+        self.decrypt_file(&self.read_full(tpe, id).map_err(RusticErrorKind::Backend)?)
+            .map(Into::into)
     }
 }
 

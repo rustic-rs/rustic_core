@@ -5,7 +5,7 @@ use log::{debug, trace};
 
 use crate::{
     archiver::{parent::ParentResult, tree::TreeType},
-    backend::{decrypt::DecryptWriteBackend, node::Node},
+    backend::{decrypt::DecryptFullBackend, node::Node},
     blob::{packer::Packer, tree::Tree, BlobType},
     error::{ArchiverErrorKind, RusticResult},
     id::Id,
@@ -23,7 +23,7 @@ pub(crate) type TreeItem = TreeType<(ParentResult<()>, u64), ParentResult<Id>>;
 /// * `I` - The index to read from.
 ///
 // TODO: Add documentation
-pub(crate) struct TreeArchiver<'a, BE: DecryptWriteBackend, I: ReadGlobalIndex> {
+pub(crate) struct TreeArchiver<'a, BE: DecryptFullBackend, I: ReadGlobalIndex> {
     /// The current tree.
     tree: Tree,
     /// The stack of trees.
@@ -36,7 +36,7 @@ pub(crate) struct TreeArchiver<'a, BE: DecryptWriteBackend, I: ReadGlobalIndex> 
     summary: SnapshotSummary,
 }
 
-impl<'a, BE: DecryptWriteBackend, I: ReadGlobalIndex> TreeArchiver<'a, BE, I> {
+impl<'a, BE: DecryptFullBackend, I: ReadGlobalIndex> TreeArchiver<'a, BE, I> {
     /// Creates a new `TreeArchiver`.
     ///
     /// # Type Parameters

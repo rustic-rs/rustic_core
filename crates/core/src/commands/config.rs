@@ -158,6 +158,10 @@ pub struct ConfigOptions {
     /// tolerated. Default if not set: larger packfiles are always tolerated.
     #[cfg_attr(feature = "clap", clap(long, value_name = "PERCENT"))]
     pub set_max_packsize_tolerate_percent: Option<u32>,
+
+    /// Do an extra check by decompressing/decrypting all data before uploading to the repository
+    #[cfg_attr(feature = "clap", clap(long))]
+    pub set_extra_check: Option<bool>,
 }
 
 impl ConfigOptions {
@@ -257,6 +261,8 @@ impl ConfigOptions {
             }
             config.max_packsize_tolerate_percent = Some(percent);
         }
+
+        config.extra_check = self.set_extra_check;
 
         Ok(())
     }
