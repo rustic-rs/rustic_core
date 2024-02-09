@@ -633,7 +633,7 @@ impl<P, S> Repository<P, S> {
 
         let mut dbe = DecryptBackend::new(self.be.clone(), key);
         dbe.set_zstd(config.zstd()?);
-        dbe.set_extra_check(config.extra_check());
+        dbe.set_extra_verify(config.extra_verify());
 
         let open = OpenStatus { cache, dbe, config };
 

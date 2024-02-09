@@ -94,8 +94,8 @@ pub struct ConfigFile {
     /// If not set or set to `0` this is unlimited.
     pub max_packsize_tolerate_percent: Option<u32>,
 
-    /// Do an extra check by decompressing/decrypting all data before uploading to the repository
-    pub extra_check: Option<bool>,
+    /// Do an extra verification by decompressing/decrypting all data before uploading to the repository
+    pub extra_verify: Option<bool>,
 }
 
 impl RepoFile for ConfigFile {
@@ -149,9 +149,9 @@ impl ConfigFile {
         }
     }
 
-    /// Get wheter an extra check (decompressing/decrypting data before writing to the repository) should be performed.
-    pub fn extra_check(&self) -> bool {
-        self.extra_check.unwrap_or(true) // default is to do the extra check
+    /// Get wheter an extra verification (decompressing/decrypting data before writing to the repository) should be performed.
+    pub fn extra_verify(&self) -> bool {
+        self.extra_verify.unwrap_or(true) // default is to do the extra check
     }
 
     /// Get pack size parameter

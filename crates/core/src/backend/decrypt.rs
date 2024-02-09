@@ -199,6 +199,12 @@ pub trait DecryptWriteBackend: WriteBackend + Clone + 'static {
     /// The hash of the written data.
     fn hash_write_full(&self, tpe: FileType, data: &[u8]) -> RusticResult<Id>;
 
+    /// Process some blob data.
+    /// This compresses and encrypts the data as requested
+    ///
+    /// # Returns
+    ///
+    /// The processed data, the original data length and when compression is used, the uncomressed length
     fn process_data(&self, data: &[u8]) -> RusticResult<(Vec<u8>, u32, Option<NonZeroU32>)>;
 
     /// Writes the given data to the backend without compression and returns the id of the data.
@@ -321,7 +327,7 @@ pub trait DecryptWriteBackend: WriteBackend + Clone + 'static {
     }
 
     fn set_zstd(&mut self, zstd: Option<i32>);
-    fn set_extra_check(&mut self, extra_check: bool);
+    fn set_extra_verify(&mut self, extra_check: bool);
 }
 
 /// A backend that can decrypt data.
@@ -337,8 +343,8 @@ pub struct DecryptBackend<C: CryptoKey> {
     key: C,
     /// The compression level to use for zstd.
     zstd: Option<i32>,
-    /// The whether do do an extra check by decompressing and decrypting the data
-    extra_check: bool,
+    /// Whether to do an extra verification by decompressing and decrypting the data
+    extra_verify: bool,
 }
 
 impl<C: CryptoKey> DecryptBackend<C> {
@@ -360,11 +366,13 @@ impl<C: CryptoKey> DecryptBackend<C> {
         Self {
             be,
             key,
+            // zstd and extra_verify are directly set, where needed.
             zstd: None,
-            extra_check: false,
+            extra_verify: false,
         }
     }
 
+    /// Decrypt and potentially decompress an already read repository file
     fn decrypt_file(&self, data: &[u8]) -> RusticResult<Vec<u8>> {
         let decrypted = self.decrypt(data)?;
         Ok(match decrypted.first() {
@@ -411,10 +419,10 @@ impl<C: CryptoKey> DecryptWriteBackend for DecryptBackend<C> {
             }
             None => self.key().encrypt_data(data)?,
         };
-        if self.extra_check {
+        if self.extra_verify {
             let check_data = self.decrypt_file(&data_encrypted)?;
             if data != check_data {
-                return Err(CryptBackendErrorKind::ExtraCheckFailed.into());
+                return Err(CryptBackendErrorKind::ExtraVerificationFailed.into());
             }
         }
         let id = hash(&data_encrypted);
@@ -436,11 +444,11 @@ impl<C: CryptoKey> DecryptWriteBackend for DecryptBackend<C> {
                 NonZeroU32::new(data_len),
             ),
         };
-        if self.extra_check {
+        if self.extra_verify {
             let data_check =
                 self.read_encrypted_from_partial(&data_encrypted, uncompressed_length)?;
             if data != data_check {
-                return Err(CryptBackendErrorKind::ExtraCheckFailed.into());
+                return Err(CryptBackendErrorKind::ExtraVerificationFailed.into());
             }
         }
         Ok((data_encrypted, data_len, uncompressed_length))
@@ -460,8 +468,8 @@ impl<C: CryptoKey> DecryptWriteBackend for DecryptBackend<C> {
     /// # Arguments
     ///
     /// * `extra_echeck` - The compression level to use for zstd.
-    fn set_extra_check(&mut self, extra_check: bool) {
-        self.extra_check = extra_check;
+    fn set_extra_verify(&mut self, extra_verify: bool) {
+        self.extra_verify = extra_verify;
     }
 }
 

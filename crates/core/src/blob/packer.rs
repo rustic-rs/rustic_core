@@ -13,7 +13,10 @@ use crossbeam_channel::{bounded, Receiver, Sender};
 use pariter::{scope, IteratorExt};
 
 use crate::{
-    backend::{decrypt::DecryptFullBackend, decrypt::DecryptWriteBackend, FileType},
+    backend::{
+        decrypt::{DecryptFullBackend, DecryptWriteBackend},
+        FileType,
+    },
     blob::BlobType,
     crypto::{hasher::hash, CryptoKey},
     error::{PackerErrorKind, RusticErrorKind, RusticResult},
@@ -130,7 +133,7 @@ impl PackSizer {
 /// * `BE` - The backend type.
 #[allow(missing_debug_implementations)]
 #[derive(Clone)]
-pub struct Packer<BE: DecryptFullBackend> {
+pub struct Packer<BE: DecryptWriteBackend> {
     /// The raw packer wrapped in an Arc and RwLock.
     // This is a hack: raw_packer and indexer are only used in the add_raw() method.
     // TODO: Refactor as actor, like the other add() methods
@@ -143,7 +146,7 @@ pub struct Packer<BE: DecryptFullBackend> {
     finish: Receiver<RusticResult<PackerStats>>,
 }
 
-impl<BE: DecryptFullBackend> Packer<BE> {
+impl<BE: DecryptWriteBackend> Packer<BE> {
     /// Creates a new `Packer`.
     ///
     /// # Type Parameters

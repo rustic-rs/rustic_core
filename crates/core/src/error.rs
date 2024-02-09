@@ -571,8 +571,8 @@ pub enum CryptBackendErrorKind {
     CopyEncodingDataFailed(std::io::Error),
     /// conversion for integer failed: `{0:?}`
     IntConversionFailed(#[from] TryFromIntError),
-    /// Extra check failed: After decrypting/decompressing the data doesn't match any longer!
-    ExtraCheckFailed,
+    /// Extra verification failed: After decrypting and decompressing the data changed!
+    ExtraVerificationFailed,
 }
 
 /// [`IgnoreErrorKind`] describes the errors that can be returned by a Ignore action in Backends

@@ -125,9 +125,9 @@ impl<BE: DecryptFullBackend> DecryptWriteBackend for DryRunBackend<BE> {
         }
     }
 
-    fn set_extra_check(&mut self, extra_check: bool) {
+    fn set_extra_verify(&mut self, extra_check: bool) {
         if !self.dry_run {
-            self.be.set_extra_check(extra_check);
+            self.be.set_extra_verify(extra_check);
         }
     }
 }
