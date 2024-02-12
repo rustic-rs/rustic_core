@@ -1,28 +1,23 @@
 <p align="center">
-<img src="https://raw.githubusercontent.com/rustic-rs/assets/main/logos/readme_header_backend.png" height="400" />
+<img src="https://raw.githubusercontent.com/rustic-rs/assets/main/logos/readme_header_config.png" height="400" />
 </p>
-<p align="center"><b>Library for supporting various backends in rustic</b></p>
+<p align="center"><b>Library for configuration support in rustic</b></p>
 <p align="center">
-<a href="https://crates.io/crates/rustic_backend"><img src="https://img.shields.io/crates/v/rustic_backend.svg" /></a>
-<a href="https://docs.rs/rustic_backend/"><img src="https://img.shields.io/docsrs/rustic_backend?style=flat&amp;labelColor=1c1d42&amp;color=4f396a&amp;logo=Rust&amp;logoColor=white" /></a>
+<a href="https://crates.io/crates/rustic_config"><img src="https://img.shields.io/crates/v/rustic_config.svg" /></a>
+<a href="https://docs.rs/rustic_config/"><img src="https://img.shields.io/docsrs/rustic_config?style=flat&amp;labelColor=1c1d42&amp;color=4f396a&amp;logo=Rust&amp;logoColor=white" /></a>
 <a href="https://github.com/rustic-rs/rustic_core/blob/main/crates/backend/LICENSE-APACHE"><img src="https://img.shields.io/badge/license-Apache2.0/MIT-blue.svg" /></a>
-<a href="https://crates.io/crates/rustic_backend"><img src="https://img.shields.io/crates/d/rustic_backend.svg" /></a>
+<a href="https://crates.io/crates/rustic_config"><img src="https://img.shields.io/crates/d/rustic_config.svg" /></a>
 <p>
 
 ## About
 
 This library is a part of the [rustic](https://rustic.cli.rs) project and
-provides a set of backends for the
+provides a set of types for the
 [`rustic_core`](https://crates.io/crates/rustic_core) library. It is used to
-interact with various storage backends, such as `s3`, `rclone`, `rest`, `sftp`,
-and in general `opendal`.
+collect everything regarding configuration for backends, CLI, and other related
+functionality.
 
-The goal of this library is to provide a unified interface for interacting with
-various backends, so that the
-[`rustic_core`](https://crates.io/crates/rustic_core) library can be used to
-interact with them in a consistent way.
-
-**Note**: `rustic_backend` is in an early development stage and its API is
+**Note**: `rustic_config` is in an early development stage and its API is
 subject to change in the next releases. If you want to give feedback on that,
 please open an [issue](https://github.com/rustic-rs/rustic_core/issues).
 
@@ -44,10 +39,10 @@ Add this to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-rustic_backend = "0.1"
+rustic_config = "0.1"
 ```
 
-## Crate features
+<!-- ## Crate features
 
 This crate exposes a few features for controlling dependency usage:
 
@@ -60,23 +55,7 @@ This crate exposes a few features for controlling dependency usage:
 - **merge** - Enables support for merging multiple values into one, which
   enables the `merge` dependency. This is needed for parsing commandline
   arguments and merging them into one (e.g. `config`). *This feature is disabled
-  by default*.
-
-### Backend-related features
-
-- **opendal** - Enables support for the `opendal` backend. *This feature is
-  enabled by default*.
-- **rclone** - Enables support for the `rclone` backend. *This feature is
-  enabled by default*.
-
-- **rest** - Enables support for the `rest` backend. *This feature is enabled by
-  default*.
-
-- **sftp** - Enables support for the `sftp` backend. Windows is not yet
-  supported. *This feature is enabled by default*.
-
-- **s3** - Enables support for the `s3` backend. *This feature is enabled by
-  default*.
+  by default*. -->
 
 ## Usage & Examples
 
@@ -100,7 +79,7 @@ Please make sure, that you read the
 
 ## Minimum Rust version policy
 
-This crate's minimum supported `rustc` version is `1.72.0`.
+This crate's minimum supported `rustc` version is `1.71.1`.
 
 The current policy is that the minimum Rust version required to use this crate
 can be increased in minor version updates. For example, if `crate 1.0` requires

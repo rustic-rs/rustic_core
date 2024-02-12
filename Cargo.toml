@@ -1,15 +1,21 @@
 [workspace]
-members = ["crates/core", "crates/backend", "crates/testing", "examples/*"]
+members = [
+  "crates/backend",
+  "crates/config",
+  "crates/core",
+  "crates/testing",
+  "examples/*",
+]
 resolver = "2"
 
 [workspace.package]
-rust-version = "1.71.1"
+rust-version = "1.72.0"
 
 [workspace.dependencies]
+aho-corasick = "1.1.2"
 rustic_backend = { path = "crates/backend" }
 rustic_core = { path = "crates/core" }
 simplelog = "0.12.1"
-aho-corasick = "1.1.2"
 
 # dev-dependencies
 tempfile = "3.9.0"
