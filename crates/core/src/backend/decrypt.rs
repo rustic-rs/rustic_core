@@ -326,6 +326,11 @@ pub trait DecryptWriteBackend: WriteBackend + Clone + 'static {
         Ok(())
     }
 
+    /// Sets the compression level to use for zstd.
+    ///
+    /// # Arguments
+    ///
+    /// * `zstd` - The compression level to use for zstd. TODO: What happens if this is None? What are defaults?
     fn set_zstd(&mut self, zstd: Option<i32>);
     fn set_extra_verify(&mut self, extra_check: bool);
 }
