@@ -1020,13 +1020,12 @@ impl<P: ProgressBars, S: Open> Repository<P, S> {
     /// * [`CryptBackendErrorKind::SerializingToJsonByteVectorFailed`] - If the file could not be serialized to json.
     ///
     /// [`CryptBackendErrorKind::SerializingToJsonByteVectorFailed`]: crate::error::CryptBackendErrorKind::SerializingToJsonByteVectorFailed
-    pub fn save_snapshots(&self, mut snaps: Vec<SnapshotFile>) -> RusticResult<()> {
+    pub fn save_snapshots(&self, mut snaps: Vec<SnapshotFile>) -> RusticResult<Vec<Id>> {
         for snap in &mut snaps {
             snap.id = Id::default();
         }
         let p = self.pb.progress_counter("saving snapshots...");
-        self.dbe().save_list(snaps.iter(), p)?;
-        Ok(())
+        self.dbe().save_list(snaps.iter(), p)
     }
 
     /// Check the repository for errors or inconsistencies
