@@ -10,6 +10,7 @@ use std::{
 };
 
 use bytes::Bytes;
+use chrono::Local;
 use derive_setters::Setters;
 use log::{debug, error, info};
 use serde_with::{serde_as, DisplayFromStr};
@@ -37,6 +38,7 @@ use crate::{
         copy::CopySnapshot,
         forget::{ForgetGroups, KeepOptions},
         key::KeyOptions,
+        lock::LockOptions,
         prune::{PruneOptions, PrunePlan},
         repair::{index::RepairIndexOptions, snapshots::RepairSnapshotsOptions},
         repoinfo::{IndexInfos, RepoFileInfos},
@@ -1056,6 +1058,22 @@ impl<P: ProgressBars, S: Open> Repository<P, S> {
     /// The plan about what should be pruned and/or repacked.
     pub fn prune_plan(&self, opts: &PruneOptions) -> RusticResult<PrunePlan> {
         opts.get_plan(self)
+    }
+
+    /// Lock snapshot and pack files needed for the given snapshots
+    ///
+    /// # Arguments
+    ///
+    /// * `opts` - The lock options to use
+    /// * `snaps` - The snapshots to lock
+    /// * `until` - until when to lock. None means lock forever.
+    ///
+    /// # Errors
+    ///
+    // TODO: Document errors
+    pub fn lock(&self, opts: &LockOptions, snaps: &[SnapshotFile]) -> RusticResult<()> {
+        let now = Local::now();
+        opts.lock(self, snaps, now)
     }
 
     /// Turn the repository into the `IndexedFull` state by reading and storing the index

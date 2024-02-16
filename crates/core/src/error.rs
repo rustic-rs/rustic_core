@@ -214,6 +214,8 @@ pub enum CommandErrorKind {
     FromRayonError(#[from] rayon::ThreadPoolBuildError),
     /// conversion to `u64` failed: `{0:?}`
     ConversionToU64Failed(TryFromIntError),
+    /// Id {0:?} not found in index
+    IdNotFoundinIndex(Id),
 }
 
 /// [`CryptoErrorKind`] describes the errors that can happen while dealing with Cryptographic functions
