@@ -1003,6 +1003,9 @@ impl PrunePlan {
         repo: &Repository<P, S>,
         opts: &PruneOptions,
     ) -> RusticResult<()> {
+        if repo.config().append_only == Some(true) {
+            return Err(CommandErrorKind::NotAllowedWithAppendOnly("prune".to_string()).into());
+        }
         repo.warm_up_wait(self.repack_packs().into_iter())?;
         let be = repo.dbe();
         let pb = &repo.pb;

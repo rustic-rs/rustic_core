@@ -49,6 +49,13 @@ pub struct ConfigFile {
     /// When using hot/cold repositories, this is only set within the hot part of the repository.
     pub is_hot: Option<bool>,
 
+    /// Marker if this is a append-only repository.
+    ///
+    /// # Note
+    ///
+    /// Commands which are not append-only won't run once this is set.
+    pub append_only: Option<bool>,
+
     /// Compression level
     ///
     /// # Note
