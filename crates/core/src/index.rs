@@ -317,6 +317,12 @@ impl GlobalIndex {
             }
         }
     }
+
+    pub(crate) fn drop_data(self) -> Self {
+        Self {
+            index: Arc::new(self.into_index().drop_data()),
+        }
+    }
 }
 
 impl ReadGlobalIndex for GlobalIndex {}
