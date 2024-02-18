@@ -439,6 +439,8 @@ fn test_prune(
     let paths = PathList::from_iter(Some(source.0.path().join("0/0/9/3")));
     let _ = repo.backup(&opts, &paths, SnapshotFile::default())?;
 
+    // drop index
+    let repo = repo.drop_index();
     repo.delete_snapshots(&[snapshot1.id])?;
 
     // get prune plan

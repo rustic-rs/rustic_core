@@ -75,6 +75,23 @@ pub(crate) struct TypeIndex {
 #[derive(Debug)]
 pub struct Index(BlobTypeMap<TypeIndex>);
 
+impl Index {
+    /// drop all index entries related to data blobs
+    pub(crate) fn drop_data(self) -> Self {
+        Self(self.0.map(|blob_type, i| {
+            if blob_type == BlobType::Data {
+                TypeIndex {
+                    packs: Vec::new(),
+                    entries: EntriesVariants::None,
+                    total_size: 0,
+                }
+            } else {
+                i
+            }
+        }))
+    }
+}
+
 impl IndexCollector {
     #[must_use]
     pub fn new(tpe: IndexType) -> Self {
