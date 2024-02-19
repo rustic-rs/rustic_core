@@ -23,6 +23,7 @@ use crate::{
     progress::{Progress, ProgressBars},
     repofile::{IndexFile, SnapshotFile},
     repository::{Open, Repository},
+    ALL_FILE_TYPES,
 };
 
 pub(super) mod constants {
@@ -161,6 +162,29 @@ impl LockOptions {
 
         Ok(())
     }
+}
+
+pub fn lock_repo<P: ProgressBars, S>(
+    repo: &Repository<P, S>,
+    until: Option<DateTime<Local>>,
+) -> RusticResult<()> {
+    for file_type in ALL_FILE_TYPES {
+        lock_all_files(repo, file_type, until)?
+    }
+    Ok(())
+}
+
+pub fn lock_all_files<P: ProgressBars, S>(
+    repo: &Repository<P, S>,
+    file_type: FileType,
+    until: Option<DateTime<Local>>,
+) -> RusticResult<()> {
+    let p = &repo
+        .pb
+        .progress_spinner(format!("losting {file_type:?} files.."));
+    let ids: Vec<_> = repo.list(file_type)?.collect();
+    p.finish();
+    lock_files(repo, file_type, &ids, until)
 }
 
 fn lock_files<P: ProgressBars, S>(

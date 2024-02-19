@@ -10,7 +10,7 @@ use std::{
 };
 
 use bytes::Bytes;
-use chrono::Local;
+use chrono::{DateTime, Local};
 use derive_setters::Setters;
 use log::{debug, error, info};
 use serde_with::{serde_as, DisplayFromStr};
@@ -38,7 +38,7 @@ use crate::{
         copy::CopySnapshot,
         forget::{ForgetGroups, KeepOptions},
         key::KeyOptions,
-        lock::LockOptions,
+        lock::{lock_all_files, lock_repo, LockOptions},
         prune::{PruneOptions, PrunePlan},
         repair::{index::RepairIndexOptions, snapshots::RepairSnapshotsOptions},
         repoinfo::{IndexInfos, RepoFileInfos},
@@ -1060,6 +1060,37 @@ impl<P: ProgressBars, S: Open> Repository<P, S> {
         opts.get_plan(self)
     }
 
+    /// Lock the complete repository, i.e. everything in the storage backend.
+    ///
+    /// # Arguments
+    ///
+    /// * `until` - until when to lock. None means lock forever.
+    ///
+    /// # Errors
+    ///
+    // TODO: Document errors
+    pub fn lock_repo(&self, until: Option<DateTime<Local>>) -> RusticResult<()> {
+        lock_repo(self, until)
+    }
+
+    /// Lock all repository files of the given type
+    ///
+    /// # Arguments
+    ///
+    /// * `file_type` - the file type to lock
+    /// * `until` - until when to lock. None means lock forever.
+    ///
+    /// # Errors
+    ///
+    // TODO: Document errors
+    pub fn lock_repo_files(
+        &self,
+        file_type: FileType,
+        until: Option<DateTime<Local>>,
+    ) -> RusticResult<()> {
+        lock_all_files(self, file_type, until)
+    }
+
     /// Lock snapshot and pack files needed for the given snapshots
     ///
     /// # Arguments
@@ -1071,7 +1102,7 @@ impl<P: ProgressBars, S: Open> Repository<P, S> {
     /// # Errors
     ///
     // TODO: Document errors
-    pub fn lock(&self, opts: &LockOptions, snaps: &[SnapshotFile]) -> RusticResult<()> {
+    pub fn lock_snaphots(&self, opts: &LockOptions, snaps: &[SnapshotFile]) -> RusticResult<()> {
         let now = Local::now();
         opts.lock(self, snaps, now)
     }
