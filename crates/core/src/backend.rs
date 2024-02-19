@@ -13,6 +13,7 @@ use std::{io::Read, ops::Deref, path::PathBuf, sync::Arc};
 
 use anyhow::Result;
 use bytes::Bytes;
+use chrono::{DateTime, Local};
 use log::trace;
 use serde_derive::{Deserialize, Serialize};
 
@@ -304,6 +305,26 @@ pub trait WriteBackend: ReadBackend {
     /// * `id` - The id of the file.
     /// * `cacheable` - Whether the file is cacheable.
     fn remove(&self, tpe: FileType, id: &Id, cacheable: bool) -> Result<()>;
+
+    /// Specify if the backend is able to lock files
+    fn can_lock(&self) -> bool {
+        false
+    }
+
+    /// Lock the given file.
+    ///
+    /// # Arguments
+    ///
+    /// * `tpe` - The type of the file.
+    /// * `id` - The id of the file.
+    /// * `until` - The date until when to lock. May be `None` which usually specifies a unlimited lock
+    ///
+    /// # Errors
+    ///
+    /// If the file could not be read.
+    fn lock(&self, _tpe: FileType, _id: &Id, _until: Option<DateTime<Local>>) -> Result<()> {
+        Ok(())
+    }
 }
 
 impl WriteBackend for Arc<dyn WriteBackend> {

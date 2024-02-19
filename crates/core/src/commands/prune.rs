@@ -38,7 +38,7 @@ use crate::{
         GlobalIndex, ReadGlobalIndex, ReadIndex,
     },
     progress::{Progress, ProgressBars},
-    repofile::{HeaderEntry, IndexBlob, IndexFile, IndexPack, SnapshotFile},
+    repofile::{indexfile::LockOption, HeaderEntry, IndexBlob, IndexFile, IndexPack, SnapshotFile},
     repository::{Open, Repository},
 };
 
@@ -434,6 +434,8 @@ struct PrunePack {
     to_do: PackToDo,
     /// The time the pack was created
     time: Option<DateTime<Local>>,
+    /// Locking information
+    lock: LockOption,
     /// The blobs in the pack
     blobs: Vec<IndexBlob>,
 }
@@ -453,6 +455,7 @@ impl PrunePack {
             delete_mark,
             to_do: PackToDo::Undecided,
             time: p.time,
+            lock: p.lock,
             blobs: p.blobs,
         }
     }
@@ -481,6 +484,7 @@ impl PrunePack {
             id: self.id,
             time: self.time,
             size: None,
+            lock: self.lock,
             blobs: self.blobs,
         }
     }
@@ -495,6 +499,7 @@ impl PrunePack {
             id: self.id,
             time: Some(time),
             size: None,
+            lock: self.lock,
             blobs: self.blobs,
         }
     }
@@ -738,6 +743,12 @@ impl PrunePlan {
 
                     let to_compress = repack_uncompressed && !pack.is_compressed();
                     let size_mismatch = !pack_sizer[pack.blob_type].size_ok(pack.size);
+
+                    if pack.lock.is_locked(Some(self.time)) {
+                        // keep packs which are locked
+                        pack.set_todo(PackToDo::Keep, &pi, &mut self.stats);
+                        continue;
+                    }
 
                     match (pack.delete_mark, pi.used_blobs, pi.unused_blobs) {
                         (false, 0, _) => {
@@ -1056,6 +1067,7 @@ impl PrunePlan {
                         id,
                         size: Some(size),
                         time: Some(Local::now()),
+                        lock: LockOption::NotSet,
                         blobs: Vec::new(),
                     };
                     indexer.write().unwrap().add_remove(pack)?;
