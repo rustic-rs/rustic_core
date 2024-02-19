@@ -181,7 +181,7 @@ pub fn lock_all_files<P: ProgressBars, S>(
 ) -> RusticResult<()> {
     let p = &repo
         .pb
-        .progress_spinner(format!("losting {file_type:?} files.."));
+        .progress_spinner(format!("listing {file_type:?} files.."));
     let ids: Vec<_> = repo.list(file_type)?.collect();
     p.finish();
     lock_files(repo, file_type, &ids, until)
