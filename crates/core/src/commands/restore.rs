@@ -33,6 +33,9 @@ use crate::{
 pub(crate) mod constants {
     /// The maximum number of reader threads to use for restoring.
     pub(crate) const MAX_READER_THREADS_NUM: usize = 20;
+    /// The maximum size of pack-part which is read at once from the backend.
+    /// (needed to limit the memory size used for large backends)
+    pub(crate) const LIMIT_PACK_READ: u32 = 40 * 1024 * 1024; // 40 MiB
 }
 
 type RestoreInfo = BTreeMap<(Id, BlobLocation), Vec<FileLocation>>;
@@ -461,8 +464,14 @@ fn restore_contents<P: ProgressBars, S: Open>(
                 .collect();
             (pack, bl.offset, bl.length, from_file, name_dests)
         })
+        // optimize reading from backend by reading many blobs in a row
         .coalesce(|mut x, mut y| {
-            if x.0 == y.0 && x.3.is_none() && y.1 == x.1 + x.2 {
+            if x.0 == y.0 // if the pack is identical
+                && x.3.is_none() // and we don't read from a present file
+                && y.1 == x.1 + x.2 // and the blobs are contiguous
+                // and we don't trespass the limit
+                && x.2 + y.2 < constants::LIMIT_PACK_READ
+            {
                 x.2 += y.2;
                 x.4.append(&mut y.4);
                 Ok(x)
