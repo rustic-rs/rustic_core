@@ -511,17 +511,9 @@ impl PrunePack {
         match todo {
             PackToDo::Undecided => panic!("not possible"),
             PackToDo::Keep => {
-                stats.blobs[tpe].used += u64::from(pi.used_blobs);
-                stats.blobs[tpe].unused += u64::from(pi.unused_blobs);
-                stats.size[tpe].used += u64::from(pi.used_size);
-                stats.size[tpe].unused += u64::from(pi.unused_size);
                 stats.packs.keep += 1;
             }
             PackToDo::Repack => {
-                stats.blobs[tpe].used += u64::from(pi.used_blobs);
-                stats.blobs[tpe].unused += u64::from(pi.unused_blobs);
-                stats.size[tpe].used += u64::from(pi.used_size);
-                stats.size[tpe].unused += u64::from(pi.unused_size);
                 stats.packs.repack += 1;
                 stats.blobs[tpe].repack += u64::from(pi.unused_blobs + pi.used_blobs);
                 stats.blobs[tpe].repackrm += u64::from(pi.unused_blobs);
@@ -530,8 +522,6 @@ impl PrunePack {
             }
 
             PackToDo::MarkDelete => {
-                stats.blobs[tpe].unused += u64::from(pi.unused_blobs);
-                stats.size[tpe].unused += u64::from(pi.unused_size);
                 stats.blobs[tpe].remove += u64::from(pi.unused_blobs);
                 stats.size[tpe].remove += u64::from(pi.unused_size);
             }
@@ -731,6 +721,11 @@ impl PrunePlan {
                     .filter(|(_, p)| p.delete_mark == mark_case)
                 {
                     let pi = PackInfo::from_pack(pack, &mut self.used_ids);
+                    //update used/unused stats
+                    self.stats.blobs[pi.blob_type].used += u64::from(pi.used_blobs);
+                    self.stats.blobs[pi.blob_type].unused += u64::from(pi.unused_blobs);
+                    self.stats.size[pi.blob_type].used += u64::from(pi.used_size);
+                    self.stats.size[pi.blob_type].unused += u64::from(pi.unused_size);
 
                     // Various checks to determine if packs need to be kept
                     let too_young = pack.time > Some(self.time - keep_pack);
