@@ -44,6 +44,11 @@ impl RepairIndexOptions {
         repo: &Repository<P, S>,
         dry_run: bool,
     ) -> RusticResult<()> {
+        if repo.config().append_only == Some(true) {
+            return Err(
+                CommandErrorKind::NotAllowedWithAppendOnly("index repair".to_string()).into(),
+            );
+        }
         let be = repo.dbe();
         let p = repo.pb.progress_spinner("listing packs...");
         let mut packs: HashMap<_, _> = be

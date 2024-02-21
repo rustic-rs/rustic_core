@@ -43,7 +43,7 @@ use crate::{
         restore::{RestoreOptions, RestorePlan},
     },
     crypto::aespoly1305::Key,
-    error::{KeyFileErrorKind, RepositoryErrorKind, RusticErrorKind},
+    error::{CommandErrorKind, KeyFileErrorKind, RepositoryErrorKind, RusticErrorKind},
     id::Id,
     index::{GlobalIndex, IndexEntry, ReadGlobalIndex, ReadIndex},
     progress::{NoProgressBars, ProgressBars},
@@ -1003,6 +1003,12 @@ impl<P: ProgressBars, S: Open> Repository<P, S> {
     ///
     /// If the files could not be deleted.
     pub fn delete_snapshots(&self, ids: &[Id]) -> RusticResult<()> {
+        if self.config().append_only == Some(true) {
+            return Err(CommandErrorKind::NotAllowedWithAppendOnly(
+                "snapshots removal".to_string(),
+            )
+            .into());
+        }
         let p = self.pb.progress_counter("removing snapshots...");
         self.dbe()
             .delete_list(FileType::Snapshot, true, ids.iter(), p)?;

@@ -49,6 +49,9 @@ pub(crate) fn apply_config<P, S: Open>(
     repo: &Repository<P, S>,
     opts: &ConfigOptions,
 ) -> RusticResult<bool> {
+    if repo.config().append_only == Some(true) {
+        return Err(CommandErrorKind::NotAllowedWithAppendOnly("config change".to_string()).into());
+    }
     let mut new_config = repo.config().clone();
     opts.apply(&mut new_config)?;
     if &new_config == repo.config() {
@@ -109,6 +112,11 @@ pub struct ConfigOptions {
     /// Set repository version. Allowed versions: 1,2
     #[cfg_attr(feature = "clap", clap(long, value_name = "VERSION"))]
     pub set_version: Option<u32>,
+
+    /// Set append-only mode.
+    /// Note that only append-only commands work once this is set. `forget`, `prune` or `config` won't work any longer.
+    #[cfg_attr(feature = "clap", clap(long))]
+    pub set_append_only: Option<bool>,
 
     /// Set default packsize for tree packs. rustic tries to always produce packs greater than this value.
     /// Note that for large repos, this value is grown by the grown factor.
@@ -206,6 +214,10 @@ impl ConfigOptions {
                 );
             }
             config.compression = Some(compression);
+        }
+
+        if let Some(append_only) = self.set_append_only {
+            config.append_only = Some(append_only);
         }
 
         if let Some(size) = self.set_treepack_size {
