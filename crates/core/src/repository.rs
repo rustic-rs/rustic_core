@@ -1082,12 +1082,12 @@ impl<P: ProgressBars, S: Open> Repository<P, S> {
     /// This saves the full index in memory which can be quite memory-consuming!
     pub fn to_indexed(self) -> RusticResult<Repository<P, IndexedStatus<FullIndex, S>>> {
         let index = GlobalIndex::new(self.dbe(), &self.pb.progress_counter(""))?;
-        Ok(self.to_indexed_with_index(index))
+        Ok(self.into_indexed_with_index(index))
     }
 
     /// Turn the repository into the `IndexedFull` state by reading and storing the index
     ///
-    /// This is similar to to_indexed(), but also lists the pack files and reads pack headers
+    /// This is similar to `to_indexed()`, but also lists the pack files and reads pack headers
     /// for packs is missing in the index.
     ///
     /// # Errors
@@ -1100,11 +1100,11 @@ impl<P: ProgressBars, S: Open> Repository<P, S> {
     pub fn to_indexed_checked(self) -> RusticResult<Repository<P, IndexedStatus<FullIndex, S>>> {
         let collector = IndexCollector::new(IndexType::Full);
         let index = index_checked_from_collector(&self, collector)?;
-        Ok(self.to_indexed_with_index(index))
+        Ok(self.into_indexed_with_index(index))
     }
 
     // helper function to deduplicate code
-    fn to_indexed_with_index(
+    fn into_indexed_with_index(
         self,
         index: GlobalIndex,
     ) -> Repository<P, IndexedStatus<FullIndex, S>> {
@@ -1146,12 +1146,12 @@ impl<P: ProgressBars, S: Open> Repository<P, S> {
     /// However, operations which add data are fully functional.
     pub fn to_indexed_ids(self) -> RusticResult<Repository<P, IndexedStatus<IdIndex, S>>> {
         let index = GlobalIndex::only_full_trees(self.dbe(), &self.pb.progress_counter(""))?;
-        Ok(self.to_indexed_ids_with_index(index))
+        Ok(self.into_indexed_ids_with_index(index))
     }
 
     /// Turn the repository into the `IndexedIds` state by reading and storing a size-optimized index
     ///
-    /// This is similar to to_indexed_ids(), but also lists the pack files and reads pack headers
+    /// This is similar to `to_indexed_ids()`, but also lists the pack files and reads pack headers
     /// for packs is missing in the index.
     ///
     /// # Errors
@@ -1169,11 +1169,11 @@ impl<P: ProgressBars, S: Open> Repository<P, S> {
     pub fn to_indexed_ids_checked(self) -> RusticResult<Repository<P, IndexedStatus<IdIndex, S>>> {
         let collector = IndexCollector::new(IndexType::DataIds);
         let index = index_checked_from_collector(&self, collector)?;
-        Ok(self.to_indexed_ids_with_index(index))
+        Ok(self.into_indexed_ids_with_index(index))
     }
 
     // helper function to deduplicate code
-    fn to_indexed_ids_with_index(
+    fn into_indexed_ids_with_index(
         self,
         index: GlobalIndex,
     ) -> Repository<P, IndexedStatus<IdIndex, S>> {
