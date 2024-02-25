@@ -84,7 +84,10 @@ pub struct RepositoryOptions {
     /// # Warning
     ///
     /// Using --password can reveal the password in the process list!
-    #[cfg_attr(feature = "clap", clap(long, global = true, env = "RUSTIC_PASSWORD"))]
+    #[cfg_attr(
+        feature = "clap",
+        clap(long, global = true, env = "RUSTIC_PASSWORD", hide_env_values = true)
+    )]
     // TODO: Security related: use `secrecy` library (#663)
     pub password: Option<String>,
 
