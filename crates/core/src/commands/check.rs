@@ -269,50 +269,44 @@ fn check_packs(
         IndexType::DataIds
     });
 
-    let mut process_pack = |p: IndexPack, check_time: bool| {
-        let blob_type = p.blob_type();
-        let pack_size = p.pack_size();
-        _ = packs.insert(p.id, pack_size);
-        if hot_be.is_some() && blob_type == BlobType::Tree {
-            _ = tree_packs.insert(p.id, pack_size);
-        }
-
-        // Check if time is set _
-        if check_time && p.time.is_none() {
-            error!("pack {}: No time is set! Run prune to correct this!", p.id);
-        }
-
-        // check offsests in index
-        let mut expected_offset: u32 = 0;
-        let mut blobs = p.blobs;
-        blobs.sort_unstable();
-        for blob in blobs {
-            if blob.tpe != blob_type {
-                error!(
-                    "pack {}: blob {} blob type does not match: type: {:?}, expected: {:?}",
-                    p.id, blob.id, blob.tpe, blob_type
-                );
-            }
-
-            if blob.offset != expected_offset {
-                error!(
-                    "pack {}: blob {} offset in index: {}, expected: {}",
-                    p.id, blob.id, blob.offset, expected_offset
-                );
-            }
-            expected_offset += blob.length;
-        }
-    };
-
     let p = pb.progress_counter("reading index...");
     for index in be.stream_all::<IndexFile>(&p)? {
         let index = index?.1;
         index_collector.extend(index.packs.clone());
-        for p in index.packs {
-            process_pack(p, false);
-        }
-        for p in index.packs_to_delete {
-            process_pack(p, true);
+        for (p, to_delete) in index.all_packs() {
+            let check_time = to_delete; // Check if time is set for packs marked to delete
+            let blob_type = p.blob_type();
+            let pack_size = p.pack_size();
+            _ = packs.insert(p.id, pack_size);
+            if hot_be.is_some() && blob_type == BlobType::Tree {
+                _ = tree_packs.insert(p.id, pack_size);
+            }
+
+            // Check if time is set _
+            if check_time && p.time.is_none() {
+                error!("pack {}: No time is set! Run prune to correct this!", p.id);
+            }
+
+            // check offsests in index
+            let mut expected_offset: u32 = 0;
+            let mut blobs = p.blobs;
+            blobs.sort_unstable();
+            for blob in blobs {
+                if blob.tpe != blob_type {
+                    error!(
+                        "pack {}: blob {} blob type does not match: type: {:?}, expected: {:?}",
+                        p.id, blob.id, blob.tpe, blob_type
+                    );
+                }
+
+                if blob.offset != expected_offset {
+                    error!(
+                        "pack {}: blob {} offset in index: {}, expected: {}",
+                        p.id, blob.id, blob.offset, expected_offset
+                    );
+                }
+                expected_offset += blob.length;
+            }
         }
     }
 

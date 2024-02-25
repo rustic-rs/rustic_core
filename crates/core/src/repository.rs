@@ -38,14 +38,20 @@ use crate::{
         forget::{ForgetGroups, KeepOptions},
         key::KeyOptions,
         prune::{PruneOptions, PrunePlan},
-        repair::{index::RepairIndexOptions, snapshots::RepairSnapshotsOptions},
+        repair::{
+            index::{index_checked_from_collector, RepairIndexOptions},
+            snapshots::RepairSnapshotsOptions,
+        },
         repoinfo::{IndexInfos, RepoFileInfos},
         restore::{RestoreOptions, RestorePlan},
     },
     crypto::aespoly1305::Key,
     error::{CommandErrorKind, KeyFileErrorKind, RepositoryErrorKind, RusticErrorKind},
     id::Id,
-    index::{GlobalIndex, IndexEntry, ReadGlobalIndex, ReadIndex},
+    index::{
+        binarysorted::{IndexCollector, IndexType},
+        GlobalIndex, IndexEntry, ReadGlobalIndex, ReadIndex,
+    },
     progress::{NoProgressBars, ProgressBars},
     repofile::{
         keyfile::find_key_in_backend,
@@ -1076,6 +1082,32 @@ impl<P: ProgressBars, S: Open> Repository<P, S> {
     /// This saves the full index in memory which can be quite memory-consuming!
     pub fn to_indexed(self) -> RusticResult<Repository<P, IndexedStatus<FullIndex, S>>> {
         let index = GlobalIndex::new(self.dbe(), &self.pb.progress_counter(""))?;
+        Ok(self.into_indexed_with_index(index))
+    }
+
+    /// Turn the repository into the `IndexedFull` state by reading and storing the index
+    ///
+    /// This is similar to `to_indexed()`, but also lists the pack files and reads pack headers
+    /// for packs is missing in the index.
+    ///
+    /// # Errors
+    ///
+    // TODO: Document errors
+    ///
+    /// # Note
+    ///
+    /// This saves the full index in memory which can be quite memory-consuming!
+    pub fn to_indexed_checked(self) -> RusticResult<Repository<P, IndexedStatus<FullIndex, S>>> {
+        let collector = IndexCollector::new(IndexType::Full);
+        let index = index_checked_from_collector(&self, collector)?;
+        Ok(self.into_indexed_with_index(index))
+    }
+
+    // helper function to deduplicate code
+    fn into_indexed_with_index(
+        self,
+        index: GlobalIndex,
+    ) -> Repository<P, IndexedStatus<FullIndex, S>> {
         let status = IndexedStatus {
             open: self.status,
             index,
@@ -1088,14 +1120,14 @@ impl<P: ProgressBars, S: Open> Repository<P, S> {
                 ),
             },
         };
-        Ok(Repository {
+        Repository {
             name: self.name,
             be: self.be,
             be_hot: self.be_hot,
             opts: self.opts,
             pb: self.pb,
             status,
-        })
+        }
     }
 
     /// Turn the repository into the `IndexedIds` state by reading and storing a size-optimized index
@@ -1114,19 +1146,50 @@ impl<P: ProgressBars, S: Open> Repository<P, S> {
     /// However, operations which add data are fully functional.
     pub fn to_indexed_ids(self) -> RusticResult<Repository<P, IndexedStatus<IdIndex, S>>> {
         let index = GlobalIndex::only_full_trees(self.dbe(), &self.pb.progress_counter(""))?;
+        Ok(self.into_indexed_ids_with_index(index))
+    }
+
+    /// Turn the repository into the `IndexedIds` state by reading and storing a size-optimized index
+    ///
+    /// This is similar to `to_indexed_ids()`, but also lists the pack files and reads pack headers
+    /// for packs is missing in the index.
+    ///
+    /// # Errors
+    ///
+    // TODO: Document errors
+    ///
+    /// # Returns
+    ///
+    /// The repository in the `IndexedIds` state
+    ///
+    /// # Note
+    ///
+    /// This saves only the `Id`s for data blobs. Therefore, not all operations are possible on the repository.
+    /// However, operations which add data are fully functional.
+    pub fn to_indexed_ids_checked(self) -> RusticResult<Repository<P, IndexedStatus<IdIndex, S>>> {
+        let collector = IndexCollector::new(IndexType::DataIds);
+        let index = index_checked_from_collector(&self, collector)?;
+        Ok(self.into_indexed_ids_with_index(index))
+    }
+
+    // helper function to deduplicate code
+    fn into_indexed_ids_with_index(
+        self,
+        index: GlobalIndex,
+    ) -> Repository<P, IndexedStatus<IdIndex, S>> {
         let status = IndexedStatus {
             open: self.status,
             index,
             index_data: IdIndex {},
         };
-        Ok(Repository {
+        Repository {
             name: self.name,
             be: self.be,
             be_hot: self.be_hot,
             opts: self.opts,
             pb: self.pb,
             status,
-        })
+        }
     }
 
     /// Get statistical information from the index
