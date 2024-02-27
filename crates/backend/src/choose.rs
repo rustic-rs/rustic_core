@@ -51,17 +51,17 @@ pub struct BackendOptions {
 
     /// Other options for this repository (hot and cold part)
     #[cfg_attr(feature = "clap", clap(skip))]
-    #[cfg_attr(feature = "merge", merge(strategy = overwrite))]
+    #[cfg_attr(feature = "merge", merge(strategy = extend))]
     pub options: HashMap<String, String>,
 
     /// Other options for the hot repository
     #[cfg_attr(feature = "clap", clap(skip))]
-    #[cfg_attr(feature = "merge", merge(strategy = overwrite))]
+    #[cfg_attr(feature = "merge", merge(strategy = extend))]
     pub options_hot: HashMap<String, String>,
 
     /// Other options for the cold repository
     #[cfg_attr(feature = "clap", clap(skip))]
-    #[cfg_attr(feature = "merge", merge(strategy = overwrite))]
+    #[cfg_attr(feature = "merge", merge(strategy = extend))]
     pub options_cold: HashMap<String, String>,
 }
 
@@ -74,8 +74,8 @@ pub struct BackendOptions {
 /// * `left` - The left value
 /// * `right` - The right value
 #[cfg(feature = "merge")]
-pub fn overwrite<T>(left: &mut T, right: T) {
-    *left = right;
+pub fn extend<A, T: Extend<A> + IntoIterator<Item = A>>(left: &mut T, right: T) {
+    left.extend(right)
 }
 
 impl BackendOptions {
