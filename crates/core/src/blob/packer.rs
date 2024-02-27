@@ -104,12 +104,33 @@ impl PackSizer {
     /// * `size` - The size to check
     #[must_use]
     pub fn size_ok(&self, size: u32) -> bool {
+        !self.is_too_small(size) && !self.is_too_large(size)
+    }
+
+    /// Evaluates whether the given size is too small
+    ///
+    /// # Arguments
+    ///
+    /// * `size` - The size to check
+    #[must_use]
+    pub fn is_too_small(&self, size: u32) -> bool {
         let target_size = self.pack_size();
         // Note: we cast to u64 so that no overflow can occur in the multiplications
         u64::from(size) * 100
-            >= u64::from(target_size) * u64::from(self.min_packsize_tolerate_percent)
-            && u64::from(size) * 100
-                <= u64::from(target_size) * u64::from(self.max_packsize_tolerate_percent)
+            < u64::from(target_size) * u64::from(self.min_packsize_tolerate_percent)
+    }
+
+    /// Evaluates whether the given size is too large
+    ///
+    /// # Arguments
+    ///
+    /// * `size` - The size to check
+    #[must_use]
+    pub fn is_too_large(&self, size: u32) -> bool {
+        let target_size = self.pack_size();
+        // Note: we cast to u64 so that no overflow can occur in the multiplications
+        u64::from(size) * 100
+            > u64::from(target_size) * u64::from(self.max_packsize_tolerate_percent)
     }
 
     /// Adds the given size to the current size.

@@ -214,6 +214,8 @@ pub enum CommandErrorKind {
     FromRayonError(#[from] rayon::ThreadPoolBuildError),
     /// conversion to `u64` failed: `{0:?}`
     ConversionToU64Failed(TryFromIntError),
+    /// {0} is not allowed on an append-only repository
+    NotAllowedWithAppendOnly(String),
 }
 
 /// [`CryptoErrorKind`] describes the errors that can happen while dealing with Cryptographic functions
