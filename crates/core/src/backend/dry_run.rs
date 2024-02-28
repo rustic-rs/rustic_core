@@ -112,9 +112,22 @@ impl<BE: DecryptFullBackend> DecryptWriteBackend for DryRunBackend<BE> {
         }
     }
 
+    fn process_data(
+        &self,
+        data: &[u8],
+    ) -> RusticResult<(Vec<u8>, u32, Option<std::num::NonZeroU32>)> {
+        self.be.process_data(data)
+    }
+
     fn set_zstd(&mut self, zstd: Option<i32>) {
         if !self.dry_run {
             self.be.set_zstd(zstd);
+        }
+    }
+
+    fn set_extra_verify(&mut self, extra_check: bool) {
+        if !self.dry_run {
+            self.be.set_extra_verify(extra_check);
         }
     }
 }

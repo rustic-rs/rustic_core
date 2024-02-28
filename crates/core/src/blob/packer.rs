@@ -11,10 +11,12 @@ use bytes::{Bytes, BytesMut};
 use chrono::Local;
 use crossbeam_channel::{bounded, Receiver, Sender};
 use pariter::{scope, IteratorExt};
-use zstd::encode_all;
 
 use crate::{
-    backend::{decrypt::DecryptFullBackend, decrypt::DecryptWriteBackend, FileType},
+    backend::{
+        decrypt::{DecryptFullBackend, DecryptWriteBackend},
+        FileType,
+    },
     blob::BlobType,
     crypto::{hasher::hash, CryptoKey},
     error::{PackerErrorKind, RusticErrorKind, RusticResult},
@@ -194,15 +196,13 @@ impl<BE: DecryptWriteBackend> Packer<BE> {
         config: &ConfigFile,
         total_size: u64,
     ) -> RusticResult<Self> {
-        let key = *be.key();
         let raw_packer = Arc::new(RwLock::new(RawPacker::new(
-            be,
+            be.clone(),
             blob_type,
             indexer.clone(),
             config,
             total_size,
         )));
-        let zstd = config.zstd()?;
 
         let (tx, rx) = bounded(0);
         let (finish_tx, finish_rx) = bounded::<RusticResult<PackerStats>>(0);
@@ -225,18 +225,7 @@ impl<BE: DecryptWriteBackend> Packer<BE> {
                     .parallel_map_scoped(
                         scope,
                         |(data, id, size_limit): (Bytes, Id, Option<u32>)| {
-                            let data_len: u32 = data
-                                .len()
-                                .try_into()
-                                .map_err(PackerErrorKind::IntConversionFailed)?;
-                            let (data, uncompressed_length) = match zstd {
-                                None => (key.encrypt_data(&data)?, None),
-                                // compress if requested
-                                Some(level) => (
-                                    key.encrypt_data(&encode_all(&*data, level)?)?,
-                                    NonZeroU32::new(data_len),
-                                ),
-                            };
+                            let (data, data_len, uncompressed_length) = be.process_data(&data)?;
                             Ok((
                                 data,
                                 id,
