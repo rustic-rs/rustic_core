@@ -1,0 +1,19 @@
+---
+source: crates/core/tests/integration.rs
+expression: TestSnap(&snap_dry_run)
+---
+TestSnap {
+    files_new: 73,
+    files_changed: 0,
+    files_unmodified: 0,
+    total_files_processed: 73,
+    total_bytes_processed: 1125674,
+    dirs_new: 7,
+    dirs_changed: 0,
+    dirs_unmodified: 0,
+    total_dirs_processed: 7,
+    data_blobs: 70,
+    tree_blobs: 7,
+    data_added_files: 1125653,
+    data_added_files_packed: 78740,
+}
