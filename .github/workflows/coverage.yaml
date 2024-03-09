@@ -1,0 +1,30 @@
+name: Test Coverage
+
+on: [push]
+jobs:
+  test:
+    name: Generate Coverage Report
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install cargo-hack
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-tarpaulin
+
+      # We run the coverage report on the workspace, but we configured in codecov to only look at parts of the workspace essentially
+      # 
+      # This is because we have a workspace with multiple crates, and we want to generate coverage for all of them, but we only want to
+      # report the coverage of rustic_backend and rustic_core crates (currently) as this is where the main logic is
+      - name: Generate code coverage
+        run: |
+          cargo tarpaulin --verbose --all-features --workspace --timeout 120 --out xml
+      
+      - name: Upload coverage reports to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+            token: ${{ secrets.CODECOV_TOKEN }}
+            slug: rustic-rs/rustic_core
