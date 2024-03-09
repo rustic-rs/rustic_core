@@ -8,3 +8,6 @@ publish = false
 aho-corasick = { workspace = true }
 once_cell = "1.19.0"
 tempfile = { workspace = true }
+
+[lints]
+workspace = true

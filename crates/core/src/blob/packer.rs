@@ -91,6 +91,8 @@ impl PackSizer {
 
     /// Computes the size of the pack file.
     #[must_use]
+    // TODO!: IMPORTANT: Evaluate deeply if this is really fine and what we want
+    #[allow(clippy::cast_possible_truncation)]
     pub fn pack_size(&self) -> u32 {
         (self.current_size.integer_sqrt() as u32 * self.grow_factor + self.default_size)
             .min(self.size_limit)
@@ -153,6 +155,7 @@ impl PackSizer {
 ///
 /// * `BE` - The backend type.
 #[allow(missing_debug_implementations)]
+#[allow(clippy::struct_field_names)]
 #[derive(Clone)]
 pub struct Packer<BE: DecryptWriteBackend> {
     /// The raw packer wrapped in an Arc and RwLock.
@@ -189,6 +192,7 @@ impl<BE: DecryptWriteBackend> Packer<BE> {
     ///
     /// [`PackerErrorKind::SendingCrossbeamMessageFailed`]: crate::error::PackerErrorKind::SendingCrossbeamMessageFailed
     /// [`PackerErrorKind::IntConversionFailed`]: crate::error::PackerErrorKind::IntConversionFailed
+    #[allow(clippy::unnecessary_wraps)]
     pub fn new(
         be: BE,
         blob_type: BlobType,

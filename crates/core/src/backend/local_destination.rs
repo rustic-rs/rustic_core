@@ -470,6 +470,19 @@ impl LocalDestination {
     #[cfg(windows)]
     // TODO: Windows support
     /// Create a special file (relative to the base path)
+    ///
+    /// # Arguments
+    ///
+    /// * `item` - The item to create
+    /// * `node` - The node to get the type from
+    ///
+    /// # Errors
+    ///
+    /// If the special file could not be created.
+    ///
+    /// # Returns
+    ///
+    /// Ok if the special file was created.
     pub fn create_special(&self, _item: impl AsRef<Path>, _node: &Node) -> RusticResult<()> {
         Ok(())
     }

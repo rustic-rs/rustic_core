@@ -1,4 +1,4 @@
-//! Rustic_Core Integration Test for the Public API of the library
+//! `rustic_core` Integration Test for the Public API of the library
 //!
 //! Installs the nightly toolchain, produces documentation and derives
 //! the public API from the rustdoc JSON. Then compares it with our
@@ -11,11 +11,13 @@
 //! you need to run:
 //! `UPDATE_EXPECT=1 cargo test public_api`
 
+use std::error::Error;
+
 #[test]
 #[ignore = "breaking changes, run before releasing"]
-fn public_api() {
+fn public_api() -> Result<(), Box<dyn Error>> {
     // Install a compatible nightly toolchain if it is missing
-    rustup_toolchain::install(public_api::MINIMUM_NIGHTLY_RUST_VERSION).unwrap();
+    rustup_toolchain::install(public_api::MINIMUM_NIGHTLY_RUST_VERSION)?;
 
     // Build rustdoc JSON
     let rustdoc_json = rustdoc_json::Builder::default()
@@ -38,4 +40,6 @@ fn public_api() {
     #[cfg(target_os = "macos")]
     expect_test::expect_file!["public_api_fixtures/public-api_macos.txt"]
         .assert_eq(&public_api.to_string());
+
+    Ok(())
 }

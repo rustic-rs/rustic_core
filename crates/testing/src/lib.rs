@@ -1,30 +1,76 @@
+//! Testing utilities for the `rustic` ecosystem.
+
 use aho_corasick::{AhoCorasick, PatternID};
 use std::{error::Error, ffi::OsStr};
 use tempfile::NamedTempFile;
 
-pub type TestResult<T> = std::result::Result<T, Box<dyn Error>>;
+/// A test result.
+pub type TestResult<T> = Result<T, Box<dyn Error>>;
 
-pub fn get_matches<I, P>(patterns: I, output: String) -> TestResult<Vec<(PatternID, usize)>>
+/// Get the matches for the given patterns and output.
+///
+/// # Arguments
+///
+/// * `patterns` - The patterns to search for.
+/// * `output` - The output to search in.
+///
+/// # Errors
+///
+/// If the patterns are invalid.
+///
+/// # Returns
+///
+/// The matches for the given patterns and output.
+pub fn get_matches<I, P>(patterns: I, output: &str) -> TestResult<Vec<(PatternID, usize)>>
 where
     I: IntoIterator<Item = P>,
     P: AsRef<[u8]>,
 {
     let ac = AhoCorasick::new(patterns)?;
     let mut matches = vec![];
-    for mat in ac.find_iter(output.as_str()) {
+    for mat in ac.find_iter(output) {
         add_match_to_vector(&mut matches, mat);
     }
     Ok(matches)
 }
 
+/// Add a match to the given vector.
+///
+/// # Arguments
+///
+/// * `matches` - The vector to add the match to.
+/// * `mat` - The `aho_corasick::Match` to add.
 pub fn add_match_to_vector(matches: &mut Vec<(PatternID, usize)>, mat: aho_corasick::Match) {
-    matches.push((mat.pattern(), mat.end() - mat.start()))
+    matches.push((mat.pattern(), mat.end() - mat.start()));
 }
 
+/// Get a temporary file.
+///
+/// # Errors
+///
+/// If the temporary file could not be created.
+///
+/// # Returns
+///
+/// A temporary file.
 pub fn get_temp_file() -> TestResult<NamedTempFile> {
     Ok(NamedTempFile::new()?)
 }
 
+/// Check if the given files differ.
+///
+/// # Arguments
+///
+/// * `path_left` - The left file to compare.
+/// * `path_right` - The right file to compare.
+///
+/// # Errors
+///
+/// If the files could not be compared.
+///
+/// # Returns
+///
+/// `true` if the files differ, `false` otherwise.
 pub fn files_differ(
     path_left: impl AsRef<OsStr>,
     path_right: impl AsRef<OsStr>,

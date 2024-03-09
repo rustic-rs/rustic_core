@@ -102,7 +102,7 @@ pub(crate) fn merge_trees<P: ProgressBars, S: IndexedTree>(
     )?;
     let save = |tree: Tree| {
         let (chunk, new_id) = tree.serialize()?;
-        let size = u64::try_from(chunk.len()).map_err(CommandErrorKind::ConversionToU64Failed)?;
+        let size = u64::try_from(chunk.len()).map_err(CommandErrorKind::ConversionFromIntFailed)?;
         if !index.has_tree(&new_id) {
             packer.add(chunk.into(), new_id)?;
         }

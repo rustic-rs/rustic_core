@@ -337,6 +337,7 @@ impl Iterator for LocalSourceWalker {
 /// [`IgnoreErrorKind::GenericError`]: crate::error::IgnoreErrorKind::GenericError
 /// [`IgnoreErrorKind::FromIoError`]: crate::error::IgnoreErrorKind::FromIoError
 #[cfg(windows)]
+#[allow(clippy::similar_names)]
 fn map_entry(
     entry: DirEntry,
     with_atime: bool,
