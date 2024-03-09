@@ -467,6 +467,7 @@ fn get_group_by_gid(gid: u32) -> Option<String> {
 /// [`IgnoreErrorKind::FromIoError`]: crate::error::IgnoreErrorKind::FromIoError
 #[cfg(not(windows))]
 // map_entry: turn entry into (Path, Node)
+#[allow(clippy::similar_names)]
 fn map_entry(
     entry: DirEntry,
     with_atime: bool,
