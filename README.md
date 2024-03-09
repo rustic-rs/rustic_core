@@ -5,6 +5,7 @@
 <p align="center">
 <a href="https://crates.io/crates/rustic_core"><img src="https://img.shields.io/crates/v/rustic_core.svg" /></a>
 <a href="https://docs.rs/rustic_core/"><img src="https://img.shields.io/docsrs/rustic_core?style=flat&amp;labelColor=1c1d42&amp;color=4f396a&amp;logo=Rust&amp;logoColor=white" /></a>
+<a href="https://codecov.io/gh/rustic-rs/rustic_core" ><img src="https://codecov.io/gh/rustic-rs/rustic_core/graph/badge.svg?token=M3KHH6XKNM"/></a>
 <a href="https://github.com/rustic-rs/rustic_core/blob/main/"><img src="https://img.shields.io/badge/license-Apache2.0/MIT-blue.svg" /></a>
 <a href="https://crates.io/crates/rustic_core"><img src="https://img.shields.io/crates/d/rustic_core.svg" /></a>
 <p>
