@@ -854,7 +854,7 @@ impl PrunePlan {
                         (false, 1.., 1..) => {
                             // partly used pack
                             self.stats.packs.partly_used += 1;
-                            _ = status
+                            status
                                 .insert_all(PackStatus::HasUsedBlobs | PackStatus::HasUnusedBlobs);
 
                             if too_young || keep_uncacheable {
