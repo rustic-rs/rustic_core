@@ -1,4 +1,10 @@
-use std::{env, fs::File, path::Path, str::FromStr, sync::Arc};
+use std::{
+    env,
+    fs::File,
+    path::{Path, PathBuf},
+    str::FromStr,
+    sync::Arc,
+};
 
 use anyhow::Result;
 use flate2::read::GzDecoder;
@@ -7,9 +13,9 @@ use pretty_assertions::assert_eq;
 use rustic_core::{
     repofile::SnapshotFile, BackupOptions, ConfigOptions, InMemoryBackend, KeyOptions,
     NoProgressBars, OpenStatus, PathList, Repository, RepositoryBackends, RepositoryOptions,
-    StringList,
 };
-use simplelog::{Config, SimpleLogger};
+// uncomment for logging output
+// use simplelog::{Config, SimpleLogger};
 use tar::Archive;
 use tempfile::{tempdir, TempDir};
 
@@ -34,10 +40,6 @@ impl TestSource {
     fn paths(&self) -> Result<PathList> {
         Ok(PathList::from_string(self.0.path().to_str().unwrap())?)
     }
-
-    fn strings(&self) -> Result<StringList> {
-        Ok(StringList::from_str(self.0.path().to_str().unwrap())?)
-    }
 }
 
 fn set_up_testdata(path: impl AsRef<Path>) -> Result<TestSource> {
@@ -57,10 +59,15 @@ struct TestSummary<'a>(&'a SnapshotFile);
 
 impl<'a> std::fmt::Debug for TestSummary<'a> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let s = self.0.summary.as_ref().unwrap();
         // leave out info we expect to change:
         // Ids, times, tree sizes (as used uid/username is saved in trees)
         let mut b = f.debug_struct("TestSnap");
+        b.field("hostname", &self.0.hostname);
+        b.field("paths", &self.0.paths);
+        b.field("label", &self.0.label);
+        b.field("tags", &self.0.tags);
+
+        let s = self.0.summary.as_ref().unwrap();
         b.field("files_new", &s.files_new);
         b.field("files_changed", &s.files_changed);
         b.field("files_unmodified", &s.files_unmodified);
@@ -80,17 +87,18 @@ impl<'a> std::fmt::Debug for TestSummary<'a> {
 
 #[test]
 fn backup() -> Result<()> {
-    SimpleLogger::init(log::LevelFilter::Debug, Config::default())?;
+    // uncomment for logging output
+    // SimpleLogger::init(log::LevelFilter::Debug, Config::default())?;
     let source = set_up_testdata("backup-data.tar.gz")?;
     let paths = &source.paths()?;
     let repo = set_up_repo()?.to_indexed_ids()?;
-    let opts = BackupOptions::default();
+    // we use as_path to not depend on the actual tempdir
+    let opts = BackupOptions::default().as_path(PathBuf::from_str("test")?);
 
     // first backup
     let snap1 = repo.backup(&opts, paths, SnapshotFile::default())?;
     assert_debug_snapshot!(TestSummary(&snap1));
     assert_eq!(snap1.parent, None);
-    assert_eq!(snap1.paths, source.strings()?);
 
     // get all snapshots and check them
     let snaps = repo.get_all_snapshots()?;
@@ -122,7 +130,10 @@ fn backup_dry_run() -> Result<()> {
     let source = &set_up_testdata("backup-data.tar.gz")?;
     let paths = &source.paths()?;
     let repo = set_up_repo()?.to_indexed_ids()?;
-    let opts = BackupOptions::default().dry_run(true);
+    // we use as_path to not depend on the actual tempdir
+    let opts = BackupOptions::default()
+        .as_path(PathBuf::from_str("test")?)
+        .dry_run(true);
 
     // dry-run backup
     let snap_dry_run = repo.backup(&opts, paths, SnapshotFile::default())?;
