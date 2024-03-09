@@ -94,6 +94,8 @@ impl SftpBackend {
         Ok(Self(OpenDALBackend::new("sftp", options)?))
     }
 
+    /// Return the inner `OpenDAL` backend.
+    #[must_use]
     pub fn to_inner(self) -> OpenDALBackend {
         self.0
     }
