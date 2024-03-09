@@ -9,6 +9,7 @@ use rustic_core::{
     NoProgressBars, OpenStatus, PathList, Repository, RepositoryBackends, RepositoryOptions,
     StringList,
 };
+use simplelog::{Config, SimpleLogger};
 use tar::Archive;
 use tempfile::{tempdir, TempDir};
 
@@ -79,7 +80,7 @@ impl<'a> std::fmt::Debug for TestSummary<'a> {
 
 #[test]
 fn backup() -> Result<()> {
-    // SimpleLogger::init(log::LevelFilter::Debug, Config::default())?;
+    SimpleLogger::init(log::LevelFilter::Debug, Config::default())?;
     let source = set_up_testdata("backup-data.tar.gz")?;
     let paths = &source.paths()?;
     let repo = set_up_repo()?.to_indexed_ids()?;
