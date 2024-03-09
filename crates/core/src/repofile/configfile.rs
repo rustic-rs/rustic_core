@@ -49,6 +49,13 @@ pub struct ConfigFile {
     /// When using hot/cold repositories, this is only set within the hot part of the repository.
     pub is_hot: Option<bool>,
 
+    /// Marker if this is a append-only repository.
+    ///
+    /// # Note
+    ///
+    /// Commands which are not append-only won't run once this is set.
+    pub append_only: Option<bool>,
+
     /// Compression level
     ///
     /// # Note
@@ -93,6 +100,9 @@ pub struct ConfigFile {
     ///
     /// If not set or set to `0` this is unlimited.
     pub max_packsize_tolerate_percent: Option<u32>,
+
+    /// Do an extra verification by decompressing/decrypting all data before uploading to the repository
+    pub extra_verify: Option<bool>,
 }
 
 impl RepoFile for ConfigFile {
@@ -144,6 +154,11 @@ impl ConfigFile {
             (2, Some(c)) => Ok(Some(c)),
             _ => Err(ConfigFileErrorKind::ConfigVersionNotSupported.into()),
         }
+    }
+
+    /// Get wheter an extra verification (decompressing/decrypting data before writing to the repository) should be performed.
+    pub fn extra_verify(&self) -> bool {
+        self.extra_verify.unwrap_or(true) // default is to do the extra check
     }
 
     /// Get pack size parameter

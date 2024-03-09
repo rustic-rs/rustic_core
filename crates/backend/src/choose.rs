@@ -51,17 +51,17 @@ pub struct BackendOptions {
 
     /// Other options for this repository (hot and cold part)
     #[cfg_attr(feature = "clap", clap(skip))]
-    #[cfg_attr(feature = "merge", merge(strategy = overwrite))]
+    #[cfg_attr(feature = "merge", merge(strategy = extend))]
     pub options: HashMap<String, String>,
 
     /// Other options for the hot repository
     #[cfg_attr(feature = "clap", clap(skip))]
-    #[cfg_attr(feature = "merge", merge(strategy = overwrite))]
+    #[cfg_attr(feature = "merge", merge(strategy = extend))]
     pub options_hot: HashMap<String, String>,
 
     /// Other options for the cold repository
     #[cfg_attr(feature = "clap", clap(skip))]
-    #[cfg_attr(feature = "merge", merge(strategy = overwrite))]
+    #[cfg_attr(feature = "merge", merge(strategy = extend))]
     pub options_cold: HashMap<String, String>,
 }
 
@@ -74,8 +74,8 @@ pub struct BackendOptions {
 /// * `left` - The left value
 /// * `right` - The right value
 #[cfg(feature = "merge")]
-pub fn overwrite<T>(left: &mut T, right: T) {
-    *left = right;
+pub fn extend<A, T: Extend<A> + IntoIterator<Item = A>>(left: &mut T, right: T) {
+    left.extend(right)
 }
 
 impl BackendOptions {
@@ -83,23 +83,23 @@ impl BackendOptions {
         let mut options = self.options.clone();
         options.extend(self.options_cold.clone());
         let be = self
-            .get_backend(self.repository.clone(), options)?
-            .ok_or(anyhow!("Should be able to initialize main backend."))?;
+            .get_backend(self.repository.as_ref(), options)?
+            .ok_or(anyhow!("No repository given."))?;
         let mut options = self.options.clone();
         options.extend(self.options_hot.clone());
-        let be_hot = self.get_backend(self.repo_hot.clone(), options)?;
+        let be_hot = self.get_backend(self.repo_hot.as_ref(), options)?;
 
         Ok(RepositoryBackends::new(be, be_hot))
     }
 
     fn get_backend(
         &self,
-        repo_string: Option<String>,
+        repo_string: Option<&String>,
         options: HashMap<String, String>,
     ) -> Result<Option<Arc<dyn WriteBackend>>> {
         repo_string
             .map(|string| {
-                let (be_type, location) = location_to_type_and_path(&string)?;
+                let (be_type, location) = location_to_type_and_path(string)?;
                 be_type.to_backend(location, options.into()).map_err(|err| {
                     BackendAccessErrorKind::BackendLoadError(be_type.to_string(), err).into()
                 })
