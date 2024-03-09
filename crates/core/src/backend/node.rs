@@ -108,6 +108,7 @@ pub enum NodeType {
 impl NodeType {
     #[cfg(not(windows))]
     /// Get a [`NodeType`] from a linktarget path
+    #[must_use]
     pub fn from_link(target: &Path) -> Self {
         let (linktarget, linktarget_raw) = target.to_str().map_or_else(
             || {
@@ -143,6 +144,7 @@ impl NodeType {
     ///
     /// If called on a non-symlink node
     #[cfg(not(windows))]
+    #[must_use]
     pub fn to_link(&self) -> &Path {
         match self {
             Self::Symlink {

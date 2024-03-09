@@ -279,6 +279,7 @@ impl LocalDestination {
     /// * [`LocalDestinationErrorKind::FromErrnoError`] - If the uid/gid could not be set.
     ///
     /// [`LocalDestinationErrorKind::FromErrnoError`]: crate::error::LocalDestinationErrorKind::FromErrnoError
+    #[allow(clippy::similar_names)]
     pub fn set_uid_gid(&self, item: impl AsRef<Path>, meta: &Metadata) -> RusticResult<()> {
         let filename = self.path(item);
 
