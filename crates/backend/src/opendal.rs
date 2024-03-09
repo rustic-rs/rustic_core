@@ -9,7 +9,7 @@ use anyhow::Result;
 use bytes::Bytes;
 use log::trace;
 use opendal::{
-    layers::{BlockingLayer, LoggingLayer, RetryLayer},
+    layers::{BlockingLayer, ConcurrentLimitLayer, LoggingLayer, RetryLayer},
     BlockingOperator, ErrorKind, Metakey, Operator, Scheme,
 };
 use rayon::prelude::{IntoParallelIterator, ParallelIterator};
@@ -45,19 +45,30 @@ impl OpenDALBackend {
     /// * `path` - The path to the OpenDAL backend.
     /// * `options` - Additional options for the OpenDAL backend.
     pub fn new(path: impl AsRef<str>, options: HashMap<String, String>) -> Result<Self> {
-        let max_retries = match options.get("retry").map(std::string::String::as_str) {
+        let max_retries = match options.get("retry").map(String::as_str) {
             Some("false" | "off") => 0,
             None | Some("default") => consts::DEFAULT_RETRY,
             Some(value) => usize::from_str(value)?,
         };
+        let connections = options
+            .get("connections")
+            .map(|c| usize::from_str(c))
+            .transpose()?;
 
         let schema = Scheme::from_str(path.as_ref())?;
+        let mut operator = Operator::via_map(schema, options)?
+            .layer(RetryLayer::new().with_max_times(max_retries).with_jitter());
+
+        if let Some(connections) = connections {
+            operator = operator.layer(ConcurrentLimitLayer::new(connections));
+        }
+
         let _guard = runtime().enter();
-        let operator = Operator::via_map(schema, options)?
-            .layer(RetryLayer::new().with_max_times(max_retries).with_jitter())
+        let operator = operator
             .layer(LoggingLayer::default())
             .layer(BlockingLayer::create()?)
             .blocking();
+
         Ok(Self { operator })
     }
 
