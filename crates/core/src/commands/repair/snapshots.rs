@@ -11,7 +11,7 @@ use crate::{
         FileType,
     },
     blob::{packer::Packer, tree::Tree, BlobType},
-    error::RusticResult,
+    error::{CommandErrorKind, RusticResult},
     id::Id,
     index::{indexer::Indexer, ReadGlobalIndex, ReadIndex},
     progress::ProgressBars,
@@ -93,6 +93,12 @@ impl RepairSnapshotsOptions {
     ) -> RusticResult<()> {
         let be = repo.dbe();
         let config_file = repo.config();
+
+        if self.delete && config_file.append_only == Some(true) {
+            return Err(
+                CommandErrorKind::NotAllowedWithAppendOnly("snapshot removal".to_string()).into(),
+            );
+        }
 
         let mut state = RepairState::default();
 
