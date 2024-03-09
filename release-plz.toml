@@ -1,0 +1,8 @@
+# configuration spec can be found here https://release-plz.ieni.dev/docs/config
+
+[workspace]
+pr_draft = true
+dependencies_update = true
+
+[changelog]
+protect_breaking_commits = true
