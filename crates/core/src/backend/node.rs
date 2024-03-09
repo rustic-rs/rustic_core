@@ -509,6 +509,7 @@ mod tests {
     use rstest::rstest;
 
     #[quickcheck]
+    #[allow(clippy::needless_pass_by_value)]
     fn escape_unescape_is_identity(bytes: Vec<u8>) -> bool {
         let name = OsStr::from_bytes(&bytes);
         name == match unescape_filename(&escape_filename(name)) {
@@ -565,6 +566,7 @@ mod tests {
     }
 
     #[quickcheck]
+    #[allow(clippy::needless_pass_by_value)]
     fn from_link_to_link_is_identity(bytes: Vec<u8>) -> bool {
         let path = Path::new(OsStr::from_bytes(&bytes));
         path == NodeType::from_link(path).to_link()
