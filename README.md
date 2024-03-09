@@ -40,7 +40,7 @@ Add this to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-rustic_core = "0.1"
+rustic_core = "0"
 ```
 
 ## Crate features
@@ -61,6 +61,7 @@ This crate exposes a few features for controlling dependency usage:
 ### Example: Initializing a new repository
 
 ```rust
+use rustic_backend::BackendOptions;
 use rustic_core::{ConfigOptions, KeyOptions, Repository, RepositoryOptions};
 use simplelog::{Config, LevelFilter, SimpleLogger};
 use std::error::Error;
@@ -69,13 +70,16 @@ fn main() -> Result<(), Box<dyn Error>> {
     // Display info logs
     let _ = SimpleLogger::init(LevelFilter::Info, Config::default());
 
-    // Init repository
-    let repo_opts = RepositoryOptions::default()
+    // Initialize Backends
+    let backends = BackendOptions::default()
         .repository("/tmp/repo")
-        .password("test");
+        .to_backends()?;
+
+    // Init repository
+    let repo_opts = RepositoryOptions::default().password("test");
     let key_opts = KeyOptions::default();
     let config_opts = ConfigOptions::default();
-    let _repo = Repository::new(&repo_opts)?.init(&key_opts, &config_opts)?;
+    let _repo = Repository::new(&repo_opts, &backends)?.init(&key_opts, &config_opts)?;
 
     // -> use _repo for any operation on an open repository
     Ok(())
@@ -85,6 +89,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 ### Example: Creating a new snapshot
 
 ```rust
+use rustic_backend::BackendOptions;
 use rustic_core::{BackupOptions, PathList, Repository, RepositoryOptions, SnapshotOptions};
 use simplelog::{Config, LevelFilter, SimpleLogger};
 use std::error::Error;
@@ -93,11 +98,18 @@ fn main() -> Result<(), Box<dyn Error>> {
     // Display info logs
     let _ = SimpleLogger::init(LevelFilter::Info, Config::default());
 
-    // Open repository
-    let repo_opts = RepositoryOptions::default()
+    // Initialize Backends
+    let backends = BackendOptions::default()
         .repository("/tmp/repo")
-        .password("test");
-    let repo = Repository::new(&repo_opts)?.open()?.to_indexed_ids()?;
+        .repo_hot("/tmp/repo2")
+        .to_backends()?;
+
+    // Open repository
+    let repo_opts = RepositoryOptions::default().password("test");
+
+    let repo = Repository::new(&repo_opts, &backends)?
+        .open()?
+        .to_indexed_ids()?;
 
     let backup_opts = BackupOptions::default();
     let source = PathList::from_string(".")?.sanitize()?;
@@ -106,7 +118,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         .to_snapshot()?;
 
     // Create snapshot
-    let snap = repo.backup(&backup_opts, source, snap)?;
+    let snap = repo.backup(&backup_opts, &source, snap)?;
 
     println!("successfully created snapshot:\n{snap:#?}");
     Ok(())
@@ -116,6 +128,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 ### Example: Restoring a snapshot
 
 ```rust
+use rustic_backend::BackendOptions;
 use rustic_core::{LocalDestination, LsOptions, Repository, RepositoryOptions, RestoreOptions};
 use simplelog::{Config, LevelFilter, SimpleLogger};
 use std::error::Error;
@@ -124,11 +137,16 @@ fn main() -> Result<(), Box<dyn Error>> {
     // Display info logs
     let _ = SimpleLogger::init(LevelFilter::Info, Config::default());
 
-    // Open repository
-    let repo_opts = RepositoryOptions::default()
+    // Initialize Backends
+    let backends = BackendOptions::default()
         .repository("/tmp/repo")
-        .password("test");
-    let repo = Repository::new(&repo_opts)?.open()?.to_indexed()?;
+        .to_backends()?;
+
+    // Open repository
+    let repo_opts = RepositoryOptions::default().password("test");
+    let repo = Repository::new(&repo_opts, &backends)?
+        .open()?
+        .to_indexed()?;
 
     // use latest snapshot without filtering snapshots
     let node = repo.node_from_snapshot_path("latest", |_| true)?;
@@ -154,6 +172,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 ### Example: Checking a repository
 
 ```rust
+use rustic_backend::BackendOptions;
 use rustic_core::{CheckOptions, Repository, RepositoryOptions};
 use simplelog::{Config, LevelFilter, SimpleLogger};
 use std::error::Error;
@@ -162,11 +181,14 @@ fn main() -> Result<(), Box<dyn Error>> {
     // Display info logs
     let _ = SimpleLogger::init(LevelFilter::Info, Config::default());
 
-    // Open repository
-    let repo_opts = RepositoryOptions::default()
+    // Initialize Backends
+    let backends = BackendOptions::default()
         .repository("/tmp/repo")
-        .password("test");
-    let repo = Repository::new(&repo_opts)?.open()?;
+        .to_backends()?;
+
+    // Open repository
+    let repo_opts = RepositoryOptions::default().password("test");
+    let repo = Repository::new(&repo_opts, &backends)?.open()?;
 
     // Check repository with standard options but omitting cache checks
     let opts = CheckOptions::default().trust_cache(true);
