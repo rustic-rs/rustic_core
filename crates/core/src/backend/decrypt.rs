@@ -387,6 +387,63 @@ impl<C: CryptoKey> DecryptBackend<C> {
             _ => return Err(CryptBackendErrorKind::DecryptionNotSupportedForBackend)?,
         })
     }
+
+    /// encrypt and potentially compress a repository file
+    fn encrypt_file(&self, data: &[u8]) -> RusticResult<Vec<u8>> {
+        let data_encrypted = match self.zstd {
+            Some(level) => {
+                let mut out = vec![2_u8];
+                copy_encode(data, &mut out, level)
+                    .map_err(CryptBackendErrorKind::CopyEncodingDataFailed)?;
+                self.key().encrypt_data(&out)?
+            }
+            None => self.key().encrypt_data(data)?,
+        };
+        Ok(data_encrypted)
+    }
+
+    fn very_file(&self, data_encrypted: &[u8], data: &[u8]) -> RusticResult<()> {
+        if self.extra_verify {
+            let check_data = self.decrypt_file(data_encrypted)?;
+            if data != check_data {
+                return Err(CryptBackendErrorKind::ExtraVerificationFailed.into());
+            }
+        }
+        Ok(())
+    }
+
+    /// encrypt and potentially compress some data
+    fn encrypt_data(&self, data: &[u8]) -> RusticResult<(Vec<u8>, u32, Option<NonZeroU32>)> {
+        let data_len: u32 = data
+            .len()
+            .try_into()
+            .map_err(CryptBackendErrorKind::IntConversionFailed)?;
+        let (data_encrypted, uncompressed_length) = match self.zstd {
+            None => (self.key.encrypt_data(data)?, None),
+            // compress if requested
+            Some(level) => (
+                self.key.encrypt_data(&encode_all(data, level)?)?,
+                NonZeroU32::new(data_len),
+            ),
+        };
+        Ok((data_encrypted, data_len, uncompressed_length))
+    }
+
+    fn very_data(
+        &self,
+        data_encrypted: &[u8],
+        uncompressed_length: Option<NonZeroU32>,
+        data: &[u8],
+    ) -> RusticResult<()> {
+        if self.extra_verify {
+            let data_check =
+                self.read_encrypted_from_partial(data_encrypted, uncompressed_length)?;
+            if data != data_check {
+                return Err(CryptBackendErrorKind::ExtraVerificationFailed.into());
+            }
+        }
+        Ok(())
+    }
 }
 
 impl<C: CryptoKey> DecryptWriteBackend for DecryptBackend<C> {
@@ -415,21 +472,8 @@ impl<C: CryptoKey> DecryptWriteBackend for DecryptBackend<C> {
     ///
     /// [`CryptBackendErrorKind::CopyEncodingDataFailed`]: crate::error::CryptBackendErrorKind::CopyEncodingDataFailed
     fn hash_write_full(&self, tpe: FileType, data: &[u8]) -> RusticResult<Id> {
-        let data_encrypted = match self.zstd {
-            Some(level) => {
-                let mut out = vec![2_u8];
-                copy_encode(data, &mut out, level)
-                    .map_err(CryptBackendErrorKind::CopyEncodingDataFailed)?;
-                self.key().encrypt_data(&out)?
-            }
-            None => self.key().encrypt_data(data)?,
-        };
-        if self.extra_verify {
-            let check_data = self.decrypt_file(&data_encrypted)?;
-            if data != check_data {
-                return Err(CryptBackendErrorKind::ExtraVerificationFailed.into());
-            }
-        }
+        let data_encrypted = self.encrypt_file(data)?;
+        self.very_file(&data_encrypted, data)?;
         let id = hash(&data_encrypted);
         self.write_bytes(tpe, &id, false, data_encrypted.into())
             .map_err(RusticErrorKind::Backend)?;
@@ -437,25 +481,8 @@ impl<C: CryptoKey> DecryptWriteBackend for DecryptBackend<C> {
     }
 
     fn process_data(&self, data: &[u8]) -> RusticResult<(Vec<u8>, u32, Option<NonZeroU32>)> {
-        let data_len: u32 = data
-            .len()
-            .try_into()
-            .map_err(CryptBackendErrorKind::IntConversionFailed)?;
-        let (data_encrypted, uncompressed_length) = match self.zstd {
-            None => (self.key.encrypt_data(data)?, None),
-            // compress if requested
-            Some(level) => (
-                self.key.encrypt_data(&encode_all(data, level)?)?,
-                NonZeroU32::new(data_len),
-            ),
-        };
-        if self.extra_verify {
-            let data_check =
-                self.read_encrypted_from_partial(&data_encrypted, uncompressed_length)?;
-            if data != data_check {
-                return Err(CryptBackendErrorKind::ExtraVerificationFailed.into());
-            }
-        }
+        let (data_encrypted, data_len, uncompressed_length) = self.encrypt_data(data)?;
+        self.very_data(&data_encrypted, uncompressed_length, data)?;
         Ok((data_encrypted, data_len, uncompressed_length))
     }
 
@@ -552,5 +579,86 @@ impl<C: CryptoKey> WriteBackend for DecryptBackend<C> {
 
     fn remove(&self, tpe: FileType, id: &Id, cacheable: bool) -> Result<()> {
         self.be.remove(tpe, id, cacheable)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::{backend::MockBackend, crypto::aespoly1305::Key};
+    use anyhow::Result;
+
+    use super::*;
+
+    fn init() -> (DecryptBackend<Key>, &'static [u8]) {
+        let be = Arc::new(MockBackend::new());
+        let key = Key::new();
+        let mut be = DecryptBackend::new(be, key);
+        be.set_zstd(Some(0));
+        let data = b"{test}"; // Note we use braces as this should be detected as valid json
+        (be, data)
+    }
+
+    #[test]
+    fn verify_encrypt_file_ok() -> Result<()> {
+        let (mut be, data) = init();
+        be.set_extra_verify(true);
+        let data_encrypted = be.encrypt_file(data)?;
+        be.very_file(&data_encrypted, data)?;
+        Ok(())
+    }
+
+    #[test]
+    fn verify_encrypt_file_no_test() -> Result<()> {
+        let (be, data) = init();
+        let mut data_encrypted = be.encrypt_file(data)?;
+        // modify some data
+        data_encrypted[5] = !data_encrypted[5];
+        // won't be detected
+        be.very_file(&data_encrypted, data)?;
+        Ok(())
+    }
+
+    #[test]
+    fn verify_encrypt_file_nok() -> Result<()> {
+        let (mut be, data) = init();
+        be.set_extra_verify(true);
+        let mut data_encrypted = be.encrypt_file(data)?;
+        // modify some data
+        data_encrypted[5] = !data_encrypted[5];
+        // will be detected
+        assert!(be.very_file(&data_encrypted, data).is_err());
+        Ok(())
+    }
+
+    #[test]
+    fn verify_encrypt_data_ok() -> Result<()> {
+        let (mut be, data) = init();
+        be.set_extra_verify(true);
+        let (data_encrypted, _, ul) = be.encrypt_data(data)?;
+        be.very_data(&data_encrypted, ul, data)?;
+        Ok(())
+    }
+
+    #[test]
+    fn verify_encrypt_data_no_test() -> Result<()> {
+        let (be, data) = init();
+        let (mut data_encrypted, _, ul) = be.encrypt_data(data)?;
+        // modify some data
+        data_encrypted[0] = !data_encrypted[0];
+        // won't be detected
+        be.very_data(&data_encrypted, ul, data)?;
+        Ok(())
+    }
+
+    #[test]
+    fn verify_encrypt_data_nok() -> Result<()> {
+        let (mut be, data) = init();
+        be.set_extra_verify(true);
+        let (mut data_encrypted, _, ul) = be.encrypt_data(data)?;
+        // modify some data
+        data_encrypted[5] = !data_encrypted[5];
+        // will be detected
+        assert!(be.very_data(&data_encrypted, ul, data).is_err());
+        Ok(())
     }
 }
