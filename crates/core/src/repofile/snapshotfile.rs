@@ -111,6 +111,7 @@ impl SnapshotOptions {
 /// This is an extended version of the summaryOutput structure of restic in
 /// restic/internal/ui/backup$/json.go
 #[derive(Serialize, Deserialize, Debug, Clone, Derivative)]
+#[serde(default)]
 #[derivative(Default)]
 #[non_exhaustive]
 pub struct SnapshotSummary {

@@ -256,16 +256,16 @@ impl ReadBackend for RestBackend {
                 .map_err(RestErrorKind::JoiningUrlFailed)?
         };
 
-        match backoff::retry_notify(
+        // format which is delivered by the REST-service
+        #[derive(Deserialize)]
+        struct ListEntry {
+            name: String,
+            size: u32,
+        }
+
+        backoff::retry_notify(
             self.backoff.clone(),
             || {
-                // format which is delivered by the REST-service
-                #[derive(Deserialize)]
-                struct ListEntry {
-                    name: String,
-                    size: u32,
-                }
-
                 if tpe == FileType::Config {
                     return Ok(
                         if self.client.head(url.clone()).send()?.status().is_success() {
@@ -293,10 +293,8 @@ impl ReadBackend for RestBackend {
                     .collect())
             },
             notify,
-        ) {
-            Ok(val) => Ok(val),
-            Err(e) => Err(RestErrorKind::BackoffError(e).into()),
-        }
+        )
+        .map_err(|e| RestErrorKind::BackoffError(e).into())
     }
 
     /// Returns the content of a file.

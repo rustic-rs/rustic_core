@@ -49,6 +49,9 @@ pub(crate) fn apply_config<P, S: Open>(
     repo: &Repository<P, S>,
     opts: &ConfigOptions,
 ) -> RusticResult<bool> {
+    if repo.config().append_only == Some(true) {
+        return Err(CommandErrorKind::NotAllowedWithAppendOnly("config change".to_string()).into());
+    }
     let mut new_config = repo.config().clone();
     opts.apply(&mut new_config)?;
     if &new_config == repo.config() {
@@ -110,6 +113,11 @@ pub struct ConfigOptions {
     #[cfg_attr(feature = "clap", clap(long, value_name = "VERSION"))]
     pub set_version: Option<u32>,
 
+    /// Set append-only mode.
+    /// Note that only append-only commands work once this is set. `forget`, `prune` or `config` won't work any longer.
+    #[cfg_attr(feature = "clap", clap(long))]
+    pub set_append_only: Option<bool>,
+
     /// Set default packsize for tree packs. rustic tries to always produce packs greater than this value.
     /// Note that for large repos, this value is grown by the grown factor.
     /// Defaults to `4 MiB` if not set.
@@ -158,6 +166,11 @@ pub struct ConfigOptions {
     /// tolerated. Default if not set: larger packfiles are always tolerated.
     #[cfg_attr(feature = "clap", clap(long, value_name = "PERCENT"))]
     pub set_max_packsize_tolerate_percent: Option<u32>,
+
+    /// Do an extra verification by decompressing/decrypting all data before uploading to the repository.
+    /// Default: true
+    #[cfg_attr(feature = "clap", clap(long))]
+    pub set_extra_verify: Option<bool>,
 }
 
 impl ConfigOptions {
@@ -206,6 +219,10 @@ impl ConfigOptions {
                 );
             }
             config.compression = Some(compression);
+        }
+
+        if let Some(append_only) = self.set_append_only {
+            config.append_only = Some(append_only);
         }
 
         if let Some(size) = self.set_treepack_size {
@@ -257,6 +274,8 @@ impl ConfigOptions {
             }
             config.max_packsize_tolerate_percent = Some(percent);
         }
+
+        config.extra_verify = self.set_extra_verify;
 
         Ok(())
     }

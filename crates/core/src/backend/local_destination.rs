@@ -16,7 +16,10 @@ use log::warn;
 #[cfg(not(windows))]
 use nix::sys::stat::{mknod, Mode, SFlag};
 #[cfg(not(windows))]
-use nix::unistd::{fchownat, FchownatFlags, Gid, Group, Uid, User};
+use nix::{
+    fcntl::AtFlags,
+    unistd::{fchownat, Gid, Group, Uid, User},
+};
 
 #[cfg(not(windows))]
 use crate::backend::ignore::mapper::map_mode_from_go;
@@ -241,7 +244,7 @@ impl LocalDestination {
         // use gid from group if valid, else from saved gid (if saved)
         let gid = group.or_else(|| meta.gid.map(Gid::from_raw));
 
-        fchownat(None, &filename, uid, gid, FchownatFlags::NoFollowSymlink)
+        fchownat(None, &filename, uid, gid, AtFlags::AT_SYMLINK_NOFOLLOW)
             .map_err(LocalDestinationErrorKind::FromErrnoError)?;
         Ok(())
     }
@@ -281,7 +284,7 @@ impl LocalDestination {
         let uid = meta.uid.map(Uid::from_raw);
         let gid = meta.gid.map(Gid::from_raw);
 
-        fchownat(None, &filename, uid, gid, FchownatFlags::NoFollowSymlink)
+        fchownat(None, &filename, uid, gid, AtFlags::AT_SYMLINK_NOFOLLOW)
             .map_err(LocalDestinationErrorKind::FromErrnoError)?;
         Ok(())
     }

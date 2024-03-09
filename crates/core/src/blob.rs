@@ -40,7 +40,7 @@ impl BlobType {
 
 pub type BlobTypeMap<T> = EnumMap<BlobType, T>;
 
-/// Initialize is a new trait to define the method init() for a [`BlobTypeMap`]
+/// Initialize is a new trait to define the method `init()` for a [`BlobTypeMap`]
 pub trait Initialize<T: Default + Sized> {
     /// Initialize a [`BlobTypeMap`] by processing a given function for each [`BlobType`]
     fn init<F: FnMut(BlobType) -> T>(init: F) -> BlobTypeMap<T>;

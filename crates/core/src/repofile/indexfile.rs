@@ -45,6 +45,13 @@ impl IndexFile {
             self.packs.push(p);
         }
     }
+
+    pub(crate) fn all_packs(self) -> impl Iterator<Item = (IndexPack, bool)> {
+        self.packs
+            .into_iter()
+            .map(|pack| (pack, false))
+            .chain(self.packs_to_delete.into_iter().map(|pack| (pack, true)))
+    }
 }
 
 #[derive(Serialize, Deserialize, Default, Debug, Clone)]

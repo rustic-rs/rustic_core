@@ -279,7 +279,7 @@ impl Parent {
                 let parent = match parent {
                     ParentResult::Matched(p_node) => {
                         if p_node.content.iter().flatten().all(|id| index.has_data(id)) {
-                            node.content = Some(p_node.content.iter().flatten().copied().collect());
+                            node.content = p_node.content.clone();
                             ParentResult::Matched(())
                         } else {
                             warn!(
