@@ -233,6 +233,7 @@ impl LocalDestination {
     /// * [`LocalDestinationErrorKind::FromErrnoError`] - If the user/group could not be set.
     ///
     /// [`LocalDestinationErrorKind::FromErrnoError`]: crate::error::LocalDestinationErrorKind::FromErrnoError
+    #[allow(clippy::similar_names)]
     pub fn set_user_group(&self, item: impl AsRef<Path>, meta: &Metadata) -> RusticResult<()> {
         let filename = self.path(item);
 
@@ -318,6 +319,7 @@ impl LocalDestination {
     /// * [`LocalDestinationErrorKind::SettingFilePermissionsFailed`] - If the permissions could not be set.
     ///
     /// [`LocalDestinationErrorKind::SettingFilePermissionsFailed`]: crate::error::LocalDestinationErrorKind::SettingFilePermissionsFailed
+    #[allow(clippy::similar_names)]
     pub fn set_permission(&self, item: impl AsRef<Path>, node: &Node) -> RusticResult<()> {
         if node.is_symlink() {
             return Ok(());
@@ -371,6 +373,14 @@ impl LocalDestination {
     /// [`LocalDestinationErrorKind::ListingXattrsFailed`]: crate::error::LocalDestinationErrorKind::ListingXattrsFailed
     /// [`LocalDestinationErrorKind::GettingXattrFailed`]: crate::error::LocalDestinationErrorKind::GettingXattrFailed
     /// [`LocalDestinationErrorKind::SettingXattrFailed`]: crate::error::LocalDestinationErrorKind::SettingXattrFailed
+    ///
+    /// # Returns
+    ///
+    /// Ok if the extended attributes were set.
+    ///
+    /// # Panics
+    ///
+    /// If the extended attributes could not be set.
     pub fn set_extended_attributes(
         &self,
         item: impl AsRef<Path>,
