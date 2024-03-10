@@ -47,12 +47,12 @@ sftp = ["opendal"]
 rustic_core = { workspace = true }
 
 # errors
-anyhow = "1.0.79"
+anyhow = "1.0.80"
 displaydoc = "0.2.4"
-thiserror = "1.0.56"
+thiserror = "1.0.57"
 
 # logging
-log = "0.4.20"
+log = "0.4.21"
 
 # other dependencies
 bytes = "1.5.0"
@@ -64,7 +64,7 @@ strum_macros = "0.26"
 
 # general / backend choosing
 hex = { version = "0.4.3", features = ["serde"] }
-serde = { version = "1.0.196" }
+serde = { version = "1.0.197" }
 url = "2.5.0"
 
 # cli support
@@ -74,18 +74,18 @@ merge = { version = "0.1.0", optional = true }
 # local backend
 aho-corasick = { workspace = true }
 shell-words = "1.1.0"
-walkdir = "2.4.0"
+walkdir = "2.5.0"
 
 # rest backend
 backoff = { version = "0.4.0", optional = true }
-reqwest = { version = "0.11.24", default-features = false, features = ["json", "rustls-tls-native-roots", "stream", "blocking"], optional = true }
+reqwest = { version = "0.11.25", default-features = false, features = ["json", "rustls-tls-native-roots", "stream", "blocking"], optional = true }
 
 # rclone backend
 rand = { version = "0.8.5", optional = true }
 
 # opendal backend
-rayon = { version = "1.8.1", optional = true }
-tokio = { version = "1.35.1", optional = true, default-features = false }
+rayon = { version = "1.9.0", optional = true }
+tokio = { version = "1.36.0", optional = true, default-features = false }
 
 [target.'cfg(not(windows))'.dependencies]
 # opendal backend - sftp is not supported on windows, see https://github.com/apache/incubator-opendal/issues/2963
