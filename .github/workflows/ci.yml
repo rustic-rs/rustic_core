@@ -6,13 +6,23 @@ concurrency:
 
 on:
   pull_request:
-    paths-ignore:
-      - "**/*.md"
+    paths:
+      - "**/Cargo.toml"
+      - "**/Cargo.lock"
+      - '**.rs'
+      - '**.snap'
+      - '**.yml'
+      - '**.toml'
   push:
     branches:
       - main
-    paths-ignore:
-      - "**/*.md"
+    paths:
+      - "**/Cargo.toml"
+      - "**/Cargo.lock"
+      - '**.rs'
+      - '**.snap'
+      - '**.yml'
+      - '**.toml'
   schedule:
     - cron: "0 0 * * 0"
   merge_group:
