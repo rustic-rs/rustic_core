@@ -14,6 +14,8 @@ use std::{io::Read, ops::Deref, path::PathBuf, sync::Arc};
 use anyhow::Result;
 use bytes::Bytes;
 use log::trace;
+#[cfg(test)]
+use mockall::*;
 use serde_derive::{Deserialize, Serialize};
 
 use crate::{
@@ -329,6 +331,31 @@ pub trait WriteBackend: ReadBackend {
     ///
     /// The result of the removal.
     fn remove(&self, tpe: FileType, id: &Id, cacheable: bool) -> Result<()>;
+}
+
+#[cfg(test)]
+mock! {
+    Backend {}
+
+    impl ReadBackend for Backend{
+        fn location(&self) -> String;
+        fn list_with_size(&self, tpe: FileType) -> Result<Vec<(Id, u32)>>;
+        fn read_full(&self, tpe: FileType, id: &Id) -> Result<Bytes>;
+        fn read_partial(
+            &self,
+            tpe: FileType,
+            id: &Id,
+            cacheable: bool,
+            offset: u32,
+            length: u32,
+        ) -> Result<Bytes>;
+    }
+
+    impl WriteBackend for Backend {
+        fn create(&self) -> Result<()>;
+        fn write_bytes(&self, tpe: FileType, id: &Id, cacheable: bool, buf: Bytes) -> Result<()>;
+        fn remove(&self, tpe: FileType, id: &Id, cacheable: bool) -> Result<()>;
+    }
 }
 
 impl WriteBackend for Arc<dyn WriteBackend> {
