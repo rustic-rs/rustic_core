@@ -48,7 +48,7 @@ rustdoc-args = ["--document-private-items", "--generate-link-to-definition"]
 [dependencies]
 # errors
 displaydoc = "0.2.4"
-thiserror = "1.0.56"
+thiserror = "1.0.57"
 
 # macros
 derivative = "2.2.0"
@@ -56,12 +56,12 @@ derive_more = "0.99.17"
 derive_setters = "0.1.6"
 
 # logging
-log = "0.4.20"
+log = "0.4.21"
 
 # parallelize
-crossbeam-channel = "0.5.11"
+crossbeam-channel = "0.5.12"
 pariter = "0.5.1"
-rayon = "1.8.1"
+rayon = "1.9.0"
 
 # crypto
 aes256ctr_poly1305aes = "0.2.0"
@@ -72,28 +72,28 @@ scrypt = { version = "0.11.0", default-features = false }
 binrw = "0.13.3"
 hex = { version = "0.4.3", features = ["serde"] }
 integer-sqrt = "0.1.5"
-serde = { version = "1.0.196" }
-serde-aux = "4.4.0"
-serde_derive = "1.0.196"
-serde_json = "1.0.113"
-serde_with = { version = "3.6.0", features = ["base64"] }
+serde = { version = "1.0.197" }
+serde-aux = "4.5.0"
+serde_derive = "1.0.197"
+serde_json = "1.0.114"
+serde_with = { version = "3.6.1", features = ["base64"] }
 
 # local source/destination
-cached = { version = "0.48.1", default-features = false, features = ["proc_macro"] }
+cached = { version = "0.49.2", default-features = false, features = ["proc_macro"] }
 dunce = "1.0.4"
 filetime = "0.2.23"
 ignore = "0.4.22"
 nix = { version = "0.28", default-features = false, features = ["user", "fs"] }
 path-dedot = "3.1.1"
 shell-words = "1.1.0"
-walkdir = "2.4.0"
+walkdir = "2.5.0"
 
 # cache
 cachedir = "0.3.1"
 dirs = "5.0.1"
 
 # cli support
-clap = { version = "4.4.18", optional = true, features = ["derive", "env", "wrap_help"] }
+clap = { version = "4.5.2", optional = true, features = ["derive", "env", "wrap_help"] }
 merge = { version = "0.1.0", optional = true }
 
 # vfs support
@@ -102,10 +102,10 @@ futures = { version = "0.3", optional = true }
 runtime-format = "0.1.3"
 
 # other dependencies
-anyhow = "1.0.79"
+anyhow = "1.0.80"
 bytes = "1.5.0"
 bytesize = "1.3.0"
-chrono = { version = "0.4.33", default-features = false, features = ["clock", "serde"] }
+chrono = { version = "0.4.35", default-features = false, features = ["clock", "serde"] }
 enum-map = "2.7.3"
 enum-map-derive = "0.17.0"
 enumset = { version = "1.1.3", features = ["serde"] }
@@ -141,5 +141,5 @@ rustdoc-json = "0.8.9"
 # We need to have rustic_backend here, because the doc-tests in lib.rs of rustic_core
 rustic_backend = { workspace = true }
 rustup-toolchain = "0.1.6"
-simplelog = "0.12.1"
+simplelog = "0.12.2"
 tempfile = { workspace = true }
