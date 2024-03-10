@@ -6,13 +6,23 @@ concurrency:
 
 on:
   pull_request:
-    paths-ignore:
-      - "**/*.md"
+    paths:
+      - "**/Cargo.toml"
+      - "**/Cargo.lock"
+      - '**.rs'
+      - '**.snap'
+      - '**.yml'
+      - '**.toml'
   push:
     branches:
       - main
-    paths-ignore:
-      - "**/*.md"
+    paths:
+      - "**/Cargo.toml"
+      - "**/Cargo.lock"
+      - '**.rs'
+      - '**.snap'
+      - '**.yml'
+      - '**.toml'
   schedule:
     - cron: "0 0 * * 0"
   merge_group:
@@ -109,6 +119,9 @@ jobs:
 
   powerset:
     name: Check Powerset of Features
+    # Only run if the commit doesn't come from a merged PR, we assume CI is running in the PR as well
+    # so we don't want to have runs double up
+    if: github.event.pull_request.merged == false
     runs-on: ${{ matrix.job.os }}
     strategy:
       matrix:
