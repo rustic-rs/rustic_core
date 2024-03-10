@@ -20,6 +20,9 @@ concurrency:
 
 jobs:
   msrv:
+    # Only run if the commit doesn't come from a merged PR, we assume CI is running in the PR as well
+    # so we don't want to have runs double up
+    if: github.event.pull_request.merged == false
     name: Check MSRV
     runs-on: ubuntu-latest
     strategy:
@@ -36,6 +39,9 @@ jobs:
         run: cargo hack check --rust-version -p ${{ matrix.crate }}
 
   result:
+    # Only run if the commit doesn't come from a merged PR, we assume CI is running in the PR as well
+    # so we don't want to have runs double up
+    if: github.event.pull_request.merged == false
     name: Result (MSRV)
     runs-on: ubuntu-latest
     needs: msrv
