@@ -76,15 +76,14 @@ fn check_clone_version(rclone_version_output: &[u8]) -> Result<()> {
         .ok_or_else(|| RcloneErrorKind::NoOutputForRcloneVersion)?
         .trim_start_matches(|c: char| !c.is_numeric());
 
-    let req = VersionReq::parse(">=1.52.2")?;
-    let version = Version::parse(rclone_version)?;
-    if !req.matches(&version) {
-        // for rclone < 1.52.2 setting user/password via env variable doesn't work. This means
-        // we are setting up an rclone without authentication which is a security issue!
+    // for rclone < 1.52.2 setting user/password via env variable doesn't work. This means
+    // we are setting up an rclone without authentication which is a security issue!
+    if VersionReq::parse("<1.52.2")?.matches(&Version::parse(rclone_version)?) {
         return Err(
             RcloneErrorKind::RCloneWithoutAuthentication(rclone_version.to_string()).into(),
         );
     }
+
     Ok(())
 }
 
@@ -301,24 +300,20 @@ impl WriteBackend for RcloneBackend {
 mod tests {
     use super::*;
 
-    #[test]
-    fn test_check_clone_version_passes() {
-        let rclone_version_output =
-            b"rclone v1.52.2\n- os/arch: linux/amd64\n- go version: go1.14.4\n";
-        assert!(check_clone_version(rclone_version_output).is_ok());
+    use rstest::rstest;
 
-        let rclone_version_output =
-            b"rclone v1.66.0\n- os/version: Microsoft Windows 11 Pro 23H2 (64 bit)\n- os/kernel: 10.0.22631.3155 (x86_64)\n- os/type: windows\n- os/arch: amd64\n- go/version: go1.22.1\n- go/linking: static\n- go/tags: cmount";
+    #[rstest]
+    #[case(b"rclone v1.52.2\n- os/arch: linux/amd64\n- go version: go1.14.4\n")]
+    #[case(b"rclone v1.66.0\n- os/version: Microsoft Windows 11 Pro 23H2 (64 bit)\n- os/kernel: 10.0.22631.3155 (x86_64)\n- os/type: windows\n- os/arch: amd64\n- go/version: go1.22.1\n- go/linking: static\n- go/tags: cmount")]
+    #[case(b"rclone v1.63.0-beta.7022.e649cf4d5\n- os/arch: linux/amd64\n- go version: go1.14.4\n")]
+    fn test_check_clone_version_passes(#[case] rclone_version_output: &[u8]) {
         assert!(check_clone_version(rclone_version_output).is_ok());
     }
 
-    #[test]
-    fn test_check_clone_version_fails() {
-        let rclone_version_output = b"";
-        assert!(check_clone_version(rclone_version_output).is_err());
-
-        let rclone_version_output =
-            b"rclone v1.52.1\n- os/arch: linux/amd64\n- go version: go1.14.4\n";
+    #[rstest]
+    #[case(b"")]
+    #[case(b"rclone v1.52.1\n- os/arch: linux/amd64\n- go version: go1.14.4\n")]
+    fn test_check_clone_version_fails(#[case] rclone_version_output: &[u8]) {
         assert!(check_clone_version(rclone_version_output).is_err());
     }
 }

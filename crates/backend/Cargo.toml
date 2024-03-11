@@ -97,4 +97,4 @@ opendal = { version = "0.45", features = ["services-b2", "services-sftp", "servi
 opendal = { version = "0.45", features = ["services-b2", "services-swift", "layers-blocking"], optional = true }
 
 [dev-dependencies]
-rstest = "0.18.2"
+rstest = { workspace = true }
