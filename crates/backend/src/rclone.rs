@@ -13,7 +13,7 @@ use rand::{
     thread_rng,
 };
 
-use semver::{Version, VersionReq};
+use semver::{BuildMetadata, Prerelease, Version, VersionReq};
 use shell_words::split;
 
 use crate::{error::RcloneErrorKind, rest::RestBackend};
@@ -78,7 +78,11 @@ fn check_clone_version(rclone_version_output: &[u8]) -> Result<()> {
 
     // for rclone < 1.52.2 setting user/password via env variable doesn't work. This means
     // we are setting up an rclone without authentication which is a security issue!
-    if VersionReq::parse("<1.52.2")?.matches(&Version::parse(rclone_version)?) {
+    let mut parsed_version = Version::parse(rclone_version)?;
+    parsed_version.pre = Prerelease::EMPTY;
+    parsed_version.build = BuildMetadata::EMPTY;
+
+    if VersionReq::parse("<1.52.2")?.matches(&parsed_version) {
         return Err(
             RcloneErrorKind::RCloneWithoutAuthentication(rclone_version.to_string()).into(),
         );
