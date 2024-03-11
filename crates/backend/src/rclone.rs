@@ -76,8 +76,6 @@ fn check_clone_version(rclone_version_output: &[u8]) -> Result<()> {
         .ok_or_else(|| RcloneErrorKind::NoOutputForRcloneVersion)?
         .trim_start_matches(|c: char| !c.is_numeric());
 
-    // for rclone < 1.52.2 setting user/password via env variable doesn't work. This means
-    // we are setting up an rclone without authentication which is a security issue!
     let mut parsed_version = Version::parse(rclone_version)?;
 
     // we need to set the pre and build fields to empty to make the comparison work
@@ -86,6 +84,8 @@ fn check_clone_version(rclone_version_output: &[u8]) -> Result<()> {
     parsed_version.pre = Prerelease::EMPTY;
     parsed_version.build = BuildMetadata::EMPTY;
 
+    // for rclone < 1.52.2 setting user/password via env variable doesn't work. This means
+    // we are setting up an rclone without authentication which is a security issue!
     if VersionReq::parse("<1.52.2")?.matches(&parsed_version) {
         return Err(
             RcloneErrorKind::RCloneWithoutAuthentication(rclone_version.to_string()).into(),
