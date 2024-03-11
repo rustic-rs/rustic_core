@@ -16,7 +16,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     // Open repository
     let repo_opts = RepositoryOptions::default().password("test");
 
-    let repo = Repository::new(&repo_opts, backends)?.open()?;
+    let repo = Repository::new(&repo_opts, &backends)?.open()?;
 
     // Add a new key with the given password
     let key_opts = KeyOptions::default();

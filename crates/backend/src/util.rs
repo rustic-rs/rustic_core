@@ -1,7 +1,8 @@
 use crate::SupportedBackend;
 use anyhow::Result;
 
-#[derive(PartialEq, Debug)]
+/// A backend location. This is a string that represents the location of the backend.
+#[derive(PartialEq, Eq, Debug)]
 pub struct BackendLocation(String);
 
 impl std::ops::Deref for BackendLocation {
@@ -30,6 +31,10 @@ impl std::fmt::Display for BackendLocation {
 /// # Arguments
 ///
 /// * `url` - The url to split.
+///
+/// # Errors
+///
+/// If the url is not a valid url, an error is returned.
 ///
 /// # Returns
 ///

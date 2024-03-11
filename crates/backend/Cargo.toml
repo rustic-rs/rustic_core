@@ -98,3 +98,6 @@ opendal = { version = "0.45", features = ["services-b2", "services-swift", "laye
 
 [dev-dependencies]
 rstest = { workspace = true }
+
+[lints]
+workspace = true

@@ -43,7 +43,8 @@ impl Drop for RcloneBackend {
     fn drop(&mut self) {
         debug!("killing rclone.");
         self.child.kill().unwrap();
-        self.handle.take().map(JoinHandle::join);
+        // TODO: Handle error and log it
+        _ = self.handle.take().map(JoinHandle::join);
     }
 }
 
@@ -116,6 +117,15 @@ impl RcloneBackend {
     /// [`RcloneErrorKind::NoStdOutForRclone`]: RcloneErrorKind::NoStdOutForRclone
     /// [`RcloneErrorKind::RCloneExitWithBadStatus`]: RcloneErrorKind::RCloneExitWithBadStatus
     /// [`RcloneErrorKind::UrlNotStartingWithHttp`]: RcloneErrorKind::UrlNotStartingWithHttp
+    ///
+    /// # Returns
+    ///
+    /// The created [`RcloneBackend`].
+    ///
+    /// # Panics
+    ///
+    /// If the rclone command is not found.
+    // TODO: This should be an error, not a panic.
     pub fn new(url: impl AsRef<str>, options: HashMap<String, String>) -> Result<Self> {
         let rclone_command = options.get("rclone-command");
         let use_password = options
@@ -140,20 +150,20 @@ impl RcloneBackend {
         let user = Alphanumeric.sample_string(&mut thread_rng(), 12);
         let password = Alphanumeric.sample_string(&mut thread_rng(), 12);
 
-        let mut rclone_command = split(
-            rclone_command
-                .map(String::as_str)
-                .unwrap_or("rclone serve restic --addr localhost:0"),
-        )?;
+        let mut rclone_command =
+            split(rclone_command.map_or("rclone serve restic --addr localhost:0", String::as_str))?;
         rclone_command.push(url.as_ref().to_string());
         debug!("starting rclone via {rclone_command:?}");
 
         let mut command = Command::new(&rclone_command[0]);
+
         if use_password {
-            command
+            // TODO: We should handle errors here
+            _ = command
                 .env("RCLONE_USER", &user)
                 .env("RCLONE_PASS", &password);
         }
+
         let mut child = command
             .args(&rclone_command[1..])
             .stderr(Stdio::piped())

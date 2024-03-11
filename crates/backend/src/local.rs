@@ -16,6 +16,7 @@ use rustic_core::{FileType, Id, ReadBackend, WriteBackend, ALL_FILE_TYPES};
 
 use crate::error::LocalBackendErrorKind;
 
+/// A local backend.
 #[derive(Clone, Debug)]
 pub struct LocalBackend {
     /// The base path of the backend.

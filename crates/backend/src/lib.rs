@@ -16,7 +16,7 @@ The primary types in this crate are:
 The following backends are currently supported and can be enabled with features:
 
 - `LocalBackend` - Backend for accessing a local filesystem.
-- `OpenDALBackend` - Backend for accessing a OpenDAL filesystem.
+- `OpenDALBackend` - Backend for accessing a `OpenDAL` filesystem.
 - `RcloneBackend` - Backend for accessing a Rclone filesystem.
 - `RestBackend` - Backend for accessing a REST API.
 - `SftpBackend` - Backend for accessing a SFTP filesystem.
@@ -60,14 +60,20 @@ This crate exposes a few features for controlling dependency usage:
 */
 
 pub mod choose;
+/// Error types for the backend.
 pub mod error;
+/// Local backend for Rustic.
 pub mod local;
+/// `OpenDAL` backend for Rustic.
 #[cfg(feature = "opendal")]
 pub mod opendal;
+/// `Rclone` backend for Rustic.
 #[cfg(feature = "rclone")]
 pub mod rclone;
+/// REST backend for Rustic.
 #[cfg(feature = "rest")]
 pub mod rest;
+/// Utility functions for the backend.
 pub mod util;
 
 // rustic_backend Public API

@@ -114,6 +114,9 @@ pub struct RestBackend {
 ///
 /// * `err` - The error that occurred
 /// * `duration` - The duration of the backoff
+// We need to pass the error by value to satisfy the signature of the notify function
+// for handling errors in backoff
+#[allow(clippy::needless_pass_by_value)]
 fn notify(err: reqwest::Error, duration: Duration) {
     warn!("Error {err} at {duration:?}, retrying");
 }
@@ -243,6 +246,13 @@ impl ReadBackend for RestBackend {
     ///
     /// [`RestErrorKind::JoiningUrlFailed`]: RestErrorKind::JoiningUrlFailed
     fn list_with_size(&self, tpe: FileType) -> Result<Vec<(Id, u32)>> {
+        // format which is delivered by the REST-service
+        #[derive(Deserialize)]
+        struct ListEntry {
+            name: String,
+            size: u32,
+        }
+
         trace!("listing tpe: {tpe:?}");
         let url = if tpe == FileType::Config {
             self.url
@@ -255,13 +265,6 @@ impl ReadBackend for RestBackend {
                 .join(&path)
                 .map_err(RestErrorKind::JoiningUrlFailed)?
         };
-
-        // format which is delivered by the REST-service
-        #[derive(Deserialize)]
-        struct ListEntry {
-            name: String,
-            size: u32,
-        }
 
         backoff::retry_notify(
             self.backoff.clone(),
