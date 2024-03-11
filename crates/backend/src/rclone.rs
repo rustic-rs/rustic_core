@@ -86,6 +86,9 @@ fn check_clone_version(rclone_version_output: &[u8]) -> Result<()> {
 
     // for rclone < 1.52.2 setting user/password via env variable doesn't work. This means
     // we are setting up an rclone without authentication which is a security issue!
+    // we hard fail here to prevent this, as we can't guarantee the security of the data
+    // also because 1.52.2 has been released on Jun 24, 2020, we can assume that this is a
+    // reasonable lower bound for the version
     if VersionReq::parse("<1.52.2")?.matches(&parsed_version) {
         return Err(
             RcloneErrorKind::RCloneWithoutAuthentication(rclone_version.to_string()).into(),
