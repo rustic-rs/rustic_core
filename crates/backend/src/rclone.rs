@@ -313,6 +313,7 @@ mod tests {
     #[rstest]
     #[case(b"")]
     #[case(b"rclone v1.52.1\n- os/arch: linux/amd64\n- go version: go1.14.4\n")]
+    #[case(b"rclone v1.51.3-beta\n- os/arch: linux/amd64\n- go version: go1.14.4\n")]
     fn test_check_clone_version_fails(#[case] rclone_version_output: &[u8]) {
         assert!(check_clone_version(rclone_version_output).is_err());
     }
