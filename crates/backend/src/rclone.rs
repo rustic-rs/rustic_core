@@ -69,7 +69,7 @@ impl Drop for RcloneBackend {
 /// [`RcloneErrorKind::NoOutputForRcloneVersion`]: RcloneErrorKind::NoOutputForRcloneVersion
 /// [`RcloneErrorKind::FromParseVersion`]: RcloneErrorKind::FromParseVersion
 fn check_clone_version(rclone_version_output: &[u8]) -> Result<()> {
-    let rclone_version = std::str::from_utf8(&rclone_version_output)
+    let rclone_version = std::str::from_utf8(rclone_version_output)
         .map_err(RcloneErrorKind::FromUtf8Error)?
         .lines()
         .next()
