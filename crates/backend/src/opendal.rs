@@ -1,5 +1,7 @@
+/// `OpenDAL` S3 backend for Rustic.
 #[cfg(feature = "s3")]
 pub mod s3;
+/// `OpenDAL` SFTP backend for Rustic.
 #[cfg(all(unix, feature = "sftp"))]
 pub mod sftp;
 
@@ -22,6 +24,7 @@ mod consts {
     pub(super) const DEFAULT_RETRY: usize = 5;
 }
 
+/// `OpenDALBackend` contains a wrapper around an blocking operator of the `OpenDAL` library.
 #[derive(Clone, Debug)]
 pub struct OpenDALBackend {
     operator: BlockingOperator,
@@ -42,8 +45,16 @@ impl OpenDALBackend {
     ///
     /// # Arguments
     ///
-    /// * `path` - The path to the OpenDAL backend.
-    /// * `options` - Additional options for the OpenDAL backend.
+    /// * `path` - The path to the `OpenDAL` backend.
+    /// * `options` - Additional options for the `OpenDAL` backend.
+    ///
+    /// # Errors
+    ///
+    /// If the path is not a valid `OpenDAL` path, an error is returned.
+    ///
+    /// # Returns
+    ///
+    /// A new `OpenDAL` backend.
     pub fn new(path: impl AsRef<str>, options: HashMap<String, String>) -> Result<Self> {
         let max_retries = match options.get("retry").map(String::as_str) {
             Some("false" | "off") => 0,
@@ -72,6 +83,18 @@ impl OpenDALBackend {
         Ok(Self { operator })
     }
 
+    /// Return a path for the given file type and id.
+    ///
+    /// # Arguments
+    ///
+    /// * `tpe` - The type of the file.
+    /// * `id` - The id of the file.
+    ///
+    /// # Returns
+    ///
+    /// The path for the given file type and id.
+    // Let's keep this for now, as it's being used in the trait implementations.
+    #[allow(clippy::unused_self)]
     fn path(&self, tpe: FileType, id: &Id) -> String {
         let hex_id = id.to_hex();
         match tpe {

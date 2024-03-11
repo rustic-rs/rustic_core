@@ -143,3 +143,6 @@ rustic_backend = { workspace = true }
 rustup-toolchain = "0.1.6"
 simplelog = "0.12.2"
 tempfile = { workspace = true }
+
+[lints]
+workspace = true

@@ -8,6 +8,7 @@ use crate::opendal::OpenDALBackend;
 use bytes::Bytes;
 use rustic_core::{FileType, Id, ReadBackend, WriteBackend};
 
+/// S3 backend for Rustic. A wrapper around the `OpenDAL` backend.
 #[derive(Clone, Debug)]
 pub struct S3Backend(OpenDALBackend);
 
@@ -62,6 +63,18 @@ impl S3Backend {
     /// * `path` - The path to the s3 bucket
     /// * `options` - Additional options for the s3 backend
     ///
+    /// # Errors
+    ///
+    /// If the path is not a valid url, an error is returned.
+    ///
+    /// # Returns
+    ///
+    /// The new S3 backend.
+    ///
+    /// # Panics
+    ///
+    /// If the scheme cannot be set to `https`. This is a security measurement for now.
+    ///
     /// # Notes
     ///
     /// The path should be something like "`https://s3.amazonaws.com/bucket/my/repopath`"
@@ -79,6 +92,8 @@ impl S3Backend {
         if url.has_host() {
             if url.scheme().is_empty() {
                 url.set_scheme("https")
+                    // TODO: This is a security measurement for now. We should not allow http.
+                    // This error should be handled gracefully though somewhere else.
                     .expect("could not set scheme to https");
             }
             url.set_path("");
@@ -93,6 +108,12 @@ impl S3Backend {
         Ok(Self(OpenDALBackend::new("s3", options)?))
     }
 
+    /// Convert the S3 backend to the inner `OpenDAL` backend.
+    ///
+    /// # Returns
+    ///
+    /// The inner `OpenDAL` backend.
+    #[must_use]
     pub fn to_inner(self) -> OpenDALBackend {
         self.0
     }

@@ -75,16 +75,25 @@ pub struct BackendOptions {
 /// * `right` - The right value
 #[cfg(feature = "merge")]
 pub fn extend<A, T: Extend<A> + IntoIterator<Item = A>>(left: &mut T, right: T) {
-    left.extend(right)
+    left.extend(right);
 }
 
 impl BackendOptions {
+    /// Convert the options to backends.
+    ///
+    /// # Errors
+    ///
+    /// If the repository is not given, an error is returned.
+    ///
+    /// # Returns
+    ///
+    /// The backends for the repository.
     pub fn to_backends(&self) -> Result<RepositoryBackends> {
         let mut options = self.options.clone();
         options.extend(self.options_cold.clone());
         let be = self
             .get_backend(self.repository.as_ref(), options)?
-            .ok_or(anyhow!("No repository given."))?;
+            .ok_or_else(|| anyhow!("No repository given."))?;
         let mut options = self.options.clone();
         options.extend(self.options_hot.clone());
         let be_hot = self.get_backend(self.repo_hot.as_ref(), options)?;
@@ -92,6 +101,22 @@ impl BackendOptions {
         Ok(RepositoryBackends::new(be, be_hot))
     }
 
+    /// Get the backend for the given repository.
+    ///
+    /// # Arguments
+    ///
+    /// * `repo_string` - The repository string to use.
+    /// * `options` - Additional options for the backend.
+    ///
+    /// # Errors
+    ///
+    /// If the backend cannot be loaded, an error is returned.
+    ///
+    /// # Returns
+    ///
+    /// The backend for the given repository.
+    // Allow unused_self, as we want to access this method
+    #[allow(clippy::unused_self)]
     fn get_backend(
         &self,
         repo_string: Option<&String>,
@@ -137,7 +162,7 @@ pub trait BackendChoice {
 ///
 /// If the url is a windows path, the type will be "local".
 #[non_exhaustive]
-#[derive(Debug, Clone, Copy, PartialEq, EnumString, Display)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, EnumString, Display)]
 pub enum SupportedBackend {
     /// A local backend
     #[strum(serialize = "local", to_string = "Local Backend")]

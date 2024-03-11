@@ -81,7 +81,7 @@ impl RepairIndexOptions {
             pack_read_header
                 .len()
                 .try_into()
-                .map_err(CommandErrorKind::ConversionToU64Failed)?,
+                .map_err(CommandErrorKind::ConversionFromIntFailed)?,
         );
         for (id, size_hint, packsize) in pack_read_header {
             debug!("reading pack {id}...");
@@ -194,7 +194,7 @@ pub(crate) fn index_checked_from_collector<P: ProgressBars, S: Open>(
         pack_read_header
             .len()
             .try_into()
-            .map_err(CommandErrorKind::ConversionToU64Failed)?,
+            .map_err(CommandErrorKind::ConversionFromIntFailed)?,
     );
     let index_packs: Vec<_> = pack_read_header
         .into_iter()
