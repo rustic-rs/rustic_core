@@ -7,12 +7,13 @@ use std::{
 
 use anyhow::Result;
 use bytes::Bytes;
-use itertools::Itertools;
 use log::{debug, info, warn};
 use rand::{
     distributions::{Alphanumeric, DistString},
     thread_rng,
 };
+
+use semver::{Version, VersionReq};
 use shell_words::split;
 
 use crate::{error::RcloneErrorKind, rest::RestBackend};
@@ -63,7 +64,7 @@ impl Drop for RcloneBackend {
 /// [`RcloneErrorKind::FromUtf8Error`]: RcloneErrorKind::FromUtf8Error
 /// [`RcloneErrorKind::NoOutputForRcloneVersion`]: RcloneErrorKind::NoOutputForRcloneVersion
 /// [`RcloneErrorKind::FromParseVersion`]: RcloneErrorKind::FromParseVersion
-fn rclone_version() -> Result<(i32, i32, i32)> {
+fn check_clone_version() -> Result<()> {
     let rclone_version_output = Command::new("rclone")
         .arg("version")
         .output()
@@ -76,12 +77,17 @@ fn rclone_version() -> Result<(i32, i32, i32)> {
         .ok_or_else(|| RcloneErrorKind::NoOutputForRcloneVersion)?
         .trim_start_matches(|c: char| !c.is_numeric());
 
-    let versions = rclone_version
-        .split(&['.', '-', ' '][..])
-        .filter_map(|v| v.parse().ok())
-        .collect_tuple()
-        .ok_or_else(|| RcloneErrorKind::FromParseVersion(rclone_version.to_string()))?;
-    Ok(versions)
+    let req = VersionReq::parse(">=1.52.2")?;
+    let version = Version::parse(rclone_version)?;
+    if !req.matches(&version) {
+        // TODO: This should be an error, and explicitly agreed to with a flag passed to `rustic`,
+        // check #812 for details
+        // for rclone < 1.52.2 setting user/password via env variable doesn't work. This means
+        // we are setting up an rclone without authentication which is a security issue!
+        // (however, it still works, so we give a warning)
+        warn!("Using rclone without authentication! Upgrade to rclone >= 1.52.2 (current version: {})!", rclone_version);
+    }
+    Ok(())
 }
 
 impl RcloneBackend {
@@ -113,18 +119,8 @@ impl RcloneBackend {
         if use_password && rclone_command.is_none() {
             // if we want to use a password and rclone_command is not explicitely set, we check for a rclone version supporting
             // user/password via env variables
-            match rclone_version() {
-                Ok(v) => {
-                    if v < (1, 52, 2) {
-                        // TODO: This should be an error, and explicitly agreed to with a flag passed to `rustic`,
-                        // check #812 for details
-                        // for rclone < 1.52.2 setting user/password via env variable doesn't work. This means
-                        // we are setting up an rclone without authentication which is a security issue!
-                        // (however, it still works, so we give a warning)
-                        warn!("Using rclone without authentication! Upgrade to rclone >= 1.52.2 (current version: {}.{}.{})!", v.0, v.1, v.2);
-                    }
-                }
-                Err(err) => warn!("Could not determine rclone version: {err}"),
+            if let Err(err) = check_clone_version() {
+                warn!("Could not determine rclone version: {err}");
             }
         }
 

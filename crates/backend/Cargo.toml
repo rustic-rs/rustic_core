@@ -38,7 +38,7 @@ clap = ["dep:clap"]
 s3 = ["opendal"]
 opendal = ["dep:opendal", "dep:rayon", "dep:tokio", "tokio/rt-multi-thread"]
 rest = ["dep:reqwest", "dep:backoff"]
-rclone = ["rest", "dep:rand"]
+rclone = ["rest", "dep:rand", "dep:semver"]
 # Note: sftp is not yet supported on windows, see below
 sftp = ["opendal"]
 
@@ -82,6 +82,7 @@ reqwest = { version = "0.11.25", default-features = false, features = ["json", "
 
 # rclone backend
 rand = { version = "0.8.5", optional = true }
+semver = { version = "1.0.22", optional = true }
 
 # opendal backend
 rayon = { version = "1.9.0", optional = true }
