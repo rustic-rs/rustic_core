@@ -12,3 +12,6 @@ Cargo.lock
 
 # Coverage information
 coverage/*.info
+
+# local repo config
+.cargo/config.toml
