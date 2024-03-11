@@ -91,7 +91,9 @@ impl PackSizer {
 
     /// Computes the size of the pack file.
     #[must_use]
-    // TODO!: IMPORTANT: Evaluate deeply if this is really fine and what we want
+    // The cast actually shouldn't pose any problems.
+    // `current_size` is `u64`, the maximum value is `2^64-1`.
+    // `isqrt(2^64-1) = 2^32-1` which fits into a `u32`. (@aawsome)
     #[allow(clippy::cast_possible_truncation)]
     pub fn pack_size(&self) -> u32 {
         (self.current_size.integer_sqrt() as u32 * self.grow_factor + self.default_size)

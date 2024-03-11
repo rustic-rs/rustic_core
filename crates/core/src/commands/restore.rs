@@ -698,12 +698,12 @@ impl RestorePlan {
             };
             let length = bl.data_length();
 
-            let usize_lenth =
+            let usize_length =
                 usize::try_from(length).map_err(CommandErrorKind::ConversionFromIntFailed)?;
 
             let matches = open_file
                 .as_mut()
-                .map_or(false, |file| id.blob_matches_reader(usize_lenth, file));
+                .map_or(false, |file| id.blob_matches_reader(usize_length, file));
 
             let blob_location = self.r.entry((ie.pack, bl)).or_default();
             blob_location.push(FileLocation {
