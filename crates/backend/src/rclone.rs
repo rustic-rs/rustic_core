@@ -128,8 +128,9 @@ impl RcloneBackend {
                 .map_err(RcloneErrorKind::FromIoError)?
                 .stdout;
 
-            // if we want to use a password and rclone_command is not explicitly set, we check for a rclone version supporting
-            // user/password via env variables
+            // if we want to use a password and rclone_command is not explicitly set,
+            // we check for a rclone version supporting user/password via env variables
+            // if the version is not supported, we return an error
             check_clone_version(rclone_version_output.as_slice())?;
         }
 
