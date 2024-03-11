@@ -79,6 +79,10 @@ fn check_clone_version(rclone_version_output: &[u8]) -> Result<()> {
     // for rclone < 1.52.2 setting user/password via env variable doesn't work. This means
     // we are setting up an rclone without authentication which is a security issue!
     let mut parsed_version = Version::parse(rclone_version)?;
+
+    // we need to set the pre and build fields to empty to make the comparison work
+    // otherwise the comparison will take the pre and build fields into account
+    // which would make beta versions pass the check
     parsed_version.pre = Prerelease::EMPTY;
     parsed_version.build = BuildMetadata::EMPTY;
 
