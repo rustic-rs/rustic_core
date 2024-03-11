@@ -54,6 +54,8 @@ pub enum RcloneErrorKind {
     FromUtf8Error(#[from] Utf8Error),
     /// error parsing verision number from `{0:?}`
     FromParseVersion(String),
+    /// Using rclone without authentication! Upgrade to rclone >= 1.52.2 (current version: `{0}`)!
+    RCloneWithoutAuthentication(String),
 }
 
 /// [`RestErrorKind`] describes the errors that can be returned while dealing with the REST API

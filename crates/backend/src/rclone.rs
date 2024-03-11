@@ -7,7 +7,7 @@ use std::{
 
 use anyhow::Result;
 use bytes::Bytes;
-use log::{debug, info, warn};
+use log::{debug, info};
 use rand::{
     distributions::{Alphanumeric, DistString},
     thread_rng,
@@ -80,12 +80,11 @@ fn check_clone_version() -> Result<()> {
     let req = VersionReq::parse(">=1.52.2")?;
     let version = Version::parse(rclone_version)?;
     if !req.matches(&version) {
-        // TODO: This should be an error, and explicitly agreed to with a flag passed to `rustic`,
-        // check #812 for details
         // for rclone < 1.52.2 setting user/password via env variable doesn't work. This means
         // we are setting up an rclone without authentication which is a security issue!
-        // (however, it still works, so we give a warning)
-        warn!("Using rclone without authentication! Upgrade to rclone >= 1.52.2 (current version: {})!", rclone_version);
+        return Err(
+            RcloneErrorKind::RCloneWithoutAuthentication(rclone_version.to_string()).into(),
+        );
     }
     Ok(())
 }
@@ -117,11 +116,9 @@ impl RcloneBackend {
             .unwrap_or(true);
 
         if use_password && rclone_command.is_none() {
-            // if we want to use a password and rclone_command is not explicitely set, we check for a rclone version supporting
+            // if we want to use a password and rclone_command is not explicitly set, we check for a rclone version supporting
             // user/password via env variables
-            if let Err(err) = check_clone_version() {
-                warn!("Could not determine rclone version: {err}");
-            }
+            check_clone_version()?;
         }
 
         let user = Alphanumeric.sample_string(&mut thread_rng(), 12);
