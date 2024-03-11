@@ -6,13 +6,23 @@ concurrency:
 
 on:
   pull_request:
-    paths-ignore:
-      - "**/*.md"
+    paths:
+      - "**/Cargo.toml"
+      - "**/Cargo.lock"
+      - '**.rs'
+      - '**.snap'
+      - '**.yml'
+      - '**.toml'
   push:
     branches:
       - main
-    paths-ignore:
-      - "**/*.md"
+    paths:
+      - "**/Cargo.toml"
+      - "**/Cargo.lock"
+      - '**.rs'
+      - '**.snap'
+      - '**.yml'
+      - '**.toml'
   schedule:
     - cron: "0 0 * * 0"
   merge_group:
@@ -109,6 +119,9 @@ jobs:
 
   powerset:
     name: Check Powerset of Features
+    # Only run if the commit doesn't come from a merged PR, we assume CI is running in the PR as well
+    # so we don't want to have runs double up
+    if: github.event.pull_request.merged == false
     runs-on: ${{ matrix.job.os }}
     strategy:
       matrix:
@@ -135,7 +148,7 @@ jobs:
         with:
           toolchain: ${{ matrix.rust }}
       - name: install cargo-hack
-        uses: taiki-e/install-action@3ed9916b5427bc0679b294607ea47d1d8007b53f # v2
+        uses: taiki-e/install-action@d5ead4fdbf0cb2a037f276e7dfb78bbb9dd0ab8c # v2
         with:
           tool: cargo-hack
       - uses: Swatinem/rust-cache@23bce251a8cd2ffc3c1075eaa2367cf899916d84 # v2

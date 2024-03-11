@@ -2,13 +2,17 @@ name: Check MSRV
 
 on:
   pull_request:
-    paths-ignore:
-      - "**/*.md"
+    paths:
+      - "**/Cargo.toml"
+      - "**/Cargo.lock"
+      - '**.yml'
   push:
     branches:
       - main
-    paths-ignore:
-      - "**/*.md"
+    paths:
+      - "**/Cargo.toml"
+      - "**/Cargo.lock"
+      - '**.yml'
   schedule:
     - cron: "0 0 * * 0"
   merge_group:
@@ -20,6 +24,9 @@ concurrency:
 
 jobs:
   msrv:
+    # Only run if the commit doesn't come from a merged PR, we assume CI is running in the PR as well
+    # so we don't want to have runs double up
+    if: github.event.pull_request.merged == false
     name: Check MSRV
     runs-on: ubuntu-latest
     strategy:
@@ -28,7 +35,7 @@ jobs:
     steps:
       - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4
       - name: Install cargo-hack
-        uses: taiki-e/install-action@3ed9916b5427bc0679b294607ea47d1d8007b53f # v2
+        uses: taiki-e/install-action@d5ead4fdbf0cb2a037f276e7dfb78bbb9dd0ab8c # v2
         with:
           tool: cargo-hack
 
@@ -36,6 +43,9 @@ jobs:
         run: cargo hack check --rust-version -p ${{ matrix.crate }}
 
   result:
+    # Only run if the commit doesn't come from a merged PR, we assume CI is running in the PR as well
+    # so we don't want to have runs double up
+    if: github.event.pull_request.merged == false
     name: Result (MSRV)
     runs-on: ubuntu-latest
     needs: msrv
