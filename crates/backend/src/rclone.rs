@@ -47,7 +47,11 @@ impl Drop for RcloneBackend {
     }
 }
 
-/// Get the rclone version.
+/// Check the rclone version.
+///
+/// # Arguments
+///
+/// * `rclone_version_output` - The output of `rclone version`.
 ///
 /// # Errors
 ///
@@ -58,18 +62,13 @@ impl Drop for RcloneBackend {
 ///
 /// # Returns
 ///
-/// The rclone version as a tuple of (major, minor, patch).
+/// * `Ok(())` - If the rclone version is supported.
 ///
 /// [`RcloneErrorKind::FromIoError`]: RcloneErrorKind::FromIoError
 /// [`RcloneErrorKind::FromUtf8Error`]: RcloneErrorKind::FromUtf8Error
 /// [`RcloneErrorKind::NoOutputForRcloneVersion`]: RcloneErrorKind::NoOutputForRcloneVersion
 /// [`RcloneErrorKind::FromParseVersion`]: RcloneErrorKind::FromParseVersion
-fn check_clone_version() -> Result<()> {
-    let rclone_version_output = Command::new("rclone")
-        .arg("version")
-        .output()
-        .map_err(RcloneErrorKind::FromIoError)?
-        .stdout;
+fn check_clone_version(rclone_version_output: &[u8]) -> Result<()> {
     let rclone_version = std::str::from_utf8(&rclone_version_output)
         .map_err(RcloneErrorKind::FromUtf8Error)?
         .lines()
@@ -116,9 +115,15 @@ impl RcloneBackend {
             .unwrap_or(true);
 
         if use_password && rclone_command.is_none() {
+            let rclone_version_output = Command::new("rclone")
+                .arg("version")
+                .output()
+                .map_err(RcloneErrorKind::FromIoError)?
+                .stdout;
+
             // if we want to use a password and rclone_command is not explicitly set, we check for a rclone version supporting
             // user/password via env variables
-            check_clone_version()?;
+            check_clone_version(rclone_version_output.as_slice())?;
         }
 
         let user = Alphanumeric.sample_string(&mut thread_rng(), 12);
@@ -289,5 +294,31 @@ impl WriteBackend for RcloneBackend {
     /// * `cacheable` - Whether the file is cacheable.
     fn remove(&self, tpe: FileType, id: &Id, cacheable: bool) -> Result<()> {
         self.rest.remove(tpe, id, cacheable)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_check_clone_version_passes() {
+        let rclone_version_output =
+            b"rclone v1.52.2\n- os/arch: linux/amd64\n- go version: go1.14.4\n";
+        assert!(check_clone_version(rclone_version_output).is_ok());
+
+        let rclone_version_output =
+            b"rclone v1.66.0\n- os/version: Microsoft Windows 11 Pro 23H2 (64 bit)\n- os/kernel: 10.0.22631.3155 (x86_64)\n- os/type: windows\n- os/arch: amd64\n- go/version: go1.22.1\n- go/linking: static\n- go/tags: cmount";
+        assert!(check_clone_version(rclone_version_output).is_ok());
+    }
+
+    #[test]
+    fn test_check_clone_version_fails() {
+        let rclone_version_output = b"";
+        assert!(check_clone_version(rclone_version_output).is_err());
+
+        let rclone_version_output =
+            b"rclone v1.52.1\n- os/arch: linux/amd64\n- go version: go1.14.4\n";
+        assert!(check_clone_version(rclone_version_output).is_err());
     }
 }
