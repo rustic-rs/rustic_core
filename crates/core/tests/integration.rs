@@ -37,12 +37,8 @@ impl TestSource {
         Self(tmp)
     }
 
-    fn paths(&self) -> Result<PathList> {
-        let sources = self.0.path().to_str().unwrap();
-
-        let path_list = PathList::from_string(sources)?;
-
-        Ok(path_list)
+    fn paths(&self) -> PathList {
+        PathList::from_iter(Some(self.0.path().to_path_buf()))
     }
 }
 
@@ -94,7 +90,7 @@ fn backup() -> Result<()> {
     // uncomment for logging output
     // SimpleLogger::init(log::LevelFilter::Debug, Config::default())?;
     let source = set_up_testdata("backup-data.tar.gz")?;
-    let paths = &source.paths()?;
+    let paths = &source.paths();
 
     let repo = set_up_repo()?.to_indexed_ids()?;
     // we use as_path to not depend on the actual tempdir
@@ -133,7 +129,7 @@ fn backup() -> Result<()> {
 #[test]
 fn backup_dry_run() -> Result<()> {
     let source = &set_up_testdata("backup-data.tar.gz")?;
-    let paths = &source.paths()?;
+    let paths = &source.paths();
     let repo = set_up_repo()?.to_indexed_ids()?;
     // we use as_path to not depend on the actual tempdir
     let opts = BackupOptions::default()
