@@ -565,6 +565,7 @@ pub mod in_memory_backend {
 
     impl InMemoryBackend {
         /// Create a new (empty) `InMemoryBackend`
+        #[must_use]
         pub fn new() -> Self {
             Self(RwLock::new(EnumMap::from_fn(|_| BTreeMap::new())))
         }
@@ -584,7 +585,12 @@ pub mod in_memory_backend {
         fn list_with_size(&self, tpe: FileType) -> Result<Vec<(Id, u32)>> {
             Ok(self.0.read().unwrap()[tpe]
                 .iter()
-                .map(|(id, byte)| (*id, byte.len() as u32))
+                .map(|(id, byte)| {
+                    (
+                        *id,
+                        u32::try_from(byte.len()).expect("byte length is too large"),
+                    )
+                })
                 .collect())
         }
 

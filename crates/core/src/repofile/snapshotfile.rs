@@ -1119,6 +1119,23 @@ impl PathList {
         )
     }
 
+    /// Create a `PathList` from a list of `PathBuf`s.
+    ///
+    /// # Arguments
+    ///
+    /// * `source` - The `PathBuf`s to use
+    ///
+    /// # Returns
+    ///
+    /// A `PathList` containing the `PathBuf`s
+    pub fn from_iter<I>(source: I) -> Self
+    where
+        I: IntoIterator,
+        I::Item: Into<PathBuf>,
+    {
+        Self(source.into_iter().map(Into::into).collect())
+    }
+
     /// Create a `PathList` by parsing a Strings containing paths separated by whitspaces.
     ///
     /// # Arguments
