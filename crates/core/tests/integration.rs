@@ -61,14 +61,6 @@ fn tar_gz_testdata() -> Result<TestSource> {
     Ok(TestSource::new(dir))
 }
 
-// TODO!: Remove?
-#[fixture]
-fn dir_testdata() -> PathBuf {
-    Path::new("tests/fixtures/backup-data/")
-        .canonicalize()
-        .expect("fixture path")
-}
-
 // Parts of the snapshot summary we want to test against references
 struct TestSummary<'a>(&'a SnapshotFile);
 
@@ -101,81 +93,6 @@ impl<'a> std::fmt::Debug for TestSummary<'a> {
 }
 
 #[rstest]
-fn test_backup_with_dir_passes(dir_testdata: PathBuf, set_up_repo: Result<RepoOpen>) -> Result<()> {
-    // uncomment for logging output
-    // SimpleLogger::init(log::LevelFilter::Debug, Config::default())?;
-
-    // Fixtures
-    let (source, repo) = (dir_testdata, set_up_repo?.to_indexed_ids()?);
-
-    let paths = PathList::from_iter(Some(source));
-
-    // we use as_path to not depend on the actual tempdir
-    let opts = BackupOptions::default().as_path(PathBuf::from_str("test")?);
-
-    // first backup
-    let first_snapshot = repo.backup(&opts, &paths, SnapshotFile::default())?;
-    #[cfg(windows)]
-    assert_debug_snapshot!(
-        "backup-dir-summary-first-windows",
-        TestSummary(&first_snapshot)
-    );
-
-    #[cfg(not(windows))]
-    assert_debug_snapshot!("backup-dir-summary-first-nix", TestSummary(&first_snapshot));
-
-    assert_eq!(first_snapshot.parent, None);
-
-    // tree of first backup
-    // re-read index
-    let repo = repo.to_indexed_ids()?;
-    let tree = repo.node_from_path(first_snapshot.tree, Path::new("test/tests"))?;
-    let tree = repo.get_tree(&tree.subtree.expect("Sub tree"))?;
-
-    #[cfg(windows)]
-    assert_debug_snapshot!("backup-dir-tree-windows", tree);
-
-    #[cfg(not(windows))]
-    assert_debug_snapshot!("backup-dir-tree-nix", tree);
-
-    // get all snapshots and check them
-    let all_snapshots = repo.get_all_snapshots()?;
-    assert_eq!(vec![first_snapshot.clone()], all_snapshots);
-    // save list of pack files
-    let packs1: Vec<_> = repo.list(rustic_core::FileType::Pack)?.collect();
-
-    // re-read index
-    let repo = repo.to_indexed_ids()?;
-    // second backup
-    let second_snapshot = repo.backup(&opts, &paths, SnapshotFile::default())?;
-
-    #[cfg(windows)]
-    assert_debug_snapshot!(
-        "backup-dir-summary-second-windows",
-        TestSummary(&second_snapshot)
-    );
-
-    #[cfg(not(windows))]
-    assert_debug_snapshot!(
-        "backup-dir-summary-second-nix",
-        TestSummary(&second_snapshot)
-    );
-
-    assert_eq!(second_snapshot.parent, Some(first_snapshot.id));
-    assert_eq!(first_snapshot.tree, second_snapshot.tree);
-
-    // get all snapshots and check them
-    let mut all_snapshots = repo.get_all_snapshots()?;
-    all_snapshots.sort_unstable();
-    assert_eq!(vec![first_snapshot, second_snapshot], all_snapshots);
-
-    // pack files should be unchanged
-    let packs2: Vec<_> = repo.list(rustic_core::FileType::Pack)?.collect();
-    assert_eq!(packs1, packs2);
-    Ok(())
-}
-
-#[rstest]
 fn test_backup_with_tar_gz_passes(
     tar_gz_testdata: Result<TestSource>,
     set_up_repo: Result<RepoOpen>,
@@ -205,17 +122,17 @@ fn test_backup_with_tar_gz_passes(
 
     assert_eq!(first_snapshot.parent, None);
 
-    // // tree of first backup
-    // // re-read index
-    // let repo = repo.to_indexed_ids()?;
-    // let tree = repo.node_from_path(first_snapshot.tree, Path::new("test/tests"))?;
-    // let tree = repo.get_tree(&tree.subtree.expect("Sub tree"))?;
+    // tree of first backup
+    // re-read index
+    let repo = repo.to_indexed_ids()?;
+    let tree = repo.node_from_path(first_snapshot.tree, Path::new("test/0/tests"))?;
+    let tree = repo.get_tree(&tree.subtree.expect("Sub tree"))?;
 
-    // #[cfg(windows)]
-    // assert_debug_snapshot!("backup-tar-tree-windows", tree);
+    #[cfg(windows)]
+    assert_debug_snapshot!("backup-tar-tree-windows", tree);
 
-    // #[cfg(not(windows))]
-    // assert_debug_snapshot!("backup-tar-tree-nix", tree);
+    #[cfg(not(windows))]
+    assert_debug_snapshot!("backup-tar-tree-nix", tree);
 
     // get all snapshots and check them
     let all_snapshots = repo.get_all_snapshots()?;
@@ -292,17 +209,17 @@ fn test_backup_dry_run_with_tar_gz_passes(
     assert_eq!(snap_dry_run.tree, first_snapshot.tree);
     let packs: Vec<_> = repo.list(rustic_core::FileType::Pack)?.collect();
 
-    // // tree of first backup
-    // // re-read index
-    // let repo = repo.to_indexed_ids()?;
-    // let tree = repo.node_from_path(first_snapshot.tree, Path::new("test/tests"))?;
-    // let tree = repo.get_tree(&tree.subtree.expect("Sub tree"))?;
+    // tree of first backup
+    // re-read index
+    let repo = repo.to_indexed_ids()?;
+    let tree = repo.node_from_path(first_snapshot.tree, Path::new("test/0/tests"))?;
+    let tree = repo.get_tree(&tree.subtree.expect("Sub tree"))?;
 
-    // #[cfg(windows)]
-    // assert_debug_snapshot!("dryrun-tar-tree-windows", tree);
+    #[cfg(windows)]
+    assert_debug_snapshot!("dryrun-tar-tree-windows", tree);
 
-    // #[cfg(not(windows))]
-    // assert_debug_snapshot!("dryrun-tar-tree-nix", tree);
+    #[cfg(not(windows))]
+    assert_debug_snapshot!("dryrun-tar-tree-nix", tree);
 
     // re-read index
     let repo = repo.to_indexed_ids()?;
