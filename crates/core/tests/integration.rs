@@ -121,7 +121,7 @@ fn test_backup_with_dir_passes(dir_testdata: PathBuf, set_up_repo: Result<RepoOp
     );
 
     #[cfg(not(windows))]
-    assert_debug_snapshot!("backup-dir-summary-first-nix", TestSummary(&first_backup));
+    assert_debug_snapshot!("backup-dir-summary-first-nix", TestSummary(&first_snapshot));
 
     assert_eq!(first_snapshot.parent, None);
 
@@ -200,7 +200,7 @@ fn test_backup_with_tar_gz_passes(
     );
 
     #[cfg(not(windows))]
-    assert_debug_snapshot!("backup-tar-summary-first-nix", TestSummary(&first_backup));
+    assert_debug_snapshot!("backup-tar-summary-first-nix", TestSummary(&first_snapshot));
 
     assert_eq!(first_snapshot.parent, None);
 
