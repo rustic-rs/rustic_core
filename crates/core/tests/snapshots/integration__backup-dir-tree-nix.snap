@@ -1,0 +1,169 @@
+---
+source: crates/core/tests/integration.rs
+expression: tree
+---
+Tree {
+    nodes: [
+        Node {
+            name: "empty-file",
+            node_type: File,
+            meta: Metadata {
+                mode: Some(
+                    420,
+                ),
+                mtime: Some(
+                    2024-03-12T22:31:11.115831358+00:00,
+                ),
+                atime: Some(
+                    2024-03-12T22:31:11.115831358+00:00,
+                ),
+                ctime: Some(
+                    2024-03-12T22:31:11.115831358+00:00,
+                ),
+                uid: Some(
+                    501,
+                ),
+                gid: Some(
+                    20,
+                ),
+                user: Some(
+                    "runner",
+                ),
+                group: Some(
+                    "staff",
+                ),
+                inode: 12891863206,
+                device_id: 16777220,
+                size: 0,
+                links: 1,
+                extended_attributes: [],
+            },
+            content: Some(
+                [],
+            ),
+            subtree: None,
+        },
+        Node {
+            name: "testfile",
+            node_type: File,
+            meta: Metadata {
+                mode: Some(
+                    420,
+                ),
+                mtime: Some(
+                    2024-03-12T22:31:11.115939543+00:00,
+                ),
+                atime: Some(
+                    2024-03-12T22:31:11.115939543+00:00,
+                ),
+                ctime: Some(
+                    2024-03-12T22:31:11.115939543+00:00,
+                ),
+                uid: Some(
+                    501,
+                ),
+                gid: Some(
+                    20,
+                ),
+                user: Some(
+                    "runner",
+                ),
+                group: Some(
+                    "staff",
+                ),
+                inode: 12891863207,
+                device_id: 16777220,
+                size: 21,
+                links: 1,
+                extended_attributes: [],
+            },
+            content: Some(
+                [
+                    649b8b471e7d7bc175eec758a7006ac693c434c8297c07db15286788c837154a,
+                ],
+            ),
+            subtree: None,
+        },
+        Node {
+            name: "testfile-hardlink",
+            node_type: File,
+            meta: Metadata {
+                mode: Some(
+                    420,
+                ),
+                mtime: Some(
+                    2024-03-12T22:31:11.116070531+00:00,
+                ),
+                atime: Some(
+                    2024-03-12T22:31:11.116070531+00:00,
+                ),
+                ctime: Some(
+                    2024-03-12T22:31:11.116070531+00:00,
+                ),
+                uid: Some(
+                    501,
+                ),
+                gid: Some(
+                    20,
+                ),
+                user: Some(
+                    "runner",
+                ),
+                group: Some(
+                    "staff",
+                ),
+                inode: 12891863208,
+                device_id: 16777220,
+                size: 21,
+                links: 1,
+                extended_attributes: [],
+            },
+            content: Some(
+                [
+                    649b8b471e7d7bc175eec758a7006ac693c434c8297c07db15286788c837154a,
+                ],
+            ),
+            subtree: None,
+        },
+        Node {
+            name: "testfile-symlink",
+            node_type: Symlink {
+                linktarget: "testfile",
+                linktarget_raw: None,
+            },
+            meta: Metadata {
+                mode: Some(
+                    134218221,
+                ),
+                mtime: Some(
+                    2024-03-12T22:31:11.116267198+00:00,
+                ),
+                atime: Some(
+                    2024-03-12T22:31:11.116267198+00:00,
+                ),
+                ctime: Some(
+                    2024-03-12T22:31:11.116267198+00:00,
+                ),
+                uid: Some(
+                    501,
+                ),
+                gid: Some(
+                    20,
+                ),
+                user: Some(
+                    "runner",
+                ),
+                group: Some(
+                    "staff",
+                ),
+                inode: 12891863209,
+                device_id: 16777220,
+                size: 8,
+                links: 1,
+                extended_attributes: [],
+            },
+            content: None,
+            subtree: None,
+        },
+    ],
+}

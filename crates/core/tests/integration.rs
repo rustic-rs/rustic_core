@@ -61,6 +61,7 @@ fn tar_gz_testdata() -> Result<TestSource> {
     Ok(TestSource::new(dir))
 }
 
+// TODO!: Remove?
 #[fixture]
 fn dir_testdata() -> PathBuf {
     Path::new("tests/fixtures/backup-data/")
