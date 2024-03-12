@@ -1,10 +1,7 @@
 //! `prune` subcommand
 
-use derive_setters::Setters;
 /// App-local prelude includes `app_reader()`/`app_writer()`/`app_config()`
 /// accessors along with logging macros. Customize as you see fit.
-use log::{info, warn};
-
 use std::{
     cmp::Ordering,
     collections::{BTreeMap, BTreeSet},
@@ -12,12 +9,15 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use bitmask_enum::bitmask;
 use bytesize::ByteSize;
 use chrono::{DateTime, Duration, Local};
 use derive_more::Add;
+use derive_setters::Setters;
+use enumset::{EnumSet, EnumSetType};
 use itertools::Itertools;
+use log::{info, warn};
 use rayon::prelude::{IntoParallelIterator, ParallelIterator};
+use serde::{Deserialize, Serialize};
 
 use crate::{
     backend::{
@@ -269,8 +269,8 @@ impl FromStr for LimitOption {
     }
 }
 
-#[bitmask(u8)]
-#[bitmask_config(vec_debug)]
+#[derive(EnumSetType, Debug, PartialOrd, Ord, Serialize, Deserialize)]
+#[enumset(serialize_repr = "list")]
 pub enum PackStatus {
     NotCompressed,
     TooYoung,
@@ -282,7 +282,7 @@ pub enum PackStatus {
     Marked,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Serialize)]
 pub struct DebugDetailedStats {
     pub packs: u64,
     pub unused_blobs: u64,
@@ -291,15 +291,26 @@ pub struct DebugDetailedStats {
     pub used_size: u64,
 }
 
-#[derive(Debug, Default)]
-pub struct DebugStats(pub BTreeMap<(PackToDo, BlobType, PackStatus), DebugDetailedStats>);
+#[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq, PartialOrd, Ord)]
+pub struct DebugStatsKey {
+    pub todo: PackToDo,
+    pub blob_type: BlobType,
+    pub status: EnumSet<PackStatus>,
+}
+
+#[derive(Debug, Default, Serialize)]
+pub struct DebugStats(pub BTreeMap<DebugStatsKey, DebugDetailedStats>);
 
 impl DebugStats {
-    fn add(&mut self, pi: &PackInfo, todo: PackToDo, status: PackStatus) {
+    fn add(&mut self, pi: &PackInfo, todo: PackToDo, status: EnumSet<PackStatus>) {
         let blob_type = pi.blob_type;
         let details = self
             .0
-            .entry((todo, blob_type, status))
+            .entry(DebugStatsKey {
+                todo,
+                blob_type,
+                status,
+            })
             .or_insert(DebugDetailedStats {
                 packs: 0,
                 unused_blobs: 0,
@@ -400,7 +411,7 @@ pub struct PruneStats {
     pub index_files: u64,
     /// Number of index files which will be rebuilt during the prune
     pub index_files_rebuild: u64,
-    /// Number of index files which will be rebuilt during the prune
+    /// Detailed debug statistics
     pub debug: DebugStats,
 }
 
@@ -441,7 +452,7 @@ impl PruneIndex {
 }
 
 /// Task to be executed by a `PrunePlan` on Packs
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
 pub enum PackToDo {
     // TODO: Add documentation
     Undecided,
@@ -559,7 +570,7 @@ impl PrunePack {
         &mut self,
         todo: PackToDo,
         pi: &PackInfo,
-        status: PackStatus,
+        status: EnumSet<PackStatus>,
         stats: &mut PruneStats,
     ) {
         let tpe = self.blob_type;
@@ -626,7 +637,7 @@ pub struct PrunePlan {
     /// The ids of the existing packs
     existing_packs: BTreeMap<Id, u32>,
     /// The packs which should be repacked
-    repack_candidates: Vec<(PackInfo, PackStatus, RepackReason, usize, usize)>,
+    repack_candidates: Vec<(PackInfo, EnumSet<PackStatus>, RepackReason, usize, usize)>,
     /// The index files
     index_files: Vec<PruneIndex>,
     /// `prune` statistics
@@ -784,31 +795,31 @@ impl PrunePlan {
                     self.stats.blobs[pi.blob_type].unused += u64::from(pi.unused_blobs);
                     self.stats.size[pi.blob_type].used += u64::from(pi.used_size);
                     self.stats.size[pi.blob_type].unused += u64::from(pi.unused_size);
-                    let mut status = PackStatus::none();
+                    let mut status = EnumSet::empty();
 
                     // Various checks to determine if packs need to be kept
                     let too_young = pack.time > Some(self.time - keep_pack);
                     if too_young && !pack.delete_mark {
-                        status |= PackStatus::TooYoung;
+                        _ = status.insert(PackStatus::TooYoung);
                     }
                     let keep_uncacheable = repack_cacheable_only && !pack.blob_type.is_cacheable();
 
                     let to_compress = repack_uncompressed && !pack.is_compressed();
                     if to_compress {
-                        status |= PackStatus::NotCompressed;
+                        _ = status.insert(PackStatus::NotCompressed);
                     }
                     let size_mismatch = !pack_sizer[pack.blob_type].size_ok(pack.size);
                     if pack_sizer[pack.blob_type].is_too_small(pack.size) {
-                        status |= PackStatus::TooSmall;
+                        _ = status.insert(PackStatus::TooSmall);
                     }
                     if pack_sizer[pack.blob_type].is_too_large(pack.size) {
-                        status |= PackStatus::TooLarge;
+                        _ = status.insert(PackStatus::TooLarge);
                     }
                     match (pack.delete_mark, pi.used_blobs, pi.unused_blobs) {
                         (false, 0, _) => {
                             // unused pack
                             self.stats.packs.unused += 1;
-                            status |= PackStatus::HasUnusedBlobs;
+                            _ = status.insert(PackStatus::HasUnusedBlobs);
                             if too_young {
                                 // keep packs which are too young
                                 pack.set_todo(PackToDo::Keep, &pi, status, &mut self.stats);
@@ -819,7 +830,7 @@ impl PrunePlan {
                         (false, 1.., 0) => {
                             // used pack
                             self.stats.packs.used += 1;
-                            status |= PackStatus::HasUsedBlobs;
+                            _ = status.insert(PackStatus::HasUsedBlobs);
                             if too_young || keep_uncacheable {
                                 pack.set_todo(PackToDo::Keep, &pi, status, &mut self.stats);
                             } else if to_compress || repack_all {
@@ -846,7 +857,8 @@ impl PrunePlan {
                         (false, 1.., 1..) => {
                             // partly used pack
                             self.stats.packs.partly_used += 1;
-                            status |= PackStatus::HasUsedBlobs | PackStatus::HasUnusedBlobs;
+                            status
+                                .insert_all(PackStatus::HasUsedBlobs | PackStatus::HasUnusedBlobs);
 
                             if too_young || keep_uncacheable {
                                 // keep packs which are too young and non-cacheable packs if requested
@@ -863,18 +875,18 @@ impl PrunePlan {
                             }
                         }
                         (true, 0, _) => {
-                            status |= PackStatus::Marked;
+                            _ = status.insert(PackStatus::Marked);
                             match pack.time {
                                 // unneeded and marked pack => check if we can remove it.
                                 Some(local_date_time)
                                     if self.time - local_date_time >= keep_delete =>
                                 {
-                                    status |= PackStatus::TooYoung;
+                                    _ = status.insert(PackStatus::TooYoung);
                                     pack.set_todo(PackToDo::Delete, &pi, status, &mut self.stats);
                                 }
                                 None => {
                                     warn!("pack to delete {}: no time set, this should not happen! Keeping this pack.", pack.id);
-                                    status |= PackStatus::TimeNotSet;
+                                    _ = status.insert(PackStatus::TimeNotSet);
                                     pack.set_todo(
                                         PackToDo::KeepMarkedAndCorrect,
                                         &pi,
@@ -891,7 +903,7 @@ impl PrunePlan {
                             }
                         }
                         (true, 1.., _) => {
-                            status |= PackStatus::Marked | PackStatus::HasUsedBlobs;
+                            status.insert_all(PackStatus::Marked | PackStatus::HasUsedBlobs);
                             // needed blobs; mark this pack for recovery
                             pack.set_todo(PackToDo::Recover, &pi, status, &mut self.stats);
                         }
