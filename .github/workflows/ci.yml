@@ -4,6 +4,9 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
   cancel-in-progress: true
 
+env:
+  CI: true
+
 on:
   pull_request:
     paths:
@@ -86,6 +89,15 @@ jobs:
       - uses: Swatinem/rust-cache@23bce251a8cd2ffc3c1075eaa2367cf899916d84 # v2
       - name: Run Cargo Test
         run: cargo +${{ matrix.rust }} test -r --all-targets --all-features --workspace --examples
+        id: run_tests
+        env:
+          INSTA_UPDATE: new
+      - name: Upload snapshots of failed tests
+        if: ${{ failure() && steps.run_tests.outcome == 'failure' }}
+        uses: actions/upload-artifact@v3
+        with:
+          name: failed-snapshots-${{ matrix.job.os }}
+          path: "**/snapshots/*.snap.new"
 
   docs:
     name: Build docs

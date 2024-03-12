@@ -1,3 +1,13 @@
+use anyhow::Result;
+use flate2::read::GzDecoder;
+use insta::assert_debug_snapshot;
+use pretty_assertions::assert_eq;
+use rstest::fixture;
+use rstest::rstest;
+use rustic_core::{
+    repofile::SnapshotFile, BackupOptions, ConfigOptions, InMemoryBackend, KeyOptions,
+    NoProgressBars, OpenStatus, PathList, Repository, RepositoryBackends, RepositoryOptions,
+};
 use std::{
     env,
     fs::File,
@@ -5,19 +15,10 @@ use std::{
     str::FromStr,
     sync::Arc,
 };
-
-use anyhow::Result;
-use flate2::read::GzDecoder;
-use insta::assert_debug_snapshot;
-use pretty_assertions::assert_eq;
-use rustic_core::{
-    repofile::SnapshotFile, BackupOptions, ConfigOptions, InMemoryBackend, KeyOptions,
-    NoProgressBars, OpenStatus, PathList, Repository, RepositoryBackends, RepositoryOptions,
-};
 // uncomment for logging output
 // use simplelog::{Config, SimpleLogger};
 use tar::Archive;
-use tempfile::{tempdir, TempDir};
+use tempfile::tempdir;
 
 fn set_up_repo() -> Result<Repository<NoProgressBars, OpenStatus>> {
     let be = InMemoryBackend::new();
@@ -30,28 +31,35 @@ fn set_up_repo() -> Result<Repository<NoProgressBars, OpenStatus>> {
     Ok(repo)
 }
 
-struct TestSource(TempDir);
+struct TestSource(PathBuf);
 
 impl TestSource {
-    fn new(tmp: TempDir) -> Self {
-        Self(tmp)
+    fn new(tmp: impl Into<PathBuf>) -> Self {
+        Self(tmp.into())
     }
 
-    fn paths(&self) -> PathList {
-        PathList::from_iter(Some(self.0.path().to_path_buf()))
+    fn path_list(&self) -> PathList {
+        PathList::from_iter(Some(self.0.clone()))
     }
 }
 
-fn set_up_testdata(path: impl AsRef<Path>) -> Result<TestSource> {
+#[fixture]
+fn tar_gz_testdata() -> Result<TestSource> {
     let dir = tempdir()?;
-    let path = Path::new("tests/testdata").join(path);
+    let path = Path::new("tests/fixtures/backup-data.tar.gz");
     let tar_gz = File::open(path)?;
     let tar = GzDecoder::new(tar_gz);
     let mut archive = Archive::new(tar);
     archive.set_preserve_permissions(true);
     archive.set_preserve_mtime(true);
     archive.unpack(&dir)?;
-    Ok(TestSource::new(dir))
+    Ok(TestSource::new(dir.as_ref()))
+}
+
+#[fixture]
+fn dir_testdata() -> Result<TestSource> {
+    let path = Path::new("tests/fixtures/backup-data/");
+    Ok(TestSource::new(path))
 }
 
 // Parts of the snapshot summary we want to test against references
@@ -85,12 +93,12 @@ impl<'a> std::fmt::Debug for TestSummary<'a> {
     }
 }
 
-#[test]
-fn backup() -> Result<()> {
+#[rstest]
+fn test_backup_with_dir_passes(dir_testdata: Result<TestSource>) -> Result<()> {
     // uncomment for logging output
     // SimpleLogger::init(log::LevelFilter::Debug, Config::default())?;
-    let source = set_up_testdata("backup-data.tar.gz")?;
-    let paths = &source.paths();
+    let source = dir_testdata?;
+    let paths = &source.path_list();
 
     let repo = set_up_repo()?.to_indexed_ids()?;
     // we use as_path to not depend on the actual tempdir
@@ -126,10 +134,51 @@ fn backup() -> Result<()> {
     Ok(())
 }
 
-#[test]
-fn backup_dry_run() -> Result<()> {
-    let source = &set_up_testdata("backup-data.tar.gz")?;
-    let paths = &source.paths();
+#[rstest]
+fn test_backup_with_tar_gz_passes(tar_gz_testdata: Result<TestSource>) -> Result<()> {
+    // uncomment for logging output
+    // SimpleLogger::init(log::LevelFilter::Debug, Config::default())?;
+    let source = tar_gz_testdata?;
+    let paths = &source.path_list();
+
+    let repo = set_up_repo()?.to_indexed_ids()?;
+    // we use as_path to not depend on the actual tempdir
+    let opts = BackupOptions::default().as_path(PathBuf::from_str("test")?);
+
+    // first backup
+    let first_backup = repo.backup(&opts, paths, SnapshotFile::default())?;
+    assert_debug_snapshot!(TestSummary(&first_backup));
+    assert_eq!(first_backup.parent, None);
+
+    // get all snapshots and check them
+    let all_snapshots = repo.get_all_snapshots()?;
+    assert_eq!(vec![first_backup.clone()], all_snapshots);
+    // save list of pack files
+    let packs1: Vec<_> = repo.list(rustic_core::FileType::Pack)?.collect();
+
+    // re-read index
+    let repo = repo.to_indexed_ids()?;
+    // second backup
+    let snap2 = repo.backup(&opts, paths, SnapshotFile::default())?;
+    assert_debug_snapshot!(TestSummary(&snap2));
+    assert_eq!(snap2.parent, Some(first_backup.id));
+    assert_eq!(first_backup.tree, snap2.tree);
+
+    // get all snapshots and check them
+    let mut all_snapshots = repo.get_all_snapshots()?;
+    all_snapshots.sort_unstable();
+    assert_eq!(vec![first_backup, snap2], all_snapshots);
+
+    // pack files should be unchanged
+    let packs2: Vec<_> = repo.list(rustic_core::FileType::Pack)?.collect();
+    assert_eq!(packs1, packs2);
+    Ok(())
+}
+
+#[rstest]
+fn test_backup_dry_run_with_tar_gz_passes(tar_gz_testdata: Result<TestSource>) -> Result<()> {
+    let source = tar_gz_testdata?;
+    let paths = &source.path_list();
     let repo = set_up_repo()?.to_indexed_ids()?;
     // we use as_path to not depend on the actual tempdir
     let opts = BackupOptions::default()
