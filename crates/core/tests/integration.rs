@@ -8,6 +8,7 @@ use rustic_core::{
     repofile::SnapshotFile, BackupOptions, ConfigOptions, InMemoryBackend, KeyOptions,
     NoProgressBars, OpenStatus, PathList, Repository, RepositoryBackends, RepositoryOptions,
 };
+
 use std::{
     env,
     fs::File,
@@ -18,7 +19,7 @@ use std::{
 // uncomment for logging output
 use simplelog::{Config, SimpleLogger};
 use tar::Archive;
-use tempfile::tempdir;
+use tempfile::{tempdir, TempDir};
 
 fn set_up_repo() -> Result<Repository<NoProgressBars, OpenStatus>> {
     let be = InMemoryBackend::new();
@@ -31,15 +32,16 @@ fn set_up_repo() -> Result<Repository<NoProgressBars, OpenStatus>> {
     Ok(repo)
 }
 
-struct TestSource(PathBuf);
+#[derive(Debug)]
+struct TestSource(TempDir);
 
 impl TestSource {
-    fn new(tmp: impl Into<PathBuf>) -> Self {
-        Self(tmp.into())
+    fn new(tmp: TempDir) -> Self {
+        Self(tmp)
     }
 
     fn path_list(&self) -> PathList {
-        PathList::from_iter(Some(self.0.clone()))
+        PathList::from_iter(Some(self.0.path().to_path_buf()))
     }
 }
 
@@ -53,15 +55,14 @@ fn tar_gz_testdata() -> Result<TestSource> {
     archive.set_preserve_permissions(true);
     archive.set_preserve_mtime(true);
     archive.unpack(&dir)?;
-    Ok(TestSource::new(dir.as_ref()))
+    Ok(TestSource::new(dir))
 }
 
 #[fixture]
-fn dir_testdata() -> TestSource {
-    let path = Path::new("tests/fixtures/backup-data/")
+fn dir_testdata() -> PathBuf {
+    Path::new("tests/fixtures/backup-data/")
         .canonicalize()
-        .expect("fixture path");
-    TestSource::new(path)
+        .expect("fixture path")
 }
 
 // Parts of the snapshot summary we want to test against references
@@ -96,18 +97,18 @@ impl<'a> std::fmt::Debug for TestSummary<'a> {
 }
 
 #[rstest]
-fn test_backup_with_dir_passes(dir_testdata: TestSource) -> Result<()> {
+fn test_backup_with_dir_passes(dir_testdata: PathBuf) -> Result<()> {
     // uncomment for logging output
     // SimpleLogger::init(log::LevelFilter::Debug, Config::default())?;
     let source = dir_testdata;
-    let paths = &source.path_list();
+    let paths = PathList::from_iter(Some(source.clone()));
 
     let repo = set_up_repo()?.to_indexed_ids()?;
     // we use as_path to not depend on the actual tempdir
     let opts = BackupOptions::default().as_path(PathBuf::from_str("test")?);
 
     // first backup
-    let first_backup = repo.backup(&opts, paths, SnapshotFile::default())?;
+    let first_backup = repo.backup(&opts, &paths, SnapshotFile::default())?;
     assert_debug_snapshot!(TestSummary(&first_backup));
     assert_eq!(first_backup.parent, None);
 
@@ -120,7 +121,7 @@ fn test_backup_with_dir_passes(dir_testdata: TestSource) -> Result<()> {
     // re-read index
     let repo = repo.to_indexed_ids()?;
     // second backup
-    let second_snapshot = repo.backup(&opts, paths, SnapshotFile::default())?;
+    let second_snapshot = repo.backup(&opts, &paths, SnapshotFile::default())?;
     assert_debug_snapshot!(TestSummary(&second_snapshot));
     assert_eq!(second_snapshot.parent, Some(first_backup.id));
     assert_eq!(first_backup.tree, second_snapshot.tree);
@@ -141,6 +142,9 @@ fn test_backup_with_tar_gz_passes(tar_gz_testdata: Result<TestSource>) -> Result
     // uncomment for logging output
     SimpleLogger::init(log::LevelFilter::Debug, Config::default())?;
     let source = tar_gz_testdata?;
+
+    dbg!(&source);
+
     let paths = &source.path_list();
 
     let repo = set_up_repo()?.to_indexed_ids()?;
