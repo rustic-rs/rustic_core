@@ -17,7 +17,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     // Open repository
     let repo_opts = RepositoryOptions::default().password("test");
 
-    let repo = Repository::new(&repo_opts, backends)?
+    let repo = Repository::new(&repo_opts, &backends)?
         .open()?
         .to_indexed_ids()?;
 

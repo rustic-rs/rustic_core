@@ -157,6 +157,7 @@ impl ConfigFile {
     }
 
     /// Get wheter an extra verification (decompressing/decrypting data before writing to the repository) should be performed.
+    #[must_use]
     pub fn extra_verify(&self) -> bool {
         self.extra_verify.unwrap_or(true) // default is to do the extra check
     }

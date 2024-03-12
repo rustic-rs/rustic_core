@@ -95,12 +95,32 @@ impl SnapshotOptions {
     /// # Arguments
     ///
     /// * `tag` - The tag to add
+    ///
+    /// # Errors
+    ///
+    /// * [`SnapshotFileErrorKind::NonUnicodeTag`] - If the tag is not valid unicode
+    ///
+    /// # Returns
+    ///
+    /// The modified [`SnapshotOptions`]
+    ///
+    /// [`SnapshotFileErrorKind::NonUnicodeTag`]: crate::error::SnapshotFileErrorKind::NonUnicodeTag
     pub fn add_tags(mut self, tag: &str) -> RusticResult<Self> {
         self.tag.push(StringList::from_str(tag)?);
         Ok(self)
     }
 
     /// Create a new [`SnapshotFile`] using this `SnapshotOption`s
+    ///
+    /// # Errors
+    ///
+    /// * [`SnapshotFileErrorKind::NonUnicodeHostname`] - If the hostname is not valid unicode
+    ///
+    /// # Returns
+    ///
+    /// The new [`SnapshotFile`]
+    ///
+    /// [`SnapshotFileErrorKind::NonUnicodeHostname`]: crate::error::SnapshotFileErrorKind::NonUnicodeHostname
     pub fn to_snapshot(&self) -> RusticResult<SnapshotFile> {
         SnapshotFile::from_options(self)
     }
@@ -1052,6 +1072,15 @@ impl StringList {
     /// Turn this [`StringList`] into an Iterator
     pub fn iter(&self) -> std::slice::Iter<'_, String> {
         self.0.iter()
+    }
+}
+
+impl<'str> IntoIterator for &'str StringList {
+    type Item = &'str String;
+    type IntoIter = std::slice::Iter<'str, String>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.iter()
     }
 }
 

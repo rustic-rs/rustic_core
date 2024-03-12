@@ -286,7 +286,7 @@ impl Repository<NoProgressBars, ()> {
     /// * [`BackendAccessErrorKind::BackendLoadError`] - If the specified backend cannot be loaded, e.g. is not supported
     ///
     /// [`BackendAccessErrorKind::BackendLoadError`]: crate::error::BackendAccessErrorKind::BackendLoadError
-    pub fn new(opts: &RepositoryOptions, backends: RepositoryBackends) -> RusticResult<Self> {
+    pub fn new(opts: &RepositoryOptions, backends: &RepositoryBackends) -> RusticResult<Self> {
         Self::new_with_progress(opts, backends, NoProgressBars {})
     }
 }
@@ -315,7 +315,7 @@ impl<P> Repository<P, ()> {
     /// [`BackendAccessErrorKind::BackendLoadError`]: crate::error::BackendAccessErrorKind::BackendLoadError
     pub fn new_with_progress(
         opts: &RepositoryOptions,
-        backends: RepositoryBackends,
+        backends: &RepositoryBackends,
         pb: P,
     ) -> RusticResult<Self> {
         let mut be = backends.repository();
@@ -690,8 +690,14 @@ impl<P: ProgressBars, S> Repository<P, S> {
     ///
     /// * `packs` - The pack files to warm up
     ///
+    /// # Errors
+    ///
     /// * [`RepositoryErrorKind::FromSplitError`] - If the command could not be parsed.
     /// * [`RepositoryErrorKind::FromThreadPoolbilderError`] - If the thread pool could not be created.
+    ///
+    /// # Returns
+    ///
+    /// The result of the warm up
     pub fn warm_up(&self, packs: impl ExactSizeIterator<Item = Id>) -> RusticResult<()> {
         warm_up(self, packs)
     }
@@ -1195,9 +1201,16 @@ impl<P: ProgressBars, S: Open> Repository<P, S> {
         }
     }
 
-    /// Get statistical information from the index
+    /// Get statistical information from the index. This method reads all index files,
+    /// even if an index is already available in memory.
     ///
-    /// This method reads all index files, even if an index is already available in memory.
+    /// # Errors
+    ///
+    /// If the index could not be read.
+    ///
+    /// # Returns
+    ///
+    /// The statistical information from the index.
     pub fn infos_index(&self) -> RusticResult<IndexInfos> {
         commands::repoinfo::collect_index_infos(self)
     }
@@ -1277,6 +1290,15 @@ pub trait IndexedFull: IndexedIds {
     ///
     /// * `id` - The [`Id`] of the blob to get
     /// * `with` - The function which fetches the blob from the repository if it is not contained in the cache
+    ///
+    /// # Errors
+    ///
+    /// If the blob could not be fetched from the repository.
+    ///
+    /// # Returns
+    ///
+    /// The blob with the given id or the result of the given function if the blob is not contained in the cache
+    /// and the function is called.
     fn get_blob_or_insert_with(
         &self,
         id: &Id,

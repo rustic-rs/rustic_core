@@ -7,6 +7,7 @@ use crate::opendal::OpenDALBackend;
 use bytes::Bytes;
 use rustic_core::{FileType, Id, ReadBackend, WriteBackend};
 
+/// SFTP backend for Rustic. A wrapper around the `OpenDAL` backend.
 #[derive(Clone, Debug)]
 pub struct SftpBackend(OpenDALBackend);
 
@@ -61,6 +62,14 @@ impl SftpBackend {
     /// * `path` - The path to the sftp server
     /// * `options` - Additional options for the SFTP backend
     ///
+    /// # Errors
+    ///
+    /// If the path is not a valid url, an error is returned.
+    ///
+    /// # Returns
+    ///
+    /// The new SFTP backend.
+    ///
     /// # Notes
     ///
     /// The path should be something like "`sftp://user@host:port/path`"
@@ -85,6 +94,8 @@ impl SftpBackend {
         Ok(Self(OpenDALBackend::new("sftp", options)?))
     }
 
+    /// Return the inner `OpenDAL` backend.
+    #[must_use]
     pub fn to_inner(self) -> OpenDALBackend {
         self.0
     }

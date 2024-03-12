@@ -76,7 +76,7 @@ serde = { version = "1.0.197" }
 serde-aux = "4.5.0"
 serde_derive = "1.0.197"
 serde_json = "1.0.114"
-serde_with = { version = "3.6.1", features = ["base64"] }
+serde_with = { version = "3.7.0", features = ["base64"] }
 
 # local source/destination
 cached = { version = "0.49.2", default-features = false, features = ["proc_macro"] }
@@ -113,7 +113,7 @@ gethostname = "0.4.3"
 humantime = "2.1.0"
 itertools = "0.12.1"
 quick_cache = "0.4.1"
-strum = { version = "0.26.1", features = ["derive"] }
+strum = { version = "0.26.2", features = ["derive"] }
 zstd = "0.13.0"
 
 [target.'cfg(not(windows))'.dependencies]
@@ -136,10 +136,13 @@ mockall = "0.12.1"
 pretty_assertions = "1.4.0"
 quickcheck = "1.0.3"
 quickcheck_macros = "1.0.0"
-rstest = "0.18.2"
+rstest = { workspace = true }
 rustdoc-json = "0.8.9"
 # We need to have rustic_backend here, because the doc-tests in lib.rs of rustic_core
 rustic_backend = { workspace = true }
 rustup-toolchain = "0.1.6"
 simplelog = "0.12.2"
 tempfile = { workspace = true }
+
+[lints]
+workspace = true

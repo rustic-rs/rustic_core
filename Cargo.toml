@@ -9,7 +9,7 @@ members = [
 resolver = "2"
 
 [workspace.package]
-rust-version = "1.72.0"
+rust-version = "1.72.1"
 
 [workspace.dependencies]
 aho-corasick = "1.1.2"
@@ -18,6 +18,7 @@ rustic_core = { path = "crates/core" }
 simplelog = "0.12.2"
 
 # dev-dependencies
+rstest = "0.18.2"
 tempfile = "3.10.1"
 
 # see: https://nnethercote.github.io/perf-book/build-configuration.html
@@ -60,3 +61,62 @@ rpath = false
 lto = true
 debug-assertions = false
 codegen-units = 1
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+missing_docs = "warn"
+rust_2018_idioms = "warn"
+trivial_casts = "warn"
+unused_lifetimes = "warn"
+unused_qualifications = "warn"
+bad_style = "warn"
+dead_code = "allow" # TODO: "warn"
+improper_ctypes = "warn"
+missing_copy_implementations = "warn"
+missing_debug_implementations = "warn"
+non_shorthand_field_patterns = "warn"
+no_mangle_generic_items = "warn"
+overflowing_literals = "warn"
+path_statements = "warn"
+patterns_in_fns_without_body = "warn"
+trivial_numeric_casts = "warn"
+unused_results = "warn"
+unused_extern_crates = "warn"
+unused_import_braces = "warn"
+unconditional_recursion = "warn"
+unused = "warn"
+unused_allocation = "warn"
+unused_comparisons = "warn"
+unused_parens = "warn"
+while_true = "warn"
+unreachable_pub = "allow"
+
+[workspace.lints.clippy]
+redundant_pub_crate = "allow"
+pedantic = "warn"
+nursery = "warn"
+# expect_used = "warn" # TODO!
+# unwrap_used = "warn" # TODO!
+enum_glob_use = "warn"
+correctness = "warn"
+suspicious = "warn"
+complexity = "warn"
+perf = "warn"
+cast_lossless = "warn"
+default_trait_access = "warn"
+doc_markdown = "warn"
+manual_string_new = "warn"
+match_same_arms = "warn"
+semicolon_if_nothing_returned = "warn"
+trivially_copy_pass_by_ref = "warn"
+module_name_repetitions = "allow"
+# TODO: Remove when Windows support landed
+# mostly Windows-related functionality is missing `const`
+# as it's only OK(()), but doesn't make it reasonable to
+# have a breaking change in the future. They won't be const.
+missing_const_for_fn = "allow"
+needless_raw_string_hashes = "allow"
+
+[workspace.lints.rustdoc]
+# We run rustdoc with `--document-private-items` so we can document private items
+private_intra_doc_links = "allow"

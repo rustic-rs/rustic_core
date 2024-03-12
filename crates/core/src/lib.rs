@@ -99,67 +99,8 @@ This crate exposes a few features for controlling dependency usage.
   *This feature is disabled by default*.
 */
 
-#![allow(dead_code)]
-#![forbid(unsafe_code)]
-// TODO: Enable when we're ready to fix all unwraps
-// Better case, we replace them with expect() and a good message
-// Best case, we replace them with good error handling
-// #![deny(clippy::unwrap_used)]
-// #![deny(clippy::expect_used)]
-#![warn(
-    // TODO: frequently check
-    // unreachable_pub,
-    // TODO: Activate if you're feeling like fixing stuff 
-    // clippy::pedantic,
-    // clippy::correctness,
-    // clippy::suspicious,
-    // clippy::complexity,
-    // clippy::perf,
-    missing_docs,
-    rust_2018_idioms,
-    trivial_casts,
-    unused_lifetimes,
-    unused_qualifications,
-    clippy::nursery,
-    bad_style,
-    dead_code,
-    improper_ctypes,
-    missing_copy_implementations,
-    missing_debug_implementations,
-    non_shorthand_field_patterns,
-    no_mangle_generic_items,
-    overflowing_literals,
-    path_statements,
-    patterns_in_fns_without_body,
-    trivial_numeric_casts,
-    unused_results,
-    trivial_casts,
-    unused_extern_crates,
-    unused_import_braces,
-    unused_qualifications,
-    unconditional_recursion,
-    unused,
-    unused_allocation,
-    unused_comparisons,
-    unused_parens,
-    while_true,
-    clippy::cast_lossless,
-    clippy::default_trait_access,
-    clippy::doc_markdown,
-    clippy::manual_string_new,
-    clippy::match_same_arms,
-    clippy::semicolon_if_nothing_returned,
-    clippy::trivially_copy_pass_by_ref
-)]
-#![allow(clippy::module_name_repetitions, clippy::redundant_pub_crate)]
-// TODO: Remove when Windows support landed
-// mostly Windows-related functionality is missing `const`
-// as it's only OK(()), but doesn't make it reasonable to
-// have a breaking change in the future. They won't be const.
-#![allow(clippy::missing_const_for_fn)]
-// We run rustdoc with `--document-private-items` so we can document private items
-#![allow(rustdoc::private_intra_doc_links)]
-#![allow(clippy::needless_raw_string_hashes)]
+// Workspace lints don't seem to work for this?
+#![allow(clippy::redundant_pub_crate)]
 
 pub(crate) mod archiver;
 pub(crate) mod backend;

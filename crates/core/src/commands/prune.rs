@@ -565,6 +565,7 @@ impl PrunePack {
     /// * `todo` - The task to be executed on the pack
     /// * `pi` - The `PackInfo` of the pack
     /// * `stats` - The `PruneStats` of the `PrunePlan`
+    #[allow(clippy::similar_names)]
     fn set_todo(
         &mut self,
         todo: PackToDo,
@@ -765,6 +766,8 @@ impl PrunePlan {
     /// # Errors
     ///
     // TODO: add errors!
+    #[allow(clippy::too_many_lines)]
+    #[allow(clippy::unnecessary_wraps)]
     fn decide_packs(
         &mut self,
         keep_pack: Duration,
@@ -1097,7 +1100,21 @@ impl PrunePlan {
     ///
     /// * `repo` - The repository to prune
     /// * `opts` - The options for the pruning
+    ///
+    /// # Errors
+    ///
+    /// * [`CommandErrorKind::NotAllowedWithAppendOnly`] - If the repository is in append-only mode
+    /// * [`CommandErrorKind::NoDecision`] - If a pack has no decision
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(())` - If the pruning was successful
+    ///
+    /// # Panics
+    ///
+    /// TODO! In weird circumstances, should be fixed.
     #[allow(clippy::significant_drop_tightening)]
+    #[allow(clippy::too_many_lines)]
     pub fn do_prune<P: ProgressBars, S: Open>(
         self,
         repo: &Repository<P, S>,

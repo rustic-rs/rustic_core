@@ -16,7 +16,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     // Open repository
     let src_repo_opts = RepositoryOptions::default().password("test");
 
-    let src_repo = Repository::new(&src_repo_opts, src_backends)?
+    let src_repo = Repository::new(&src_repo_opts, &src_backends)?
         .open()?
         .to_indexed()?;
 
@@ -27,7 +27,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     let dst_repo_opts = RepositoryOptions::default().password("test");
 
-    let dst_repo = Repository::new(&dst_repo_opts, dst_backends)?
+    let dst_repo = Repository::new(&dst_repo_opts, &dst_backends)?
         .open()?
         .to_indexed_ids()?;
 
