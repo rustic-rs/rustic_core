@@ -46,7 +46,7 @@ impl TestSource {
 #[fixture]
 fn tar_gz_testdata() -> Result<TestSource> {
     let dir = tempdir()?;
-    let path = Path::new("tests/fixtures/backup-data.tar.gz");
+    let path = Path::new("tests/fixtures/backup-data.tar.gz").canonicalize()?;
     let tar_gz = File::open(path)?;
     let tar = GzDecoder::new(tar_gz);
     let mut archive = Archive::new(tar);
@@ -58,7 +58,9 @@ fn tar_gz_testdata() -> Result<TestSource> {
 
 #[fixture]
 fn dir_testdata() -> TestSource {
-    let path = Path::new("tests/fixtures/backup-data/");
+    let path = Path::new("tests/fixtures/backup-data/")
+        .canonicalize()
+        .expect("fixture path");
     TestSource::new(path)
 }
 
@@ -96,7 +98,7 @@ impl<'a> std::fmt::Debug for TestSummary<'a> {
 #[rstest]
 fn test_backup_with_dir_passes(dir_testdata: TestSource) -> Result<()> {
     // uncomment for logging output
-    SimpleLogger::init(log::LevelFilter::Debug, Config::default())?;
+    // SimpleLogger::init(log::LevelFilter::Debug, Config::default())?;
     let source = dir_testdata;
     let paths = &source.path_list();
 
@@ -137,7 +139,7 @@ fn test_backup_with_dir_passes(dir_testdata: TestSource) -> Result<()> {
 #[rstest]
 fn test_backup_with_tar_gz_passes(tar_gz_testdata: Result<TestSource>) -> Result<()> {
     // uncomment for logging output
-    // SimpleLogger::init(log::LevelFilter::Debug, Config::default())?;
+    SimpleLogger::init(log::LevelFilter::Debug, Config::default())?;
     let source = tar_gz_testdata?;
     let paths = &source.path_list();
 

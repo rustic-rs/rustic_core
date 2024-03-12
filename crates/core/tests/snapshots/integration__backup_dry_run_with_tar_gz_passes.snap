@@ -1,7 +1,6 @@
 ---
 source: crates/core/tests/integration.rs
-assertion_line: 150
-expression: TestSummary(&first_backup)
+expression: TestSummary(&snap_dry_run)
 ---
 TestSnap {
     hostname: "",
