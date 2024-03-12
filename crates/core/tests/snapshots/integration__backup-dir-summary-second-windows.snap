@@ -1,6 +1,6 @@
 ---
 source: crates/core/tests/integration.rs
-expression: TestSummary(&snap_dry_run)
+expression: TestSummary(&second_snapshot)
 ---
 TestSnap {
     hostname: "",
@@ -17,11 +17,11 @@ TestSnap {
     files_changed: 0,
     files_unmodified: 73,
     total_files_processed: 73,
-    total_bytes_processed: 1125682,
+    total_bytes_processed: 1125674,
     dirs_new: 0,
     dirs_changed: 0,
-    dirs_unmodified: 6,
-    total_dirs_processed: 6,
+    dirs_unmodified: 5,
+    total_dirs_processed: 5,
     data_blobs: 0,
     tree_blobs: 0,
     data_added_files: 0,

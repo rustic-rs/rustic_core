@@ -1,0 +1,129 @@
+---
+source: crates/core/tests/integration.rs
+expression: tree
+---
+Tree {
+    nodes: [
+        Node {
+            name: "empty-file",
+            node_type: File,
+            meta: Metadata {
+                mode: None,
+                mtime: Some(
+                    2014-11-30T16:03:11+01:00,
+                ),
+                atime: Some(
+                    2014-11-30T16:03:11+01:00,
+                ),
+                ctime: Some(
+                    2024-03-12T22:32:55+01:00,
+                ),
+                uid: None,
+                gid: None,
+                user: None,
+                group: None,
+                inode: 0,
+                device_id: 0,
+                size: 0,
+                links: 0,
+                extended_attributes: [],
+            },
+            content: Some(
+                [],
+            ),
+            subtree: None,
+        },
+        Node {
+            name: "testfile",
+            node_type: File,
+            meta: Metadata {
+                mode: None,
+                mtime: Some(
+                    2014-08-09T14:14:20+02:00,
+                ),
+                atime: Some(
+                    2014-08-09T14:14:20+02:00,
+                ),
+                ctime: Some(
+                    2024-03-12T22:32:55+01:00,
+                ),
+                uid: None,
+                gid: None,
+                user: None,
+                group: None,
+                inode: 0,
+                device_id: 0,
+                size: 21,
+                links: 0,
+                extended_attributes: [],
+            },
+            content: Some(
+                [
+                    649b8b471e7d7bc175eec758a7006ac693c434c8297c07db15286788c837154a,
+                ],
+            ),
+            subtree: None,
+        },
+        Node {
+            name: "testfile-hardlink",
+            node_type: File,
+            meta: Metadata {
+                mode: None,
+                mtime: Some(
+                    2014-08-09T14:14:20+02:00,
+                ),
+                atime: Some(
+                    2014-08-09T14:14:20+02:00,
+                ),
+                ctime: Some(
+                    2024-03-12T22:32:55+01:00,
+                ),
+                uid: None,
+                gid: None,
+                user: None,
+                group: None,
+                inode: 0,
+                device_id: 0,
+                size: 21,
+                links: 0,
+                extended_attributes: [],
+            },
+            content: Some(
+                [
+                    649b8b471e7d7bc175eec758a7006ac693c434c8297c07db15286788c837154a,
+                ],
+            ),
+            subtree: None,
+        },
+        Node {
+            name: "testfile-symlink",
+            node_type: Symlink {
+                linktarget: "testfile",
+                linktarget_raw: None,
+            },
+            meta: Metadata {
+                mode: None,
+                mtime: Some(
+                    2024-03-12T22:32:55.218816+01:00,
+                ),
+                atime: Some(
+                    2024-03-12T22:32:55.218816+01:00,
+                ),
+                ctime: Some(
+                    2024-03-12T22:32:55.218816+01:00,
+                ),
+                uid: None,
+                gid: None,
+                user: None,
+                group: None,
+                inode: 0,
+                device_id: 0,
+                size: 0,
+                links: 0,
+                extended_attributes: [],
+            },
+            content: None,
+            subtree: None,
+        },
+    ],
+}
