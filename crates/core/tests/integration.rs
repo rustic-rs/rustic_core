@@ -120,15 +120,15 @@ fn test_backup_with_dir_passes(dir_testdata: TestSource) -> Result<()> {
     // re-read index
     let repo = repo.to_indexed_ids()?;
     // second backup
-    let snap2 = repo.backup(&opts, paths, SnapshotFile::default())?;
-    assert_debug_snapshot!(TestSummary(&snap2));
-    assert_eq!(snap2.parent, Some(first_backup.id));
-    assert_eq!(first_backup.tree, snap2.tree);
+    let second_snapshot = repo.backup(&opts, paths, SnapshotFile::default())?;
+    assert_debug_snapshot!(TestSummary(&second_snapshot));
+    assert_eq!(second_snapshot.parent, Some(first_backup.id));
+    assert_eq!(first_backup.tree, second_snapshot.tree);
 
     // get all snapshots and check them
     let mut all_snapshots = repo.get_all_snapshots()?;
     all_snapshots.sort_unstable();
-    assert_eq!(vec![first_backup, snap2], all_snapshots);
+    assert_eq!(vec![first_backup, second_snapshot], all_snapshots);
 
     // pack files should be unchanged
     let packs2: Vec<_> = repo.list(rustic_core::FileType::Pack)?.collect();
@@ -161,15 +161,15 @@ fn test_backup_with_tar_gz_passes(tar_gz_testdata: Result<TestSource>) -> Result
     // re-read index
     let repo = repo.to_indexed_ids()?;
     // second backup
-    let snap2 = repo.backup(&opts, paths, SnapshotFile::default())?;
-    assert_debug_snapshot!(TestSummary(&snap2));
-    assert_eq!(snap2.parent, Some(first_backup.id));
-    assert_eq!(first_backup.tree, snap2.tree);
+    let second_snapshot = repo.backup(&opts, paths, SnapshotFile::default())?;
+    assert_debug_snapshot!(TestSummary(&second_snapshot));
+    assert_eq!(second_snapshot.parent, Some(first_backup.id));
+    assert_eq!(first_backup.tree, second_snapshot.tree);
 
     // get all snapshots and check them
     let mut all_snapshots = repo.get_all_snapshots()?;
     all_snapshots.sort_unstable();
-    assert_eq!(vec![first_backup, snap2], all_snapshots);
+    assert_eq!(vec![first_backup, second_snapshot], all_snapshots);
 
     // pack files should be unchanged
     let packs2: Vec<_> = repo.list(rustic_core::FileType::Pack)?.collect();
