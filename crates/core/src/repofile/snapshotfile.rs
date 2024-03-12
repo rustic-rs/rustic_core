@@ -1100,42 +1100,31 @@ impl Display for PathList {
     }
 }
 
+impl FromIterator<PathBuf> for PathList {
+    fn from_iter<I: IntoIterator<Item = PathBuf>>(iter: I) -> Self {
+        Self(iter.into_iter().collect())
+    }
+}
+
+impl<'a> FromIterator<&'a String> for PathList {
+    fn from_iter<I: IntoIterator<Item = &'a String>>(iter: I) -> Self {
+        Self(iter.into_iter().map(PathBuf::from).collect())
+    }
+}
+
+impl FromIterator<String> for PathList {
+    fn from_iter<I: IntoIterator<Item = String>>(iter: I) -> Self {
+        Self(iter.into_iter().map(PathBuf::from).collect())
+    }
+}
+
+impl<'a> FromIterator<&'a str> for PathList {
+    fn from_iter<I: IntoIterator<Item = &'a str>>(iter: I) -> Self {
+        Self(iter.into_iter().map(PathBuf::from).collect())
+    }
+}
+
 impl PathList {
-    /// Create a `PathList` from `String`s.
-    ///
-    /// # Arguments
-    ///
-    /// * `source` - The `String`s to use
-    pub fn from_strings<I>(source: I) -> Self
-    where
-        I: IntoIterator,
-        I::Item: AsRef<str>,
-    {
-        Self(
-            source
-                .into_iter()
-                .map(|source| PathBuf::from(source.as_ref()))
-                .collect(),
-        )
-    }
-
-    /// Create a `PathList` from a list of `PathBuf`s.
-    ///
-    /// # Arguments
-    ///
-    /// * `source` - The `PathBuf`s to use
-    ///
-    /// # Returns
-    ///
-    /// A `PathList` containing the `PathBuf`s
-    pub fn from_iter<I>(source: I) -> Self
-    where
-        I: IntoIterator,
-        I::Item: Into<PathBuf>,
-    {
-        Self(source.into_iter().map(Into::into).collect())
-    }
-
     /// Create a `PathList` by parsing a Strings containing paths separated by whitspaces.
     ///
     /// # Arguments
@@ -1149,7 +1138,7 @@ impl PathList {
     /// [`SnapshotFileErrorKind::FromSplitError`]: crate::error::SnapshotFileErrorKind::FromSplitError
     pub fn from_string(sources: &str) -> RusticResult<Self> {
         let sources = split(sources).map_err(SnapshotFileErrorKind::FromSplitError)?;
-        Ok(Self::from_strings(sources))
+        Ok(Self::from_iter(sources))
     }
 
     /// Number of paths in the `PathList`.

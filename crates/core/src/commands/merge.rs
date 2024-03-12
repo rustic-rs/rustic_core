@@ -39,7 +39,12 @@ pub(crate) fn merge_snapshots<P: ProgressBars, S: IndexedTree>(
 ) -> RusticResult<SnapshotFile> {
     let now = Local::now();
 
-    let paths = PathList::from_strings(snapshots.iter().flat_map(|snap| snap.paths.iter())).merge();
+    let paths = snapshots
+        .iter()
+        .flat_map(|snap| snap.paths.iter())
+        .collect::<PathList>()
+        .merge();
+
     snap.paths.set_paths(&paths.paths())?;
 
     // set snapshot time to time of latest snapshot to be merged
