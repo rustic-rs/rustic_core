@@ -17,7 +17,7 @@ use std::{
     sync::Arc,
 };
 // uncomment for logging output
-use simplelog::{Config, SimpleLogger};
+// use simplelog::{Config, SimpleLogger};
 use tar::Archive;
 use tempfile::{tempdir, TempDir};
 
@@ -102,7 +102,7 @@ impl<'a> std::fmt::Debug for TestSummary<'a> {
 #[rstest]
 fn test_backup_with_dir_passes(dir_testdata: PathBuf, set_up_repo: Result<RepoOpen>) -> Result<()> {
     // uncomment for logging output
-    SimpleLogger::init(log::LevelFilter::Debug, Config::default())?;
+    // SimpleLogger::init(log::LevelFilter::Debug, Config::default())?;
 
     // Fixtures
     let (source, repo) = (dir_testdata, set_up_repo?.to_indexed_ids()?);
@@ -120,7 +120,8 @@ fn test_backup_with_dir_passes(dir_testdata: PathBuf, set_up_repo: Result<RepoOp
     // tree of first backup
     // re-read index
     let repo = repo.to_indexed_ids()?;
-    let tree = repo.node_from_path(first_backup.tree, Path::new("test"))?;
+    let tree = repo.node_from_path(first_backup.tree, Path::new("test/tests"))?;
+    let tree = repo.get_tree(&tree.subtree.expect("Sub tree"))?;
     assert_debug_snapshot!(tree);
 
     // get all snapshots and check them
