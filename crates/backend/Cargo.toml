@@ -47,7 +47,7 @@ sftp = ["opendal"]
 rustic_core = { workspace = true }
 
 # errors
-anyhow = "1.0.80"
+anyhow = "1.0.81"
 displaydoc = "0.2.4"
 thiserror = "1.0.57"
 
