@@ -78,7 +78,7 @@ walkdir = "2.5.0"
 
 # rest backend
 backoff = { version = "0.4.0", optional = true }
-reqwest = { version = "0.11.25", default-features = false, features = ["json", "rustls-tls-native-roots", "stream", "blocking"], optional = true }
+reqwest = { version = "0.11.26", default-features = false, features = ["json", "rustls-tls-native-roots", "stream", "blocking"], optional = true }
 
 # rclone backend
 rand = { version = "0.8.5", optional = true }
