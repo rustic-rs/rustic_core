@@ -17,7 +17,7 @@ TestSnap {
     files_changed: 0,
     files_unmodified: 73,
     total_files_processed: 73,
-    total_bytes_processed: 1125682,
+    total_bytes_processed: 1125674,
     dirs_new: 0,
     dirs_changed: 0,
     dirs_unmodified: 6,
