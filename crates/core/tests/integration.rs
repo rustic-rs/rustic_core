@@ -107,7 +107,7 @@ fn test_backup_with_dir_passes(dir_testdata: PathBuf, set_up_repo: Result<RepoOp
     // Fixtures
     let (source, repo) = (dir_testdata, set_up_repo?.to_indexed_ids()?);
 
-    let paths = PathList::from_iter(Some(source.clone()));
+    let paths = PathList::from_iter(Some(source));
 
     // we use as_path to not depend on the actual tempdir
     let opts = BackupOptions::default().as_path(PathBuf::from_str("test")?);
