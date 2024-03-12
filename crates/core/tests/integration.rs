@@ -21,7 +21,10 @@ use simplelog::{Config, SimpleLogger};
 use tar::Archive;
 use tempfile::{tempdir, TempDir};
 
-fn set_up_repo() -> Result<Repository<NoProgressBars, OpenStatus>> {
+type RepoOpen = Repository<NoProgressBars, OpenStatus>;
+
+#[fixture]
+fn set_up_repo() -> Result<RepoOpen> {
     let be = InMemoryBackend::new();
     let be = RepositoryBackends::new(Arc::new(be), None);
     let options = RepositoryOptions::default().password("test");
@@ -97,13 +100,15 @@ impl<'a> std::fmt::Debug for TestSummary<'a> {
 }
 
 #[rstest]
-fn test_backup_with_dir_passes(dir_testdata: PathBuf) -> Result<()> {
+fn test_backup_with_dir_passes(dir_testdata: PathBuf, set_up_repo: Result<RepoOpen>) -> Result<()> {
     // uncomment for logging output
     // SimpleLogger::init(log::LevelFilter::Debug, Config::default())?;
-    let source = dir_testdata;
+
+    // Fixtures
+    let (source, repo) = (dir_testdata, set_up_repo?.to_indexed_ids()?);
+
     let paths = PathList::from_iter(Some(source.clone()));
 
-    let repo = set_up_repo()?.to_indexed_ids()?;
     // we use as_path to not depend on the actual tempdir
     let opts = BackupOptions::default().as_path(PathBuf::from_str("test")?);
 
@@ -138,16 +143,18 @@ fn test_backup_with_dir_passes(dir_testdata: PathBuf) -> Result<()> {
 }
 
 #[rstest]
-fn test_backup_with_tar_gz_passes(tar_gz_testdata: Result<TestSource>) -> Result<()> {
+fn test_backup_with_tar_gz_passes(
+    tar_gz_testdata: Result<TestSource>,
+    set_up_repo: Result<RepoOpen>,
+) -> Result<()> {
     // uncomment for logging output
-    SimpleLogger::init(log::LevelFilter::Debug, Config::default())?;
-    let source = tar_gz_testdata?;
+    // SimpleLogger::init(log::LevelFilter::Debug, Config::default())?;
 
-    dbg!(&source);
+    // Fixtures
+    let (source, repo) = (tar_gz_testdata?, set_up_repo?.to_indexed_ids()?);
 
     let paths = &source.path_list();
 
-    let repo = set_up_repo()?.to_indexed_ids()?;
     // we use as_path to not depend on the actual tempdir
     let opts = BackupOptions::default().as_path(PathBuf::from_str("test")?);
 
@@ -182,10 +189,15 @@ fn test_backup_with_tar_gz_passes(tar_gz_testdata: Result<TestSource>) -> Result
 }
 
 #[rstest]
-fn test_backup_dry_run_with_tar_gz_passes(tar_gz_testdata: Result<TestSource>) -> Result<()> {
-    let source = tar_gz_testdata?;
+fn test_backup_dry_run_with_tar_gz_passes(
+    tar_gz_testdata: Result<TestSource>,
+    set_up_repo: Result<RepoOpen>,
+) -> Result<()> {
+    // Fixtures
+    let (source, repo) = (tar_gz_testdata?, set_up_repo?.to_indexed_ids()?);
+
     let paths = &source.path_list();
-    let repo = set_up_repo()?.to_indexed_ids()?;
+
     // we use as_path to not depend on the actual tempdir
     let opts = BackupOptions::default()
         .as_path(PathBuf::from_str("test")?)
