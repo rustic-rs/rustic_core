@@ -1,0 +1,30 @@
+---
+source: crates/core/tests/integration.rs
+assertion_line: 163
+expression: TestSummary(&snap2)
+---
+TestSnap {
+    hostname: "",
+    paths: StringList(
+        [
+            "test",
+        ],
+    ),
+    label: "",
+    tags: StringList(
+        [],
+    ),
+    files_new: 0,
+    files_changed: 0,
+    files_unmodified: 0,
+    total_files_processed: 0,
+    total_bytes_processed: 0,
+    dirs_new: 0,
+    dirs_changed: 0,
+    dirs_unmodified: 1,
+    total_dirs_processed: 1,
+    data_blobs: 0,
+    tree_blobs: 0,
+    data_added_files: 0,
+    data_added_files_packed: 0,
+}

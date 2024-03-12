@@ -16,7 +16,7 @@ use std::{
     sync::Arc,
 };
 // uncomment for logging output
-// use simplelog::{Config, SimpleLogger};
+use simplelog::{Config, SimpleLogger};
 use tar::Archive;
 use tempfile::tempdir;
 
@@ -57,9 +57,9 @@ fn tar_gz_testdata() -> Result<TestSource> {
 }
 
 #[fixture]
-fn dir_testdata() -> Result<TestSource> {
+fn dir_testdata() -> TestSource {
     let path = Path::new("tests/fixtures/backup-data/");
-    Ok(TestSource::new(path))
+    TestSource::new(path)
 }
 
 // Parts of the snapshot summary we want to test against references
@@ -94,10 +94,10 @@ impl<'a> std::fmt::Debug for TestSummary<'a> {
 }
 
 #[rstest]
-fn test_backup_with_dir_passes(dir_testdata: Result<TestSource>) -> Result<()> {
+fn test_backup_with_dir_passes(dir_testdata: TestSource) -> Result<()> {
     // uncomment for logging output
-    // SimpleLogger::init(log::LevelFilter::Debug, Config::default())?;
-    let source = dir_testdata?;
+    SimpleLogger::init(log::LevelFilter::Debug, Config::default())?;
+    let source = dir_testdata;
     let paths = &source.path_list();
 
     let repo = set_up_repo()?.to_indexed_ids()?;
