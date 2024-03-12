@@ -7,12 +7,13 @@ use std::{
 
 use anyhow::Result;
 use bytes::Bytes;
-use itertools::Itertools;
-use log::{debug, info, warn};
+use log::{debug, info};
 use rand::{
     distributions::{Alphanumeric, DistString},
     thread_rng,
 };
+
+use semver::{BuildMetadata, Prerelease, Version, VersionReq};
 use shell_words::split;
 
 use crate::{error::RcloneErrorKind, rest::RestBackend};
@@ -47,7 +48,11 @@ impl Drop for RcloneBackend {
     }
 }
 
-/// Get the rclone version.
+/// Check the rclone version.
+///
+/// # Arguments
+///
+/// * `rclone_version_output` - The output of `rclone version`.
 ///
 /// # Errors
 ///
@@ -58,31 +63,40 @@ impl Drop for RcloneBackend {
 ///
 /// # Returns
 ///
-/// The rclone version as a tuple of (major, minor, patch).
+/// * `Ok(())` - If the rclone version is supported.
 ///
 /// [`RcloneErrorKind::FromIoError`]: RcloneErrorKind::FromIoError
 /// [`RcloneErrorKind::FromUtf8Error`]: RcloneErrorKind::FromUtf8Error
 /// [`RcloneErrorKind::NoOutputForRcloneVersion`]: RcloneErrorKind::NoOutputForRcloneVersion
 /// [`RcloneErrorKind::FromParseVersion`]: RcloneErrorKind::FromParseVersion
-fn rclone_version() -> Result<(i32, i32, i32)> {
-    let rclone_version_output = Command::new("rclone")
-        .arg("version")
-        .output()
-        .map_err(RcloneErrorKind::FromIoError)?
-        .stdout;
-    let rclone_version = std::str::from_utf8(&rclone_version_output)
+fn check_clone_version(rclone_version_output: &[u8]) -> Result<()> {
+    let rclone_version = std::str::from_utf8(rclone_version_output)
         .map_err(RcloneErrorKind::FromUtf8Error)?
         .lines()
         .next()
         .ok_or_else(|| RcloneErrorKind::NoOutputForRcloneVersion)?
         .trim_start_matches(|c: char| !c.is_numeric());
 
-    let versions = rclone_version
-        .split(&['.', '-', ' '][..])
-        .filter_map(|v| v.parse().ok())
-        .collect_tuple()
-        .ok_or_else(|| RcloneErrorKind::FromParseVersion(rclone_version.to_string()))?;
-    Ok(versions)
+    let mut parsed_version = Version::parse(rclone_version)?;
+
+    // we need to set the pre and build fields to empty to make the comparison work
+    // otherwise the comparison will take the pre and build fields into account
+    // which would make beta versions pass the check
+    parsed_version.pre = Prerelease::EMPTY;
+    parsed_version.build = BuildMetadata::EMPTY;
+
+    // for rclone < 1.52.2 setting user/password via env variable doesn't work. This means
+    // we are setting up an rclone without authentication which is a security issue!
+    // we hard fail here to prevent this, as we can't guarantee the security of the data
+    // also because 1.52.2 has been released on Jun 24, 2020, we can assume that this is a
+    // reasonable lower bound for the version
+    if VersionReq::parse("<1.52.2")?.matches(&parsed_version) {
+        return Err(
+            RcloneErrorKind::RCloneWithoutAuthentication(rclone_version.to_string()).into(),
+        );
+    }
+
+    Ok(())
 }
 
 impl RcloneBackend {
@@ -121,21 +135,16 @@ impl RcloneBackend {
             .unwrap_or(true);
 
         if use_password && rclone_command.is_none() {
-            // if we want to use a password and rclone_command is not explicitely set, we check for a rclone version supporting
-            // user/password via env variables
-            match rclone_version() {
-                Ok(v) => {
-                    if v < (1, 52, 2) {
-                        // TODO: This should be an error, and explicitly agreed to with a flag passed to `rustic`,
-                        // check #812 for details
-                        // for rclone < 1.52.2 setting user/password via env variable doesn't work. This means
-                        // we are setting up an rclone without authentication which is a security issue!
-                        // (however, it still works, so we give a warning)
-                        warn!("Using rclone without authentication! Upgrade to rclone >= 1.52.2 (current version: {}.{}.{})!", v.0, v.1, v.2);
-                    }
-                }
-                Err(err) => warn!("Could not determine rclone version: {err}"),
-            }
+            let rclone_version_output = Command::new("rclone")
+                .arg("version")
+                .output()
+                .map_err(RcloneErrorKind::FromIoError)?
+                .stdout;
+
+            // if we want to use a password and rclone_command is not explicitly set,
+            // we check for a rclone version supporting user/password via env variables
+            // if the version is not supported, we return an error
+            check_clone_version(rclone_version_output.as_slice())?;
         }
 
         let user = Alphanumeric.sample_string(&mut thread_rng(), 12);
@@ -306,5 +315,28 @@ impl WriteBackend for RcloneBackend {
     /// * `cacheable` - Whether the file is cacheable.
     fn remove(&self, tpe: FileType, id: &Id, cacheable: bool) -> Result<()> {
         self.rest.remove(tpe, id, cacheable)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use rstest::rstest;
+
+    #[rstest]
+    #[case(b"rclone v1.52.2\n- os/arch: linux/amd64\n- go version: go1.14.4\n")]
+    #[case(b"rclone v1.66.0\n- os/version: Microsoft Windows 11 Pro 23H2 (64 bit)\n- os/kernel: 10.0.22631.3155 (x86_64)\n- os/type: windows\n- os/arch: amd64\n- go/version: go1.22.1\n- go/linking: static\n- go/tags: cmount")]
+    #[case(b"rclone v1.63.0-beta.7022.e649cf4d5\n- os/arch: linux/amd64\n- go version: go1.14.4\n")]
+    fn test_check_clone_version_passes(#[case] rclone_version_output: &[u8]) {
+        assert!(check_clone_version(rclone_version_output).is_ok());
+    }
+
+    #[rstest]
+    #[case(b"")]
+    #[case(b"rclone v1.52.1\n- os/arch: linux/amd64\n- go version: go1.14.4\n")]
+    #[case(b"rclone v1.51.3-beta\n- os/arch: linux/amd64\n- go version: go1.14.4\n")]
+    fn test_check_clone_version_fails(#[case] rclone_version_output: &[u8]) {
+        assert!(check_clone_version(rclone_version_output).is_err());
     }
 }

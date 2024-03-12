@@ -18,6 +18,7 @@ rustic_core = { path = "crates/core" }
 simplelog = "0.12.2"
 
 # dev-dependencies
+rstest = "0.18.2"
 tempfile = "3.10.1"
 
 # see: https://nnethercote.github.io/perf-book/build-configuration.html

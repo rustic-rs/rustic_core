@@ -136,7 +136,7 @@ mockall = "0.12.1"
 pretty_assertions = "1.4.0"
 quickcheck = "1.0.3"
 quickcheck_macros = "1.0.0"
-rstest = "0.18.2"
+rstest = { workspace = true }
 rustdoc-json = "0.8.9"
 # We need to have rustic_backend here, because the doc-tests in lib.rs of rustic_core
 rustic_backend = { workspace = true }
