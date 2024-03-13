@@ -107,6 +107,12 @@ fn insta_tree_redaction() -> Settings {
     let mut settings = insta::Settings::clone_current();
 
     settings.add_redaction(".nodes[].ctime", "[ctime]");
+    settings.add_redaction(".nodes[].inode", "[inode]");
+    settings.add_redaction(".nodes[].device_id", "[device_id]");
+    settings.add_redaction(".nodes[].uid", "[uid]");
+    settings.add_redaction(".nodes[].user", "[user]");
+    settings.add_redaction(".nodes[].gid", "[gid]");
+    settings.add_redaction(".nodes[].group", "[group]");
     settings.add_redaction(".nodes[].content", "[content_id]");
 
     settings
