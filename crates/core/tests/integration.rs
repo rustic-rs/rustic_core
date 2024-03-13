@@ -63,38 +63,15 @@ fn tar_gz_testdata() -> Result<TestSource> {
 }
 
 // Parts of the snapshot summary we want to test against references
+//
+// # Note
+//
+// We use a struct to avoid having to escape the field names in the snapshot
+// we use insta redactions to replace the actual values with placeholders in case
+// there are changes in the actual values
+// Readme: https://insta.rs/docs/redactions/
 #[derive(Serialize)]
 struct TestSummary<'a>(&'a SnapshotFile);
-
-// TODO: we serialize to RON to make the snapshots more readable,
-// but maybe we can keep this for the future?
-// impl<'a> std::fmt::Debug for TestSummary<'a> {
-//     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-//         // leave out info we expect to change:
-//         // Ids, times, tree sizes (as used uid/username is saved in trees)
-//         let mut b = f.debug_struct("TestSnap");
-//         _ = b.field("hostname", &self.0.hostname);
-//         _ = b.field("paths", &self.0.paths);
-//         _ = b.field("label", &self.0.label);
-//         _ = b.field("tags", &self.0.tags);
-
-//         let s = self.0.summary.as_ref().unwrap();
-//         _ = b.field("files_new", &s.files_new);
-//         _ = b.field("files_changed", &s.files_changed);
-//         _ = b.field("files_unmodified", &s.files_unmodified);
-//         _ = b.field("total_files_processed", &s.total_files_processed);
-//         _ = b.field("total_bytes_processed", &s.total_bytes_processed);
-//         _ = b.field("dirs_new", &s.dirs_new);
-//         _ = b.field("dirs_changed", &s.dirs_changed);
-//         _ = b.field("dirs_unmodified", &s.dirs_unmodified);
-//         _ = b.field("total_dirs_processed", &s.total_dirs_processed);
-//         _ = b.field("data_blobs", &s.data_blobs);
-//         _ = b.field("tree_blobs", &s.tree_blobs);
-//         _ = b.field("data_added_files", &s.data_added_files);
-//         _ = b.field("data_added_files_packed", &s.data_added_files_packed);
-//         b.finish()
-//     }
-// }
 
 #[rstest]
 fn test_backup_with_tar_gz_passes(
