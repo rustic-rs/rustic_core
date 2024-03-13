@@ -10,7 +10,7 @@ Tree(
       "mtime": "[some]",
       "atime": "[some]",
       "ctime": "[some]",
-      "content": "[content_id]",
+      "content": Some([]),
     },
     {
       "name": "testfile",
@@ -19,7 +19,9 @@ Tree(
       "atime": "[some]",
       "ctime": "[some]",
       "size": 21,
-      "content": "[content_id]",
+      "content": Some([
+        Id("649b8b471e7d7bc175eec758a7006ac693c434c8297c07db15286788c837154a"),
+      ]),
     },
     {
       "name": "testfile-hardlink",
@@ -28,7 +30,9 @@ Tree(
       "atime": "[some]",
       "ctime": "[some]",
       "size": 21,
-      "content": "[content_id]",
+      "content": Some([
+        Id("649b8b471e7d7bc175eec758a7006ac693c434c8297c07db15286788c837154a"),
+      ]),
     },
     {
       "name": "testfile-symlink",
@@ -37,7 +41,7 @@ Tree(
       "mtime": "[some]",
       "atime": "[some]",
       "ctime": "[some]",
-      "content": "[content_id]",
+      "content": None,
     },
   ],
 )
