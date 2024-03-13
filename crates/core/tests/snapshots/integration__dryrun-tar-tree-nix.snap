@@ -58,7 +58,7 @@ Tree(
       "name": "testfile-symlink",
       "type": "symlink",
       "linktarget": "testfile",
-      "mode": Some(134218239),
+      "mode": Some(134218221),
       "mtime": Some("2014-08-09T12:14:28Z"),
       "atime": Some("2014-08-09T12:14:28Z"),
       "ctime": "[ctime]",

@@ -119,7 +119,6 @@ fn insta_summary_redaction() -> Settings {
 fn insta_tree_redaction() -> Settings {
     let mut settings = insta::Settings::clone_current();
 
-    settings.add_redaction(".nodes[].ctime", "[ctime]");
     settings.add_redaction(".nodes[].inode", "[inode]");
     settings.add_redaction(".nodes[].device_id", "[device_id]");
     settings.add_redaction(".nodes[].uid", "[uid]");
@@ -127,6 +126,34 @@ fn insta_tree_redaction() -> Settings {
     settings.add_redaction(".nodes[].gid", "[gid]");
     settings.add_redaction(".nodes[].group", "[group]");
     settings.add_redaction(".nodes[].content", "[content_id]");
+    settings.add_dynamic_redaction(".nodes[].mode", |val, _| {
+        if val.is_nil() {
+            "[none]".to_string()
+        } else {
+            "[some]".to_string()
+        }
+    });
+    settings.add_dynamic_redaction(".nodes[].mtime", |val, _| {
+        if val.is_nil() {
+            "[none]".to_string()
+        } else {
+            "[some]".to_string()
+        }
+    });
+    settings.add_dynamic_redaction(".nodes[].atime", |val, _| {
+        if val.is_nil() {
+            "[none]".to_string()
+        } else {
+            "[some]".to_string()
+        }
+    });
+    settings.add_dynamic_redaction(".nodes[].ctime", |val, _| {
+        if val.is_nil() {
+            "[none]".to_string()
+        } else {
+            "[some]".to_string()
+        }
+    });
 
     settings
 }
