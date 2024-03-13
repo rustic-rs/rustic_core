@@ -4,7 +4,7 @@ expression: TestSummary(&first_snapshot)
 ---
 TestSummary(SnapshotFile(
   time: "[time]",
-  program_version: "[version]",
+  program_version: "rustic [rustic_core_version]",
   tree: "[tree_id]",
   paths: StringList([
     "test",
