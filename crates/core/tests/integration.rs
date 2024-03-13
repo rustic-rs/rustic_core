@@ -78,6 +78,7 @@ fn set_up_repo() -> Result<RepoOpen> {
 }
 
 // helper func to redact options, but still keep information about some/none
+#[allow(clippy::needless_pass_by_value)] // we need exactly that function signature
 fn handle_option(val: Content, _: ContentPath<'_>) -> String {
     if val.is_nil() {
         "[none]".to_string()
