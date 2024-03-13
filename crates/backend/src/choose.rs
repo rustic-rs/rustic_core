@@ -150,7 +150,7 @@ pub trait BackendChoice {
 
 /// The supported backend types.
 ///
-/// Currently supported types are "local", "rclone", "rest", "opendal", "s3"
+/// Currently supported types are "local", "rclone", "rest", "opendal"
 ///
 /// # Notes
 ///
