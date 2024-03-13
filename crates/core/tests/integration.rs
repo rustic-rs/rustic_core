@@ -12,8 +12,8 @@
 //!
 //! We use the `insta` crate to compare the actual output of the tests with the expected output.
 //! Some data in the output changes every test run, we use insta's redactions to replace the actual values with placeholders.
-//! We define the redactions inside `Settings`` in the fixtures and bind them to the test functions. You can read more about
-//! it here: https://docs.rs/insta/latest/insta/struct.Settings.html
+//! We define the redactions inside `Settings` in the fixtures and bind them to the test functions. You can read more about
+//! it [here](https://docs.rs/insta/latest/insta/struct.Settings.html).
 //!
 //! # Fixtures and Dependency Injection
 //!
