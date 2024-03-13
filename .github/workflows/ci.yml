@@ -6,27 +6,10 @@ concurrency:
 
 on:
   pull_request:
-    paths:
-      - "**/Cargo.toml"
-      - "**/Cargo.lock"
-      - '**.rs'
-      - '**.snap'
-      - '**.yml'
-      - '**.toml'
   push:
-    branches:
+    # We run the heavy ci already
+    branches-ignore:
       - main
-    paths:
-      - "**/Cargo.toml"
-      - "**/Cargo.lock"
-      - '**.rs'
-      - '**.snap'
-      - '**.yml'
-      - '**.toml'
-  schedule:
-    - cron: "0 0 * * 0"
-  merge_group:
-    types: [checks_requested]
 
 jobs:
   fmt:
@@ -117,44 +100,6 @@ jobs:
       - name: Run Cargo Doc
         run: cargo +${{ matrix.rust }} doc --no-deps --all-features --workspace --examples
 
-  powerset:
-    name: Check Powerset of Features
-    # Only run if the commit doesn't come from a merged PR, we assume CI is running in the PR as well
-    # so we don't want to have runs double up
-    if: github.event.pull_request.merged == false
-    runs-on: ${{ matrix.job.os }}
-    strategy:
-      matrix:
-        rust: [stable, beta, nightly]
-        crate: [rustic_core, rustic_backend] # if we use a workspace, we also check all examples/*
-        job:
-          - os: macos-latest
-          - os: ubuntu-latest
-          - os: windows-latest
-    steps:
-      - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4
-        if: github.event_name != 'pull_request'
-        with:
-          fetch-depth: 0
-
-      - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4
-        if: github.event_name == 'pull_request'
-        with:
-          ref: ${{ github.event.pull_request.head.sha }}
-          fetch-depth: 0
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@1482605bfc5719782e1267fd0c0cc350fe7646b8 # v1
-        with:
-          toolchain: ${{ matrix.rust }}
-      - name: install cargo-hack
-        uses: taiki-e/install-action@d5ead4fdbf0cb2a037f276e7dfb78bbb9dd0ab8c # v2
-        with:
-          tool: cargo-hack
-      - uses: Swatinem/rust-cache@23bce251a8cd2ffc3c1075eaa2367cf899916d84 # v2
-      - name: Run Cargo Hack
-        run: cargo +${{ matrix.rust }} hack check --feature-powerset --no-dev-deps -p ${{ matrix.crate }}
-
   result:
     name: Result (CI)
     runs-on: ubuntu-latest
@@ -163,7 +108,6 @@ jobs:
       - clippy
       - test
       - docs
-      - powerset
     steps:
       - name: Mark the job as successful
         run: exit 0
