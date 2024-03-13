@@ -1,3 +1,28 @@
+//! Integration tests for the core library
+//!
+//! # How to update snapshots
+//!
+//! The CI pipeline is configured to run the tests with the `INSTA_UPDATE` environment variable set to `new`.
+//! This means, it uploads the failed tests snapshots to the artifacts and you can download them and use them to update the snapshots.
+//!
+//! To update the snapshots, you download the artifacts and copy the files to the `tests/snapshots` directory.
+//! Then you run `cargo insta review` to review the changes and accept them.
+//!
+//! # Redactions
+//!
+//! We use the `insta` crate to compare the actual output of the tests with the expected output.
+//! Some data in the output changes every test run, we use insta's redactions to replace the actual values with placeholders.
+//! We define the redactions inside `Settings`` in the fixtures and bind them to the test functions. You can read more about
+//! it here: https://docs.rs/insta/latest/insta/struct.Settings.html
+//!
+//! # Fixtures and Dependency Injection
+//!
+//! We use the `rstest` crate to define fixtures and dependency injection.
+//! This allows us to define a set of fixtures that are used in multiple tests.
+//! The fixtures are defined as functions with the `#[fixture]` attribute.
+//! The tests that use the fixtures are defined as functions with the `#[rstest]` attribute.
+//! The fixtures are passed as arguments to the test functions.
+
 use anyhow::Result;
 use flate2::read::GzDecoder;
 use insta::{assert_ron_snapshot, Settings};
@@ -24,18 +49,6 @@ use tempfile::{tempdir, TempDir};
 
 type RepoOpen = Repository<NoProgressBars, OpenStatus>;
 
-#[fixture]
-fn set_up_repo() -> Result<RepoOpen> {
-    let be = InMemoryBackend::new();
-    let be = RepositoryBackends::new(Arc::new(be), None);
-    let options = RepositoryOptions::default().password("test");
-    let repo = Repository::new(&options, &be)?;
-    let key_opts = KeyOptions::default();
-    let config_opts = &ConfigOptions::default();
-    let repo = repo.init(&key_opts, config_opts)?;
-    Ok(repo)
-}
-
 #[derive(Debug)]
 struct TestSource(TempDir);
 
@@ -49,7 +62,18 @@ impl TestSource {
     }
 }
 
-// Readme: https://docs.rs/insta/latest/insta/struct.Settings.html
+#[fixture]
+fn set_up_repo() -> Result<RepoOpen> {
+    let be = InMemoryBackend::new();
+    let be = RepositoryBackends::new(Arc::new(be), None);
+    let options = RepositoryOptions::default().password("test");
+    let repo = Repository::new(&options, &be)?;
+    let key_opts = KeyOptions::default();
+    let config_opts = &ConfigOptions::default();
+    let repo = repo.init(&key_opts, config_opts)?;
+    Ok(repo)
+}
+
 #[fixture]
 fn insta_summary_redaction() -> Settings {
     let mut settings = insta::Settings::clone_current();
