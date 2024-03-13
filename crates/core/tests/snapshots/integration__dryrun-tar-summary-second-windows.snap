@@ -4,8 +4,8 @@ expression: TestSummary(&snap_dry_run)
 ---
 TestSummary(SnapshotFile(
   time: "[time]",
-  program_version: "[version]",
-  parent: Some(Id("f25b23c13b9c895d57d6017d466abe317b57b5db280c996d86ea1fe4db423743")),
+  program_version: "rustic [rustic_core_version]",
+  parent: "[some]",
   tree: "[tree_id]",
   paths: StringList([
     "test",

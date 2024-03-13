@@ -4,8 +4,8 @@ expression: TestSummary(&second_snapshot)
 ---
 TestSummary(SnapshotFile(
   time: "[time]",
-  program_version: "[version]",
-  parent: Some(Id("1e1c441c94bb94db891589deac182ac69d2cf2c8a434081e5608515553833cd1")),
+  program_version: "rustic [rustic_core_version]",
+  parent: "[some]",
   tree: "[tree_id]",
   paths: StringList([
     "test",

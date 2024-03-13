@@ -79,8 +79,21 @@ fn insta_summary_redaction() -> Settings {
     let mut settings = insta::Settings::clone_current();
 
     settings.add_redaction(".tree", "[tree_id]");
-    settings.add_redaction(".program_version", "[version]");
+    settings.add_dynamic_redaction(".program_version", |val, _| {
+        val.resolve_inner()
+            .as_str()
+            .map_or("[program_version]".to_string(), |v| {
+                v.replace(env!("CARGO_PKG_VERSION"), "[rustic_core_version]")
+            })
+    });
     settings.add_redaction(".time", "[time]");
+    settings.add_dynamic_redaction(".parent", |val, _| {
+        if val.is_nil() {
+            "[none]".to_string()
+        } else {
+            "[some]".to_string()
+        }
+    });
     settings.add_redaction(".tags", "[tags]");
     settings.add_redaction(".id", "[id]");
     settings.add_redaction(".summary.backup_start", "[backup_start]");
