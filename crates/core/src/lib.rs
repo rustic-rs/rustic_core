@@ -124,7 +124,6 @@ pub use crate::{
     backend::{
         decrypt::{compression_level_range, max_compression_level},
         ignore::{LocalSource, LocalSourceFilterOptions, LocalSourceSaveOptions},
-        in_memory_backend::InMemoryBackend,
         local_destination::LocalDestination,
         node::last_modified_node,
         FileType, ReadBackend, ReadSource, ReadSourceEntry, ReadSourceOpen, RepositoryBackends,

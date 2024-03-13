@@ -30,10 +30,12 @@ use pretty_assertions::assert_eq;
 use rstest::fixture;
 use rstest::rstest;
 use rustic_core::{
-    repofile::SnapshotFile, BackupOptions, ConfigOptions, InMemoryBackend, KeyOptions,
-    NoProgressBars, OpenStatus, PathList, Repository, RepositoryBackends, RepositoryOptions,
+    repofile::SnapshotFile, BackupOptions, ConfigOptions, KeyOptions, NoProgressBars, OpenStatus,
+    PathList, Repository, RepositoryBackends, RepositoryOptions,
 };
 use serde_derive::Serialize;
+
+use rustic_testing::backend::in_memory_backend::InMemoryBackend;
 
 use std::{
     env,

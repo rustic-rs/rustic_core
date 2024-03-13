@@ -15,6 +15,7 @@ rust-version = "1.72.1"
 aho-corasick = "1.1.2"
 rustic_backend = { path = "crates/backend" }
 rustic_core = { path = "crates/core" }
+rustic_testing = { path = "crates/testing" }
 simplelog = "0.12.2"
 
 # dev-dependencies
