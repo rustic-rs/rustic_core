@@ -1452,6 +1452,7 @@ impl<P, S: IndexedTree> Repository<P, S> {
     /// # Arguments
     ///
     /// * `id` - The `Id` of the tree
+    // TODO!: This ID should be a tree ID, we should refactor it to wrap it in a TreeId type
     ///
     /// # Errors
     ///
@@ -1475,6 +1476,7 @@ impl<P, S: IndexedTree> Repository<P, S> {
     /// # Arguments
     ///
     /// * `root_tree` - The `Id` of the root tree
+    // TODO!: This ID should be a tree ID, we should refactor it to wrap it in a TreeId type
     /// * `path` - The path
     ///
     /// # Errors

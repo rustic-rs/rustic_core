@@ -1,0 +1,47 @@
+---
+source: crates/core/tests/integration.rs
+expression: tree
+---
+Tree(
+  nodes: [
+    {
+      "name": "empty-file",
+      "type": "file",
+      "mtime": "[some]",
+      "atime": "[some]",
+      "ctime": "[some]",
+      "content": Some([]),
+    },
+    {
+      "name": "testfile",
+      "type": "file",
+      "mtime": "[some]",
+      "atime": "[some]",
+      "ctime": "[some]",
+      "size": 21,
+      "content": Some([
+        Id("649b8b471e7d7bc175eec758a7006ac693c434c8297c07db15286788c837154a"),
+      ]),
+    },
+    {
+      "name": "testfile-hardlink",
+      "type": "file",
+      "mtime": "[some]",
+      "atime": "[some]",
+      "ctime": "[some]",
+      "size": 21,
+      "content": Some([
+        Id("649b8b471e7d7bc175eec758a7006ac693c434c8297c07db15286788c837154a"),
+      ]),
+    },
+    {
+      "name": "testfile-symlink",
+      "type": "symlink",
+      "linktarget": "testfile",
+      "mtime": "[some]",
+      "atime": "[some]",
+      "ctime": "[some]",
+      "content": None,
+    },
+  ],
+)
