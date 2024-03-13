@@ -25,6 +25,7 @@
 
 use anyhow::Result;
 use flate2::read::GzDecoder;
+use insta::internals::{Content, ContentPath};
 use insta::{assert_ron_snapshot, Settings};
 use pretty_assertions::assert_eq;
 use rstest::fixture;
@@ -76,6 +77,15 @@ fn set_up_repo() -> Result<RepoOpen> {
     Ok(repo)
 }
 
+// helper func to redact options, but still keep information about some/none
+fn handle_option(val: Content, _: ContentPath<'_>) -> String {
+    if val.is_nil() {
+        "[none]".to_string()
+    } else {
+        "[some]".to_string()
+    }
+}
+
 #[fixture]
 fn insta_summary_redaction() -> Settings {
     let mut settings = insta::Settings::clone_current();
@@ -89,13 +99,7 @@ fn insta_summary_redaction() -> Settings {
             })
     });
     settings.add_redaction(".time", "[time]");
-    settings.add_dynamic_redaction(".parent", |val, _| {
-        if val.is_nil() {
-            "[none]".to_string()
-        } else {
-            "[some]".to_string()
-        }
-    });
+    settings.add_dynamic_redaction(".parent", handle_option);
     settings.add_redaction(".tags", "[tags]");
     settings.add_redaction(".id", "[id]");
     settings.add_redaction(".summary.backup_start", "[backup_start]");
@@ -128,34 +132,10 @@ fn insta_tree_redaction() -> Settings {
     settings.add_redaction(".nodes[].gid", "[gid]");
     settings.add_redaction(".nodes[].group", "[group]");
     settings.add_redaction(".nodes[].content", "[content_id]");
-    settings.add_dynamic_redaction(".nodes[].mode", |val, _| {
-        if val.is_nil() {
-            "[none]".to_string()
-        } else {
-            "[some]".to_string()
-        }
-    });
-    settings.add_dynamic_redaction(".nodes[].mtime", |val, _| {
-        if val.is_nil() {
-            "[none]".to_string()
-        } else {
-            "[some]".to_string()
-        }
-    });
-    settings.add_dynamic_redaction(".nodes[].atime", |val, _| {
-        if val.is_nil() {
-            "[none]".to_string()
-        } else {
-            "[some]".to_string()
-        }
-    });
-    settings.add_dynamic_redaction(".nodes[].ctime", |val, _| {
-        if val.is_nil() {
-            "[none]".to_string()
-        } else {
-            "[some]".to_string()
-        }
-    });
+    settings.add_dynamic_redaction(".nodes[].mode", handle_option);
+    settings.add_dynamic_redaction(".nodes[].mtime", handle_option);
+    settings.add_dynamic_redaction(".nodes[].atime", handle_option);
+    settings.add_dynamic_redaction(".nodes[].ctime", handle_option);
 
     settings
 }
@@ -208,16 +188,13 @@ fn test_backup_with_tar_gz_passes(
     // We can also bind to scope ( https://docs.rs/insta/latest/insta/struct.Settings.html#method.bind_to_scope )
     // But I think that can get messy with a lot of tests, also checking which settings are currently applied
     // will be probably harder
-    #[cfg(windows)]
     insta_summary_redaction.bind(|| {
+        #[cfg(windows)]
         assert_ron_snapshot!(
             "backup-tar-summary-first-windows",
             TestSummary(&first_snapshot)
         );
-    });
-
-    #[cfg(not(windows))]
-    insta_summary_redaction.bind(|| {
+        #[cfg(not(windows))]
         assert_ron_snapshot!("backup-tar-summary-first-nix", TestSummary(&first_snapshot));
     });
 
@@ -229,13 +206,10 @@ fn test_backup_with_tar_gz_passes(
     let tree = repo.node_from_path(first_snapshot.tree, Path::new("test/0/tests"))?;
     let tree: rustic_core::repofile::Tree = repo.get_tree(&tree.subtree.expect("Sub tree"))?;
 
-    #[cfg(windows)]
     insta_tree_redaction.bind(|| {
+        #[cfg(windows)]
         assert_ron_snapshot!("backup-tar-tree-windows", tree);
-    });
-
-    #[cfg(not(windows))]
-    insta_tree_redaction.bind(|| {
+        #[cfg(not(windows))]
         assert_ron_snapshot!("backup-tar-tree-nix", tree);
     });
 
@@ -250,16 +224,13 @@ fn test_backup_with_tar_gz_passes(
     // second backup
     let second_snapshot = repo.backup(&opts, paths, SnapshotFile::default())?;
 
-    #[cfg(windows)]
     insta_summary_redaction.bind(|| {
+        #[cfg(windows)]
         assert_ron_snapshot!(
             "backup-tar-summary-second-windows",
             TestSummary(&second_snapshot)
         );
-    });
-
-    #[cfg(not(windows))]
-    insta_summary_redaction.bind(|| {
+        #[cfg(not(windows))]
         assert_ron_snapshot!(
             "backup-tar-summary-second-nix",
             TestSummary(&second_snapshot)
@@ -300,16 +271,13 @@ fn test_backup_dry_run_with_tar_gz_passes(
     // dry-run backup
     let snap_dry_run = repo.backup(&opts, paths, SnapshotFile::default())?;
 
-    #[cfg(windows)]
     insta_summary_redaction.bind(|| {
+        #[cfg(windows)]
         assert_ron_snapshot!(
             "dryrun-tar-summary-first-windows",
             TestSummary(&snap_dry_run)
         );
-    });
-
-    #[cfg(not(windows))]
-    insta_summary_redaction.bind(|| {
+        #[cfg(not(windows))]
         assert_ron_snapshot!("dryrun-tar-summary-first-nix", TestSummary(&snap_dry_run));
     });
 
@@ -331,13 +299,10 @@ fn test_backup_dry_run_with_tar_gz_passes(
     let tree = repo.node_from_path(first_snapshot.tree, Path::new("test/0/tests"))?;
     let tree = repo.get_tree(&tree.subtree.expect("Sub tree"))?;
 
-    #[cfg(windows)]
     insta_tree_redaction.bind(|| {
+        #[cfg(windows)]
         assert_ron_snapshot!("dryrun-tar-tree-windows", tree);
-    });
-
-    #[cfg(not(windows))]
-    insta_tree_redaction.bind(|| {
+        #[cfg(not(windows))]
         assert_ron_snapshot!("dryrun-tar-tree-nix", tree);
     });
 
@@ -347,16 +312,13 @@ fn test_backup_dry_run_with_tar_gz_passes(
     let opts = opts.dry_run(true);
     let snap_dry_run = repo.backup(&opts, paths, SnapshotFile::default())?;
 
-    #[cfg(windows)]
     insta_summary_redaction.bind(|| {
+        #[cfg(windows)]
         assert_ron_snapshot!(
             "dryrun-tar-summary-second-windows",
             TestSummary(&snap_dry_run)
         );
-    });
-
-    #[cfg(not(windows))]
-    insta_summary_redaction.bind(|| {
+        #[cfg(not(windows))]
         assert_ron_snapshot!("dryrun-tar-summary-second-nix", TestSummary(&snap_dry_run));
     });
 
