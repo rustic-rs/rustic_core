@@ -1,6 +1,6 @@
 use anyhow::Result;
 use flate2::read::GzDecoder;
-use insta::assert_ron_snapshot;
+use insta::{assert_ron_snapshot, Settings};
 use pretty_assertions::assert_eq;
 use rstest::fixture;
 use rstest::rstest;
@@ -49,6 +49,45 @@ impl TestSource {
     }
 }
 
+// Readme: https://docs.rs/insta/latest/insta/struct.Settings.html
+#[fixture]
+fn insta_summary_redaction() -> Settings {
+    let mut settings = insta::Settings::clone_current();
+
+    settings.add_redaction(".tree", "[tree_id]");
+    settings.add_redaction(".program_version", "[version]");
+    settings.add_redaction(".time", "[time]");
+    settings.add_redaction(".tags", "[tags]");
+    settings.add_redaction(".id", "[id]");
+    settings.add_redaction(".summary.backup_start", "[backup_start]");
+    settings.add_redaction(".summary.backup_end", "[backup_end]");
+    settings.add_redaction(".summary.backup_duration", "[backup_duration]");
+    settings.add_redaction(".summary.total_duration", "[total_duration]");
+    settings.add_redaction(".summary.data_added", "[data_added]");
+    settings.add_redaction(".summary.data_added_packed", "[data_added_packed]");
+    settings.add_redaction(
+        ".summary.total_dirsize_processed",
+        "[total_dirsize_processed]",
+    );
+    settings.add_redaction(
+        ".summary.data_added_trees_packed",
+        "[data_added_trees_packed]",
+    );
+    settings.add_redaction(".summary.data_added_trees", "[data_added_trees]");
+
+    settings
+}
+
+#[fixture]
+fn insta_tree_redaction() -> Settings {
+    let mut settings = insta::Settings::clone_current();
+
+    settings.add_redaction(".nodes[].ctime", "[ctime]");
+    settings.add_redaction(".nodes[].content", "[content_id]");
+
+    settings
+}
+
 #[fixture]
 fn tar_gz_testdata() -> Result<TestSource> {
     let dir = tempdir()?;
@@ -77,6 +116,8 @@ struct TestSummary<'a>(&'a SnapshotFile);
 fn test_backup_with_tar_gz_passes(
     tar_gz_testdata: Result<TestSource>,
     set_up_repo: Result<RepoOpen>,
+    insta_summary_redaction: Settings,
+    insta_tree_redaction: Settings,
 ) -> Result<()> {
     // uncomment for logging output
     // SimpleLogger::init(log::LevelFilter::Debug, Config::default())?;
@@ -93,35 +134,16 @@ fn test_backup_with_tar_gz_passes(
     let first_snapshot = repo.backup(&opts, paths, SnapshotFile::default())?;
 
     #[cfg(windows)]
-    assert_ron_snapshot!(
-        "backup-tar-summary-first-windows",
-        TestSummary(&first_snapshot),
-    {
-        ".tree" => "[tree_id]",
-        ".program_version" => "[version]",
-        ".time" => "[time]",
-        ".tags" => "[tags]",
-        ".id" => "[id]",
-        ".summary.backup_start" => "[backup_start]",
-        ".summary.backup_end" => "[backup_end]",
-        ".summary.backup_duration" => "[backup_duration]",
-        ".summary.total_duration" => "[total_duration]",
-    }
-    );
+    insta_summary_redaction.bind(|| {
+        assert_ron_snapshot!(
+            "backup-tar-summary-first-windows",
+            TestSummary(&first_snapshot)
+        );
+    });
 
     #[cfg(not(windows))]
-    assert_ron_snapshot!("backup-tar-summary-first-nix",
-    TestSummary(&first_snapshot),
-    {
-        ".tree" => "[tree_id]",
-        ".program_version" => "[version]",
-        ".time" => "[time]",
-        ".tags" => "[tags]",
-        ".id" => "[id]",
-        ".summary.backup_start" => "[backup_start]",
-        ".summary.backup_end" => "[backup_end]",
-        ".summary.backup_duration" => "[backup_duration]",
-        ".summary.total_duration" => "[total_duration]",
+    insta_summary_redaction.bind(|| {
+        assert_ron_snapshot!("backup-tar-summary-first-nix", TestSummary(&first_snapshot));
     });
 
     assert_eq!(first_snapshot.parent, None);
@@ -133,24 +155,14 @@ fn test_backup_with_tar_gz_passes(
     let tree: rustic_core::repofile::Tree = repo.get_tree(&tree.subtree.expect("Sub tree"))?;
 
     #[cfg(windows)]
-    assert_ron_snapshot!(
-        "backup-tar-tree-windows",
-        tree,
-        {
-            ".nodes[].ctime" => "[ctime]",
-            ".nodes[].content" => "[content_id]",
-        }
-    );
+    insta_tree_redaction.bind(|| {
+        assert_ron_snapshot!("backup-tar-tree-windows", tree);
+    });
 
     #[cfg(not(windows))]
-    assert_ron_snapshot!(
-        "backup-tar-tree-nix",
-        tree,
-        {
-            ".nodes[].ctime" => "[ctime]",
-            ".nodes[].content" => "[content_id]",
-        }
-    );
+    insta_tree_redaction.bind(|| {
+        assert_ron_snapshot!("backup-tar-tree-nix", tree);
+    });
 
     // get all snapshots and check them
     let all_snapshots = repo.get_all_snapshots()?;
@@ -164,37 +176,20 @@ fn test_backup_with_tar_gz_passes(
     let second_snapshot = repo.backup(&opts, paths, SnapshotFile::default())?;
 
     #[cfg(windows)]
-    assert_ron_snapshot!(
-        "backup-tar-summary-second-windows",
-        TestSummary(&second_snapshot),
-    {
-        ".tree" => "[tree_id]",
-        ".program_version" => "[version]",
-        ".time" => "[time]",
-        ".tags" => "[tags]",
-        ".id" => "[id]",
-        ".summary.backup_start" => "[backup_start]",
-        ".summary.backup_end" => "[backup_end]",
-        ".summary.backup_duration" => "[backup_duration]",
-        ".summary.total_duration" => "[total_duration]",
-    }
-    );
+    insta_summary_redaction.bind(|| {
+        assert_ron_snapshot!(
+            "backup-tar-summary-second-windows",
+            TestSummary(&second_snapshot)
+        );
+    });
+
     #[cfg(not(windows))]
-    assert_ron_snapshot!(
-        "backup-tar-summary-second-nix",
-        TestSummary(&second_snapshot),
-    {
-        ".tree" => "[tree_id]",
-        ".program_version" => "[version]",
-        ".time" => "[time]",
-        ".tags" => "[tags]",
-        ".id" => "[id]",
-        ".summary.backup_start" => "[backup_start]",
-        ".summary.backup_end" => "[backup_end]",
-        ".summary.backup_duration" => "[backup_duration]",
-        ".summary.total_duration" => "[total_duration]",
-    }
-    );
+    insta_summary_redaction.bind(|| {
+        assert_ron_snapshot!(
+            "backup-tar-summary-second-nix",
+            TestSummary(&second_snapshot)
+        );
+    });
 
     assert_eq!(second_snapshot.parent, Some(first_snapshot.id));
     assert_eq!(first_snapshot.tree, second_snapshot.tree);
@@ -214,6 +209,8 @@ fn test_backup_with_tar_gz_passes(
 fn test_backup_dry_run_with_tar_gz_passes(
     tar_gz_testdata: Result<TestSource>,
     set_up_repo: Result<RepoOpen>,
+    insta_summary_redaction: Settings,
+    insta_tree_redaction: Settings,
 ) -> Result<()> {
     // Fixtures
     let (source, repo) = (tar_gz_testdata?, set_up_repo?.to_indexed_ids()?);
@@ -229,35 +226,16 @@ fn test_backup_dry_run_with_tar_gz_passes(
     let snap_dry_run = repo.backup(&opts, paths, SnapshotFile::default())?;
 
     #[cfg(windows)]
-    assert_ron_snapshot!(
-        "dryrun-tar-summary-first-windows",
-        TestSummary(&snap_dry_run),
-    {
-        ".tree" => "[tree_id]",
-        ".program_version" => "[version]",
-        ".time" => "[time]",
-        ".tags" => "[tags]",
-        ".id" => "[id]",
-        ".summary.backup_start" => "[backup_start]",
-        ".summary.backup_end" => "[backup_end]",
-        ".summary.backup_duration" => "[backup_duration]",
-        ".summary.total_duration" => "[total_duration]",
-    }
-    );
+    insta_summary_redaction.bind(|| {
+        assert_ron_snapshot!(
+            "dryrun-tar-summary-first-windows",
+            TestSummary(&snap_dry_run)
+        );
+    });
 
     #[cfg(not(windows))]
-    assert_ron_snapshot!("dryrun-tar-summary-first-nix",
-    TestSummary(&snap_dry_run),
-    {
-        ".tree" => "[tree_id]",
-        ".program_version" => "[version]",
-        ".time" => "[time]",
-        ".tags" => "[tags]",
-        ".id" => "[id]",
-        ".summary.backup_start" => "[backup_start]",
-        ".summary.backup_end" => "[backup_end]",
-        ".summary.backup_duration" => "[backup_duration]",
-        ".summary.total_duration" => "[total_duration]",
+    insta_summary_redaction.bind(|| {
+        assert_ron_snapshot!("dryrun-tar-summary-first-nix", TestSummary(&snap_dry_run));
     });
 
     // check that repo is still empty
@@ -279,24 +257,14 @@ fn test_backup_dry_run_with_tar_gz_passes(
     let tree = repo.get_tree(&tree.subtree.expect("Sub tree"))?;
 
     #[cfg(windows)]
-    assert_ron_snapshot!(
-        "dryrun-tar-tree-windows",
-        tree,
-        {
-            ".nodes[].ctime" => "[ctime]",
-            ".nodes[].content" => "[content_id]",
-        }
-    );
+    insta_tree_redaction.bind(|| {
+        assert_ron_snapshot!("dryrun-tar-tree-windows", tree);
+    });
 
     #[cfg(not(windows))]
-    assert_ron_snapshot!(
-        "dryrun-tar-tree-nix",
-        tree,
-        {
-            ".nodes[].ctime" => "[ctime]",
-            ".nodes[].content" => "[content_id]",
-        }
-    );
+    insta_tree_redaction.bind(|| {
+        assert_ron_snapshot!("dryrun-tar-tree-nix", tree);
+    });
 
     // re-read index
     let repo = repo.to_indexed_ids()?;
@@ -305,37 +273,17 @@ fn test_backup_dry_run_with_tar_gz_passes(
     let snap_dry_run = repo.backup(&opts, paths, SnapshotFile::default())?;
 
     #[cfg(windows)]
-    assert_ron_snapshot!(
-        "dryrun-tar-summary-second-windows",
-        TestSummary(&snap_dry_run),
-    {
-        ".tree" => "[tree_id]",
-        ".program_version" => "[version]",
-        ".time" => "[time]",
-        ".tags" => "[tags]",
-        ".id" => "[id]",
-        ".summary.backup_start" => "[backup_start]",
-        ".summary.backup_end" => "[backup_end]",
-        ".summary.backup_duration" => "[backup_duration]",
-        ".summary.total_duration" => "[total_duration]",
-    }
-    );
+    insta_summary_redaction.bind(|| {
+        assert_ron_snapshot!(
+            "dryrun-tar-summary-second-windows",
+            TestSummary(&snap_dry_run)
+        );
+    });
 
     #[cfg(not(windows))]
-    assert_ron_snapshot!("dryrun-tar-summary-second-nix",
-    TestSummary(&snap_dry_run),
-    {
-        ".tree" => "[tree_id]",
-        ".program_version" => "[version]",
-        ".time" => "[time]",
-        ".tags" => "[tags]",
-        ".id" => "[id]",
-        ".summary.backup_start" => "[backup_start]",
-        ".summary.backup_end" => "[backup_end]",
-        ".summary.backup_duration" => "[backup_duration]",
-        ".summary.total_duration" => "[total_duration]",
-    }
-    );
+    insta_summary_redaction.bind(|| {
+        assert_ron_snapshot!("dryrun-tar-summary-second-nix", TestSummary(&snap_dry_run));
+    });
 
     // check that no data has been added
     let snaps = repo.get_all_snapshots()?;
