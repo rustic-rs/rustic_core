@@ -1,0 +1,275 @@
+# This is being run in the merge group, which means it's only run when a PR is merged
+# and on a cron schedule. his is a huge amount of work and we don't want to run it on every PR.
+
+name: Continuous Integration (Heavy)
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
+
+env:
+  CI: true
+
+defaults:
+  run:
+    shell: bash
+
+on:
+  push:
+    # Runs when a commit is pushed to the main branch
+    branches:
+      - main
+  merge_group:
+    # Runs in a merge group
+    types: [checks_requested]
+  schedule:
+    # Run every Sunday at midnight
+    - cron: "0 0 * * 0"
+
+jobs:
+  fmt:
+    name: Rustfmt
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@1482605bfc5719782e1267fd0c0cc350fe7646b8 # v1
+        with:
+          toolchain: stable
+      - run: rustup component add rustfmt
+      - name: Run Cargo Fmt
+        run: cargo fmt --all -- --check
+
+  clippy:
+    name: Clippy
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@1482605bfc5719782e1267fd0c0cc350fe7646b8 # v1
+        with:
+          toolchain: stable
+          components: clippy
+      - uses: Swatinem/rust-cache@23bce251a8cd2ffc3c1075eaa2367cf899916d84 # v2
+      - name: Run clippy
+        run: cargo clippy --all-targets --all-features -- -D warnings
+
+  test:
+    name: Test
+    runs-on: ${{ matrix.job.os }}
+    strategy:
+      matrix:
+        rust: [stable]
+        job:
+          - os: macos-latest
+          - os: ubuntu-latest
+          - os: windows-latest
+    steps:
+      - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4
+        if: github.event_name != 'pull_request'
+        with:
+          fetch-depth: 0
+
+      - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4
+        if: github.event_name == 'pull_request'
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@1482605bfc5719782e1267fd0c0cc350fe7646b8 # v1
+        with:
+          toolchain: ${{ matrix.rust }}
+      - uses: Swatinem/rust-cache@23bce251a8cd2ffc3c1075eaa2367cf899916d84 # v2
+      - name: Run Cargo Test
+        run: cargo +${{ matrix.rust }} test -r --all-targets --all-features --workspace --examples
+        id: run_tests
+        env:
+          INSTA_UPDATE: new
+      - name: Upload snapshots of failed tests
+        if: ${{ failure() && steps.run_tests.outcome == 'failure' }}
+        uses: actions/upload-artifact@v3
+        with:
+          name: failed-snapshots-${{ matrix.job.os }}
+          path: "**/snapshots/*.snap.new"
+
+  docs:
+    name: Build docs
+    runs-on: ${{ matrix.job.os }}
+    strategy:
+      matrix:
+        rust: [stable]
+        job:
+          - os: macos-latest
+          - os: ubuntu-latest
+          - os: windows-latest
+    steps:
+      - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4
+        if: github.event_name != 'pull_request'
+        with:
+          fetch-depth: 0
+
+      - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4
+        if: github.event_name == 'pull_request'
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@1482605bfc5719782e1267fd0c0cc350fe7646b8 # v1
+        with:
+          toolchain: ${{ matrix.rust }}
+      - uses: Swatinem/rust-cache@23bce251a8cd2ffc3c1075eaa2367cf899916d84 # v2
+      - name: Run Cargo Doc
+        run: cargo +${{ matrix.rust }} doc --no-deps --all-features --workspace --examples
+
+  powerset:
+    name: Check Powerset of Features
+    # Only run if the commit doesn't come from a merged PR, we assume CI is running in the PR as well
+    # so we don't want to have runs double up
+    if: github.event.pull_request.merged == false
+    runs-on: ${{ matrix.job.os }}
+    strategy:
+      matrix:
+        rust: [stable, beta, nightly]
+        crate: [rustic_core, rustic_backend] # if we use a workspace, we also check all examples/*
+        job:
+          - os: macos-latest
+          - os: ubuntu-latest
+          - os: windows-latest
+    steps:
+      - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4
+        if: github.event_name != 'pull_request'
+        with:
+          fetch-depth: 0
+
+      - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4
+        if: github.event_name == 'pull_request'
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@1482605bfc5719782e1267fd0c0cc350fe7646b8 # v1
+        with:
+          toolchain: ${{ matrix.rust }}
+      - name: install cargo-hack
+        uses: taiki-e/install-action@d5ead4fdbf0cb2a037f276e7dfb78bbb9dd0ab8c # v2
+        with:
+          tool: cargo-hack
+      - uses: Swatinem/rust-cache@23bce251a8cd2ffc3c1075eaa2367cf899916d84 # v2
+      - name: Run Cargo Hack
+        run: cargo +${{ matrix.rust }} hack check --feature-powerset --no-dev-deps -p ${{ matrix.crate }}
+
+  cross-check:
+    # Only run if the commit doesn't come from a merged PR, we assume CI is running in the PR as well
+    # so we don't want to have runs double up
+    if: github.event.pull_request.merged == false
+    name: Cross checking ${{ matrix.job.target }}
+    runs-on: ${{ matrix.job.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        rust: [stable, beta]
+        job:
+          - os: windows-latest
+            os-name: windows
+            target: x86_64-pc-windows-msvc
+            architecture: x86_64
+            use-cross: false
+          - os: windows-latest
+            os-name: windows
+            target: x86_64-pc-windows-gnu
+            architecture: x86_64
+            use-cross: false
+          - os: macos-latest
+            os-name: macos
+            target: x86_64-apple-darwin
+            architecture: x86_64
+            use-cross: false
+          - os: macos-latest
+            os-name: macos
+            target: aarch64-apple-darwin
+            architecture: arm64
+            use-cross: true
+          - os: ubuntu-latest
+            os-name: linux
+            target: x86_64-unknown-linux-gnu
+            architecture: x86_64
+            use-cross: false
+          - os: ubuntu-latest
+            os-name: linux
+            target: x86_64-unknown-linux-musl
+            architecture: x86_64
+            use-cross: false
+          - os: ubuntu-latest
+            os-name: linux
+            target: aarch64-unknown-linux-gnu
+            architecture: arm64
+            use-cross: true
+          - os: ubuntu-latest
+            os-name: linux
+            target: i686-unknown-linux-gnu
+            architecture: i686
+            use-cross: true
+          - os: ubuntu-latest
+            os-name: netbsd
+            target: x86_64-unknown-netbsd
+            architecture: x86_64
+            use-cross: true
+          - os: ubuntu-latest
+            os-name: linux
+            target: armv7-unknown-linux-gnueabihf
+            architecture: armv7
+            use-cross: true
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4
+
+      - name: Run Cross-CI action
+        uses: rustic-rs/cross-ci-action@main
+        with:
+          toolchain: ${{ matrix.rust }}
+          target: ${{ matrix.job.target }}
+          use-cross: ${{ matrix.job.use-cross }}
+          project-cache-key: "rustic_core"
+
+  msrv:
+    # Only run if the commit doesn't come from a merged PR, we assume CI is running in the PR as well
+    # so we don't want to have runs double up
+    if: github.event.pull_request.merged == false
+    name: Check MSRV
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        crate: [rustic_core, rustic_backend]
+    steps:
+      - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4
+      - name: Install cargo-hack
+        uses: taiki-e/install-action@d5ead4fdbf0cb2a037f276e7dfb78bbb9dd0ab8c # v2
+        with:
+          tool: cargo-hack
+
+      - name: Run Cargo Hack
+        run: cargo hack check --rust-version -p ${{ matrix.crate }}
+
+  result:
+    name: Result (CI-heavy)
+    runs-on: ubuntu-latest
+    needs:
+      - docs
+      - fmt
+      - clippy
+      - test
+      - cross-check
+      - powerset
+      - msrv
+    steps:
+      - name: Mark the job as successful
+        run: exit 0
+        if: success()
+      - name: Mark the job as unsuccessful
+        run: exit 1
+        if: "!success()"
