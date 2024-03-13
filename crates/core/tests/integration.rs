@@ -129,10 +129,22 @@ fn test_backup_with_tar_gz_passes(
     let tree = repo.get_tree(&tree.subtree.expect("Sub tree"))?;
 
     #[cfg(windows)]
-    assert_debug_snapshot!("backup-tar-tree-windows", tree);
+    assert_debug_snapshot!("backup-tar-tree-windows", tree,
+    {
+        "inode" => "inode",
+        "ctime" => "ctime",
+        "mtime" => "mtime",
+        "atime" => "atime",
+    });
 
     #[cfg(not(windows))]
-    assert_debug_snapshot!("backup-tar-tree-nix", tree);
+    assert_debug_snapshot!("backup-tar-tree-nix", tree,
+    {
+        "inode" => "inode",
+        "ctime" => "ctime",
+        "mtime" => "mtime",
+        "atime" => "atime",
+    });
 
     // get all snapshots and check them
     let all_snapshots = repo.get_all_snapshots()?;
@@ -216,10 +228,22 @@ fn test_backup_dry_run_with_tar_gz_passes(
     let tree = repo.get_tree(&tree.subtree.expect("Sub tree"))?;
 
     #[cfg(windows)]
-    assert_debug_snapshot!("dryrun-tar-tree-windows", tree);
+    assert_debug_snapshot!("dryrun-tar-tree-windows", tree,
+    {
+        "inode" => "inode",
+        "ctime" => "ctime",
+        "mtime" => "mtime",
+        "atime" => "atime",
+    });
 
     #[cfg(not(windows))]
-    assert_debug_snapshot!("dryrun-tar-tree-nix", tree);
+    assert_debug_snapshot!("dryrun-tar-tree-nix", tree,
+    {
+        "inode" => "inode",
+        "ctime" => "ctime",
+        "mtime" => "mtime",
+        "atime" => "atime",
+    });
 
     // re-read index
     let repo = repo.to_indexed_ids()?;
