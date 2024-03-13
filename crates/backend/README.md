@@ -14,8 +14,8 @@
 This library is a part of the [rustic](https://rustic.cli.rs) project and
 provides a set of backends for the
 [`rustic_core`](https://crates.io/crates/rustic_core) library. It is used to
-interact with various storage backends, such as `s3`, `rclone`, `rest`, `sftp`,
-and in general `opendal`.
+interact with various storage backends, such as `rclone`, `rest`, and in general
+`opendal`.
 
 The goal of this library is to provide a unified interface for interacting with
 various backends, so that the
@@ -70,12 +70,6 @@ This crate exposes a few features for controlling dependency usage:
   enabled by default*.
 
 - **rest** - Enables support for the `rest` backend. *This feature is enabled by
-  default*.
-
-- **sftp** - Enables support for the `sftp` backend. Windows is not yet
-  supported. *This feature is enabled by default*.
-
-- **s3** - Enables support for the `s3` backend. *This feature is enabled by
   default*.
 
 ## Usage & Examples

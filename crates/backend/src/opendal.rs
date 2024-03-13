@@ -1,10 +1,4 @@
-/// `OpenDAL` S3 backend for Rustic.
-#[cfg(feature = "s3")]
-pub mod s3;
-/// `OpenDAL` SFTP backend for Rustic.
-#[cfg(all(unix, feature = "sftp"))]
-pub mod sftp;
-
+/// `OpenDAL` backend for rustic.
 use std::{collections::HashMap, path::PathBuf, str::FromStr, sync::OnceLock};
 
 use anyhow::Result;
@@ -19,7 +13,7 @@ use tokio::runtime::Runtime;
 
 use rustic_core::{FileType, Id, ReadBackend, WriteBackend, ALL_FILE_TYPES};
 
-mod consts {
+mod constants {
     /// Default number of retries
     pub(super) const DEFAULT_RETRY: usize = 5;
 }
@@ -58,7 +52,7 @@ impl OpenDALBackend {
     pub fn new(path: impl AsRef<str>, options: HashMap<String, String>) -> Result<Self> {
         let max_retries = match options.get("retry").map(String::as_str) {
             Some("false" | "off") => 0,
-            None | Some("default") => consts::DEFAULT_RETRY,
+            None | Some("default") => constants::DEFAULT_RETRY,
             Some(value) => usize::from_str(value)?,
         };
         let connections = options

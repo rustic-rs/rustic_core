@@ -100,12 +100,6 @@ mod tests {
         (SupportedBackend::OpenDAL,
         BackendLocation::try_from("https://example.com/tmp/repo").unwrap())
     )]
-    #[cfg(feature = "s3")]
-    #[case(
-        "s3:https://example.com/tmp/repo",
-        (SupportedBackend::S3,
-        BackendLocation::try_from("https://example.com/tmp/repo").unwrap())
-    )]
     #[cfg(windows)]
     #[case(
         r#"C:\tmp\repo"#,
