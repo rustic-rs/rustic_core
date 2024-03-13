@@ -45,10 +45,10 @@ implement [`serde::Serialize`] and [`serde::Deserialize`].
 
     let config_opts = ConfigOptions::default();
 
-    let _repo = Repository::new(&repo_opts, backends.clone()).unwrap().init(&key_opts, &config_opts).unwrap();
+    let _repo = Repository::new(&repo_opts, &backends.clone()).unwrap().init(&key_opts, &config_opts).unwrap();
 
     // We could have used _repo directly, but open the repository again to show how to open it...
-    let repo = Repository::new(&repo_opts, backends).unwrap().open().unwrap();
+    let repo = Repository::new(&repo_opts, &backends).unwrap().open().unwrap();
 
     // Get all snapshots from the repository
     let snaps = repo.get_all_snapshots().unwrap();

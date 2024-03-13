@@ -13,9 +13,12 @@ use std::{io::Read, ops::Deref, path::PathBuf, sync::Arc};
 
 use anyhow::Result;
 use bytes::Bytes;
+use enum_map::Enum;
 use log::trace;
+
 #[cfg(test)]
-use mockall::*;
+use mockall::mock;
+
 use serde_derive::{Deserialize, Serialize};
 
 use crate::{
@@ -34,7 +37,7 @@ pub const ALL_FILE_TYPES: [FileType; 4] = [
 ];
 
 /// Type for describing the kind of a file that can occur.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, Enum)]
 pub enum FileType {
     /// Config file
     #[serde(rename = "config")]
@@ -295,7 +298,9 @@ pub trait WriteBackend: ReadBackend {
     /// # Returns
     ///
     /// The result of the creation.
-    fn create(&self) -> Result<()>;
+    fn create(&self) -> Result<()> {
+        Ok(())
+    }
 
     /// Writes bytes to the given file.
     ///
