@@ -131,7 +131,6 @@ fn insta_tree_redaction() -> Settings {
     settings.add_redaction(".nodes[].user", "[user]");
     settings.add_redaction(".nodes[].gid", "[gid]");
     settings.add_redaction(".nodes[].group", "[group]");
-    settings.add_redaction(".nodes[].content", "[content_id]");
     settings.add_dynamic_redaction(".nodes[].mode", handle_option);
     settings.add_dynamic_redaction(".nodes[].mtime", handle_option);
     settings.add_dynamic_redaction(".nodes[].atime", handle_option);
