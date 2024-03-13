@@ -13,6 +13,9 @@ rust-version = "1.72.1"
 
 [workspace.dependencies]
 aho-corasick = "1.1.2"
+anyhow = "1.0.81"
+bytes = "1.5.0"
+enum-map = "2.7.3"
 rustic_backend = { path = "crates/backend" }
 rustic_core = { path = "crates/core" }
 rustic_testing = { path = "crates/testing" }
