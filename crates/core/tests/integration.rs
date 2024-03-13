@@ -176,6 +176,9 @@ fn test_backup_with_tar_gz_passes(
     // first backup
     let first_snapshot = repo.backup(&opts, paths, SnapshotFile::default())?;
 
+    // We can also bind to scope ( https://docs.rs/insta/latest/insta/struct.Settings.html#method.bind_to_scope )
+    // But I think that can get messy with a lot of tests, also checking which settings are currently applied
+    // will be probably harder
     #[cfg(windows)]
     insta_summary_redaction.bind(|| {
         assert_ron_snapshot!(
