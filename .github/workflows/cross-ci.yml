@@ -2,10 +2,6 @@ name: Cross CI (light)
 
 on:
   pull_request:
-  push:
-    # We run the heavy ci already
-    branches-ignore:
-      - main
 
 defaults:
   run:
