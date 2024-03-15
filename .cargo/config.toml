@@ -1,4 +1,0 @@
-[build]
-rustdocflags = ["--document-private-items"]
-# rustflags = "-C target-cpu=native -D warnings"
-# incremental = true

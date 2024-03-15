@@ -1,15 +1,11 @@
-#[cfg(feature = "s3")]
-pub mod s3;
-#[cfg(all(unix, feature = "sftp"))]
-pub mod sftp;
-
+/// `OpenDAL` backend for rustic.
 use std::{collections::HashMap, path::PathBuf, str::FromStr, sync::OnceLock};
 
 use anyhow::Result;
 use bytes::Bytes;
 use log::trace;
 use opendal::{
-    layers::{BlockingLayer, LoggingLayer, RetryLayer},
+    layers::{BlockingLayer, ConcurrentLimitLayer, LoggingLayer, RetryLayer},
     BlockingOperator, ErrorKind, Metakey, Operator, Scheme,
 };
 use rayon::prelude::{IntoParallelIterator, ParallelIterator};
@@ -17,11 +13,12 @@ use tokio::runtime::Runtime;
 
 use rustic_core::{FileType, Id, ReadBackend, WriteBackend, ALL_FILE_TYPES};
 
-mod consts {
+mod constants {
     /// Default number of retries
     pub(super) const DEFAULT_RETRY: usize = 5;
 }
 
+/// `OpenDALBackend` contains a wrapper around an blocking operator of the `OpenDAL` library.
 #[derive(Clone, Debug)]
 pub struct OpenDALBackend {
     operator: BlockingOperator,
@@ -42,25 +39,56 @@ impl OpenDALBackend {
     ///
     /// # Arguments
     ///
-    /// * `path` - The path to the OpenDAL backend.
-    /// * `options` - Additional options for the OpenDAL backend.
+    /// * `path` - The path to the `OpenDAL` backend.
+    /// * `options` - Additional options for the `OpenDAL` backend.
+    ///
+    /// # Errors
+    ///
+    /// If the path is not a valid `OpenDAL` path, an error is returned.
+    ///
+    /// # Returns
+    ///
+    /// A new `OpenDAL` backend.
     pub fn new(path: impl AsRef<str>, options: HashMap<String, String>) -> Result<Self> {
-        let max_retries = match options.get("retry").map(std::string::String::as_str) {
+        let max_retries = match options.get("retry").map(String::as_str) {
             Some("false" | "off") => 0,
-            None | Some("default") => consts::DEFAULT_RETRY,
+            None | Some("default") => constants::DEFAULT_RETRY,
             Some(value) => usize::from_str(value)?,
         };
+        let connections = options
+            .get("connections")
+            .map(|c| usize::from_str(c))
+            .transpose()?;
 
         let schema = Scheme::from_str(path.as_ref())?;
+        let mut operator = Operator::via_map(schema, options)?
+            .layer(RetryLayer::new().with_max_times(max_retries).with_jitter());
+
+        if let Some(connections) = connections {
+            operator = operator.layer(ConcurrentLimitLayer::new(connections));
+        }
+
         let _guard = runtime().enter();
-        let operator = Operator::via_map(schema, options)?
-            .layer(RetryLayer::new().with_max_times(max_retries).with_jitter())
+        let operator = operator
             .layer(LoggingLayer::default())
             .layer(BlockingLayer::create()?)
             .blocking();
+
         Ok(Self { operator })
     }
 
+    /// Return a path for the given file type and id.
+    ///
+    /// # Arguments
+    ///
+    /// * `tpe` - The type of the file.
+    /// * `id` - The id of the file.
+    ///
+    /// # Returns
+    ///
+    /// The path for the given file type and id.
+    // Let's keep this for now, as it's being used in the trait implementations.
+    #[allow(clippy::unused_self)]
     fn path(&self, tpe: FileType, id: &Id) -> String {
         let hex_id = id.to_hex();
         match tpe {

@@ -148,6 +148,7 @@ impl RestoreOptions {
     ///
     /// [`CommandErrorKind::ErrorCreating`]: crate::error::CommandErrorKind::ErrorCreating
     /// [`CommandErrorKind::ErrorCollecting`]: crate::error::CommandErrorKind::ErrorCollecting
+    #[allow(clippy::too_many_lines)]
     pub(crate) fn collect_and_prepare<P: ProgressBars, S: IndexedFull>(
         self,
         repo: &Repository<P, S>,
@@ -420,6 +421,7 @@ impl RestoreOptions {
 ///
 /// [`CommandErrorKind::ErrorSettingLength`]: crate::error::CommandErrorKind::ErrorSettingLength
 /// [`CommandErrorKind::FromRayonError`]: crate::error::CommandErrorKind::FromRayonError
+#[allow(clippy::too_many_lines)]
 fn restore_contents<P: ProgressBars, S: Open>(
     repo: &Repository<P, S>,
     dest: &LocalDestination,
@@ -696,9 +698,12 @@ impl RestorePlan {
             };
             let length = bl.data_length();
 
+            let usize_length =
+                usize::try_from(length).map_err(CommandErrorKind::ConversionFromIntFailed)?;
+
             let matches = open_file
                 .as_mut()
-                .map_or(false, |file| id.blob_matches_reader(length as usize, file));
+                .map_or(false, |file| id.blob_matches_reader(usize_length, file));
 
             let blob_location = self.r.entry((ie.pack, bl)).or_default();
             blob_location.push(FileLocation {

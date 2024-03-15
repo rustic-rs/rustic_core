@@ -16,11 +16,9 @@ The primary types in this crate are:
 The following backends are currently supported and can be enabled with features:
 
 - `LocalBackend` - Backend for accessing a local filesystem.
-- `OpenDALBackend` - Backend for accessing a OpenDAL filesystem.
+- `OpenDALBackend` - Backend for accessing a `OpenDAL` filesystem.
 - `RcloneBackend` - Backend for accessing a Rclone filesystem.
 - `RestBackend` - Backend for accessing a REST API.
-- `SftpBackend` - Backend for accessing a SFTP filesystem.
-- `S3Backend` - Backend for accessing a S3 filesystem.
 
 ## Usage & Examples
 
@@ -46,28 +44,29 @@ This crate exposes a few features for controlling dependency usage:
 
 - **opendal** - Enables support for the `opendal` backend. *This feature is
   enabled by default*.
+
 - **rclone** - Enables support for the `rclone` backend. *This feature is
   enabled by default*.
 
 - **rest** - Enables support for the `rest` backend. *This feature is enabled by
   default*.
-
-- **sftp** - Enables support for the `sftp` backend. Windows is not yet
-  supported. *This feature is enabled by default*.
-
-- **s3** - Enables support for the `s3` backend. *This feature is enabled by
-  default*.
 */
 
 pub mod choose;
+/// Error types for the backend.
 pub mod error;
+/// Local backend for Rustic.
 pub mod local;
+/// `OpenDAL` backend for Rustic.
 #[cfg(feature = "opendal")]
 pub mod opendal;
+/// `Rclone` backend for Rustic.
 #[cfg(feature = "rclone")]
 pub mod rclone;
+/// REST backend for Rustic.
 #[cfg(feature = "rest")]
 pub mod rest;
+/// Utility functions for the backend.
 pub mod util;
 
 // rustic_backend Public API
@@ -75,12 +74,6 @@ pub use crate::{
     choose::{BackendOptions, SupportedBackend},
     local::LocalBackend,
 };
-
-#[cfg(all(unix, feature = "sftp"))]
-pub use crate::opendal::sftp::SftpBackend;
-
-#[cfg(feature = "s3")]
-pub use crate::opendal::s3::S3Backend;
 
 #[cfg(feature = "opendal")]
 pub use crate::opendal::OpenDALBackend;

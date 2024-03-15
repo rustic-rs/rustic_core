@@ -15,7 +15,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     // Open repository
     let repo_opts = RepositoryOptions::default().password("test");
-    let repo = Repository::new(&repo_opts, backends)?.open()?;
+    let repo = Repository::new(&repo_opts, &backends)?.open()?;
 
     // Check repository with standard options but omitting cache checks
     let opts = CheckOptions::default().trust_cache(true);

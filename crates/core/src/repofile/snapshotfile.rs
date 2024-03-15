@@ -95,12 +95,32 @@ impl SnapshotOptions {
     /// # Arguments
     ///
     /// * `tag` - The tag to add
+    ///
+    /// # Errors
+    ///
+    /// * [`SnapshotFileErrorKind::NonUnicodeTag`] - If the tag is not valid unicode
+    ///
+    /// # Returns
+    ///
+    /// The modified [`SnapshotOptions`]
+    ///
+    /// [`SnapshotFileErrorKind::NonUnicodeTag`]: crate::error::SnapshotFileErrorKind::NonUnicodeTag
     pub fn add_tags(mut self, tag: &str) -> RusticResult<Self> {
         self.tag.push(StringList::from_str(tag)?);
         Ok(self)
     }
 
     /// Create a new [`SnapshotFile`] using this `SnapshotOption`s
+    ///
+    /// # Errors
+    ///
+    /// * [`SnapshotFileErrorKind::NonUnicodeHostname`] - If the hostname is not valid unicode
+    ///
+    /// # Returns
+    ///
+    /// The new [`SnapshotFile`]
+    ///
+    /// [`SnapshotFileErrorKind::NonUnicodeHostname`]: crate::error::SnapshotFileErrorKind::NonUnicodeHostname
     pub fn to_snapshot(&self) -> RusticResult<SnapshotFile> {
         SnapshotFile::from_options(self)
     }
@@ -1055,6 +1075,15 @@ impl StringList {
     }
 }
 
+impl<'str> IntoIterator for &'str StringList {
+    type Item = &'str String;
+    type IntoIter = std::slice::Iter<'str, String>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.iter()
+    }
+}
+
 /// `PathList` is a rustic-internal list of `PathBuf`s. It is used in the [`crate::Repository::backup`] command.
 #[derive(Default, Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
 pub struct PathList(Vec<PathBuf>);
@@ -1071,25 +1100,31 @@ impl Display for PathList {
     }
 }
 
-impl PathList {
-    /// Create a `PathList` from `String`s.
-    ///
-    /// # Arguments
-    ///
-    /// * `source` - The `String`s to use
-    pub fn from_strings<I>(source: I) -> Self
-    where
-        I: IntoIterator,
-        I::Item: AsRef<str>,
-    {
-        Self(
-            source
-                .into_iter()
-                .map(|source| PathBuf::from(source.as_ref()))
-                .collect(),
-        )
+impl FromIterator<PathBuf> for PathList {
+    fn from_iter<I: IntoIterator<Item = PathBuf>>(iter: I) -> Self {
+        Self(iter.into_iter().collect())
     }
+}
 
+impl<'a> FromIterator<&'a String> for PathList {
+    fn from_iter<I: IntoIterator<Item = &'a String>>(iter: I) -> Self {
+        Self(iter.into_iter().map(PathBuf::from).collect())
+    }
+}
+
+impl FromIterator<String> for PathList {
+    fn from_iter<I: IntoIterator<Item = String>>(iter: I) -> Self {
+        Self(iter.into_iter().map(PathBuf::from).collect())
+    }
+}
+
+impl<'a> FromIterator<&'a str> for PathList {
+    fn from_iter<I: IntoIterator<Item = &'a str>>(iter: I) -> Self {
+        Self(iter.into_iter().map(PathBuf::from).collect())
+    }
+}
+
+impl PathList {
     /// Create a `PathList` by parsing a Strings containing paths separated by whitspaces.
     ///
     /// # Arguments
@@ -1103,7 +1138,7 @@ impl PathList {
     /// [`SnapshotFileErrorKind::FromSplitError`]: crate::error::SnapshotFileErrorKind::FromSplitError
     pub fn from_string(sources: &str) -> RusticResult<Self> {
         let sources = split(sources).map_err(SnapshotFileErrorKind::FromSplitError)?;
-        Ok(Self::from_strings(sources))
+        Ok(Self::from_iter(sources))
     }
 
     /// Number of paths in the `PathList`.

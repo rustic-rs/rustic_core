@@ -16,7 +16,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     // Open repository
     let repo_opts = RepositoryOptions::default().password("test");
-    let repo = Repository::new(&repo_opts, backends)?.open()?;
+    let repo = Repository::new(&repo_opts, &backends)?.open()?;
 
     // Set tag "test" to all snapshots, filtering out unchanged (i.e. tag was already preset) snapshots
     let snaps = repo.get_all_snapshots()?;

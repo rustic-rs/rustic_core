@@ -92,6 +92,11 @@ impl Id {
     ///
     /// assert_eq!(id.to_hex().as_str(), "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef");
     /// ```
+    ///
+    /// # Panics
+    ///
+    /// Panics if the `hex` crate fails to encode the hash
+    // TODO! - remove the panic
     #[must_use]
     pub fn to_hex(self) -> HexId {
         let mut hex_id = HexId::EMPTY;
@@ -149,6 +154,10 @@ impl HexId {
     const EMPTY: Self = Self([b'0'; constants::HEX_LEN]);
 
     /// Get the string representation of a [`HexId`]
+    ///
+    /// # Panics
+    ///
+    /// If the [`HexId`] is not a valid UTF-8 string
     #[must_use]
     pub fn as_str(&self) -> &str {
         // This is only ever filled with hex chars, which are ascii
