@@ -2,8 +2,20 @@ name: Lint Markdown / Toml
 
 on:
   pull_request:
+    paths:
+      - '**.json'
+      - '**.toml'
+      - '**.md'
+      - '**.yml'
+      - '**.yaml'
   push:
     branches: [main]
+    paths:
+      - '**.json'
+      - '**.toml'
+      - '**.md'
+      - '**.yml'
+      - '**.yaml'
   merge_group:
     types: [checks_requested]
 

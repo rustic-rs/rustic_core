@@ -212,8 +212,8 @@ pub enum CommandErrorKind {
     ErrorSettingLength(PathBuf, Box<RusticError>),
     /// {0:?}
     FromRayonError(#[from] rayon::ThreadPoolBuildError),
-    /// conversion to `u64` failed: `{0:?}`
-    ConversionToU64Failed(TryFromIntError),
+    /// conversion from integer failed: `{0:?}`
+    ConversionFromIntFailed(TryFromIntError),
     /// {0} is not allowed on an append-only repository
     NotAllowedWithAppendOnly(String),
 }

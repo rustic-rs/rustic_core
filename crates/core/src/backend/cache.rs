@@ -99,7 +99,7 @@ impl ReadBackend for CachedBackend {
             }
             let res = self.be.read_full(tpe, id);
             if let Ok(data) = &res {
-                _ = self.cache.write_bytes(tpe, id, data.clone());
+                _ = self.cache.write_bytes(tpe, id, data);
             }
             res
         } else {
@@ -144,7 +144,7 @@ impl ReadBackend for CachedBackend {
             match self.be.read_full(tpe, id) {
                 Ok(data) => {
                     let range = offset as usize..(offset + length) as usize;
-                    _ = self.cache.write_bytes(tpe, id, data.clone());
+                    _ = self.cache.write_bytes(tpe, id, &data);
                     Ok(Bytes::copy_from_slice(&data.slice(range)))
                 }
                 error => error,
@@ -180,7 +180,7 @@ impl WriteBackend for CachedBackend {
     /// * `buf` - The data to write.
     fn write_bytes(&self, tpe: FileType, id: &Id, cacheable: bool, buf: Bytes) -> Result<()> {
         if cacheable || tpe.is_cacheable() {
-            _ = self.cache.write_bytes(tpe, id, buf.clone());
+            _ = self.cache.write_bytes(tpe, id, &buf);
         }
         self.be.write_bytes(tpe, id, cacheable, buf)
     }
@@ -289,6 +289,7 @@ impl Cache {
     ///
     /// [`CacheBackendErrorKind::FromIoError`]: crate::error::CacheBackendErrorKind::FromIoError
     /// [`IdErrorKind::HexError`]: crate::error::IdErrorKind::HexError
+    #[allow(clippy::unnecessary_wraps)]
     pub fn list_with_size(&self, tpe: FileType) -> RusticResult<HashMap<Id, u32>> {
         let path = self.path.join(tpe.dirname());
 
@@ -300,11 +301,10 @@ impl Cache {
                 e.file_type().is_file()
                     && e.file_name().len() == 64
                     && e.file_name().is_ascii()
-                    && e.file_name()
-                        .to_str()
-                        .unwrap()
-                        .chars()
-                        .all(|c| c.is_ascii_digit() || ('a'..='f').contains(&c))
+                    && e.file_name().to_str().is_some_and(|c| {
+                        c.chars()
+                            .all(|c| c.is_ascii_digit() || ('a'..='f').contains(&c))
+                    })
             })
             .map(|e| {
                 (
@@ -426,7 +426,7 @@ impl Cache {
     /// * [`CacheBackendErrorKind::FromIoError`] - If the file could not be written.
     ///
     /// [`CacheBackendErrorKind::FromIoError`]: crate::error::CacheBackendErrorKind::FromIoError
-    pub fn write_bytes(&self, tpe: FileType, id: &Id, buf: Bytes) -> RusticResult<()> {
+    pub fn write_bytes(&self, tpe: FileType, id: &Id, buf: &Bytes) -> RusticResult<()> {
         trace!("cache writing tpe: {:?}, id: {}", &tpe, &id);
         fs::create_dir_all(self.dir(tpe, id)).map_err(CacheBackendErrorKind::FromIoError)?;
         let filename = self.path(tpe, id);
@@ -435,7 +435,7 @@ impl Cache {
             .write(true)
             .open(filename)
             .map_err(CacheBackendErrorKind::FromIoError)?;
-        file.write_all(&buf)
+        file.write_all(buf)
             .map_err(CacheBackendErrorKind::FromIoError)?;
         Ok(())
     }

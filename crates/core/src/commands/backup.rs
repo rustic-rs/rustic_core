@@ -245,7 +245,7 @@ pub(crate) fn backup<P: ProgressBars, S: IndexedIds>(
         let path = &backup_path[0];
         let src = StdinSource::new(path.clone());
         archiver.archive(
-            src,
+            &src,
             path,
             as_path.as_ref(),
             opts.parent_opts.skip_identical_parent,
@@ -259,7 +259,7 @@ pub(crate) fn backup<P: ProgressBars, S: IndexedIds>(
             &backup_path,
         )?;
         archiver.archive(
-            src,
+            &src,
             &backup_path[0],
             as_path.as_ref(),
             opts.parent_opts.skip_identical_parent,

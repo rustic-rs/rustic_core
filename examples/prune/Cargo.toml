@@ -10,3 +10,6 @@ publish = false
 rustic_backend = { workspace = true }
 rustic_core = { workspace = true }
 simplelog = { workspace = true }
+
+[[example]]
+name = "prune"

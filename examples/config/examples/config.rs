@@ -15,7 +15,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     // Open repository
     let repo_opts = RepositoryOptions::default().password("test");
-    let repo = Repository::new(&repo_opts, backends)?.open()?;
+    let repo = Repository::new(&repo_opts, &backends)?.open()?;
 
     // Set Config, e.g. Compression level
     let config_opts = ConfigOptions::default().set_compression(max_compression_level());

@@ -16,7 +16,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     // Open repository
     let repo_opts = RepositoryOptions::default().password("test");
 
-    let repo = Repository::new(&repo_opts, backends)?.open()?;
+    let repo = Repository::new(&repo_opts, &backends)?.open()?;
 
     let prune_opts = PruneOptions::default();
     let prune_plan = repo.prune_plan(&prune_opts)?;

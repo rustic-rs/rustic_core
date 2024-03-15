@@ -13,7 +13,12 @@ use std::{io::Read, ops::Deref, path::PathBuf, sync::Arc};
 
 use anyhow::Result;
 use bytes::Bytes;
+use enum_map::Enum;
 use log::trace;
+
+#[cfg(test)]
+use mockall::mock;
+
 use serde_derive::{Deserialize, Serialize};
 
 use crate::{
@@ -32,7 +37,7 @@ pub const ALL_FILE_TYPES: [FileType; 4] = [
 ];
 
 /// Type for describing the kind of a file that can occur.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, Enum)]
 pub enum FileType {
     /// Config file
     #[serde(rename = "config")]
@@ -53,6 +58,7 @@ pub enum FileType {
 
 impl FileType {
     /// Returns the directory name of the file type.
+    #[must_use]
     pub const fn dirname(self) -> &'static str {
         match self {
             Self::Config => "config",
@@ -284,7 +290,17 @@ impl<T: ReadBackend> FindInBackend for T {}
 /// This trait is implemented by all backends that can write data.
 pub trait WriteBackend: ReadBackend {
     /// Creates a new backend.
-    fn create(&self) -> Result<()>;
+    ///
+    /// # Errors
+    ///
+    /// If the backend could not be created.
+    ///
+    /// # Returns
+    ///
+    /// The result of the creation.
+    fn create(&self) -> Result<()> {
+        Ok(())
+    }
 
     /// Writes bytes to the given file.
     ///
@@ -294,6 +310,14 @@ pub trait WriteBackend: ReadBackend {
     /// * `id` - The id of the file.
     /// * `cacheable` - Whether the data can be cached.
     /// * `buf` - The data to write.
+    ///
+    /// # Errors
+    ///
+    /// If the data could not be written.
+    ///
+    /// # Returns
+    ///
+    /// The result of the write.
     fn write_bytes(&self, tpe: FileType, id: &Id, cacheable: bool, buf: Bytes) -> Result<()>;
 
     /// Removes the given file.
@@ -303,7 +327,40 @@ pub trait WriteBackend: ReadBackend {
     /// * `tpe` - The type of the file.
     /// * `id` - The id of the file.
     /// * `cacheable` - Whether the file is cacheable.
+    ///
+    /// # Errors
+    ///
+    /// If the file could not be removed.
+    ///
+    /// # Returns
+    ///
+    /// The result of the removal.
     fn remove(&self, tpe: FileType, id: &Id, cacheable: bool) -> Result<()>;
+}
+
+#[cfg(test)]
+mock! {
+    Backend {}
+
+    impl ReadBackend for Backend{
+        fn location(&self) -> String;
+        fn list_with_size(&self, tpe: FileType) -> Result<Vec<(Id, u32)>>;
+        fn read_full(&self, tpe: FileType, id: &Id) -> Result<Bytes>;
+        fn read_partial(
+            &self,
+            tpe: FileType,
+            id: &Id,
+            cacheable: bool,
+            offset: u32,
+            length: u32,
+        ) -> Result<Bytes>;
+    }
+
+    impl WriteBackend for Backend {
+        fn create(&self) -> Result<()>;
+        fn write_bytes(&self, tpe: FileType, id: &Id, cacheable: bool, buf: Bytes) -> Result<()>;
+        fn remove(&self, tpe: FileType, id: &Id, cacheable: bool) -> Result<()>;
+    }
 }
 
 impl WriteBackend for Arc<dyn WriteBackend> {
@@ -374,6 +431,14 @@ pub trait ReadSourceOpen {
     type Reader: Read + Send + 'static;
 
     /// Opens the source.
+    ///
+    /// # Errors
+    ///
+    /// If the source could not be opened.
+    ///
+    /// # Result
+    ///
+    /// The reader used to read from the source.
     fn open(self) -> RusticResult<Self::Reader>;
 }
 
@@ -387,6 +452,14 @@ pub trait ReadSource: Sync + Send {
     type Iter: Iterator<Item = RusticResult<ReadSourceEntry<Self::Open>>>;
 
     /// Returns the size of the source.
+    ///
+    /// # Errors
+    ///
+    /// If the size could not be determined.
+    ///
+    /// # Returns
+    ///
+    /// The size of the source, if it is known.
     fn size(&self) -> RusticResult<Option<u64>>;
 
     /// Returns an iterator over the entries of the source.
@@ -466,11 +539,13 @@ impl RepositoryBackends {
     }
 
     /// Returns the repository of this [`RepositoryBackends`].
+    #[must_use]
     pub fn repository(&self) -> Arc<dyn WriteBackend> {
         self.repository.clone()
     }
 
     /// Returns the hot repository of this [`RepositoryBackends`].
+    #[must_use]
     pub fn repo_hot(&self) -> Option<Arc<dyn WriteBackend>> {
         self.repo_hot.clone()
     }

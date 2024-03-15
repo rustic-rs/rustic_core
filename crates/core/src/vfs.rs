@@ -189,7 +189,16 @@ pub struct Vfs {
 
 impl Vfs {
     /// Create a new [`Vfs`] from a directory [`Node`].
-    pub fn from_dirnode(node: Node) -> Self {
+    ///
+    /// # Arguments
+    ///
+    /// * `node` - The directory [`Node`] to create the [`Vfs`] from
+    ///
+    /// # Panics
+    ///
+    /// If the node is not a directory
+    #[must_use]
+    pub fn from_dir_node(node: &Node) -> Self {
         let tree = VfsTree::RusticTree(node.subtree.unwrap());
         Self { tree }
     }
@@ -349,6 +358,10 @@ impl Vfs {
     ///
     /// [`VfsErrorKind::NameDoesNotExist`]: crate::error::VfsErrorKind::NameDoesNotExist
     /// [`Tree`]: crate::repofile::Tree
+    ///
+    /// # Panics
+    ///
+    /// Panics if the path is not a directory.
     pub fn dir_entries_from_path<P, S: IndexedFull>(
         &self,
         repo: &Repository<P, S>,
@@ -438,6 +451,10 @@ impl OpenFile {
     /// # Returns
     ///
     /// The created `OpenFile`
+    ///
+    /// # Panics
+    ///
+    /// Panics if the `Node` has no content
     pub fn from_node<P, S: IndexedFull>(repo: &Repository<P, S>, node: &Node) -> Self {
         let mut start = 0;
         let mut content: Vec<_> = node

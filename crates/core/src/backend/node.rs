@@ -108,6 +108,7 @@ pub enum NodeType {
 impl NodeType {
     #[cfg(not(windows))]
     /// Get a [`NodeType`] from a linktarget path
+    #[must_use]
     pub fn from_link(target: &Path) -> Self {
         let (linktarget, linktarget_raw) = target.to_str().map_or_else(
             || {
@@ -138,7 +139,12 @@ impl NodeType {
 
     // Must be only called on NodeType::Symlink!
     /// Get the link path from a `NodeType::Symlink`.
+    ///
+    /// # Panics
+    ///
+    /// If called on a non-symlink node
     #[cfg(not(windows))]
+    #[must_use]
     pub fn to_link(&self) -> &Path {
         match self {
             Self::Symlink {
@@ -425,56 +431,58 @@ fn unescape_filename(s: &str) -> RusticResult<OsString> {
     loop {
         match chars.next() {
             None => break,
-            Some(c) => match c {
-                '\\' => match chars.next() {
-                    None => return Err(NodeErrorKind::UnexpectedEOF.into()),
-                    Some(c) => match c {
-                        '\\' => u.push(b'\\'),
-                        '"' => u.push(b'"'),
-                        '\'' => u.push(b'\''),
-                        '`' => u.push(b'`'),
-                        'a' => u.push(b'\x07'),
-                        'b' => u.push(b'\x08'),
-                        'f' => u.push(b'\x0c'),
-                        'n' => u.push(b'\n'),
-                        'r' => u.push(b'\r'),
-                        't' => u.push(b'\t'),
-                        'v' => u.push(b'\x0b'),
-                        // hex
-                        'x' => {
-                            let hex = take(&mut chars, 2);
-                            u.push(
-                                u8::from_str_radix(&hex, 16)
-                                    .map_err(NodeErrorKind::FromParseIntError)?,
-                            );
-                        }
-                        // unicode
-                        'u' => {
-                            let n = u32::from_str_radix(&take(&mut chars, 4), 16)
-                                .map_err(NodeErrorKind::FromParseIntError)?;
-                            let c = std::char::from_u32(n).ok_or(NodeErrorKind::InvalidUnicode)?;
-                            let mut bytes = vec![0u8; c.len_utf8()];
-                            _ = c.encode_utf8(&mut bytes);
-                            u.extend_from_slice(&bytes);
-                        }
-                        'U' => {
-                            let n = u32::from_str_radix(&take(&mut chars, 8), 16)
-                                .map_err(NodeErrorKind::FromParseIntError)?;
-                            let c = std::char::from_u32(n).ok_or(NodeErrorKind::InvalidUnicode)?;
-                            let mut bytes = vec![0u8; c.len_utf8()];
-                            _ = c.encode_utf8(&mut bytes);
-                            u.extend_from_slice(&bytes);
-                        }
-                        _ => return Err(NodeErrorKind::UnrecognizedEscape.into()),
-                    },
-                },
-                // normal char
-                _ => {
+            Some(c) => {
+                if c == '\\' {
+                    match chars.next() {
+                        None => return Err(NodeErrorKind::UnexpectedEOF.into()),
+                        Some(c) => match c {
+                            '\\' => u.push(b'\\'),
+                            '"' => u.push(b'"'),
+                            '\'' => u.push(b'\''),
+                            '`' => u.push(b'`'),
+                            'a' => u.push(b'\x07'),
+                            'b' => u.push(b'\x08'),
+                            'f' => u.push(b'\x0c'),
+                            'n' => u.push(b'\n'),
+                            'r' => u.push(b'\r'),
+                            't' => u.push(b'\t'),
+                            'v' => u.push(b'\x0b'),
+                            // hex
+                            'x' => {
+                                let hex = take(&mut chars, 2);
+                                u.push(
+                                    u8::from_str_radix(&hex, 16)
+                                        .map_err(NodeErrorKind::FromParseIntError)?,
+                                );
+                            }
+                            // unicode
+                            'u' => {
+                                let n = u32::from_str_radix(&take(&mut chars, 4), 16)
+                                    .map_err(NodeErrorKind::FromParseIntError)?;
+                                let c =
+                                    std::char::from_u32(n).ok_or(NodeErrorKind::InvalidUnicode)?;
+                                let mut bytes = vec![0u8; c.len_utf8()];
+                                _ = c.encode_utf8(&mut bytes);
+                                u.extend_from_slice(&bytes);
+                            }
+                            'U' => {
+                                let n = u32::from_str_radix(&take(&mut chars, 8), 16)
+                                    .map_err(NodeErrorKind::FromParseIntError)?;
+                                let c =
+                                    std::char::from_u32(n).ok_or(NodeErrorKind::InvalidUnicode)?;
+                                let mut bytes = vec![0u8; c.len_utf8()];
+                                _ = c.encode_utf8(&mut bytes);
+                                u.extend_from_slice(&bytes);
+                            }
+                            _ => return Err(NodeErrorKind::UnrecognizedEscape.into()),
+                        },
+                    }
+                } else {
                     let mut bytes = vec![0u8; c.len_utf8()];
                     _ = c.encode_utf8(&mut bytes);
                     u.extend_from_slice(&bytes);
                 }
-            },
+            }
         }
     }
 
@@ -501,6 +509,7 @@ mod tests {
     use rstest::rstest;
 
     #[quickcheck]
+    #[allow(clippy::needless_pass_by_value)]
     fn escape_unescape_is_identity(bytes: Vec<u8>) -> bool {
         let name = OsStr::from_bytes(&bytes);
         name == match unescape_filename(&escape_filename(name)) {
@@ -557,6 +566,7 @@ mod tests {
     }
 
     #[quickcheck]
+    #[allow(clippy::needless_pass_by_value)]
     fn from_link_to_link_is_identity(bytes: Vec<u8>) -> bool {
         let path = Path::new(OsStr::from_bytes(&bytes));
         path == NodeType::from_link(path).to_link()

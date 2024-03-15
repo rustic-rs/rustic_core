@@ -12,6 +12,9 @@ pub(crate) type Polynom64 = u64;
 
 impl Polynom for Polynom64 {
     /// The degree of the polynom.
+    // `self` is u64, so `self.leading_zeroes() <= 64` which
+    // fits perfectly into a `i32`. (@aawsome)
+    #[allow(clippy::cast_possible_wrap)]
     fn degree(&self) -> i32 {
         63 - self.leading_zeros() as i32
     }

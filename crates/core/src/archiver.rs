@@ -29,6 +29,7 @@ use crate::{
 /// * `BE` - The backend type.
 /// * `I` - The index to read from.
 #[allow(missing_debug_implementations)]
+#[allow(clippy::struct_field_names)]
 pub struct Archiver<'a, BE: DecryptFullBackend, I: ReadGlobalIndex> {
     /// The `FileArchiver` is responsible for archiving files.
     file_archiver: FileArchiver<'a, BE, I>,
@@ -122,7 +123,7 @@ impl<'a, BE: DecryptFullBackend, I: ReadGlobalIndex> Archiver<'a, BE, I> {
     /// [`SnapshotFileErrorKind::OutOfRange`]: crate::error::SnapshotFileErrorKind::OutOfRange
     pub fn archive<R>(
         mut self,
-        src: R,
+        src: &R,
         backup_path: &Path,
         as_path: Option<&PathBuf>,
         skip_identical_parent: bool,

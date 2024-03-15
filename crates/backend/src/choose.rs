@@ -13,12 +13,6 @@ use crate::{
     util::{location_to_type_and_path, BackendLocation},
 };
 
-#[cfg(feature = "s3")]
-use crate::opendal::s3::S3Backend;
-
-#[cfg(all(unix, feature = "sftp"))]
-use crate::opendal::sftp::SftpBackend;
-
 #[cfg(feature = "opendal")]
 use crate::opendal::OpenDALBackend;
 
@@ -75,16 +69,25 @@ pub struct BackendOptions {
 /// * `right` - The right value
 #[cfg(feature = "merge")]
 pub fn extend<A, T: Extend<A> + IntoIterator<Item = A>>(left: &mut T, right: T) {
-    left.extend(right)
+    left.extend(right);
 }
 
 impl BackendOptions {
+    /// Convert the options to backends.
+    ///
+    /// # Errors
+    ///
+    /// If the repository is not given, an error is returned.
+    ///
+    /// # Returns
+    ///
+    /// The backends for the repository.
     pub fn to_backends(&self) -> Result<RepositoryBackends> {
         let mut options = self.options.clone();
         options.extend(self.options_cold.clone());
         let be = self
             .get_backend(self.repository.as_ref(), options)?
-            .ok_or(anyhow!("No repository given."))?;
+            .ok_or_else(|| anyhow!("No repository given."))?;
         let mut options = self.options.clone();
         options.extend(self.options_hot.clone());
         let be_hot = self.get_backend(self.repo_hot.as_ref(), options)?;
@@ -92,6 +95,22 @@ impl BackendOptions {
         Ok(RepositoryBackends::new(be, be_hot))
     }
 
+    /// Get the backend for the given repository.
+    ///
+    /// # Arguments
+    ///
+    /// * `repo_string` - The repository string to use.
+    /// * `options` - Additional options for the backend.
+    ///
+    /// # Errors
+    ///
+    /// If the backend cannot be loaded, an error is returned.
+    ///
+    /// # Returns
+    ///
+    /// The backend for the given repository.
+    // Allow unused_self, as we want to access this method
+    #[allow(clippy::unused_self)]
     fn get_backend(
         &self,
         repo_string: Option<&String>,
@@ -131,13 +150,13 @@ pub trait BackendChoice {
 
 /// The supported backend types.
 ///
-/// Currently supported types are "local", "rclone", "rest", "opendal", "s3"
+/// Currently supported types are "local", "rclone", "rest", "opendal"
 ///
 /// # Notes
 ///
 /// If the url is a windows path, the type will be "local".
 #[non_exhaustive]
-#[derive(Debug, Clone, Copy, PartialEq, EnumString, Display)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, EnumString, Display)]
 pub enum SupportedBackend {
     /// A local backend
     #[strum(serialize = "local", to_string = "Local Backend")]
@@ -157,16 +176,6 @@ pub enum SupportedBackend {
     /// An openDAL backend (general)
     #[strum(serialize = "opendal", to_string = "openDAL Backend")]
     OpenDAL,
-
-    #[cfg(feature = "s3")]
-    /// An openDAL S3 backend
-    #[strum(serialize = "s3", to_string = "S3 Backend")]
-    S3,
-
-    #[cfg(all(unix, feature = "sftp"))]
-    /// An openDAL sftp backend
-    #[strum(serialize = "sftp", to_string = "sftp Backend")]
-    Sftp,
 }
 
 impl BackendChoice for SupportedBackend {
@@ -185,10 +194,6 @@ impl BackendChoice for SupportedBackend {
             Self::Rest => Arc::new(RestBackend::new(location, options)?),
             #[cfg(feature = "opendal")]
             Self::OpenDAL => Arc::new(OpenDALBackend::new(location, options)?),
-            #[cfg(feature = "s3")]
-            Self::S3 => Arc::new(S3Backend::new(location, options)?),
-            #[cfg(all(unix, feature = "sftp"))]
-            Self::Sftp => Arc::new(SftpBackend::new(location, options)?),
         })
     }
 }
@@ -208,8 +213,6 @@ mod tests {
     #[case("rest", SupportedBackend::Rest)]
     #[cfg(feature = "opendal")]
     #[case("opendal", SupportedBackend::OpenDAL)]
-    #[cfg(feature = "s3")]
-    #[case("s3", SupportedBackend::S3)]
     fn test_try_from_is_ok(#[case] input: &str, #[case] expected: SupportedBackend) {
         assert_eq!(SupportedBackend::try_from(input).unwrap(), expected);
     }
