@@ -75,7 +75,7 @@ jobs:
           INSTA_UPDATE: new
       - name: Upload snapshots of failed tests
         if: ${{ failure() && steps.run_tests.outcome == 'failure' }}
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@a8a3f3ad30e3422c9c7b888a15615d19a852ae32 # v3
         with:
           name: failed-snapshots-${{ matrix.job.os }}
           path: "**/snapshots/*.snap.new"

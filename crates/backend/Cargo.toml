@@ -31,16 +31,13 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [features]
-default = ["opendal", "s3", "sftp", "rest", "rclone"]
+default = ["opendal", "rest", "rclone"]
 cli = ["merge", "clap"]
 merge = ["dep:merge"]
 clap = ["dep:clap"]
-s3 = ["opendal"]
 opendal = ["dep:opendal", "dep:rayon", "dep:tokio", "tokio/rt-multi-thread"]
 rest = ["dep:reqwest", "dep:backoff"]
 rclone = ["rest", "dep:rand", "dep:semver"]
-# Note: sftp is not yet supported on windows, see below
-sftp = ["opendal"]
 
 [dependencies]
 # core
