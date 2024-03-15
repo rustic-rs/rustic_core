@@ -947,6 +947,9 @@ impl<P: ProgressBars, S: Open> Repository<P, S> {
     ///
     /// # Errors
     ///
+    /// # Note
+    ///  The result is not sorted and may come in random order!
+    ///
     // TODO: Document errors
     pub fn get_matching_snapshots(
         &self,
@@ -1222,6 +1225,9 @@ impl<P: ProgressBars, S: Open> Repository<P, S> {
     // TODO: Document errors
     ///
     /// # Returns
+    ///
+    /// # Note
+    ///  The result is not sorted and may come in random order!
     ///
     /// An iterator over all files of the given type
     pub fn stream_files<F: RepoFile>(

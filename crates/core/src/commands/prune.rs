@@ -1460,14 +1460,14 @@ fn find_used_blobs(
     let ignore_snaps: BTreeSet<_> = ignore_snaps.iter().collect();
 
     let p = pb.progress_counter("reading snapshots...");
-    let list = be
+    let list: Vec<_> = be
         .list(FileType::Snapshot)
         .map_err(RusticErrorKind::Backend)?
         .into_iter()
         .filter(|id| !ignore_snaps.contains(id))
         .collect();
     let snap_trees: Vec<_> = be
-        .stream_list::<SnapshotFile>(list, &p)?
+        .stream_list::<SnapshotFile>(&list, &p)?
         .into_iter()
         .map_ok(|(_, snap)| snap.tree)
         .try_collect()?;
