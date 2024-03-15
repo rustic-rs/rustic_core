@@ -1256,17 +1256,24 @@ pub trait IndexedTree: Open {
     type I: ReadGlobalIndex;
 
     fn index(&self) -> &Self::I;
+    fn into_open(self) -> impl Open;
 }
 
 /// A repository which is indexed such that all tree blobs are contained in the index
 /// and additionally the `Id`s of data blobs are also contained in the index.
-pub trait IndexedIds: IndexedTree {}
+pub trait IndexedIds: IndexedTree {
+    fn into_indexed_tree(self) -> impl IndexedTree;
+}
 
 impl<P, S: IndexedTree> IndexedTree for Repository<P, S> {
     type I = S::I;
 
     fn index(&self) -> &Self::I {
         self.status.index()
+    }
+
+    fn into_open(self) -> impl Open {
+        self.status.into_open()
     }
 }
 
@@ -1325,6 +1332,12 @@ pub struct IndexedStatus<T, S: Open> {
 #[derive(Debug, Clone, Copy)]
 /// A type of an index, that only contains [`Id`]s.
 ///
+/// Used for the [`IndexedTrees`] state of a repository in [`IndexedStatus`].
+pub struct TreeIndex;
+
+#[derive(Debug, Clone, Copy)]
+/// A type of an index, that only contains [`Id`]s.
+///
 /// Used for the [`IndexedIds`] state of a repository in [`IndexedStatus`].
 pub struct IdIndex;
 
@@ -1343,13 +1356,35 @@ impl<T, S: Open> IndexedTree for IndexedStatus<T, S> {
     fn index(&self) -> &Self::I {
         &self.index
     }
+
+    fn into_open(self) -> impl Open {
+        self.open
+    }
 }
 
-impl<S: Open> IndexedIds for IndexedStatus<IdIndex, S> {}
+impl<S: Open> IndexedIds for IndexedStatus<IdIndex, S> {
+    fn into_indexed_tree(self) -> impl IndexedTree {
+        Self {
+            index: self.index.drop_data(),
+            ..self
+        }
+    }
+}
 
-impl<S: Open> IndexedIds for IndexedStatus<FullIndex, S> {}
+impl<S: Open> IndexedIds for IndexedStatus<FullIndex, S> {
+    fn into_indexed_tree(self) -> impl IndexedTree {
+        Self {
+            index: self.index.drop_data(),
+            ..self
+        }
+    }
+}
 
-impl<P, S: IndexedFull> IndexedIds for Repository<P, S> {}
+impl<P, S: IndexedFull> IndexedIds for Repository<P, S> {
+    fn into_indexed_tree(self) -> impl IndexedTree {
+        self.status.into_indexed_tree()
+    }
+}
 
 impl<S: Open> IndexedFull for IndexedStatus<FullIndex, S> {
     fn get_blob_or_insert_with(
@@ -1490,6 +1525,18 @@ impl<P, S: IndexedTree> Repository<P, S> {
     /// [`TreeErrorKind::PathIsNotUtf8Conform`]: crate::error::TreeErrorKind::PathIsNotUtf8Conform
     pub fn node_from_path(&self, root_tree: Id, path: &Path) -> RusticResult<Node> {
         Tree::node_from_path(self.dbe(), self.index(), root_tree, Path::new(path))
+    }
+
+    /// drop the `Repository`index
+    pub fn drop_index(self) -> Repository<P, impl Open> {
+        Repository {
+            name: self.name,
+            be: self.be,
+            be_hot: self.be_hot,
+            opts: self.opts,
+            pb: self.pb,
+            status: self.status.into_open(),
+        }
     }
 }
 
@@ -1715,6 +1762,17 @@ impl<P, S: IndexedFull> Repository<P, S> {
     /// [`IndexErrorKind::BlobInIndexNotFound`]: crate::error::IndexErrorKind::BlobInIndexNotFound
     pub fn get_blob_cached(&self, id: &Id, tpe: BlobType) -> RusticResult<Bytes> {
         self.get_blob_or_insert_with(id, || self.index().blob_from_backend(self.dbe(), tpe, id))
+    }
+
+    pub fn drop_data_from_index(self) -> Repository<P, impl IndexedTree> {
+        Repository {
+            name: self.name,
+            be: self.be,
+            be_hot: self.be_hot,
+            opts: self.opts,
+            pb: self.pb,
+            status: self.status.into_indexed_tree(),
+        }
     }
 }
 
