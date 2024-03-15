@@ -1,5 +1,6 @@
 use std::{
     cmp::Ordering,
+    collections::BTreeMap,
     fmt::{self, Display},
     path::{Path, PathBuf},
     str::FromStr,
@@ -550,10 +551,14 @@ impl SnapshotFile {
         p: &impl Progress,
     ) -> RusticResult<Vec<Self>> {
         let ids = be.find_ids(FileType::Snapshot, ids)?;
-        be.stream_list::<Self>(ids, p)?
+        let mut list: BTreeMap<_, _> =
+            be.stream_list::<Self>(&ids, p)?.into_iter().try_collect()?;
+        // sort back to original order
+        Ok(ids
             .into_iter()
-            .map_ok(Self::set_id)
-            .try_collect()
+            .filter_map(|id| list.remove_entry(&id))
+            .map(Self::set_id)
+            .collect())
     }
 
     /// Compare two [`SnapshotFile`]s by criteria from [`SnapshotGroupCriterion`].
