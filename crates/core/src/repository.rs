@@ -58,9 +58,9 @@ use crate::{
         snapshotfile::{SnapshotGroup, SnapshotGroupCriterion},
         ConfigFile, PathList, RepoFile, SnapshotFile, SnapshotSummary, Tree,
     },
-    repository::{warm_up::warm_up, warm_up::warm_up_wait},
+    repository::warm_up::{warm_up, warm_up_wait},
     vfs::OpenFile,
-    RepositoryBackends, RusticResult,
+    InMemoryBackend, RepositoryBackends, RusticResult,
 };
 
 mod constants {
@@ -635,7 +635,7 @@ impl<P, S> Repository<P, S> {
 
         if let Some(cache) = &cache {
             self.be = CachedBackend::from_backend(self.be.clone(), cache.clone());
-            info!("using cache at {}", cache.location());
+            info!("using cache at {cache}");
         } else {
             info!("using no cache");
         }
@@ -1438,7 +1438,7 @@ impl<P, S: IndexedFull> Repository<P, S> {
     ///
     // TODO: Document errors
     pub fn open_file(&self, node: &Node) -> RusticResult<OpenFile> {
-        Ok(OpenFile::from_node(self, node))
+        OpenFile::from_node(self, node)
     }
 
     /// Reads an opened file at the given position
@@ -1632,7 +1632,7 @@ impl<P: ProgressBars, S: IndexedTree> Repository<P, S> {
     /// Merge the given trees.
     ///
     /// This method creates needed tree blobs within the repository.
-    /// Merge conflicts (identical filenames which do not match) will be resolved using the ordering given by `cmp`.
+    /// Merge conflicts (identical file names which do not match) will be resolved using the ordering given by `cmp`.
     ///
     /// # Arguments
     ///
@@ -1659,7 +1659,7 @@ impl<P: ProgressBars, S: IndexedTree> Repository<P, S> {
     /// Merge the given snapshots.
     ///
     /// This method will create needed tree blobs within the repository.
-    /// Merge conflicts (identical filenames which do not match) will be resolved using the ordering given by `cmp`.
+    /// Merge conflicts (identical file names which do not match) will be resolved using the ordering given by `cmp`.
     ///
     /// # Arguments
     ///
