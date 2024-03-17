@@ -173,12 +173,25 @@ impl RestoreOptions {
             }
 
             debug!("additional {:?}", entry.path());
-            if entry.file_type().unwrap().is_dir() {
+            if entry
+                .file_type()
+                .ok_or_else(|| CommandErrorKind::ErrorReadingFileType(entry.path().to_path_buf()))?
+                .is_dir()
+            {
                 stats.dirs.additional += 1;
             } else {
                 stats.files.additional += 1;
             }
-            match (self.delete, dry_run, entry.file_type().unwrap().is_dir()) {
+            match (
+                self.delete,
+                dry_run,
+                entry
+                    .file_type()
+                    .ok_or_else(|| {
+                        CommandErrorKind::ErrorReadingFileType(entry.path().to_path_buf())
+                    })?
+                    .is_dir(),
+            ) {
                 (true, true, true) => {
                     info!("would have removed the additional dir: {:?}", entry.path());
                 }
@@ -292,8 +305,20 @@ impl RestoreOptions {
                         }
                         Ordering::Equal => {
                             // process existing node
-                            if (node.is_dir() && !destination.file_type().unwrap().is_dir())
-                                || (node.is_file() && !destination.metadata().unwrap().is_file())
+                            if (node.is_dir()
+                                && !destination
+                                    .file_type()
+                                    .ok_or_else(|| {
+                                        CommandErrorKind::ErrorReadingFileType(
+                                            destination.path().to_path_buf(),
+                                        )
+                                    })?
+                                    .is_dir())
+                                || (node.is_file()
+                                    && !destination
+                                        .metadata()
+                                        .map_err(IgnoreErrorKind::GenericError)?
+                                        .is_file())
                                 || node.is_special()
                             {
                                 // if types do not match, first remove the existing file
