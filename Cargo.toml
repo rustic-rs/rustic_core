@@ -15,6 +15,7 @@ rust-version = "1.72.1"
 aho-corasick = "1.1.2"
 anyhow = "1.0.81"
 bytes = "1.5.0"
+enum-map = { version = "2.7.3", features = ["serde"] }
 parking_lot = { version = "0.12.1", features = ["deadlock_detection", "arc_lock"] }
 rustic_backend = { path = "crates/backend" }
 rustic_core = { path = "crates/core" }
@@ -74,7 +75,7 @@ trivial_casts = "warn"
 unused_lifetimes = "warn"
 unused_qualifications = "warn"
 bad_style = "warn"
-dead_code = "allow" # TODO: "warn"
+dead_code = "warn"
 improper_ctypes = "warn"
 missing_copy_implementations = "warn"
 missing_debug_implementations = "warn"
@@ -99,8 +100,8 @@ unreachable_pub = "allow"
 redundant_pub_crate = "allow"
 pedantic = "warn"
 nursery = "warn"
-# expect_used = "warn" # TODO!
-# unwrap_used = "warn" # TODO!
+expect_used = "warn"
+unwrap_used = "warn"
 enum_glob_use = "warn"
 correctness = "warn"
 suspicious = "warn"
