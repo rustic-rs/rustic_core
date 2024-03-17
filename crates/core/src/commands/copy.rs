@@ -82,7 +82,10 @@ pub(crate) fn copy<'a, Q, R: IndexedFull, P: ProgressBars, S: IndexedIds>(
         .try_for_each(|id| -> RusticResult<_> {
             trace!("copy tree blob {id}");
             if !index_dest.has_tree(id) {
-                let data = index.get_tree(id).unwrap().read_data(be)?;
+                let data = index
+                    .get_tree(id)
+                    .ok_or(CommandErrorKind::TreeNotFound(id.to_string()))?
+                    .read_data(be)?;
                 p.inc(data.len() as u64);
                 tree_packer.add(data, *id)?;
             }
@@ -101,7 +104,10 @@ pub(crate) fn copy<'a, Q, R: IndexedFull, P: ProgressBars, S: IndexedIds>(
                             |id| -> RusticResult<_> {
                                 trace!("copy data blob {id}");
                                 if !index_dest.has_data(id) {
-                                    let data = index.get_data(id).unwrap().read_data(be)?;
+                                    let data = index
+                                        .get_data(id)
+                                        .ok_or(CommandErrorKind::DataBlobNotFound(id.to_string()))?
+                                        .read_data(be)?;
                                     p.inc(data.len() as u64);
                                     data_packer.add(data, *id)?;
                                 }
@@ -111,10 +117,18 @@ pub(crate) fn copy<'a, Q, R: IndexedFull, P: ProgressBars, S: IndexedIds>(
                     }
 
                     NodeType::Dir => {
-                        let id = node.subtree.unwrap();
+                        let Some(id) = node.subtree else {
+                            return Err(CommandErrorKind::MissingSubtree {
+                                path: node.name().into(),
+                            }
+                            .into());
+                        };
                         trace!("copy tree blob {id}");
                         if !index_dest.has_tree(&id) {
-                            let data = index.get_tree(&id).unwrap().read_data(be)?;
+                            let data = index
+                                .get_tree(&id)
+                                .ok_or(CommandErrorKind::TreeNotFound(id.to_string()))?
+                                .read_data(be)?;
                             p.inc(data.len() as u64);
                             tree_packer.add(data, id)?;
                         }
@@ -128,7 +142,7 @@ pub(crate) fn copy<'a, Q, R: IndexedFull, P: ProgressBars, S: IndexedIds>(
 
     _ = data_packer.finalize()?;
     _ = tree_packer.finalize()?;
-    indexer.write().unwrap().finalize()?;
+    indexer.write().finalize()?;
 
     let p = pb.progress_counter("saving snapshots...");
     be_dest.save_list(snaps.iter(), p)?;
