@@ -273,11 +273,13 @@ pub struct KeepOptions {
 /// # Example
 ///
 /// ```
-/// use rustic_core::commands::forget::overwrite_zero_duration;
+/// use rustic_core::overwrite_zero_duration;
 /// use humantime::Duration;
 ///
 /// let mut left = "0s".parse::<humantime::Duration>().unwrap().into();
 /// let right = "60s".parse::<humantime::Duration>().unwrap().into();
+///
+///
 /// overwrite_zero_duration(&mut left, right);
 /// assert_eq!(left, "60s".parse::<humantime::Duration>().unwrap().into());
 /// ```

@@ -150,3 +150,6 @@ pub use crate::{
     },
     repository::{IndexedFull, OpenStatus, Repository, RepositoryOptions},
 };
+
+#[cfg(feature = "merge")]
+pub use crate::commands::forget::overwrite_zero_duration;
