@@ -208,7 +208,7 @@ impl<'a, BE: DecryptFullBackend, I: ReadGlobalIndex> Archiver<'a, BE, I> {
 
         let stats = self.file_archiver.finalize()?;
         let (id, mut summary) = self.tree_archiver.finalize(self.parent.tree_id())?;
-        stats.apply(&mut summary, BlobType::Data);
+        stats.apply(&mut summary, BlobType::Data)?;
         self.snap.tree = id;
 
         self.indexer.write().finalize()?;

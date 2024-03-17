@@ -220,7 +220,7 @@ impl<'a, BE: DecryptWriteBackend, I: ReadGlobalIndex> TreeArchiver<'a, BE, I> {
         let parent = parent_tree.map_or(ParentResult::NotFound, ParentResult::Matched);
         let id = self.backup_tree(&PathBuf::new(), &parent)?;
         let stats = self.tree_packer.finalize()?;
-        stats.apply(&mut self.summary, BlobType::Tree);
+        stats.apply(&mut self.summary, BlobType::Tree)?;
 
         Ok((id, self.summary))
     }

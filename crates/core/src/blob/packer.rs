@@ -404,18 +404,97 @@ impl PackerStats {
     /// # Returns
     ///
     /// The updated summary
+    pub fn apply(self, summary: &mut SnapshotSummary, tpe: BlobType) -> RusticResult<()> {
+        let mut errors = vec![];
+        if let Some(val) = summary.data_added.checked_add(self.data) {
+            summary.data_added = val;
+        } else {
+            warn!("data_added overflowed");
+            errors.push(PackerErrorKind::DataAddedOverflowed {
+                data_added: summary.data_added,
+                data: self.data,
+            });
+        }
+        if let Some(val) = summary.data_added_packed.checked_add(self.data_packed) {
+            summary.data_added_packed = val;
+        } else {
+            warn!("data_added_packed overflowed");
+            errors.push(PackerErrorKind::DataAddedPackedOverflowed {
+                data_added_packed: summary.data_added_packed,
+                data_packed: self.data_packed,
+            });
+        };
         match tpe {
             BlobType::Tree => {
-                summary.tree_blobs += self.blobs;
-                summary.data_added_trees += self.data;
-                summary.data_added_trees_packed += self.data_packed;
+                if let Some(val) = summary.tree_blobs.checked_add(self.blobs) {
+                    summary.tree_blobs = val;
+                } else {
+                    warn!("tree_blobs overflowed");
+
+                    errors.push(PackerErrorKind::TreeBlobsOverflowed {
+                        tree_blobs: summary.tree_blobs,
+                        blobs: self.blobs,
+                    });
+                }
+                if let Some(val) = summary.data_added_trees.checked_add(self.data) {
+                    summary.data_added_trees = val;
+                } else {
+                    warn!("data_added_trees overflowed");
+                    errors.push(PackerErrorKind::DataAddedTreesOverflowed {
+                        data_added_trees: summary.data_added_trees,
+                        data: self.data,
+                    });
+                }
+                if let Some(val) = summary
+                    .data_added_trees_packed
+                    .checked_add(self.data_packed)
+                {
+                    summary.data_added_trees_packed = val;
+                } else {
+                    warn!("data_added_trees_packed overflowed");
+                    errors.push(PackerErrorKind::DataAddedTreesPackedOverflowed {
+                        data_added_trees_packed: summary.data_added_trees_packed,
+                        data_packed: self.data_packed,
+                    });
+                };
             }
             BlobType::Data => {
-                summary.data_blobs += self.blobs;
-                summary.data_added_files += self.data;
-                summary.data_added_files_packed += self.data_packed;
+                if let Some(val) = summary.data_blobs.checked_add(self.blobs) {
+                    summary.data_blobs = val;
+                } else {
+                    warn!("data_blobs overflowed");
+                    errors.push(PackerErrorKind::DataBlobsOverflowed {
+                        data_blobs: summary.data_blobs,
+                        blobs: self.blobs,
+                    });
+                };
+                if let Some(val) = summary.data_added_files.checked_add(self.data) {
+                    summary.data_added_files = val;
+                } else {
+                    warn!("data_added_files overflowed");
+                    errors.push(PackerErrorKind::DataAddedFilesOverflowed {
+                        data_added_files: summary.data_added_files,
+                        data: self.data,
+                    });
+                };
+                if let Some(val) = summary
+                    .data_added_files_packed
+                    .checked_add(self.data_packed)
+                {
+                    summary.data_added_files_packed = val;
+                } else {
+                    warn!("data_added_files_packed overflowed");
+                    errors.push(PackerErrorKind::DataAddedFilesPackedOverflowed {
+                        data_added_files_packed: summary.data_added_files_packed,
+                        data_packed: self.data_packed,
+                    });
+                };
             }
         }
+        if !errors.is_empty() {
+            return Err(PackerErrorKind::MultipleFromSummary(errors).into());
+        }
+        Ok(())
     }
 }
 

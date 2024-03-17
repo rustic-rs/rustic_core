@@ -120,7 +120,7 @@ pub(crate) fn merge_trees<P: ProgressBars, S: IndexedTree>(
     indexer.write().finalize()?;
     p.finish();
 
-    stats.apply(summary, BlobType::Tree);
+    stats.apply(summary, BlobType::Tree)?;
 
     Ok(tree_merged)
 }
