@@ -343,26 +343,26 @@ impl RestoreOptions {
     ) -> RusticResult<()> {
         let mut dir_stack = Vec::new();
         while let Some((path, node)) = node_streamer.next().transpose()? {
-            match node.node_type {
-                NodeType::Dir => {
-                    // set metadata for all non-parent paths in stack
-                    while let Some((stackpath, _)) = dir_stack.last() {
-                        if path.starts_with(stackpath) {
-                            break;
-                        }
-                        let (path, node) = dir_stack.pop().unwrap();
-                        self.set_metadata(dest, &path, &node);
+            if node.node_type == NodeType::Dir {
+                // set metadata for all non-parent paths in stack
+                while let Some((stack_path, stack_node)) = dir_stack.last() {
+                    if path.starts_with(stack_path) {
+                        break;
                     }
-                    // push current path to the stack
-                    dir_stack.push((path, node));
+                    self.set_metadata(dest, stack_path, stack_node)?;
+                    _ = dir_stack.pop();
                 }
-                _ => self.set_metadata(dest, &path, &node),
+
+                // push current path to the stack
+                dir_stack.push((path, node));
+            } else {
+                self.set_metadata(dest, &path, &node)?;
             }
         }
 
         // empty dir stack and set metadata
         for (path, node) in dir_stack.into_iter().rev() {
-            self.set_metadata(dest, &path, &node);
+            self.set_metadata(dest, &path, &node)?;
         }
 
         Ok(())
