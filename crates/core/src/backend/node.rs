@@ -63,11 +63,12 @@ pub struct Node {
 }
 
 #[serde_as]
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, Default)]
 #[serde(tag = "type", rename_all = "lowercase")]
 /// Types a [`Node`] can have with type-specific additional information
 pub enum NodeType {
     /// Node is a regular file
+    #[default]
     File,
     /// Node is a directory
     Dir,
@@ -180,12 +181,6 @@ impl NodeType {
             Self::Symlink { link_target, .. } => Ok(Path::new(link_target)),
             _ => panic!("called method to_link on non-symlink!"),
         }
-    }
-}
-
-impl Default for NodeType {
-    fn default() -> Self {
-        Self::File
     }
 }
 
