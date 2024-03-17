@@ -234,8 +234,8 @@ impl WriteBackend for OpenDALBackend {
     /// * `buf` - The bytes to write.
     fn write_bytes(&self, tpe: FileType, id: &Id, _cacheable: bool, buf: Bytes) -> Result<()> {
         trace!("writing tpe: {:?}, id: {}", &tpe, &id);
-        let filename = self.path(tpe, id);
-        self.operator.write(&filename, buf)?;
+        let file_name = self.path(tpe, id);
+        self.operator.write(&file_name, buf)?;
         Ok(())
     }
 
@@ -248,8 +248,8 @@ impl WriteBackend for OpenDALBackend {
     /// * `cacheable` - Whether the file is cacheable.
     fn remove(&self, tpe: FileType, id: &Id, _cacheable: bool) -> Result<()> {
         trace!("removing tpe: {:?}, id: {}", &tpe, &id);
-        let filename = self.path(tpe, id);
-        self.operator.delete(&filename)?;
+        let file_name = self.path(tpe, id);
+        self.operator.delete(&file_name)?;
         Ok(())
     }
 }

@@ -245,19 +245,19 @@ impl Vfs {
             )
             .to_string();
             let path = Path::new(&path);
-            let filename = path.file_name().map(OsStr::to_os_string);
+            let file_name = path.file_name().map(OsStr::to_os_string);
             let parent_path = path.parent().map(Path::to_path_buf);
 
             // Save pathes for latest entries, if requested
             if matches!(latest_option, Latest::AsLink) {
-                _ = dirs_for_link.insert(parent_path.clone(), filename.clone());
+                _ = dirs_for_link.insert(parent_path.clone(), file_name.clone());
             }
             if matches!(latest_option, Latest::AsDir) {
                 _ = dirs_for_snap.insert(parent_path.clone(), snap.tree);
             }
 
             // Create the entry, potentially as symlink if requested
-            if last_parent != parent_path || last_name != filename {
+            if last_parent != parent_path || last_name != file_name {
                 if matches!(id_snap_option, IdenticalSnapshot::AsLink)
                     && last_parent == parent_path
                     && last_tree == snap.tree
@@ -270,7 +270,7 @@ impl Vfs {
                 }
             }
             last_parent = parent_path;
-            last_name = filename;
+            last_name = file_name;
             last_tree = snap.tree;
         }
 

@@ -97,12 +97,12 @@ pub struct LocalSourceFilterOptions {
     #[cfg_attr(feature = "merge", merge(strategy = merge::bool::overwrite_false))]
     pub no_require_git: bool,
 
-    /// Treat the provided filename like a .gitignore file (can be specified multiple times)
+    /// Treat the provided file name like a .gitignore file (can be specified multiple times)
     #[cfg_attr(feature = "clap", clap(long, value_name = "FILE"))]
     #[cfg_attr(feature = "merge", merge(strategy = merge::vec::overwrite_empty))]
     pub custom_ignorefile: Vec<String>,
 
-    /// Exclude contents of directories containing this filename (can be specified multiple times)
+    /// Exclude contents of directories containing this file name (can be specified multiple times)
     #[cfg_attr(feature = "clap", clap(long, value_name = "FILE"))]
     #[cfg_attr(feature = "merge", merge(strategy = merge::vec::overwrite_empty))]
     pub exclude_if_present: Vec<String>,

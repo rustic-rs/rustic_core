@@ -275,10 +275,7 @@ impl Node {
     /// # Returns
     ///
     /// The created [`Node`]
-    #[must_use]
-    pub fn new_node(name: &OsStr, node_type: NodeType, meta: Metadata) -> Self {
-        Self {
-            name: escape_filename(name),
+            name: escape_file_name(name)?,
             node_type,
             content: None,
             subtree: None,
@@ -323,7 +320,7 @@ impl Node {
     ///
     /// If the name is not valid unicode
     pub fn name(&self) -> OsString {
-        unescape_filename(&self.name).unwrap_or_else(|_| OsString::from_str(&self.name).unwrap())
+        unescape_file_name(&self.name).expect("unescaping should be infallible")
     }
 }
 
@@ -346,8 +343,7 @@ pub fn last_modified_node(n1: &Node, n2: &Node) -> Ordering {
 // TODO(Windows): This is not able to handle non-unicode filenames and
 // doesn't treat filenames which need and escape (like `\`, `"`, ...) correctly
 #[cfg(windows)]
-fn escape_filename(name: &OsStr) -> String {
-    name.to_string_lossy().to_string()
+fn escape_file_name(name: &OsStr) -> RusticResult<String> {
 }
 
 /// Unescape a filename
@@ -356,21 +352,21 @@ fn escape_filename(name: &OsStr) -> String {
 ///
 /// * `s` - The escaped filename
 #[cfg(windows)]
-fn unescape_filename(s: &str) -> Result<OsString, core::convert::Infallible> {
+fn unescape_file_name(s: &str) -> Result<OsString, core::convert::Infallible> {
     OsString::from_str(s)
 }
 
 #[cfg(not(windows))]
-/// Escape a filename
+/// Escape a file name
 ///
 /// # Arguments
 ///
-/// * `name` - The filename to escape
-// This escapes the filename in a way that *should* be compatible to golangs
+/// * `name` - The file name to escape
+// This escapes the file name in a way that *should* be compatible to golangs
 // stconv.Quote, see https://pkg.go.dev/strconv#Quote
 // However, so far there was no specification what Quote really does, so this
 // is some kind of try-and-error and maybe does not cover every case.
-fn escape_filename(name: &OsStr) -> String {
+fn escape_file_name(name: &OsStr) -> RusticResult<String> {
     let mut input = name.as_bytes();
     let mut s = String::with_capacity(name.len());
 
@@ -419,13 +415,13 @@ fn escape_filename(name: &OsStr) -> String {
 }
 
 #[cfg(not(windows))]
-/// Unescape a filename
+/// Unescape a file name
 ///
 /// # Arguments
 ///
-/// * `s` - The escaped filename
+/// * `s` - The escaped file name
 // inspired by the enquote crate
-fn unescape_filename(s: &str) -> RusticResult<OsString> {
+fn unescape_file_name(s: &str) -> RusticResult<OsString> {
     let mut chars = s.chars();
     let mut u = Vec::new();
     loop {

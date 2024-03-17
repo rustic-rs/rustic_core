@@ -429,11 +429,11 @@ impl Cache {
     pub fn write_bytes(&self, tpe: FileType, id: &Id, buf: &Bytes) -> RusticResult<()> {
         trace!("cache writing tpe: {:?}, id: {}", &tpe, &id);
         fs::create_dir_all(self.dir(tpe, id)).map_err(CacheBackendErrorKind::FromIoError)?;
-        let filename = self.path(tpe, id);
+        let file_name = self.path(tpe, id);
         let mut file = fs::OpenOptions::new()
             .create(true)
             .write(true)
-            .open(filename)
+            .open(file_name)
             .map_err(CacheBackendErrorKind::FromIoError)?;
         file.write_all(buf)
             .map_err(CacheBackendErrorKind::FromIoError)?;
@@ -454,8 +454,8 @@ impl Cache {
     /// [`CacheBackendErrorKind::FromIoError`]: crate::error::CacheBackendErrorKind::FromIoError
     pub fn remove(&self, tpe: FileType, id: &Id) -> RusticResult<()> {
         trace!("cache writing tpe: {:?}, id: {}", &tpe, &id);
-        let filename = self.path(tpe, id);
-        fs::remove_file(filename).map_err(CacheBackendErrorKind::FromIoError)?;
+        let file_name = self.path(tpe, id);
+        fs::remove_file(file_name).map_err(CacheBackendErrorKind::FromIoError)?;
         Ok(())
     }
 }

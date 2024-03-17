@@ -126,8 +126,8 @@ impl LocalDestination {
     /// This will remove the directory recursively.
     ///
     /// [`LocalDestinationErrorKind::DirectoryRemovalFailed`]: crate::error::LocalDestinationErrorKind::DirectoryRemovalFailed
-    pub fn remove_dir(&self, dirname: impl AsRef<Path>) -> RusticResult<()> {
-        Ok(fs::remove_dir_all(dirname)
+    pub fn remove_dir(&self, dir_name: impl AsRef<Path>) -> RusticResult<()> {
+        Ok(fs::remove_dir_all(self.path_of(dir_name))
             .map_err(LocalDestinationErrorKind::DirectoryRemovalFailed)?)
     }
 
@@ -135,7 +135,7 @@ impl LocalDestination {
     ///
     /// # Arguments
     ///
-    /// * `filename` - The file to remove
+    /// * `file_name` - The file to remove
     ///
     /// # Errors
     ///
@@ -149,8 +149,9 @@ impl LocalDestination {
     /// * If the file is a directory or device, this will fail.
     ///
     /// [`LocalDestinationErrorKind::FileRemovalFailed`]: crate::error::LocalDestinationErrorKind::FileRemovalFailed
-    pub fn remove_file(&self, filename: impl AsRef<Path>) -> RusticResult<()> {
-        Ok(fs::remove_file(filename).map_err(LocalDestinationErrorKind::FileRemovalFailed)?)
+    pub fn remove_file(&self, file_name: impl AsRef<Path>) -> RusticResult<()> {
+        Ok(fs::remove_file(self.path_of(file_name))
+            .map_err(LocalDestinationErrorKind::FileRemovalFailed)?)
     }
 
     /// Create the given directory (relative to the base path)
@@ -187,11 +188,11 @@ impl LocalDestination {
     ///
     /// [`LocalDestinationErrorKind::SettingTimeMetadataFailed`]: crate::error::LocalDestinationErrorKind::SettingTimeMetadataFailed
     pub fn set_times(&self, item: impl AsRef<Path>, meta: &Metadata) -> RusticResult<()> {
-        let filename = self.path(item);
+        let file_name = self.path_of(item);
         if let Some(mtime) = meta.mtime {
             let atime = meta.atime.unwrap_or(mtime);
             set_symlink_file_times(
-                filename,
+                file_name,
                 FileTime::from_system_time(atime.into()),
                 FileTime::from_system_time(mtime.into()),
             )
@@ -235,7 +236,7 @@ impl LocalDestination {
     /// [`LocalDestinationErrorKind::FromErrnoError`]: crate::error::LocalDestinationErrorKind::FromErrnoError
     #[allow(clippy::similar_names)]
     pub fn set_user_group(&self, item: impl AsRef<Path>, meta: &Metadata) -> RusticResult<()> {
-        let filename = self.path(item);
+        let file_name = self.path_of(item);
 
         let user = meta.user.clone().and_then(uid_from_name);
         // use uid from user if valid, else from saved uid (if saved)
@@ -245,7 +246,7 @@ impl LocalDestination {
         // use gid from group if valid, else from saved gid (if saved)
         let gid = group.or_else(|| meta.gid.map(Gid::from_raw));
 
-        fchownat(None, &filename, uid, gid, AtFlags::AT_SYMLINK_NOFOLLOW)
+        fchownat(None, &file_name, uid, gid, AtFlags::AT_SYMLINK_NOFOLLOW)
             .map_err(LocalDestinationErrorKind::FromErrnoError)?;
         Ok(())
     }
@@ -281,12 +282,12 @@ impl LocalDestination {
     /// [`LocalDestinationErrorKind::FromErrnoError`]: crate::error::LocalDestinationErrorKind::FromErrnoError
     #[allow(clippy::similar_names)]
     pub fn set_uid_gid(&self, item: impl AsRef<Path>, meta: &Metadata) -> RusticResult<()> {
-        let filename = self.path(item);
+        let file_name = self.path_of(item);
 
         let uid = meta.uid.map(Uid::from_raw);
         let gid = meta.gid.map(Gid::from_raw);
 
-        fchownat(None, &filename, uid, gid, AtFlags::AT_SYMLINK_NOFOLLOW)
+        fchownat(None, &file_name, uid, gid, AtFlags::AT_SYMLINK_NOFOLLOW)
             .map_err(LocalDestinationErrorKind::FromErrnoError)?;
         Ok(())
     }
@@ -326,11 +327,11 @@ impl LocalDestination {
             return Ok(());
         }
 
-        let filename = self.path(item);
+        let file_name = self.path_of(item);
 
         if let Some(mode) = node.meta.mode {
             let mode = map_mode_from_go(mode);
-            std::fs::set_permissions(filename, fs::Permissions::from_mode(mode))
+            std::fs::set_permissions(file_name, fs::Permissions::from_mode(mode))
                 .map_err(LocalDestinationErrorKind::SettingFilePermissionsFailed)?;
         }
         Ok(())
@@ -387,48 +388,45 @@ impl LocalDestination {
         item: impl AsRef<Path>,
         extended_attributes: &[ExtendedAttribute],
     ) -> RusticResult<()> {
-        let filename = self.path(item);
-        let mut done = vec![false; extended_attributes.len()];
+        let file_name = self.path_of(item);
 
-        for curr_name in xattr::list(&filename)
-            .map_err(|err| LocalDestinationErrorKind::ListingXattrsFailed(err, filename.clone()))?
+        for curr_name in xattr::list(&file_name)
+            .map_err(|err| LocalDestinationErrorKind::ListingXattrsFailed(err, file_name.clone()))?
         {
             match extended_attributes.iter().enumerate().find(
                 |(_, ExtendedAttribute { name, .. })| name == curr_name.to_string_lossy().as_ref(),
             ) {
                 Some((index, ExtendedAttribute { name, value })) => {
-                    let curr_value = xattr::get(&filename, name)
-                        .map_err(|err| LocalDestinationErrorKind::GettingXattrFailed {
+                    if let Some(curr_value) = xattr::get(&file_name, name).map_err(|err| {
+                        LocalDestinationErrorKind::GettingXattrFailed {
                             name: name.clone(),
-                            filename: filename.clone(),
+                            file_name: file_name.clone(),
                             source: err,
-                        })?
-                        .unwrap();
-                    if value != &curr_value {
-                        xattr::set(&filename, name, value).map_err(|err| {
-                            LocalDestinationErrorKind::SettingXattrFailed {
-                                name: name.clone(),
-                                filename: filename.clone(),
-                                source: err,
-                            }
-                        })?;
-                    }
-                    done[index] = true;
+                        }
+                    })? {
+                        if value != &curr_value {
+                            xattr::set(&file_name, name, value).map_err(|err| {
+                                LocalDestinationErrorKind::SettingXattrFailed {
+                                    name: name.clone(),
+                                    file_name: file_name.clone(),
+                                    source: err,
+                                }
+                            })?;
                 }
                 None => {
-                    if let Err(err) = xattr::remove(&filename, &curr_name) {
-                        warn!("error removing xattr {curr_name:?} on {filename:?}: {err}");
+                    if let Err(err) = xattr::remove(&file_name, &curr_name) {
+                        warn!("error removing xattr {curr_name:?} on {file_name:?}: {err}");
                     }
                 }
             }
         }
 
         for (index, ExtendedAttribute { name, value }) in extended_attributes.iter().enumerate() {
-            if !done[index] {
-                xattr::set(&filename, name, value).map_err(|err| {
+            if !successful[index] {
+                xattr::set(&file_name, name, value).map_err(|err| {
                     LocalDestinationErrorKind::SettingXattrFailed {
                         name: name.clone(),
-                        filename: filename.clone(),
+                        file_name: file_name.clone(),
                         source: err,
                     }
                 })?;
@@ -462,16 +460,16 @@ impl LocalDestination {
     /// [`LocalDestinationErrorKind::OpeningFileFailed`]: crate::error::LocalDestinationErrorKind::OpeningFileFailed
     /// [`LocalDestinationErrorKind::SettingFileLengthFailed`]: crate::error::LocalDestinationErrorKind::SettingFileLengthFailed
     pub fn set_length(&self, item: impl AsRef<Path>, size: u64) -> RusticResult<()> {
-        let filename = self.path(item);
-        let dir = filename
+        let file_name = self.path_of(item);
+        let dir = file_name
             .parent()
-            .ok_or_else(|| LocalDestinationErrorKind::FileDoesNotHaveParent(filename.clone()))?;
+            .ok_or_else(|| LocalDestinationErrorKind::FileDoesNotHaveParent(file_name.clone()))?;
         fs::create_dir_all(dir).map_err(LocalDestinationErrorKind::DirectoryCreationFailed)?;
 
         OpenOptions::new()
             .create(true)
             .write(true)
-            .open(filename)
+            .open(file_name)
             .map_err(LocalDestinationErrorKind::OpeningFileFailed)?
             .set_len(size)
             .map_err(LocalDestinationErrorKind::SettingFileLengthFailed)?;
@@ -516,15 +514,15 @@ impl LocalDestination {
     /// [`LocalDestinationErrorKind::FromTryIntError`]: crate::error::LocalDestinationErrorKind::FromTryIntError
     /// [`LocalDestinationErrorKind::FromErrnoError`]: crate::error::LocalDestinationErrorKind::FromErrnoError
     pub fn create_special(&self, item: impl AsRef<Path>, node: &Node) -> RusticResult<()> {
-        let filename = self.path(item);
+        let file_name = self.path_of(item);
 
         match &node.node_type {
             NodeType::Symlink { .. } => {
-                let linktarget = node.node_type.to_link();
-                symlink(linktarget, &filename).map_err(|err| {
+                let link_target = node.node_type.to_link()?;
+                symlink(link_target, &file_name).map_err(|err| {
                     LocalDestinationErrorKind::SymlinkingFailed {
-                        linktarget: linktarget.to_path_buf(),
-                        filename,
+                        link_target: link_target.to_path_buf(),
+                        file_name,
                         source: err,
                     }
                 })?;
@@ -542,7 +540,7 @@ impl LocalDestination {
                 #[cfg(target_os = "freebsd")]
                 let device =
                     u32::try_from(*device).map_err(LocalDestinationErrorKind::FromTryIntError)?;
-                mknod(&filename, SFlag::S_IFBLK, Mode::empty(), device)
+                mknod(&file_name, SFlag::S_IFBLK, Mode::empty(), device)
                     .map_err(LocalDestinationErrorKind::FromErrnoError)?;
             }
             NodeType::Chardev { device } => {
@@ -558,15 +556,15 @@ impl LocalDestination {
                 #[cfg(target_os = "freebsd")]
                 let device =
                     u32::try_from(*device).map_err(LocalDestinationErrorKind::FromTryIntError)?;
-                mknod(&filename, SFlag::S_IFCHR, Mode::empty(), device)
+                mknod(&file_name, SFlag::S_IFCHR, Mode::empty(), device)
                     .map_err(LocalDestinationErrorKind::FromErrnoError)?;
             }
             NodeType::Fifo => {
-                mknod(&filename, SFlag::S_IFIFO, Mode::empty(), 0)
+                mknod(&file_name, SFlag::S_IFIFO, Mode::empty(), 0)
                     .map_err(LocalDestinationErrorKind::FromErrnoError)?;
             }
             NodeType::Socket => {
-                mknod(&filename, SFlag::S_IFSOCK, Mode::empty(), 0)
+                mknod(&file_name, SFlag::S_IFSOCK, Mode::empty(), 0)
                     .map_err(LocalDestinationErrorKind::FromErrnoError)?;
             }
             _ => {}
@@ -594,9 +592,9 @@ impl LocalDestination {
     /// [`LocalDestinationErrorKind::FromTryIntError`]: crate::error::LocalDestinationErrorKind::FromTryIntError
     /// [`LocalDestinationErrorKind::ReadingExactLengthOfFileFailed`]: crate::error::LocalDestinationErrorKind::ReadingExactLengthOfFileFailed
     pub fn read_at(&self, item: impl AsRef<Path>, offset: u64, length: u64) -> RusticResult<Bytes> {
-        let filename = self.path(item);
+        let file_name = self.path_of(item);
         let mut file =
-            File::open(filename).map_err(LocalDestinationErrorKind::OpeningFileFailed)?;
+            File::open(file_name).map_err(LocalDestinationErrorKind::OpeningFileFailed)?;
         _ = file
             .seek(SeekFrom::Start(offset))
             .map_err(LocalDestinationErrorKind::CouldNotSeekToPositionInFile)?;
@@ -623,12 +621,12 @@ impl LocalDestination {
     /// If a file exists and size matches, this returns a `File` open for reading.
     /// In all other cases, returns `None`
     pub fn get_matching_file(&self, item: impl AsRef<Path>, size: u64) -> Option<File> {
-        let filename = self.path(item);
-        fs::symlink_metadata(&filename).map_or_else(
+        let file_name = self.path_of(item);
+        fs::symlink_metadata(&file_name).map_or_else(
             |_| None,
             |meta| {
                 if meta.is_file() && meta.len() == size {
-                    File::open(&filename).ok()
+                    File::open(&file_name).ok()
                 } else {
                     None
                 }
@@ -658,11 +656,11 @@ impl LocalDestination {
     /// [`LocalDestinationErrorKind::CouldNotSeekToPositionInFile`]: crate::error::LocalDestinationErrorKind::CouldNotSeekToPositionInFile
     /// [`LocalDestinationErrorKind::CouldNotWriteToBuffer`]: crate::error::LocalDestinationErrorKind::CouldNotWriteToBuffer
     pub fn write_at(&self, item: impl AsRef<Path>, offset: u64, data: &[u8]) -> RusticResult<()> {
-        let filename = self.path(item);
+        let file_name = self.path_of(item);
         let mut file = fs::OpenOptions::new()
             .create(true)
             .write(true)
-            .open(filename)
+            .open(file_name)
             .map_err(LocalDestinationErrorKind::OpeningFileFailed)?;
         _ = file
             .seek(SeekFrom::Start(offset))

@@ -39,7 +39,7 @@ pub(crate) mod constants {
 }
 
 type RestoreInfo = BTreeMap<(Id, BlobLocation), Vec<FileLocation>>;
-type Filenames = Vec<PathBuf>;
+type FileNames = Vec<PathBuf>;
 
 #[allow(clippy::struct_excessive_bools)]
 #[cfg_attr(feature = "clap", derive(clap::Parser))]
@@ -428,19 +428,19 @@ fn restore_contents<P: ProgressBars, S: Open>(
     file_infos: RestorePlan,
 ) -> RusticResult<()> {
     let RestorePlan {
-        names: filenames,
+        names: file_names,
         file_lengths,
         r: restore_info,
         restore_size: total_size,
         ..
     } = file_infos;
-    let filenames = &filenames;
+    let file_names = &file_names;
     let be = repo.dbe();
 
     // first create needed empty files, as they are not created later.
     for (i, size) in file_lengths.iter().enumerate() {
         if *size == 0 {
-            let path = &filenames[i];
+            let path = &file_names[i];
             dest.set_length(path, *size)
                 .map_err(|err| CommandErrorKind::ErrorSettingLength(path.clone(), Box::new(err)))?;
         }
@@ -497,8 +497,7 @@ fn restore_contents<P: ProgressBars, S: Open>(
                     let read_data = match &from_file {
                         Some((file_idx, offset_file, length_file)) => {
                             // read from existing file
-                            dest.read_at(&filenames[*file_idx], *offset_file, *length_file)
-                                .unwrap()
+                            match dest.read_at(&file_names[*file_idx], *offset_file, *length_file) {
                         }
                         None => {
                             // read needed part of the pack
@@ -523,8 +522,7 @@ fn restore_contents<P: ProgressBars, S: Open>(
                         };
                         for (_, file_idx, start) in group {
                             let data = data.clone();
-                            s1.spawn(move |_| {
-                                let path = &filenames[file_idx];
+                                let path = &file_names[file_idx];
                                 // Allocate file if it is not yet allocated
                                 let mut sizes_guard = sizes.lock().unwrap();
                                 let filesize = sizes_guard[file_idx];
