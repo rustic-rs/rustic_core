@@ -70,10 +70,11 @@ impl Iterator for StdinSource {
         Some(Ok(ReadSourceEntry {
             path: self.path.clone(),
             node: Node::from_type_and_metadata(
-                self.path.file_name().unwrap(),
+                self.path.file_name()?,
                 NodeType::File,
                 Metadata::default(),
-            ),
+            )
+            .ok()?,
             open: Some(OpenStdin()),
         }))
     }
