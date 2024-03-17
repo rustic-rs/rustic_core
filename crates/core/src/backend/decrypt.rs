@@ -321,8 +321,8 @@ pub trait DecryptWriteBackend: WriteBackend + Clone + 'static {
     ) -> RusticResult<()> {
         p.set_length(list.len() as u64);
         list.par_bridge().try_for_each(|id| -> RusticResult<_> {
-            // TODO: Don't panic on file not being able to be deleted.
-            self.remove(tpe, id, cacheable).unwrap();
+            self.remove(tpe, id, cacheable)
+                .map_err(RusticErrorKind::Backend)?;
             p.inc(1);
             Ok(())
         })?;
