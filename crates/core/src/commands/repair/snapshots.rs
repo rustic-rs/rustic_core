@@ -221,13 +221,13 @@ impl RepairSnapshotsOptions {
                             let mut file_changed = false;
                             let mut new_content = Vec::new();
                             let mut new_size = 0;
-                            for blob in node.content.take().unwrap() {
-                                index.get_data(&blob).map_or_else(
+                            for id in node.content.iter().flatten() {
+                                index.get_data(id).map_or_else(
                                     || {
                                         file_changed = true;
                                     },
                                     |ie| {
-                                        new_content.push(blob);
+                                        new_content.push(*id);
                                         new_size += u64::from(ie.data_length());
                                     },
                                 );
