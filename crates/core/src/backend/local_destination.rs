@@ -388,6 +388,8 @@ impl LocalDestination {
         extended_attributes: &[ExtendedAttribute],
     ) -> RusticResult<()> {
         let file_name = self.path_of(item);
+        let mut successful = vec![false; extended_attributes.len()];
+        let mut seen = vec![false; extended_attributes.len()];
 
         for curr_name in xattr::list(&file_name)
             .map_err(|err| LocalDestinationErrorKind::ListingXattrsFailed(err, file_name.clone()))?
@@ -411,6 +413,14 @@ impl LocalDestination {
                                     source: err,
                                 }
                             })?;
+                        }
+                        // We have seen this xattr, but we haven't changed anything
+                        seen[index] = true;
+                        // and we changed something
+                        successful[index] = true;
+                    }
+                    // We have seen this xattr, but we haven't changed anything
+                    seen[index] = true;
                 }
                 None => {
                     if let Err(err) = xattr::remove(&file_name, &curr_name) {
