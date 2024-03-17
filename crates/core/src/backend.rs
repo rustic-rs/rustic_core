@@ -93,6 +93,7 @@ pub trait ReadBackend: Send + Sync + 'static {
     /// # Returns
     ///
     /// The location of the backend.
+    fn location(&self) -> Result<String>;
 
     /// Lists all files with their size of the given type.
     ///
@@ -352,7 +353,7 @@ mock! {
     Backend {}
 
     impl ReadBackend for Backend{
-        fn location(&self) -> String;
+        fn location(&self) -> Result<String>;
         fn list_with_size(&self, tpe: FileType) -> Result<Vec<(Id, u32)>>;
         fn read_full(&self, tpe: FileType, id: &Id) -> Result<Bytes>;
         fn read_partial(
