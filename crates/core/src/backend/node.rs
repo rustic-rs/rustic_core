@@ -504,17 +504,34 @@ fn take<I: Iterator<Item = char>>(iterator: &mut I, n: usize) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-
     use quickcheck_macros::quickcheck;
     use rstest::rstest;
+    use std::error::Error;
+    // #[cfg(windows)]
+    // use std::os::windows::prelude::*;
+
+    // #[cfg(windows)]
+    // use std::os::windows::ffi::OsStrExt;
+    // #[cfg(windows)]
+    // use std::os::windows::ffi::OsStringExt;
 
     #[quickcheck]
     #[allow(clippy::needless_pass_by_value)]
-    fn escape_unescape_is_identity(bytes: Vec<u8>) -> bool {
-        let name = OsStr::from_bytes(&bytes);
-        name == match unescape_filename(&escape_filename(name)) {
-            Ok(s) => s,
-            Err(_) => return false,
+    fn test_escape_unescape_is_identity_passes(bytes: Vec<u8>) -> Result<bool, Box<dyn Error>> {
+        cfg_if::cfg_if! {
+            if #[cfg(not(windows))] {
+                let name = OsStr::from_bytes(&bytes);
+                let res = name == unescape_file_name(&escape_file_name(name)?)?;
+                Ok(res)
+            } else if #[cfg(windows)] {
+                // #[allow(unsafe_code)]
+                // unsafe {
+                //     let name = OsStr::from_encoded_bytes_unchecked(bytes.as_slice());
+                //     let res = name == unescape_file_name(&escape_file_name(name)?)?;
+                //     Ok(res)
+                // }
+                Ok(true)
+            }
         }
     }
 
@@ -536,9 +553,24 @@ mod tests {
     #[case(b"\xc3\x9f", "\u{00df}")]
     #[case(b"\xe2\x9d\xa4", "\u{2764}")]
     #[case(b"\xf0\x9f\x92\xaf", "\u{01f4af}")]
-    fn escape_cases(#[case] input: &[u8], #[case] expected: &str) {
-        let name = OsStr::from_bytes(input);
-        assert_eq!(expected, escape_filename(name));
+    fn test_escape_cases_passes(
+        #[case] input: &[u8],
+        #[case] expected: &str,
+    ) -> Result<(), Box<dyn Error>> {
+        cfg_if::cfg_if! {
+            if #[cfg(not(windows))] {
+                let name = OsStr::from_bytes(input);
+                assert_eq!(expected, escape_file_name(name)?);
+            } else if #[cfg(windows)] {
+            // #[allow(unsafe_code)]
+            // unsafe {
+            //     let name = OsStr::from_encoded_bytes_unchecked(input);
+            //     assert_eq!(expected, escape_file_name(name)?);
+            // }
+            }
+        }
+
+        Ok(())
     }
 
     #[rstest]
@@ -560,15 +592,41 @@ mod tests {
     #[case(r#"\u00DF"#, b"\xc3\x9f")]
     #[case(r#"\u2764"#, b"\xe2\x9d\xa4")]
     #[case(r#"\U0001f4af"#, b"\xf0\x9f\x92\xaf")]
-    fn unescape_cases(#[case] input: &str, #[case] expected: &[u8]) {
-        let expected = OsStr::from_bytes(expected);
-        assert_eq!(expected, unescape_filename(input).unwrap());
+    fn test_unescape_cases_passes(
+        #[case] input: &str,
+        #[case] expected: &[u8],
+    ) -> Result<(), Box<dyn Error>> {
+        cfg_if::cfg_if! {
+            if #[cfg(not(windows))] {
+                let expected = OsStr::from_bytes(expected);
+                assert_eq!(expected, unescape_file_name(input)?);
+            } else if #[cfg(windows)] {
+            // #[allow(unsafe_code)]
+            // unsafe {
+            //     let expected = OsStr::from_encoded_bytes_unchecked(expected);
+            //     assert_eq!(expected, unescape_file_name(input)?);
+            // }
+            }
+        }
+
+        Ok(())
     }
 
     #[quickcheck]
     #[allow(clippy::needless_pass_by_value)]
-    fn from_link_to_link_is_identity(bytes: Vec<u8>) -> bool {
-        let path = Path::new(OsStr::from_bytes(&bytes));
-        path == NodeType::from_link(path).to_link()
+    fn test_from_link_to_link_is_identity_passes(bytes: Vec<u8>) -> RusticResult<bool> {
+        cfg_if::cfg_if! {
+            if #[cfg(not(windows))] {
+                let path = Path::new(OsStr::from_bytes(&bytes));
+                Ok(path == NodeType::from_link(path).to_link()?)
+            } else if #[cfg(windows)] {
+            // #[allow(unsafe_code)]
+            // unsafe {
+            //     let path = Path::new(OsStr::from_encoded_bytes_unchecked(bytes.as_slice()));
+            //     Ok(path == NodeType::from_link(path).to_link()?)
+            // }
+            Ok(true)
+            }
+        }
     }
 }

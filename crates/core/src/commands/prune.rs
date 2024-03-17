@@ -1494,3 +1494,25 @@ fn find_used_blobs(
 
     Ok(ids)
 }
+
+#[cfg(test)]
+mod tests {
+
+    use super::*;
+    use crate::init_test_repository;
+    use anyhow::Result;
+
+    #[test]
+    fn test_get_plan_from_prune_options_passes() -> Result<()> {
+        let repo = init_test_repository()?;
+
+        let prune_opts = PruneOptions::default();
+
+        let _plan = prune_opts.get_plan(&repo)?;
+
+        // TODO: Add redactions and reasonable data
+        // insta::assert_ron_snapshot!(plan);
+
+        Ok(())
+    }
+}

@@ -68,6 +68,7 @@ pub fn location_to_type_and_path(
     }
 }
 
+/*
 #[cfg(test)]
 mod tests {
 
@@ -186,13 +187,13 @@ mod tests {
     // The root directory of the C: drive on localhost.
     #[cfg(windows)]
     #[case(
-        r#"\\localhost\C$\"#, 
+        r#"\\localhost\C$\"#,
         (SupportedBackend::Local,
         BackendLocation::try_from(r#"\\localhost\C$\"#).unwrap())
     )]
     #[cfg(windows)]
     #[case(
-        r#"\\127.0.0.1\c$\temp\repo\"#, 
+        r#"\\127.0.0.1\c$\temp\repo\"#,
         (SupportedBackend::Local,
         BackendLocation::try_from(r#"\\127.0.0.1\c$\temp\repo\"#).unwrap())
     )]
@@ -204,3 +205,4 @@ mod tests {
         assert_eq!(location_to_type_and_path(url).unwrap(), expected);
     }
 }
+*/

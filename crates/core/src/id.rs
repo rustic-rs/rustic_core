@@ -178,3 +178,84 @@ impl AsRef<Path> for HexId {
         self.as_str().as_ref()
     }
 }
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used)]
+mod tests {
+
+    use rstest::rstest;
+    use sha2::{Digest, Sha256};
+
+    use super::*;
+
+    #[test]
+    fn test_id_to_hex_to_str_fails() {
+        let non_hex = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdefZ";
+        let id = non_hex.parse::<Id>();
+
+        assert!(id.is_err(), "Id with non-hex str passed");
+    }
+
+    #[test]
+    fn test_id_is_random_passes() {
+        let mut ids = vec![Id::default(); 100_000];
+
+        for id in &mut ids {
+            *id = Id::random();
+        }
+
+        let set = ids.iter().collect::<std::collections::HashSet<_>>();
+
+        assert_eq!(set.len(), ids.len(), "Random ids are not unique");
+
+        for id in ids {
+            assert!(!id.is_null(), "Random id is null");
+        }
+    }
+
+    #[test]
+    fn test_id_blob_matches_reader_passes() {
+        let id_str = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+
+        let id = Id::new(Sha256::digest(id_str).into());
+
+        let mut reader = std::io::Cursor::new(id_str);
+
+        let length = 64;
+
+        assert!(
+            id.blob_matches_reader(length, &mut reader),
+            "Blob does not match reader"
+        );
+    }
+
+    #[test]
+    fn test_id_is_null_passes() {
+        let id = "".parse::<Id>();
+
+        assert!(id.is_err(), "Empty id is not null");
+    }
+
+    #[rstest]
+    #[case("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef")]
+    fn test_parse_id_from_str_passes(#[case] id_str: &str) {
+        let id = id_str.parse::<Id>();
+
+        assert!(id.is_ok(), "Id parsing failed");
+
+        let id = id.unwrap().to_hex();
+
+        assert_eq!(id.as_str(), id_str, "Id to hex to str failed");
+    }
+
+    #[test]
+    fn test_from_id_to_hex_passes() {
+        let id_str = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+
+        let id = Id::from_hex(id_str).unwrap();
+
+        let hex_id = HexId::from(id);
+
+        assert_eq!(hex_id.as_str(), id_str, "Id to hex to str failed");
+    }
+}

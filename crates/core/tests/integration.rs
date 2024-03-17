@@ -23,27 +23,25 @@
 //! The tests that use the fixtures are defined as functions with the `#[rstest]` attribute.
 //! The fixtures are passed as arguments to the test functions.
 
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use flate2::read::GzDecoder;
 use insta::internals::{Content, ContentPath};
 use insta::{assert_ron_snapshot, Settings};
 use pretty_assertions::assert_eq;
 use rstest::fixture;
 use rstest::rstest;
+
 use rustic_core::{
-    repofile::SnapshotFile, BackupOptions, ConfigOptions, KeyOptions, NoProgressBars, OpenStatus,
-    PathList, Repository, RepositoryBackends, RepositoryOptions,
+    init_test_repository, repofile::SnapshotFile, BackupOptions, NoProgressBars, OpenStatus,
+    PathList, Repository,
 };
 use serde_derive::Serialize;
-
-use rustic_testing::backend::in_memory_backend::InMemoryBackend;
 
 use std::{
     env,
     fs::File,
     path::{Path, PathBuf},
     str::FromStr,
-    sync::Arc,
 };
 // uncomment for logging output
 // use simplelog::{Config, SimpleLogger};
@@ -67,14 +65,7 @@ impl TestSource {
 
 #[fixture]
 fn set_up_repo() -> Result<RepoOpen> {
-    let be = InMemoryBackend::new();
-    let be = RepositoryBackends::new(Arc::new(be), None);
-    let options = RepositoryOptions::default().password("test");
-    let repo = Repository::new(&options, &be)?;
-    let key_opts = KeyOptions::default();
-    let config_opts = &ConfigOptions::default();
-    let repo = repo.init(&key_opts, config_opts)?;
-    Ok(repo)
+    Ok(init_test_repository()?)
 }
 
 // helper func to redact options, but still keep information about some/none
@@ -204,7 +195,8 @@ fn test_backup_with_tar_gz_passes(
     // re-read index
     let repo = repo.to_indexed_ids()?;
     let tree = repo.node_from_path(first_snapshot.tree, Path::new("test/0/tests"))?;
-    let tree: rustic_core::repofile::Tree = repo.get_tree(&tree.subtree.expect("Sub tree"))?;
+    let tree: rustic_core::repofile::Tree =
+        repo.get_tree(&tree.subtree.ok_or_else(|| anyhow!("Sub tree"))?)?;
 
     insta_tree_redaction.bind(|| {
         #[cfg(windows)]
@@ -297,7 +289,7 @@ fn test_backup_dry_run_with_tar_gz_passes(
     // re-read index
     let repo = repo.to_indexed_ids()?;
     let tree = repo.node_from_path(first_snapshot.tree, Path::new("test/0/tests"))?;
-    let tree = repo.get_tree(&tree.subtree.expect("Sub tree"))?;
+    let tree = repo.get_tree(&tree.subtree.ok_or_else(|| anyhow!("Sub tree"))?)?;
 
     insta_tree_redaction.bind(|| {
         #[cfg(windows)]

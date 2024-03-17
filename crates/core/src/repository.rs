@@ -1849,3 +1849,28 @@ impl<P: ProgressBars, S: IndexedFull> Repository<P, S> {
         opts.repair(self, snapshots, dry_run)
     }
 }
+
+/// Initialize a repository for testing
+///
+/// # Errors
+///
+/// If the repository could not be initialized
+///
+/// # Returns
+///
+/// The initialized repository
+///
+/// # Notes
+///
+/// The repository is initialized with an in-memory backend and a password of "test".
+pub fn init_test_repository() -> RusticResult<Repository<NoProgressBars, OpenStatus>> {
+    let be = InMemoryBackend::new();
+    let be = RepositoryBackends::new(Arc::new(be), None);
+    let options = RepositoryOptions::default().password("test").no_cache(true);
+    let repo = Repository::new(&options, &be)?;
+    let key_opts = KeyOptions::default();
+    let config_opts = &ConfigOptions::default();
+    let repo = repo.init(&key_opts, config_opts)?;
+
+    Ok(repo)
+}

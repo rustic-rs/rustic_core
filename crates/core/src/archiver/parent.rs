@@ -296,3 +296,58 @@ impl Parent {
         Ok(result)
     }
 }
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used)]
+mod tests {
+
+    use super::*;
+    use std::error::Error;
+
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    pub struct TestStruct {
+        pub value: Option<i32>,
+    }
+
+    #[test]
+    fn test_map_parent_result_passes() {
+        let result = ParentResult::Matched(1);
+        let mapped = result.map(|x| x + 1);
+        assert_eq!(mapped, ParentResult::Matched(2));
+    }
+
+    #[test]
+    #[allow(clippy::unnecessary_literal_unwrap)]
+    fn test_map_parent_result_with_unwrap_passes() {
+        let opt = Some(1);
+
+        let result = ParentResult::Matched(10);
+        let mapped = result.map(|_match| opt.unwrap());
+        assert_eq!(mapped, ParentResult::Matched(1));
+    }
+
+    #[test]
+    #[allow(clippy::unnecessary_literal_unwrap)]
+    fn test_map_parent_result_with_option_passes() {
+        let opt = Some(1);
+
+        let result = ParentResult::Matched(10);
+        let mapped = result.map(|_match| opt);
+        assert_eq!(mapped, ParentResult::Matched(opt));
+    }
+
+    #[test]
+    // Result should be `Result<(), Box<dyn Error>>` so check ergonomics with usage of standard utilities, not anyhow
+    fn test_map_parent_result_and_transpose_passes() -> Result<(), Box<dyn Error>> {
+        let item = TestStruct { value: Some(1) };
+
+        let result = ParentResult::Matched("str");
+        let mapped = result
+            .map(|_i| -> Result<i32, Box<dyn Error>> { item.value.ok_or_else(|| "error".into()) })
+            .transpose()?;
+
+        assert_eq!(mapped, ParentResult::Matched(item.value.unwrap()));
+
+        Ok(())
+    }
+}

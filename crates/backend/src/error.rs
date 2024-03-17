@@ -1,4 +1,4 @@
-use std::{num::TryFromIntError, process::ExitStatus, str::Utf8Error};
+use std::{num::TryFromIntError, path::PathBuf, process::ExitStatus, str::Utf8Error};
 
 use displaydoc::Display;
 use thiserror::Error;
@@ -78,6 +78,12 @@ pub enum RestErrorKind {
     BuildingClientFailed(reqwest::Error),
     /// joining URL failed on: {0:?}
     JoiningUrlFailed(url::ParseError),
+    /// Status code not available
+    StatusCodeNotAvailable,
+    /// Redacting the password failed
+    RedactingPasswordFailed,
+    /// Failed to clone the request
+    CloningRequestFailed,
 }
 
 /// [`LocalBackendErrorKind`] describes the errors that can be returned by an action on the filesystem in Backends
@@ -91,7 +97,7 @@ pub enum LocalBackendErrorKind {
     QueryingWalkDirMetadataFailed(walkdir::Error),
     /// executtion of command failed: `{0:?}`
     CommandExecutionFailed(std::io::Error),
-    /// command was not successful for filename {file_name}, type {file_type}, id {id}: {status}
+    /// command was not successful for file name {file_name}, type {file_type}, id {id}: {status}
     CommandNotSuccessful {
         /// File name
         file_name: String,
@@ -128,4 +134,9 @@ pub enum LocalBackendErrorKind {
     ReadingExactLengthOfFileFailed(std::io::Error),
     /// failed to sync OS Metadata to disk: `{0:?}`
     SyncingOfOsMetadataFailed(std::io::Error),
+    /// Getting string from path failed: `{path}`
+    PathToStringFailed {
+        /// Path
+        path: PathBuf,
+    },
 }

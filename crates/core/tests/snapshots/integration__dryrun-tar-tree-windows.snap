@@ -37,7 +37,7 @@ Tree(
     {
       "name": "testfile-symlink",
       "type": "symlink",
-      "linktarget": "testfile",
+      "link_target": "testfile",
       "mtime": "[some]",
       "atime": "[some]",
       "ctime": "[some]",

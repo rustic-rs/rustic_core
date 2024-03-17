@@ -672,3 +672,82 @@ impl LocalDestination {
         Ok(())
     }
 }
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used)]
+mod tests {
+
+    use super::*;
+
+    use rstest::{fixture, rstest};
+    use tempfile::TempDir;
+
+    #[fixture]
+    fn local_destination() -> LocalDestination {
+        let temp_dir = TempDir::new().unwrap();
+
+        let dest =
+            LocalDestination::new(temp_dir.path().to_string_lossy().as_ref(), true, false).unwrap();
+
+        assert_eq!(dest.path, temp_dir.path());
+        assert!(!dest.is_file);
+
+        dest
+    }
+
+    #[rstest]
+    fn test_create_remove_dir_passes(local_destination: LocalDestination) {
+        let dir = "test_dir";
+
+        local_destination.create_dir(dir).unwrap();
+
+        assert!(local_destination.path_of(dir).is_dir());
+
+        local_destination.remove_dir(dir).unwrap();
+
+        assert!(!local_destination.path_of(dir).exists());
+    }
+
+    #[rstest]
+    #[cfg(not(windows))]
+    fn test_uid_from_name_passes() {
+        let uid = uid_from_name("root".to_string()).unwrap();
+        assert_eq!(uid, Uid::from_raw(0));
+    }
+
+    #[rstest]
+    #[cfg(not(any(windows, darwin)))]
+    fn test_gid_from_name_passes() {
+        cfg_if::cfg_if! {
+            if #[cfg(target_os = "linux")] {
+                let gid = gid_from_name("root".to_string()).unwrap();
+                assert_eq!(gid, Gid::from_raw(0));
+            }
+        }
+    }
+
+    // TODO: create_special not implemented yet for win
+    // #[rstest]
+    // fn test_create_remove_file_passes(local_destination: LocalDestination) {
+    //     let file = "test_file";
+
+    //     local_destination
+    //         .create_special(
+    //             file,
+    //             &Node::new(
+    //                 file.to_string(),
+    //                 NodeType::File,
+    //                 Metadata::default(),
+    //                 None,
+    //                 None,
+    //             ),
+    //         )
+    //         .unwrap();
+
+    //     assert!(local_destination.path_of(file).is_file());
+
+    //     local_destination.remove_file(file).unwrap();
+
+    //     assert!(!local_destination.path_of(file).exists());
+    // }
+}

@@ -848,3 +848,68 @@ impl<BE: DecryptFullBackend> Repacker<BE> {
         self.packer.finalize()
     }
 }
+
+#[cfg(test)]
+mod tests {
+
+    use super::*;
+
+    use rstest::{fixture, rstest};
+
+    #[fixture]
+    fn pack_sizer() -> PackSizer {
+        let config = ConfigFile {
+            max_packsize_tolerate_percent: Some(80),
+            ..Default::default()
+        };
+        let blob_type = BlobType::Data;
+        let current_size = 100;
+        PackSizer::from_config(&config, blob_type, current_size)
+    }
+
+    #[test]
+    fn test_pack_sizer_from_config_passes() {
+        let config = ConfigFile::default();
+        let blob_type = BlobType::Data;
+        let (default_size, grow_factor, size_limit) = config.packsize(blob_type);
+        let current_size = 0;
+        let pack_sizer = PackSizer::from_config(&config, blob_type, current_size);
+        let (min_packsize_tolerate_percent, max_packsize_tolerate_percent) =
+            config.packsize_ok_percents();
+
+        assert_eq!(pack_sizer.default_size, default_size, "default_size");
+        assert_eq!(pack_sizer.grow_factor, grow_factor);
+        assert_eq!(pack_sizer.size_limit, size_limit);
+        assert_eq!(
+            pack_sizer.min_packsize_tolerate_percent,
+            min_packsize_tolerate_percent
+        );
+        assert_eq!(
+            pack_sizer.max_packsize_tolerate_percent,
+            max_packsize_tolerate_percent
+        );
+        assert_eq!(pack_sizer.current_size, current_size);
+    }
+
+    #[rstest]
+    #[case(0.5f32, false, "size is too small, should be 'false'")]
+    #[case(1.1f32, true, "size is ok, should be 'true'")]
+    #[case(1_000_000.0f32, false, "size is too huge: should be 'false'")]
+    fn test_compute_pack_size_ok_passes(
+        pack_sizer: PackSizer,
+        #[case] input: f32,
+        #[case] expected: bool,
+        #[case] comment: &str,
+    ) -> RusticResult<()> {
+        let size_limit = pack_sizer.pack_size()? * 30 / 100;
+
+        #[allow(clippy::cast_possible_truncation)]
+        #[allow(clippy::cast_sign_loss)]
+        #[allow(clippy::cast_precision_loss)]
+        let size = (input * size_limit as f32) as u32;
+
+        assert_eq!(pack_sizer.size_ok(size)?, expected, "{comment}");
+
+        Ok(())
+    }
+}

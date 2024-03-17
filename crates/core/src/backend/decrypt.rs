@@ -540,7 +540,7 @@ impl<C: CryptoKey> DecryptReadBackend for DecryptBackend<C> {
 }
 
 impl<C: CryptoKey> ReadBackend for DecryptBackend<C> {
-    fn location(&self) -> String {
+    fn location(&self) -> Result<String> {
         self.be.location()
     }
 
@@ -599,7 +599,7 @@ mod tests {
     }
 
     #[test]
-    fn verify_encrypt_file_ok() -> Result<()> {
+    fn test_verify_encrypt_file_passes() -> Result<()> {
         let (mut be, data) = init();
         be.set_extra_verify(true);
         let data_encrypted = be.encrypt_file(data)?;
@@ -608,7 +608,7 @@ mod tests {
     }
 
     #[test]
-    fn verify_encrypt_file_no_test() -> Result<()> {
+    fn test_verify_encrypt_file_no_test_passes() -> Result<()> {
         let (be, data) = init();
         let mut data_encrypted = be.encrypt_file(data)?;
         // modify some data
@@ -619,7 +619,7 @@ mod tests {
     }
 
     #[test]
-    fn verify_encrypt_file_nok() -> Result<()> {
+    fn test_verify_encrypt_file_nok_passes() -> Result<()> {
         let (mut be, data) = init();
         be.set_extra_verify(true);
         let mut data_encrypted = be.encrypt_file(data)?;
@@ -631,7 +631,7 @@ mod tests {
     }
 
     #[test]
-    fn verify_encrypt_data_ok() -> Result<()> {
+    fn test_verify_encrypt_data_passes() -> Result<()> {
         let (mut be, data) = init();
         be.set_extra_verify(true);
         let (data_encrypted, _, ul) = be.encrypt_data(data)?;
@@ -640,7 +640,7 @@ mod tests {
     }
 
     #[test]
-    fn verify_encrypt_data_no_test() -> Result<()> {
+    fn test_verify_encrypt_data_no_test_passes() -> Result<()> {
         let (be, data) = init();
         let (mut data_encrypted, _, ul) = be.encrypt_data(data)?;
         // modify some data
@@ -651,7 +651,7 @@ mod tests {
     }
 
     #[test]
-    fn verify_encrypt_data_nok() -> Result<()> {
+    fn test_verify_encrypt_data_nok_passes() -> Result<()> {
         let (mut be, data) = init();
         be.set_extra_verify(true);
         let (mut data_encrypted, _, ul) = be.encrypt_data(data)?;
