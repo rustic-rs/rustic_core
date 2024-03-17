@@ -73,7 +73,7 @@ impl<BE: DecryptFullBackend> DecryptReadBackend for DryRunBackend<BE> {
 }
 
 impl<BE: DecryptFullBackend> ReadBackend for DryRunBackend<BE> {
-    fn location(&self) -> String {
+    fn location(&self) -> Result<String> {
         self.be.location()
     }
 

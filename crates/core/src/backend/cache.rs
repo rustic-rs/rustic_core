@@ -47,7 +47,7 @@ impl CachedBackend {
 
 impl ReadBackend for CachedBackend {
     /// Returns the location of the backend as a String.
-    fn location(&self) -> String {
+    fn location(&self) -> Result<String> {
         self.be.location()
     }
 
@@ -240,13 +240,16 @@ impl Cache {
 
     /// Returns the path to the location of this [`Cache`].
     ///
-    /// # Panics
+    /// # Errors
     ///
-    /// Panics if the path is not valid unicode.
-    // TODO: Does this need to panic? Result?
+    /// * [`CacheBackendErrorKind::CacheLocationInvalid`] - If the path is not a valid string.
+    ///
+    /// # Returns
+    ///
+    /// The path to the location of this [`Cache`].
     #[must_use]
-    pub fn location(&self) -> &str {
-        self.path.to_str().unwrap()
+    pub fn location(&self) -> &Path {
+        self.path.as_path()
     }
 
     /// Returns the path to the directory of the given type.

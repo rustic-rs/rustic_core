@@ -105,10 +105,10 @@ impl ReadBackend for OpenDALBackend {
     /// Returns the location of the backend.
     ///
     /// This is `local:<path>`.
-    fn location(&self) -> String {
+    fn location(&self) -> Result<String> {
         let mut location = "opendal:".to_string();
         location.push_str(self.operator.info().name());
-        location
+        Ok(location)
     }
 
     /// Lists all files of the given type.

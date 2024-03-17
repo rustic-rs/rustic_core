@@ -234,8 +234,8 @@ impl RcloneBackend {
 
 impl ReadBackend for RcloneBackend {
     /// Returns the location of the backend.
-    fn location(&self) -> String {
-        "rclone:".to_string() + &self.url
+    fn location(&self) -> Result<String> {
+        Ok("rclone:".to_string() + &self.url)
     }
 
     /// Returns the size of the given file.

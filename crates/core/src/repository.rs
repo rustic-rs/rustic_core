@@ -332,11 +332,11 @@ impl<P> Repository<P, ()> {
             be = WarmUpAccessBackend::new_warm_up(be);
         }
 
-        let mut name = be.location();
+        let mut name = be.location().map_err(RusticErrorKind::Backend)?;
         if let Some(be_hot) = &be_hot {
             be = Arc::new(HotColdBackend::new(be, be_hot.clone()));
             name.push('#');
-            name.push_str(&be_hot.location());
+            name.push_str(&be_hot.location().map_err(RusticErrorKind::Backend)?);
         }
 
         Ok(Self {

@@ -245,14 +245,15 @@ impl RestBackend {
 
 impl ReadBackend for RestBackend {
     /// Returns the location of the backend.
-    fn location(&self) -> String {
+    fn location(&self) -> Result<String> {
         let mut location = "rest:".to_string();
         let mut url = self.url.clone();
-        if url.password().is_some() {
-            url.set_password(Some("***")).unwrap();
+        if url.password().is_some() && url.set_password(Some("[redacted]")).is_err() {
+            error!("Could not redact password! To avoid leaking, we stop here.");
+            return Err(RestErrorKind::RedactingPasswordFailed.into());
         }
         location.push_str(url.as_str());
-        location
+        Ok(location)
     }
 
     /// Returns a list of all files of a given type with their size.

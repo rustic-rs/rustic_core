@@ -376,7 +376,7 @@ impl WriteBackend for Arc<dyn WriteBackend> {
 }
 
 impl ReadBackend for Arc<dyn WriteBackend> {
-    fn location(&self) -> String {
+    fn location(&self) -> Result<String> {
         self.deref().location()
     }
     fn list_with_size(&self, tpe: FileType) -> Result<Vec<(Id, u32)>> {
@@ -403,7 +403,7 @@ impl ReadBackend for Arc<dyn WriteBackend> {
 
 impl std::fmt::Debug for dyn WriteBackend {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "WriteBackend{{{}}}", self.location())
+        write!(f, "WriteBackend{{{:#?}}}", self.location())
     }
 }
 

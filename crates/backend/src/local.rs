@@ -149,13 +149,25 @@ impl LocalBackend {
 }
 
 impl ReadBackend for LocalBackend {
-    /// Returns the location of the backend.
+    /// Get the location name of the backend.
     ///
     /// This is `local:<path>`.
-    fn location(&self) -> String {
+    ///
+    /// # Returns
+    ///
+    /// The location of the backend.
+    ///
+    /// # Notes
+    ///
+    /// The path is the path to the backend. In case the path is not a valid UTF-8 string,
+    /// the path is converted to a string lossy.
+    fn location(&self) -> Result<String> {
         let mut location = "local:".to_string();
-        location.push_str(&self.path.to_string_lossy());
-        location
+        let string_lossy = &self.path.to_string_lossy().to_string();
+        let string_lossy = string_lossy.as_str();
+        let path = self.path.to_str().map_or_else(|| string_lossy, |path| path);
+        location.push_str(path);
+        Ok(location)
     }
 
     /// Lists all files of the given type.

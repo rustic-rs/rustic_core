@@ -27,7 +27,7 @@ impl WarmUpAccessBackend {
 }
 
 impl ReadBackend for WarmUpAccessBackend {
-    fn location(&self) -> String {
+    fn location(&self) -> Result<String> {
         self.be.location()
     }
 
