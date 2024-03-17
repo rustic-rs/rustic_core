@@ -12,6 +12,7 @@ use std::{
     str::Utf8Error,
 };
 
+use crossbeam_channel::SendError;
 #[cfg(not(windows))]
 use nix::errno::Errno;
 
@@ -60,6 +61,12 @@ impl RusticError {
     }
 }
 
+impl From<RusticError> for std::fmt::Error {
+    fn from(_: RusticError) -> Self {
+        Self
+    }
+}
+
 /// [`RusticErrorKind`] describes the errors that can happen while executing a high-level command.
 ///
 /// This is a non-exhaustive enum, so additional variants may be added in future. It is
@@ -88,11 +95,15 @@ pub enum RusticErrorKind {
     #[error(transparent)]
     Repository(#[from] RepositoryErrorKind),
 
-    /// [`IndexErrorKind`] describes the errors that can be returned by processing Indizes
+    /// [`IndexErrorKind`] describes the errors that can be returned by processing Indices
     #[error(transparent)]
     Index(#[from] IndexErrorKind),
 
-    /// describes the errors that can be returned by the various Backends
+    /// [`ChannelErrorKind`] describes the errors that can be returned by dealing with channels
+    #[error(transparent)]
+    Channel(#[from] MultiprocessingErrorKind),
+
+    /// This error is returned when a `rustic_backend` fails to perform an action
     #[error(transparent)]
     Backend(#[from] anyhow::Error),
 
@@ -127,6 +138,10 @@ pub enum RusticErrorKind {
     /// [`TreeErrorKind`] describes the errors that can come up dealing with Trees
     #[error(transparent)]
     Tree(#[from] TreeErrorKind),
+
+    /// [`walkdir::Error`] describes the errors that can be returned by walking directories
+    #[error(transparent)]
+    WalkDir(#[from] walkdir::Error),
 
     /// [`CacheBackendErrorKind`] describes the errors that can be returned by a Caching action in Backends
     #[error(transparent)]
@@ -163,6 +178,10 @@ pub enum RusticErrorKind {
     /// [`std::io::Error`]
     #[error(transparent)]
     StdIo(#[from] std::io::Error),
+
+    /// [`CheckErrorKind`]
+    #[error(transparent)]
+    Check(#[from] CheckErrorKind),
 }
 
 /// [`CommandErrorKind`] describes the errors that can happen while executing a high-level command
@@ -216,6 +235,28 @@ pub enum CommandErrorKind {
     ConversionFromIntFailed(TryFromIntError),
     /// {0} is not allowed on an append-only repository
     NotAllowedWithAppendOnly(String),
+    /// Failed to acquire a mutex lock
+    MutexLockFailed,
+    /// Reading file type failed: `{0}`
+    ErrorReadingFileType(PathBuf),
+    /// No last snapshot found: {snapshot_id}
+    NoLastSnapshot { snapshot_id: String },
+    /// Duration error: {duration}
+    DurationError {
+        duration: String,
+        #[source]
+        source: OutOfRangeError,
+    },
+    /// There are too many packs to delete: `{0}`
+    TooManyPacksToDelete(usize),
+    /// error setting metadata for {0:?}: {1:?}
+    ErrorSettingMetadata(PathBuf, Vec<RusticError>),
+    /// tree with id {0:?} has not been found
+    TreeNotFound(String),
+    /// data with id {0:?} has not been found
+    DataBlobNotFound(String),
+    /// dir {path} subtree doesn't exist
+    MissingSubtree { path: PathBuf },
 }
 
 /// [`CryptoErrorKind`] describes the errors that can happen while dealing with Cryptographic functions
@@ -242,16 +283,26 @@ pub enum FileErrorKind {
     /// did not find id in index: `{0:?}`
     CouldNotFindIdInIndex(Id),
     /// transposing an Option of a Result into a Result of an Option failed: `{0:?}`
-    TransposingOptionResultFailed(std::io::Error),
+    TransposingOptionResultFailed(#[from] std::io::Error),
     /// conversion from `u64` to `usize` failed: `{0:?}`
-    ConversionFromU64ToUsizeFailed(TryFromIntError),
+    ConversionFromU64ToUsizeFailed(#[from] TryFromIntError),
 }
 
 /// [`IdErrorKind`] describes the errors that can be returned by processing IDs
-#[derive(Error, Debug, Display, Copy, Clone)]
+#[derive(Error, Debug, Display)]
 pub enum IdErrorKind {
-    /// Hex decoding error: `{0:?}`
-    HexError(hex::FromHexError),
+    /// Hex error: `{0:?}`
+    #[error(transparent)]
+    HexError(#[from] hex::FromHexError),
+    /// Utf8 error: `{0:?}`
+    #[error(transparent)]
+    Utf8Error(#[from] Utf8Error),
+    /// Failed to parse Id from String `{0}`
+    ParsingIdFromStringFailed(String),
+    /// Empty hex string
+    EmptyHexString,
+    /// Non-ASCII hex string
+    NonAsciiHexString,
 }
 
 /// [`RepositoryErrorKind`] describes the errors that can be returned by processing Repositories
@@ -265,11 +316,11 @@ pub enum RepositoryErrorKind {
     NoIDSpecified,
     /// error opening password file `{0:?}`
     OpeningPasswordFileFailed(std::io::Error),
-    /// No repository config file found. Is there a repo at {0}?
+    /// No repository config file found. Is there a repo at `{0}`?
     NoRepositoryConfigFound(String),
-    /// More than one repository config file at {0}. Aborting.
+    /// More than one repository config file at `{0}`. Aborting.
     MoreThanOneRepositoryConfig(String),
-    /// keys from repo and repo-hot do not match for {0}. Aborting.
+    /// keys from repo and repo-hot do not match for `{0}`. Aborting.
     KeysDontMatchForRepositories(String),
     /// repository is a hot repository!\nPlease use as --repo-hot in combination with the normal repo. Aborting.
     HotRepositoryFlagMissing,
@@ -290,6 +341,7 @@ pub enum RepositoryErrorKind {
     /// error accessing config file
     AccessToConfigFileFailed,
     /// {0:?}
+    #[error(transparent)]
     FromSplitError(#[from] shell_words::ParseError),
     /// {0:?}
     FromThreadPoolbilderError(rayon::ThreadPoolBuildError),
@@ -299,7 +351,7 @@ pub enum RepositoryErrorKind {
     ReadingPasswordFromPromptFailed(std::io::Error),
     /// Config file already exists. Aborting.
     ConfigFileExists,
-    /// did not find id {0} in index
+    /// did not find id `{0}` in index
     IdNotFound(Id),
     /// no suitable backend type found
     NoBackendTypeGiven,
@@ -314,18 +366,20 @@ pub enum IndexErrorKind {
     GettingBlobIndexEntryFromBackendFailed,
     /// saving IndexFile failed
     SavingIndexFileFailed,
+    /// IndexFile is still in use
+    IndexStillInUse,
 }
 
 /// [`BackendAccessErrorKind`] describes the errors that can be returned by the various Backends
 #[derive(Error, Debug, Display)]
 pub enum BackendAccessErrorKind {
-    /// backend {0:?} is not supported!
+    /// backend `{0:?}` is not supported!
     BackendNotSupported(String),
-    /// backend {0} cannot be loaded: {1:?}
+    /// backend `{0}` cannot be loaded: `{1:?}`
     BackendLoadError(String, anyhow::Error),
-    /// no suitable id found for {0}
+    /// no suitable id found for `{0}`
     NoSuitableIdFound(String),
-    /// id {0} is not unique
+    /// id `{0}` is not unique
     IdNotUnique(String),
     /// {0:?}
     #[error(transparent)]
@@ -417,13 +471,13 @@ pub enum PackFileErrorKind {
 /// [`SnapshotFileErrorKind`] describes the errors that can be returned for `SnapshotFile`s
 #[derive(Error, Debug, Display)]
 pub enum SnapshotFileErrorKind {
-    /// non-unicode hostname {0:?}
+    /// non-unicode hostname `{0:?}`
     NonUnicodeHostname(OsString),
-    /// non-unicode path {0:?}
+    /// non-unicode path `{0:?}`
     NonUnicodePath(PathBuf),
     /// no snapshots found
     NoSnapshotsFound,
-    /// value {0:?} not allowed
+    /// value `{0:?}` not allowed
     ValueNotAllowed(String),
     /// datetime out of range: `{0:?}`
     OutOfRange(#[from] OutOfRangeError),
@@ -445,6 +499,39 @@ pub enum SnapshotFileErrorKind {
     CanonicalizingPathFailed(std::io::Error),
 }
 
+/// [`ChannelErrorKind`] describes the errors that can be returned in relation to a crossbeam or other channel
+#[derive(Error, Debug, Display)]
+pub enum MultiprocessingErrorKind {
+    /// General channel error, crossbeam couldn't send message
+    SendingCrossbeamMessageFailed,
+    /// crossbeam couldn't send message: `{0:?}`
+    SendingCrossbeamMessageFailedWithBytes(#[from] SendError<(bytes::Bytes, Id, Option<u32>)>),
+    /// crossbeam couldn't send message: `{0:?}`
+    SendingCrossbeamMessageFailedForIndexPack(#[from] SendError<(bytes::Bytes, IndexPack)>),
+    /// failed to receive message for PackerStats: `{0:?}`
+    ReceivingCrossbeamMessageFailedForPackerStats(crossbeam_channel::RecvError),
+    /// failed to receive message: `{0:?}`
+    ReceivingCrossbeamMessageFailedForActorFinalizing(crossbeam_channel::RecvError),
+    /// crossbeam couldn't send message: `{0:?}`
+    SendingCrossbeamMessageFailedWithPath(#[from] SendError<(PathBuf, Id, usize)>),
+    /// crossbeam couldn't receive message: `{0:?}`
+    ReceivingCrossbreamMessageFailed(#[from] crossbeam_channel::RecvError),
+    /// Queue in is not available
+    QueueInNotAvailable,
+    /// crossbeam couldn't send message: `{0:?}`
+    SendingCrossbeamMessageFailedForStatus(String),
+    /// crossbeam couldn't send message: `{0:?}`
+    SendingCrossbeamMessageFailedForPackerStats(String),
+    /// failed to join threads in `{location}`
+    JoinError { location: String },
+    /// failed during archival in `{location}`
+    ArchivingError { location: String },
+    /// Receiver has been dropped unexpectedly
+    ReceiverDropped,
+    /// Sender has been dropped unexpectedly
+    SenderDropped,
+}
+
 /// [`PackerErrorKind`] describes the errors that can be returned for a Packer
 #[derive(Error, Debug, Display)]
 pub enum PackerErrorKind {
@@ -456,14 +543,6 @@ pub enum PackerErrorKind {
     CompressingDataFailed(#[from] std::io::Error),
     /// getting total size failed
     GettingTotalSizeFailed,
-    /// crossbeam couldn't send message: `{0:?}`
-    SendingCrossbeamMessageFailed(
-        #[from] crossbeam_channel::SendError<(bytes::Bytes, Id, Option<u32>)>,
-    ),
-    /// crossbeam couldn't send message: `{0:?}`
-    SendingCrossbeamMessageFailedForIndexPack(
-        #[from] crossbeam_channel::SendError<(bytes::Bytes, IndexPack)>,
-    ),
     /// couldn't create binary representation for pack header: `{0:?}`
     CouldNotCreateBinaryRepresentationForHeader(#[from] PackFileErrorKind),
     /// failed to write bytes in backend: `{0:?}`
@@ -478,6 +557,43 @@ pub enum PackerErrorKind {
     AddingIndexPackFailed(#[from] IndexErrorKind),
     /// conversion for integer failed: `{0:?}`
     IntConversionFailed(#[from] TryFromIntError),
+    /// No file writer present for packer
+    FileWriterHandleNotPresent,
+    /// No actor handle present for packer
+    ActorHandleNotPresent,
+    /// size of data is too large: {0}
+    SizeLimitExceeded(u32),
+    /// failed to add size {to_be_added} to current size: {current_size}
+    AddingSizeToCurrentSizeFailed { current_size: u64, to_be_added: u32 },
+    /// overflowed while adding data: {data} + {data_added}
+    DataAddedOverflowed { data_added: u64, data: u64 },
+    /// overflowed while adding data: {data_packed} + {data_added_packed}
+    DataAddedPackedOverflowed {
+        data_added_packed: u64,
+        data_packed: u64,
+    },
+    /// overflowed while adding data: {blobs} + {tree_blobs}
+    TreeBlobsOverflowed { tree_blobs: u64, blobs: u64 },
+    /// overflowed while adding data: {data} + {data_added_trees}
+    DataAddedTreesOverflowed { data_added_trees: u64, data: u64 },
+    /// overflowed while adding data: {data_packed} + {data_added_trees_packed}
+    DataAddedTreesPackedOverflowed {
+        data_added_trees_packed: u64,
+        data_packed: u64,
+    },
+    /// overflowed while adding data: {blobs} + {data_blobs}
+    DataBlobsOverflowed { data_blobs: u64, blobs: u64 },
+    /// overflowed while adding data: {data} + {data_added_files}
+    DataAddedFilesOverflowed { data_added_files: u64, data: u64 },
+    /// overflowed while adding data: {data_packed} + {data_added_files_packed}
+    DataAddedFilesPackedOverflowed {
+        data_added_files_packed: u64,
+        data_packed: u64,
+    },
+    /// multiple errors from summary: {0:?}
+    MultipleFromSummary(Vec<PackerErrorKind>),
+    /// failed to calculate pack size from value {value} with error {comment}
+    IntConversionFailedInPackSizeCalculation { value: u64, comment: String },
 }
 
 /// [`TreeErrorKind`] describes the errors that can come up dealing with Trees
@@ -503,10 +619,10 @@ pub enum TreeErrorKind {
     BuildingNodeStreamerFailed(#[from] ignore::Error),
     /// failed to read file string from glob file: `{0:?}`
     ReadingFileStringFromGlobsFailed(#[from] std::io::Error),
-    /// crossbeam couldn't send message: `{0:?}`
-    SendingCrossbeamMessageFailed(#[from] crossbeam_channel::SendError<(PathBuf, Id, usize)>),
-    /// crossbeam couldn't receive message: `{0:?}`
-    ReceivingCrossbreamMessageFailed(#[from] crossbeam_channel::RecvError),
+    /// failed to find blob id for node: `{0:?}`
+    BlobIdNotFoundForNode(OsString),
+    /// no nodes found to be merged
+    NoNodeInListToBeMerged,
 }
 
 /// [`CacheBackendErrorKind`] describes the errors that can be returned by a Caching action in Backends
@@ -531,6 +647,12 @@ pub enum CacheBackendErrorKind {
     WritingBytesOnCacheBackendFailed,
     /// removing data on CacheBackend failed
     RemovingDataOnCacheBackendFailed,
+    /// Cache location is invalid
+    CacheLocationInvalid,
+    /// Encountered Invalid ID in CacheBackend
+    InvalidId,
+    /// Encountered Invalid Path in CacheBackend
+    MetadataError(PathBuf),
 }
 
 /// [`CryptBackendErrorKind`] describes the errors that can be returned by a Decryption action in Backends
@@ -592,6 +714,9 @@ pub enum IgnoreErrorKind {
     FromTryFromIntError(#[from] TryFromIntError),
     /// no unicode link target. File: {file:?}, target: {target:?}
     TargetIsNotValidUnicode { file: PathBuf, target: PathBuf },
+    #[cfg(not(windows))]
+    /// xattr not found: {0}
+    XattrNotFound(String),
 }
 
 /// [`LocalDestinationErrorKind`] describes the errors that can be returned by an action on the filesystem in Backends
@@ -617,19 +742,19 @@ pub enum LocalDestinationErrorKind {
     /// listing xattrs on {1:?}: {0}
     #[cfg(not(any(windows, target_os = "openbsd")))]
     ListingXattrsFailed(std::io::Error, PathBuf),
-    /// setting xattr {name} on {filename:?} with {source:?}
+    /// setting xattr {name} on {file_name:?} with {source:?}
     #[cfg(not(any(windows, target_os = "openbsd")))]
     SettingXattrFailed {
         name: String,
-        filename: PathBuf,
+        file_name: PathBuf,
         #[source]
         source: std::io::Error,
     },
-    /// getting xattr {name} on {filename:?} with {source:?}
+    /// getting xattr {name} on {file_name:?} with {source:?}
     #[cfg(not(any(windows, target_os = "openbsd")))]
     GettingXattrFailed {
         name: String,
-        filename: PathBuf,
+        file_name: PathBuf,
         #[source]
         source: std::io::Error,
     },
@@ -652,11 +777,11 @@ pub enum LocalDestinationErrorKind {
     /// setting file permissions failed: `{0:?}`
     #[cfg(not(windows))]
     SettingFilePermissionsFailed(std::io::Error),
-    /// failed to symlink target {linktarget:?} from {filename:?} with {source:?}
+    /// failed to symlink target {link_target:?} from {file_name:?} with {source:?}
     #[cfg(not(windows))]
     SymlinkingFailed {
-        linktarget: PathBuf,
-        filename: PathBuf,
+        link_target: PathBuf,
+        file_name: PathBuf,
         #[source]
         source: std::io::Error,
     },
@@ -676,6 +801,14 @@ pub enum NodeErrorKind {
     /// Unrecognized Escape
     #[cfg(not(windows))]
     UnrecognizedEscape,
+    /// Invalid Link Target: called method on non-symlink!
+    InvalidLinkTarget,
+    /// Invalid sign encountered in formatting: `{0:?}`
+    SignWriteError(String),
+    /// Invalid UTF-8 encountered during escaping file name: `{0:?}`
+    FromUtf8Error(String),
+    /// Invalid file name: `{0:?}`
+    InvalidFileName(OsString),
 }
 
 /// [`StdInErrorKind`] describes the errors that can be returned while dealing IO from CLI
@@ -683,6 +816,23 @@ pub enum NodeErrorKind {
 pub enum StdInErrorKind {
     /// StdIn Error: `{0:?}`
     StdInError(#[from] std::io::Error),
+}
+
+/// [`CheckErrorKind`] describes the errors that can be returned while checking snapshots, blobs and packs
+#[derive(Error, Debug, Display)]
+pub enum CheckErrorKind {
+    /// file {path} doesn't have content
+    MissingContent { path: PathBuf },
+    /// file {path} blob {index} has null ID
+    BlobHasNullId { path: PathBuf, index: usize },
+    /// file {path} blob {id} doesn't exit in index {index}
+    MissingBlob { path: PathBuf, id: Id, index: usize },
+    /// dir {path} subtree doesn't exist
+    MissingSubtree { path: PathBuf },
+    /// dir {path} subtree has null ID
+    SubtreeHasNullId { path: PathBuf },
+    /// Errors encountered while checking: `{0:?}`
+    ErrorCollection(Vec<CheckErrorKind>),
 }
 
 /// [`ArchiverErrorKind`] describes the errors that can be returned from the archiver
@@ -721,6 +871,10 @@ pub enum ArchiverErrorKind {
     FromStripPrefix(#[from] StripPrefixError),
     /// conversion from `u64` to `usize` failed: `{0:?}`
     ConversionFromU64ToUsizeFailed(TryFromIntError),
+    /// parent node is no tree
+    ParentNodeIsNoTree,
+    /// tree parent without subtree
+    TreeParentWithoutSubtree,
 }
 
 /// [`VfsErrorKind`] describes the errors that can be returned from the Virtual File System
@@ -734,6 +888,12 @@ pub enum VfsErrorKind {
     OnlyNormalPathsAreAllowed,
     /// Name `{0:?}`` doesn't exist
     NameDoesNotExist(OsString),
+    /// Data Blob not found: `{0:?}`
+    DataBlobNotFound(String),
+    /// Data Blob too large: `{0:?}`
+    DataBlobTooLarge(String),
+    /// Conversion for ID {1:?} from `u32` to `usize` failed: `{0:?}`
+    ConversionFromU32ToUsizeFailed(TryFromIntError, String),
 }
 
 trait RusticErrorMarker: Error {}
@@ -750,6 +910,7 @@ impl RusticErrorMarker for PackFileErrorKind {}
 impl RusticErrorMarker for SnapshotFileErrorKind {}
 impl RusticErrorMarker for PackerErrorKind {}
 impl RusticErrorMarker for FileErrorKind {}
+impl RusticErrorMarker for MultiprocessingErrorKind {}
 impl RusticErrorMarker for TreeErrorKind {}
 impl RusticErrorMarker for CacheBackendErrorKind {}
 impl RusticErrorMarker for CryptBackendErrorKind {}
@@ -757,10 +918,12 @@ impl RusticErrorMarker for IgnoreErrorKind {}
 impl RusticErrorMarker for LocalDestinationErrorKind {}
 impl RusticErrorMarker for NodeErrorKind {}
 impl RusticErrorMarker for StdInErrorKind {}
+impl RusticErrorMarker for CheckErrorKind {}
 impl RusticErrorMarker for ArchiverErrorKind {}
 impl RusticErrorMarker for CommandErrorKind {}
 impl RusticErrorMarker for VfsErrorKind {}
 impl RusticErrorMarker for std::io::Error {}
+impl RusticErrorMarker for walkdir::Error {}
 
 impl<E> From<E> for RusticError
 where
@@ -769,5 +932,42 @@ where
 {
     fn from(value: E) -> Self {
         Self(RusticErrorKind::from(value))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+
+    use super::*;
+
+    #[test]
+    fn test_rustic_error_passes() {
+        let error = RusticError::from(PolynomialErrorKind::NoSuitablePolynomialFound);
+
+        assert_eq!(format!("{error}"), "no suitable polynomial found");
+
+        assert!(error.backend_error().is_none());
+
+        let inner_error = error.into_inner();
+
+        assert_eq!(format!("{inner_error}"), "no suitable polynomial found");
+    }
+
+    #[test]
+    fn test_rustic_error_api_with_backend_error_passes() {
+        let error = RusticError::from(RusticErrorKind::Backend(anyhow::anyhow!(
+            "backend \"test\" is not supported!".to_string()
+        )));
+
+        assert_eq!(format!("{error}"), "backend \"test\" is not supported!");
+
+        assert!(error.backend_error().is_some());
+
+        let inner_error = error.into_inner();
+
+        assert_eq!(
+            format!("{inner_error}"),
+            "backend \"test\" is not supported!"
+        );
     }
 }
