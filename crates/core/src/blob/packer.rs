@@ -178,6 +178,17 @@ pub struct Packer<BE: DecryptWriteBackend> {
     finish: Receiver<RusticResult<PackerStats>>,
 }
 
+impl<BE: DecryptWriteBackend + Debug> Debug for Packer<BE> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Packer")
+            .field("raw_packer", &self.raw_packer)
+            .field("indexer", &self.indexer)
+            .field("sender", &self.sender)
+            .field("finish", &self.finish)
+            .finish()
+    }
+}
+
 impl<BE: DecryptWriteBackend> Packer<BE> {
     /// Creates a new `Packer`.
     ///
