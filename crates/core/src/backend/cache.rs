@@ -3,7 +3,7 @@ use std::{
     fmt::{self, Display},
     fs::{self, File},
     io::{ErrorKind, Read, Seek, SeekFrom, Write},
-    path::PathBuf,
+    path::{Path, PathBuf},
     sync::Arc,
 };
 
@@ -318,6 +318,25 @@ impl Cache {
                     })
             })
             .map(|entry| -> RusticResult<(Id, u32)> {
+                let id = entry
+                    .file_name()
+                    .to_str()
+                    .and_then(|str| Id::from_hex(str).ok())
+                    .ok_or_else(|| CacheBackendErrorKind::InvalidId)?;
+
+                // handle errors in metadata by returning a size of 0
+                let size = entry
+                    .metadata()
+                    .map(|metadata| u32::try_from(metadata.len()).ok())?
+                    .ok_or_else(|| {
+                        CacheBackendErrorKind::MetadataError(entry.path().to_path_buf())
+                    })?;
+
+                Ok((id, size))
+            })
+            .filter_map(Result::ok)
+            .collect::<_>();
+        Ok(walker)
     }
 
     /// Removes all files from the cache that are not in the given list.
