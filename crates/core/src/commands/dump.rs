@@ -34,7 +34,7 @@ pub(crate) fn dump<P, S: IndexedFull>(
         return Err(CommandErrorKind::DumpNotSupported(node.node_type.clone()).into());
     }
 
-    for id in node.content.as_ref().unwrap() {
+    for id in node.content.iter().flatten() {
         let data = repo.get_blob_cached(id, BlobType::Data)?;
         w.write_all(&data)?;
     }
