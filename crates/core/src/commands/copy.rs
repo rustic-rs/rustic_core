@@ -6,7 +6,7 @@ use rayon::prelude::{IntoParallelRefIterator, ParallelBridge, ParallelIterator};
 use crate::{
     backend::{decrypt::DecryptWriteBackend, node::NodeType},
     blob::{packer::Packer, tree::TreeStreamerOnce, BlobType},
-    error::RusticResult,
+    error::{CommandErrorKind, RusticResult},
     index::{indexer::Indexer, ReadIndex},
     progress::{Progress, ProgressBars},
     repofile::SnapshotFile,

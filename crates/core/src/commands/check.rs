@@ -12,7 +12,7 @@ use crate::{
     backend::{cache::Cache, decrypt::DecryptReadBackend, node::NodeType, FileType, ReadBackend},
     blob::{tree::TreeStreamerOnce, BlobType},
     crypto::hasher::hash,
-    error::{RusticErrorKind, RusticResult},
+    error::{CheckErrorKind, RusticErrorKind, RusticResult},
     id::Id,
     index::{
         binarysorted::{IndexCollector, IndexType},
@@ -51,7 +51,11 @@ impl CheckOptions {
     ///
     /// # Errors
     ///
+    /// [`IndexStillInUse`] if the index is still in use
+    ///
     /// If the repository is corrupted
+    ///
+    /// [`IndexStillInUse`]: crate::error::IndexErrorKind::IndexStillInUse
     pub(crate) fn run<P: ProgressBars, S: Open>(self, repo: &Repository<P, S>) -> RusticResult<()> {
         let be = repo.dbe();
         let cache = repo.cache();

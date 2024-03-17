@@ -72,7 +72,7 @@ pub struct LocalSourceFilterOptions {
     #[cfg_attr(feature = "merge", merge(strategy = merge::vec::overwrite_empty))]
     pub glob: Vec<String>,
 
-    /// Same as --glob pattern but ignores the casing of filenames
+    /// Same as --glob pattern but ignores the casing of file names
     #[cfg_attr(feature = "clap", clap(long, value_name = "GLOB"))]
     #[cfg_attr(feature = "merge", merge(strategy = merge::vec::overwrite_empty))]
     pub iglob: Vec<String>,
@@ -82,7 +82,7 @@ pub struct LocalSourceFilterOptions {
     #[cfg_attr(feature = "merge", merge(strategy = merge::vec::overwrite_empty))]
     pub glob_file: Vec<String>,
 
-    /// Same as --glob-file ignores the casing of filenames in patterns
+    /// Same as --glob-file ignores the casing of file names in patterns
     #[cfg_attr(feature = "clap", clap(long, value_name = "FILE"))]
     #[cfg_attr(feature = "merge", merge(strategy = merge::vec::overwrite_empty))]
     pub iglob_file: Vec<String>,

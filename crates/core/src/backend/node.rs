@@ -3,16 +3,16 @@ use std::{
     ffi::{OsStr, OsString},
     fmt::Debug,
     path::Path,
-    str::FromStr,
 };
+
+#[cfg(windows)]
+use std::str::FromStr;
 
 #[cfg(not(windows))]
 use std::fmt::Write;
-#[cfg(not(windows))]
-use std::os::unix::ffi::OsStrExt;
 
 #[cfg(not(windows))]
-use crate::RusticResult;
+use std::os::unix::ffi::OsStrExt;
 
 use chrono::{DateTime, Local};
 use derive_more::Constructor;
@@ -25,9 +25,8 @@ use serde_with::{
     serde_as, DeserializeAs, SerializeAs,
 };
 
-#[cfg(not(windows))]
 use crate::error::NodeErrorKind;
-
+use crate::error::RusticResult;
 use crate::id::Id;
 
 #[derive(Default, Serialize, Deserialize, Clone, Debug, PartialEq, Eq, Constructor)]

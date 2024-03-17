@@ -5,6 +5,7 @@ use std::{
     mem,
     path::{Component, Path, PathBuf, Prefix},
     str,
+    thread::JoinHandle,
 };
 
 use crossbeam_channel::{bounded, unbounded, Receiver, Sender};
@@ -13,6 +14,7 @@ use derive_setters::Setters;
 use ignore::overrides::{Override, OverrideBuilder};
 use ignore::Match;
 
+use log::error;
 use serde::{Deserialize, Deserializer};
 use serde_derive::Serialize;
 
@@ -22,11 +24,12 @@ use crate::{
         node::{Metadata, Node, NodeType},
     },
     crypto::hasher::hash,
-    error::{RusticResult, TreeErrorKind},
+    error::{MultiprocessingErrorKind, RusticResult, TreeErrorKind},
     id::Id,
     index::ReadGlobalIndex,
     progress::Progress,
     repofile::snapshotfile::SnapshotSummary,
+    RusticError,
 };
 
 pub(super) mod constants {

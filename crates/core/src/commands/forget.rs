@@ -7,7 +7,7 @@ use serde_derive::{Deserialize, Serialize};
 use serde_with::{serde_as, DisplayFromStr};
 
 use crate::{
-    error::RusticResult,
+    error::{CommandErrorKind, RusticResult},
     id::Id,
     progress::ProgressBars,
     repofile::{
@@ -530,7 +530,7 @@ impl KeepOptions {
     /// # Returns
     ///
     /// The list of snapshots with the attribute `keep` set to `true` if the snapshot should be kept and
-    /// `reasons` set to the list of reasons why the snapshot should be kept
+    /// `reasons` set to the list of reasons why the snapshot should be kept.
     pub fn apply(
         &self,
         mut snapshots: Vec<SnapshotFile>,

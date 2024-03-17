@@ -15,10 +15,6 @@ use anyhow::Result;
 use bytes::Bytes;
 use enum_map::Enum;
 use log::trace;
-
-#[cfg(test)]
-use mockall::mock;
-
 use serde_derive::{Deserialize, Serialize};
 
 use crate::{
@@ -27,6 +23,12 @@ use crate::{
     id::Id,
     RusticResult,
 };
+
+/// Backend to be used solely for testing.
+pub(crate) mod in_memory;
+
+#[cfg(test)]
+use mockall::mock;
 
 /// All [`FileType`]s which are located in separated directories
 pub const ALL_FILE_TYPES: [FileType; 4] = [

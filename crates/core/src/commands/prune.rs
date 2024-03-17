@@ -327,7 +327,7 @@ impl DebugStats {
 }
 
 /// Statistics about what is deleted or kept within `prune`
-#[derive(Default, Debug, Clone, Copy)]
+#[derive(Default, Debug, Clone, Copy, Serialize)]
 pub struct DeleteStats {
     /// Number of blobs to remove
     pub remove: u64,
@@ -343,7 +343,7 @@ impl DeleteStats {
         self.remove + self.recover + self.keep
     }
 }
-#[derive(Debug, Default, Clone, Copy)]
+#[derive(Debug, Default, Clone, Copy, Serialize)]
 /// Statistics about packs within `prune`
 pub struct PackStats {
     /// Number of used packs
@@ -358,7 +358,7 @@ pub struct PackStats {
     pub keep: u64,
 }
 
-#[derive(Debug, Default, Clone, Copy, Add)]
+#[derive(Debug, Default, Clone, Copy, Add, Serialize)]
 /// Statistics about sizes within `prune`
 pub struct SizeStats {
     /// Number of used blobs
@@ -391,7 +391,7 @@ impl SizeStats {
 }
 
 /// Statistics about a [`PrunePlan`]
-#[derive(Default, Debug)]
+#[derive(Default, Debug, Serialize)]
 pub struct PruneStats {
     /// Statistics about pack count
     pub packs_to_delete: DeleteStats,
@@ -434,7 +434,7 @@ impl PruneStats {
 }
 
 // TODO: add documentation!
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 struct PruneIndex {
     /// The id of the index file
     id: Id,
@@ -479,7 +479,7 @@ impl Default for PackToDo {
 }
 
 /// A pack which is to be pruned
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 struct PrunePack {
     /// The id of the pack
     id: Id,
@@ -617,7 +617,7 @@ impl PrunePack {
 }
 
 /// Reasons why a pack should be repacked
-#[derive(PartialEq, Eq, Debug)]
+#[derive(PartialEq, Eq, Debug, Serialize)]
 enum RepackReason {
     /// The pack is partly used
     PartlyUsed,
@@ -628,7 +628,7 @@ enum RepackReason {
 }
 
 /// A plan what should be repacked or removed by a `prune` run
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 pub struct PrunePlan {
     /// The time the plan was created
     time: DateTime<Local>,

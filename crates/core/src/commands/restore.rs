@@ -1,5 +1,6 @@
 //! `restore` subcommand
 
+use crossbeam_channel::unbounded;
 use derive_setters::Setters;
 use log::{debug, error, info, trace, warn};
 
@@ -14,7 +15,7 @@ use std::{
 use chrono::{DateTime, Local, Utc};
 use ignore::{DirEntry, WalkBuilder};
 use itertools::Itertools;
-use rayon::ThreadPoolBuilder;
+use rayon::{Scope, ThreadPoolBuilder};
 
 use crate::{
     backend::{
@@ -24,10 +25,11 @@ use crate::{
         FileType, ReadBackend,
     },
     blob::BlobType,
-    error::{CommandErrorKind, RusticResult},
+    error::{CommandErrorKind, IgnoreErrorKind, RusticErrorKind, RusticResult},
     id::Id,
     progress::{Progress, ProgressBars},
     repository::{IndexedFull, IndexedTree, Open, Repository},
+    RusticError,
 };
 
 pub(crate) mod constants {

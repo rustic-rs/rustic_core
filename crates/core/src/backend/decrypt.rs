@@ -3,6 +3,7 @@ use std::{num::NonZeroU32, sync::Arc};
 use anyhow::Result;
 use bytes::Bytes;
 use crossbeam_channel::{unbounded, Receiver};
+use log::error;
 use rayon::prelude::*;
 use zstd::stream::{copy_encode, decode_all, encode_all};
 
@@ -17,7 +18,7 @@ pub fn max_compression_level() -> i32 {
 use crate::{
     backend::{FileType, ReadBackend, WriteBackend},
     crypto::{hasher::hash, CryptoKey},
-    error::{CryptBackendErrorKind, RusticErrorKind},
+    error::{CryptBackendErrorKind, MultiprocessingErrorKind, RusticErrorKind},
     id::Id,
     repofile::RepoFile,
     Progress, RusticResult,
@@ -304,9 +305,13 @@ pub trait DecryptWriteBackend: WriteBackend + Clone + 'static {
     /// * `list` - The list of files to delete.
     /// * `p` - The progress bar.
     ///
-    /// # Panics
+    /// # Errors
     ///
     /// If the files could not be deleted.
+    ///
+    /// # Returns
+    ///
+    /// Ok if the files were deleted.
     fn delete_list<'a, I: ExactSizeIterator<Item = &'a Id> + Send>(
         &self,
         tpe: FileType,

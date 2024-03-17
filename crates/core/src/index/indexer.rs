@@ -27,7 +27,7 @@ pub(super) mod constants {
 pub(crate) type SharedIndexer<BE> = Arc<RwLock<Indexer<BE>>>;
 
 /// The `Indexer` is responsible for indexing blobs.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Indexer<BE>
 where
     BE: DecryptWriteBackend,

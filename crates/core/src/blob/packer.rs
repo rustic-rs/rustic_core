@@ -1,7 +1,8 @@
 use integer_sqrt::IntegerSquareRoot;
-use log::warn;
+use log::{error, warn};
 
 use std::{
+    fmt::Debug,
     num::NonZeroU32,
     sync::Arc,
     time::{Duration, SystemTime},
@@ -21,7 +22,7 @@ use crate::{
     },
     blob::BlobType,
     crypto::{hasher::hash, CryptoKey},
-    error::{PackerErrorKind, RusticErrorKind, RusticResult},
+    error::{MultiprocessingErrorKind, PackerErrorKind, RusticErrorKind, RusticResult},
     id::Id,
     index::indexer::SharedIndexer,
     repofile::{
@@ -94,7 +95,6 @@ impl PackSizer {
     }
 
     /// Computes the size of the pack file.
-    #[must_use]
     // The cast actually shouldn't pose any problems.
     // `current_size` is `u64`, the maximum value is `2^64-1`.
     // `isqrt(2^64-1) = 2^32-1` which fits into a `u32`. (@aawsome)
@@ -503,7 +503,8 @@ impl PackerStats {
 /// # Type Parameters
 ///
 /// * `BE` - The backend type.
-#[allow(missing_debug_implementations, clippy::module_name_repetitions)]
+#[allow(clippy::module_name_repetitions)]
+#[derive(Clone, Debug)]
 pub(crate) struct RawPacker<BE: DecryptWriteBackend> {
     /// The backend to write to.
     be: BE,
@@ -772,9 +773,11 @@ impl<BE: DecryptWriteBackend> FileWriterHandle<BE> {
 }
 
 // TODO: add documentation
+#[derive(Debug, Clone)]
 pub(crate) struct Actor {
     /// The sender to send blobs to the raw packer.
     sender: Sender<(Bytes, IndexPack)>,
+
     /// The receiver to receive the status from the raw packer.
     finish: Receiver<RusticResult<()>>,
 }

@@ -6,7 +6,7 @@ pub(crate) mod tree_archiver;
 use std::path::{Path, PathBuf};
 
 use chrono::Local;
-use log::warn;
+use log::{error, warn};
 use pariter::{scope, IteratorExt};
 
 use crate::{
@@ -16,6 +16,7 @@ use crate::{
     },
     backend::{decrypt::DecryptFullBackend, ReadSource, ReadSourceEntry},
     blob::BlobType,
+    error::MultiprocessingErrorKind,
     index::{indexer::Indexer, indexer::SharedIndexer, ReadGlobalIndex},
     repofile::{configfile::ConfigFile, snapshotfile::SnapshotFile},
     Progress, RusticResult,
