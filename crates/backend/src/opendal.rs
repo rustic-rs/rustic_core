@@ -27,10 +27,11 @@ pub struct OpenDALBackend {
 fn runtime() -> &'static Runtime {
     static RUNTIME: OnceLock<Runtime> = OnceLock::new();
     RUNTIME.get_or_init(|| {
+        #[allow(clippy::expect_used)]
         tokio::runtime::Builder::new_multi_thread()
             .enable_all()
             .build()
-            .unwrap()
+            .expect("Failed to create tokio runtime.")
     })
 }
 
