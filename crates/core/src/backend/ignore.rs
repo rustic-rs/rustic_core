@@ -305,7 +305,7 @@ impl Iterator for LocalSourceWalker {
     fn next(&mut self) -> Option<Self::Item> {
         match self.walker.next() {
             // ignore root dir, i.e. an entry with depth 0 of type dir
-            Some(Ok(entry)) if entry.depth() == 0 && entry.file_type().unwrap().is_dir() => {
+            Some(Ok(entry)) if entry.depth() == 0 && entry.file_type()?.is_dir() => {
                 self.walker.next()
             }
             item => item,
