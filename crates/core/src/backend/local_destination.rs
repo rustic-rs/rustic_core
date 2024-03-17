@@ -68,10 +68,9 @@ impl LocalDestination {
     /// * [`LocalDestinationErrorKind::DirectoryCreationFailed`] - If the directory could not be created.
     ///
     /// [`LocalDestinationErrorKind::DirectoryCreationFailed`]: crate::error::LocalDestinationErrorKind::DirectoryCreationFailed
-    // TODO: We should use `impl Into<Path/PathBuf>` here. we even use it in the body!
     pub fn new(path: &str, create: bool, expect_file: bool) -> RusticResult<Self> {
         let is_dir = path.ends_with('/');
-        let path: PathBuf = path.into();
+        let path = PathBuf::from(path);
         let is_file = path.is_file() || (!path.is_dir() && !is_dir && expect_file);
 
         if create {
