@@ -634,7 +634,7 @@ impl<P, S> Repository<P, S> {
             .flatten();
 
         if let Some(cache) = &cache {
-            self.be = CachedBackend::new_cache(self.be.clone(), cache.clone());
+            self.be = CachedBackend::from_backend(self.be.clone(), cache.clone());
             info!("using cache at {}", cache.location());
         } else {
             info!("using no cache");

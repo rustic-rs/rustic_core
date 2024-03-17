@@ -40,7 +40,7 @@ impl CachedBackend {
     /// # Type Parameters
     ///
     /// * `BE` - The backend to cache.
-    pub fn new_cache(be: Arc<dyn WriteBackend>, cache: Cache) -> Arc<dyn WriteBackend> {
+    pub fn from_backend(be: Arc<dyn WriteBackend>, cache: Cache) -> Arc<dyn WriteBackend> {
         Arc::new(Self { be, cache })
     }
 }
