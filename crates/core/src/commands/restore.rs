@@ -520,22 +520,62 @@ fn restore_contents<P: ProgressBars, S: Open>(
         .num_threads(constants::MAX_READER_THREADS_NUM)
         .build()
         .map_err(CommandErrorKind::FromRayonError)?;
-    pool.in_place_scope(|s| {
+    let (error_tx, error_rx) = unbounded::<RusticError>();
+    let error_sender_outer = error_tx.clone();
+    let error_sender_inner = error_tx;
+
+    // This is a workaround for the fact that we can't use the `?` operator in a closure
+    // Still we want to propagate the error to the main thread.
+    // Handle errors `in_place_scope`
+    // TODO!: store join handle?
+    let _join_handle = std::thread::spawn(move || {
+        let mut count = 0;
+
+        while let Ok(err) = error_rx.recv() {
+            error!("Error during restore: {:?}", err);
+            count += 1;
+        }
+
+        if count > 0 {
+            error!("{count} errors occurred during restore.",);
+        }
+    });
+
+    pool.in_place_scope(|outer_scope| -> RusticResult<()> {
         for (pack, offset, length, from_file, name_dests) in blobs {
             let p = &p;
+            let error_sender_outer_clone = error_sender_outer.clone();
+            let error_sender_inner_clone = error_sender_inner.clone();
 
             if !name_dests.is_empty() {
-                // TODO: error handling!
-                s.spawn(move |s1| {
+                outer_scope.spawn(move |inner_scope: &Scope<'_>| {
                     let read_data = match &from_file {
                         Some((file_idx, offset_file, length_file)) => {
                             // read from existing file
                             match dest.read_at(&file_names[*file_idx], *offset_file, *length_file) {
+                                Ok(val) => val,
+                                Err(err) => {
+                                    if error_sender_outer_clone.send(err).is_err() {
+                                        error!("receiver has been dropped unexpectedly.");
+                                    };
+                                    return;
+                                }
+                            }
                         }
                         None => {
                             // read needed part of the pack
-                            be.read_partial(FileType::Pack, &pack, false, offset, length)
-                                .unwrap()
+                            match be
+                                .read_partial(FileType::Pack, &pack, false, offset, length)
+                                .map_err(RusticErrorKind::Backend)
+                            {
+                                Ok(val) => val,
+                                Err(err) => {
+                                    if error_sender_outer_clone.send(err.into()).is_err() {
+                                        error!("receiver has been dropped unexpectedly.");
+                                    };
+                                    return;
+                                }
+                            }
                         }
                     };
 
@@ -545,33 +585,91 @@ fn restore_contents<P: ProgressBars, S: Open>(
                         let data = if from_file.is_some() {
                             read_data.clone()
                         } else {
-                            let start = usize::try_from(bl.offset - offset).unwrap();
-                            let end = usize::try_from(bl.offset + bl.length - offset).unwrap();
-                            be.read_encrypted_from_partial(
+                            let start = match usize::try_from(bl.offset - offset) {
+                                Ok(val) => val,
+                                Err(err) => {
+                                    if error_sender_outer_clone
+                                        .send(CommandErrorKind::ConversionFromIntFailed(err).into())
+                                        .is_err()
+                                    {
+                                        error!("receiver has been dropped unexpectedly.");
+                                    };
+                                    return;
+                                }
+                            };
+                            let end = match usize::try_from(bl.offset + bl.length - offset) {
+                                Ok(val) => val,
+                                Err(err) => {
+                                    if error_sender_outer_clone
+                                        .send(CommandErrorKind::ConversionFromIntFailed(err).into())
+                                        .is_err()
+                                    {
+                                        error!("receiver has been dropped unexpectedly.");
+                                    };
+                                    return;
+                                }
+                            };
+
+                            match be.read_encrypted_from_partial(
                                 &read_data[start..end],
                                 bl.uncompressed_length,
-                            )
-                            .unwrap()
+                            ) {
+                                Ok(val) => val,
+                                Err(err) => {
+                                    if error_sender_outer_clone.send(err).is_err() {
+                                        error!("receiver has been dropped unexpectedly.");
+                                    };
+                                    return;
+                                }
+                            }
                         };
+
                         for (_, file_idx, start) in group {
                             let data = data.clone();
+
+                            let error_sender_inner_clone = error_sender_inner_clone.clone();
+
+                            inner_scope.spawn(move |_| {
                                 let path = &file_names[file_idx];
+
                                 // Allocate file if it is not yet allocated
-                                let mut sizes_guard = sizes.lock().unwrap();
-                                let filesize = sizes_guard[file_idx];
-                                if filesize > 0 {
-                                    dest.set_length(path, filesize)
-                                        .map_err(|err| {
-                                            CommandErrorKind::ErrorSettingLength(
-                                                path.clone(),
-                                                Box::new(err),
-                                            )
-                                        })
-                                        .unwrap();
-                                    sizes_guard[file_idx] = 0;
-                                }
-                                drop(sizes_guard);
-                                dest.write_at(path, start, &data).unwrap();
+                                if let Ok(mut sizes_guard) = sizes.lock() {
+                                    let filesize = sizes_guard[file_idx];
+                                    if filesize > 0 {
+                                        match dest.set_length(path, filesize) {
+                                            Ok(val) => val,
+                                            Err(err) => {
+                                                if error_sender_inner_clone.send(err).is_err() {
+                                                    error!(
+                                                        "receiver has been dropped unexpectedly."
+                                                    );
+                                                };
+
+                                                return;
+                                            }
+                                        };
+
+                                        sizes_guard[file_idx] = 0;
+                                    }
+                                } else {
+                                    if error_sender_inner_clone
+                                        .send(CommandErrorKind::MutexLockFailed.into())
+                                        .is_err()
+                                    {
+                                        error!("receiver has been dropped unexpectedly.");
+                                    };
+
+                                    return;
+                                };
+
+                                if let Err(err) = dest.write_at(path, start, &data) {
+                                    if error_sender_inner_clone.send(err).is_err() {
+                                        error!("receiver has been dropped unexpectedly.");
+                                    };
+
+                                    return;
+                                };
+
                                 p.inc(size);
                             });
                         }
@@ -579,7 +677,8 @@ fn restore_contents<P: ProgressBars, S: Open>(
                 });
             }
         }
-    });
+        Ok(())
+    })?;
 
     p.finish();
 
