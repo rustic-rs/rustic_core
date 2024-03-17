@@ -193,7 +193,7 @@ impl ReadBackend for LocalBackend {
             .into_iter()
             .filter_map(walkdir::Result::ok)
             .filter(|e| e.file_type().is_file())
-            .map(|e| Id::from_hex(&e.file_name().to_string_lossy()))
+            .map(|entry| Id::from_hex(&entry.file_name().to_string_lossy()))
             .filter_map(std::result::Result::ok);
         Ok(walker.collect())
     }
@@ -235,11 +235,12 @@ impl ReadBackend for LocalBackend {
         let walker = WalkDir::new(path)
             .into_iter()
             .filter_map(walkdir::Result::ok)
-            .filter(|e| e.file_type().is_file())
-            .map(|e| -> Result<_> {
+            .filter(|entry| entry.file_type().is_file())
+            .map(|entry| -> Result<_> {
                 Ok((
-                    Id::from_hex(&e.file_name().to_string_lossy())?,
-                    e.metadata()
+                    Id::from_hex(&entry.file_name().to_string_lossy())?,
+                    entry
+                        .metadata()
                         .map_err(LocalBackendErrorKind::QueryingWalkDirMetadataFailed)?
                         .len()
                         .try_into()

@@ -563,7 +563,7 @@ fn restore_contents<P: ProgressBars, S: Open>(
 #[derive(Debug, Default)]
 pub struct RestorePlan {
     /// The names of the files to restore
-    names: Filenames,
+    names: FileNames,
     /// The length of the files to restore
     file_lengths: Vec<u64>,
     /// The restore information

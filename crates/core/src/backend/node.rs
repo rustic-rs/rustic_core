@@ -148,10 +148,10 @@ impl NodeType {
     pub fn to_link(&self) -> &Path {
         match self {
             Self::Symlink {
-                linktarget,
-                linktarget_raw,
-            } => linktarget_raw.as_ref().map_or_else(
-                || Path::new(linktarget),
+                link_target,
+                link_target_raw,
+            } => Ok(link_target_raw.as_ref().map_or_else(
+                || Path::new(link_target),
                 |t| Path::new(OsStr::from_bytes(t)),
             ),
             _ => panic!("called method to_link on non-symlink!"),
@@ -173,7 +173,7 @@ impl NodeType {
     #[must_use]
     pub fn to_link(&self) -> &Path {
         match self {
-            Self::Symlink { linktarget, .. } => Path::new(linktarget),
+            Self::Symlink { link_target, .. } => Ok(Path::new(link_target)),
             _ => panic!("called method to_link on non-symlink!"),
         }
     }
@@ -346,11 +346,11 @@ pub fn last_modified_node(n1: &Node, n2: &Node) -> Ordering {
 fn escape_file_name(name: &OsStr) -> RusticResult<String> {
 }
 
-/// Unescape a filename
+/// Unescape a file name
 ///
 /// # Arguments
 ///
-/// * `s` - The escaped filename
+/// * `s` - The escaped file name
 #[cfg(windows)]
 fn unescape_file_name(s: &str) -> Result<OsString, core::convert::Infallible> {
     OsString::from_str(s)

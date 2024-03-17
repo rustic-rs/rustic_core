@@ -299,25 +299,18 @@ impl Cache {
         let walker = WalkDir::new(path)
             .into_iter()
             .filter_map(walkdir::Result::ok)
-            .filter(|e| {
+            .filter(|entry| {
                 // only use files with length of 64 which are valid hex
-                e.file_type().is_file()
-                    && e.file_name().len() == 64
-                    && e.file_name().is_ascii()
-                    && e.file_name().to_str().is_some_and(|c| {
-                        c.chars()
-                            .all(|c| c.is_ascii_digit() || ('a'..='f').contains(&c))
+                entry.file_type().is_file()
+                    && entry.file_name().len() == 64
+                    && entry.file_name().is_ascii()
+                    && entry.file_name().to_str().is_some_and(|c| {
+                        c.chars().all(|character| {
+                            character.is_ascii_digit() || ('a'..='f').contains(&character)
+                        })
                     })
             })
-            .map(|e| {
-                (
-                    Id::from_hex(e.file_name().to_str().unwrap()).unwrap(),
-                    // handle errors in metadata by returning a size of 0
-                    e.metadata().map_or(0, |m| m.len().try_into().unwrap_or(0)),
-                )
-            });
-
-        Ok(walker.collect())
+            .map(|entry| -> RusticResult<(Id, u32)> {
     }
 
     /// Removes all files from the cache that are not in the given list.
