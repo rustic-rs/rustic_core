@@ -403,7 +403,11 @@ fn map_entry(
 
     let path = entry.into_path();
     let open = Some(OpenFile(path.clone()));
-    Ok(ReadSourceEntry { path, node, open })
+    Ok(ReadSourceEntry {
+        path,
+        node: node?,
+        open,
+    })
 }
 
 /// Get the user name for the given uid.
@@ -520,9 +524,11 @@ fn map_entry(
             .map(|name| {
                 Ok(ExtendedAttribute {
                     name: name.to_string_lossy().to_string(),
-                    value: xattr::get(path, name)
+                    value: xattr::get(path, name.clone())
                         .map_err(IgnoreErrorKind::FromIoError)?
-                        .unwrap(),
+                        .ok_or({
+                            IgnoreErrorKind::XattrNotFound(name.to_string_lossy().to_string())
+                        })?,
                 })
             })
             .collect::<RusticResult<_>>()?
@@ -566,7 +572,11 @@ fn map_entry(
     };
     let path = entry.into_path();
     let open = Some(OpenFile(path.clone()));
-    Ok(ReadSourceEntry { path, node, open })
+    Ok(ReadSourceEntry {
+        path,
+        node: node?,
+        open,
+    })
 }
 
 #[cfg(not(windows))]

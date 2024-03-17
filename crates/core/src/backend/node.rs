@@ -148,8 +148,7 @@ impl NodeType {
     ///
     /// The link target as `Path`
     #[cfg(not(windows))]
-    #[must_use]
-    pub fn to_link(&self) -> &Path {
+    pub fn to_link(&self) -> RusticResult<&Path> {
         match self {
             Self::Symlink {
                 link_target,
@@ -157,8 +156,8 @@ impl NodeType {
             } => Ok(link_target_raw.as_ref().map_or_else(
                 || Path::new(link_target),
                 |t| Path::new(OsStr::from_bytes(t)),
-            ),
-            _ => panic!("called method to_link on non-symlink!"),
+            )),
+            _ => Err(NodeErrorKind::InvalidLinkTarget.into()),
         }
     }
 
@@ -174,11 +173,10 @@ impl NodeType {
     /// The link target as `Path`
     // TODO: Implement non-unicode link targets correctly for windows
     #[cfg(windows)]
-    #[must_use]
-    pub fn to_link(&self) -> &Path {
+    pub fn to_link(&self) -> RusticResult<&Path> {
         match self {
             Self::Symlink { link_target, .. } => Ok(Path::new(link_target)),
-            _ => panic!("called method to_link on non-symlink!"),
+            _ => Err(NodeErrorKind::InvalidLinkTarget.into()),
         }
     }
 }
@@ -333,6 +331,7 @@ impl Node {
     ///
     /// The name of the node
     pub fn name(&self) -> OsString {
+        #[allow(clippy::expect_used)]
         unescape_file_name(&self.name).expect("unescaping should be infallible")
     }
 }
@@ -357,6 +356,10 @@ pub fn last_modified_node(n1: &Node, n2: &Node) -> Ordering {
 // doesn't treat file names which need and escape (like `\`, `"`, ...) correctly
 #[cfg(windows)]
 fn escape_file_name(name: &OsStr) -> RusticResult<String> {
+    Ok(name
+        .to_str()
+        .ok_or_else(|| NodeErrorKind::InvalidFileName(name.to_os_string()))?
+        .to_string())
 }
 
 /// Unescape a file name
@@ -408,23 +411,29 @@ fn escape_file_name(name: &OsStr) -> RusticResult<String> {
             }
             Err(error) => {
                 let (valid, after_valid) = input.split_at(error.valid_up_to());
-                push(&mut s, std::str::from_utf8(valid).unwrap());
+                push(
+                    &mut s,
+                    std::str::from_utf8(valid)
+                        .map_err(|e| NodeErrorKind::FromUtf8Error(e.to_string()))?,
+                );
 
                 if let Some(invalid_sequence_length) = error.error_len() {
                     for b in &after_valid[..invalid_sequence_length] {
-                        write!(s, "\\x{b:02x}").unwrap();
+                        write!(s, "\\x{b:02x}")
+                            .map_err(|e| NodeErrorKind::SignWriteError(e.to_string()))?;
                     }
                     input = &after_valid[invalid_sequence_length..];
                 } else {
                     for b in after_valid {
-                        write!(s, "\\x{b:02x}").unwrap();
+                        write!(s, "\\x{b:02x}")
+                            .map_err(|e| NodeErrorKind::SignWriteError(e.to_string()))?;
                     }
                     break;
                 }
             }
         }
     }
-    s
+    Ok(s)
 }
 
 #[cfg(not(windows))]
