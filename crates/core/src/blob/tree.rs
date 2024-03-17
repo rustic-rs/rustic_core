@@ -317,9 +317,10 @@ where
         recursive: bool,
     ) -> RusticResult<Self> {
         let inner = if node.is_dir() {
-            Tree::from_backend(&be, index, node.subtree.unwrap())?
-                .nodes
-                .into_iter()
+            let Some(id) = node.subtree else {
+                return Err(TreeErrorKind::BlobIdNotFoundForNode(node.name()).into());
+            };
+            Tree::from_backend(&be, index, id)?.nodes.into_iter()
         } else {
             vec![node.clone()].into_iter()
         };
@@ -504,19 +505,28 @@ impl<P: Progress> TreeStreamerOnce<P> {
         let (out_tx, out_rx) = bounded(constants::MAX_TREE_LOADER);
         let (in_tx, in_rx) = unbounded();
 
-        for _ in 0..constants::MAX_TREE_LOADER {
-            let be = be.clone();
-            let index = index.clone();
-            let in_rx = in_rx.clone();
-            let out_tx = out_tx.clone();
-            let _join_handle = std::thread::spawn(move || {
-                for (path, id, count) in in_rx {
-                    out_tx
-                        .send(Tree::from_backend(&be, &index, id).map(|tree| (path, tree, count)))
-                        .unwrap();
-                }
-            });
-        }
+        let _join_handles = (0..constants::MAX_TREE_LOADER)
+            .map(|_| -> JoinHandle<Result<(), RusticError>> {
+                let be = be.clone();
+                let index = index.clone();
+                let in_rx = in_rx.clone();
+                let out_tx = out_tx.clone();
+                std::thread::spawn(move || -> RusticResult<()> {
+                    for (path, id, count) in in_rx {
+                        if out_tx
+                            .send(
+                                Tree::from_backend(&be, &index, id).map(|tree| (path, tree, count)),
+                            )
+                            .is_err()
+                        {
+                            error!("receiver has been dropped unexpectedly.");
+                            return Err(MultiprocessingErrorKind::ReceiverDropped.into());
+                        }
+                    }
+                    Ok(())
+                })
+            })
+            .collect::<Vec<JoinHandle<Result<(), RusticError>>>>();
 
         let counter = vec![0; ids.len()];
         let mut streamer = Self {
@@ -559,11 +569,16 @@ impl<P: Progress> TreeStreamerOnce<P> {
     /// [`MultiprocessingErrorKind::QueueInNotAvailable`]: crate::error::MultiprocessingErrorKind::QueueInNotAvailable
     fn add_pending(&mut self, path: PathBuf, id: Id, count: usize) -> RusticResult<bool> {
         if self.visited.insert(id) {
-            self.queue_in
+            if self
+                .queue_in
                 .as_ref()
-                .unwrap()
+                .ok_or(MultiprocessingErrorKind::QueueInNotAvailable)?
                 .send((path, id, count))
-                .map_err(TreeErrorKind::SendingCrossbeamMessageFailed)?;
+                .is_err()
+            {
+                error!("receiver has been dropped unexpectedly.");
+                return Err(MultiprocessingErrorKind::ReceiverDropped.into());
+            }
             self.counter[count] += 1;
             Ok(true)
         } else {
@@ -581,14 +596,15 @@ impl<P: Progress> Iterator for TreeStreamerOnce<P> {
             self.p.finish();
             return None;
         }
-        let (path, tree, count) = match self.queue_out.recv() {
-            Ok(Ok(res)) => res,
-            Err(err) => {
-                return Some(Err(
-                    TreeErrorKind::ReceivingCrossbreamMessageFailed(err).into()
-                ))
-            }
-            Ok(Err(err)) => return Some(Err(err)),
+
+        // We don't print an error, because it is a progress bar and it is unexpected to
+        // show an error message in a progress bar, hence we are just returning `None` in
+        // case of an error with the channel.
+        let (path, tree, count) = if let Ok(res) = self.queue_out.recv() {
+            res.ok()?
+        } else {
+            error!("sender has been dropped unexpectedly.");
+            return Some(Err(MultiprocessingErrorKind::SenderDropped.into()));
         };
 
         for node in &tree.nodes {
@@ -739,13 +755,16 @@ pub(crate) fn merge_nodes(
     save: &impl Fn(Tree) -> RusticResult<(Id, u64)>,
     summary: &mut SnapshotSummary,
 ) -> RusticResult<Node> {
-    let trees: Vec<_> = nodes
+    let trees = nodes
         .iter()
-        .filter(|node| node.is_dir())
-        .map(|node| node.subtree.unwrap())
-        .collect();
+        .filter(|node| node.is_dir() && node.subtree.is_some())
+        .filter_map(|node| node.subtree)
+        .collect::<Vec<_>>();
 
-    let mut node = nodes.into_iter().max_by(|n1, n2| cmp(n1, n2)).unwrap();
+    let mut node = nodes
+        .into_iter()
+        .max_by(|n1, n2| cmp(n1, n2))
+        .ok_or(TreeErrorKind::NoNodeInListToBeMerged)?;
 
     // if this is a dir, merge with all other dirs
     if node.is_dir() {
