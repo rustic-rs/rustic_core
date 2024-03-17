@@ -443,31 +443,43 @@ impl OpenFile {
     /// # Returns
     ///
     /// The created `OpenFile`
-    ///
-    /// # Panics
-    ///
-    /// Panics if the `Node` has no content
-    pub fn from_node<P, S: IndexedFull>(repo: &Repository<P, S>, node: &Node) -> Self {
+    pub fn from_node<P, S: IndexedFull>(
+        repo: &Repository<P, S>,
+        node: &Node,
+    ) -> RusticResult<Self> {
         let mut start = 0;
-        let mut content: Vec<_> = node
+        let mut content = node
             .content
-            .as_ref()
-            .unwrap()
             .iter()
-            .map(|id| {
-                let starts_at = start;
-                start += repo.index().get_data(id).unwrap().data_length() as usize;
-                BlobInfo { id: *id, starts_at }
+            .flatten()
+            .map(|id| -> RusticResult<_> {
+                let starts_at: usize = start;
+                let hex_id = id.to_hex();
+                let hex_id = hex_id.as_str();
+                let data_length = repo
+                    .index()
+                    .get_data(id)
+                    .ok_or_else(|| VfsErrorKind::DataBlobNotFound(hex_id.to_string()))?
+                    .data_length();
+                let data_length = usize::try_from(data_length).map_err(|err| {
+                    VfsErrorKind::ConversionFromU32ToUsizeFailed(err, hex_id.to_string())
+                })?;
+                if let Some(val) = start.checked_add(data_length) {
+                    start = val;
+                } else {
+                    return Err(VfsErrorKind::DataBlobTooLarge(hex_id.to_string()).into());
+                };
+                Ok(BlobInfo { id: *id, starts_at })
             })
-            .collect();
+            .collect::<RusticResult<Vec<_>>>()?;
 
-        // content is assumed to be partioned, so we add a starts_at:MAX entry
+        // content is assumed to be partitioned, so we add a starts_at:MAX entry
         content.push(BlobInfo {
             id: Id::default(),
             starts_at: usize::MAX,
         });
 
-        Self { content }
+        Ok(Self { content })
     }
 
     /// Read the `OpenFile` at the given `offset` from the `repo`.
