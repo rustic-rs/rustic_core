@@ -167,12 +167,18 @@ pub trait DecryptReadBackend: ReadBackend + Clone + 'static {
         p.set_length(list.len() as u64);
         let (tx, rx) = unbounded();
 
-        list.into_par_iter()
-            .for_each_with((self, p, tx), |(be, p, tx), id| {
+        list.into_par_iter().try_for_each_with(
+            (self, p, tx),
+            |(be, p, tx), id| -> RusticResult<()> {
                 let file = be.get_file::<F>(&id).map(|file| (id, file));
                 p.inc(1);
-                tx.send(file).unwrap();
-            });
+                if tx.send(file).is_err() {
+                    error!("receiver has been dropped unexpectedly.");
+                    return Err(MultiprocessingErrorKind::ReceiverDropped.into());
+                }
+                Ok(())
+            },
+        )?;
         Ok(rx)
     }
 }
