@@ -21,33 +21,62 @@ mod consts {
     pub(super) const DEFAULT_RETRY: usize = 5;
 }
 
-// trait CheckError to add user-defined method check_error on Response
-pub(crate) trait CheckError {
-    /// Check reqwest Response for error and treat errors as permanent or transient
-    fn check_error(self) -> Result<Response, backoff::Error<reqwest::Error>>;
-}
+/// `ValidateResponse` to add user-defined method `validate` on a response
+///
+/// This trait is used to add a method `validate` on a response to check for errors
+/// and treat them as permanent or transient based on the status code of the response.
+///
+/// It returns a result with the response if it is not an error, otherwise it returns
+/// the associated error.
+pub trait ValidateResponse {
+    /// The error type that is returned if the response is an error
+    type Error;
 
-impl CheckError for Response {
-    /// Check reqwest Response for error and treat errors as permanent or transient
+    /// Check a response for an error and treat it as permanent or transient
     ///
     /// # Errors
     ///
-    /// If the response is an error, it will return an error of type Error<reqwest::Error>
+    /// If the response is an error, it will return an error of type [`Self::Error`]
     ///
     /// # Returns
     ///
-    /// The response if it is not an error
-    fn check_error(self) -> Result<Response, backoff::Error<reqwest::Error>> {
+    /// The response if it is not an error or an error of type [`Self::Error`] if it is an error
+    fn validate(self) -> Result<Self, Self::Error>
+    where
+        Self: Sized;
+}
+
+impl ValidateResponse for Response {
+    type Error = backoff::Error<reqwest::Error>;
+
+    /// Check reqwest Response for error and treat errors as permanent or transient
+    /// based on the status code of the response
+    ///
+    /// # Errors
+    ///
+    /// If the response is an error, it will return an [`reqwest::Error`]
+    ///
+    /// # Returns
+    ///
+    /// The [`Response`] if it is not an error
+    fn validate(self) -> Result<Self, Self::Error> {
         match self.error_for_status() {
             Ok(t) => Ok(t),
             // Note: status() always give Some(_) as it is called from a Response
-            Err(err) if err.status().unwrap().is_client_error() => {
-                Err(backoff::Error::Permanent(err))
+            Err(err) => {
+                let Some(status) = err.status() else {
+                    return Err(backoff::Error::Permanent(err));
+                };
+
+                if status.is_client_error() {
+                    Err(backoff::Error::Permanent(err))
+                } else {
+                    Err(backoff::Error::Transient {
+                        err,
+                        retry_after: None,
+                    })
+                }
             }
-            Err(err) => Err(backoff::Error::Transient {
-                err,
-                retry_after: None,
-            }),
         }
     }
 }
@@ -284,7 +313,7 @@ impl ReadBackend for RestBackend {
                     .get(url.clone())
                     .header("Accept", "application/vnd.x.restic.rest.v2")
                     .send()?
-                    .check_error()?
+                    .validate()?
                     .json::<Option<Vec<ListEntry>>>()? // use Option to be handle null json value
                     .unwrap_or_default();
                 Ok(list
@@ -318,14 +347,7 @@ impl ReadBackend for RestBackend {
         let url = self.url(tpe, id)?;
         Ok(backoff::retry_notify(
             self.backoff.clone(),
-            || {
-                Ok(self
-                    .client
-                    .get(url.clone())
-                    .send()?
-                    .check_error()?
-                    .bytes()?)
-            },
+            || Ok(self.client.get(url.clone()).send()?.validate()?.bytes()?),
             notify,
         )
         .map_err(RestErrorKind::BackoffError)?)
@@ -366,7 +388,7 @@ impl ReadBackend for RestBackend {
                     .get(url.clone())
                     .header("Range", header_value.clone())
                     .send()?
-                    .check_error()?
+                    .validate()?
                     .bytes()?)
             },
             notify,
@@ -391,7 +413,7 @@ impl WriteBackend for RestBackend {
         Ok(backoff::retry_notify(
             self.backoff.clone(),
             || {
-                _ = self.client.post(url.clone()).send()?.check_error()?;
+                _ = self.client.post(url.clone()).send()?.validate()?;
                 Ok(())
             },
             notify,
@@ -420,7 +442,7 @@ impl WriteBackend for RestBackend {
             self.backoff.clone(),
             || {
                 // Note: try_clone() always gives Some(_) as the body is Bytes which is clonable
-                _ = req_builder.try_clone().unwrap().send()?.check_error()?;
+                    .validate()?;
                 Ok(())
             },
             notify,
@@ -447,7 +469,7 @@ impl WriteBackend for RestBackend {
         Ok(backoff::retry_notify(
             self.backoff.clone(),
             || {
-                _ = self.client.delete(url.clone()).send()?.check_error()?;
+                _ = self.client.delete(url.clone()).send()?.validate()?;
                 Ok(())
             },
             notify,
