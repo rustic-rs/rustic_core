@@ -235,7 +235,7 @@ impl PruneOptions {
             self.repack_uncompressed || self.repack_all,
             self.no_resize,
             &pack_sizer,
-        );
+        )?;
         pruner.check_existing_packs()?;
         pruner.filter_index_files(self.instant_delete);
 
@@ -808,11 +808,11 @@ impl PrunePlan {
                     if to_compress {
                         _ = status.insert(PackStatus::NotCompressed);
                     }
-                    let size_mismatch = !pack_sizer[pack.blob_type].size_ok(pack.size);
-                    if pack_sizer[pack.blob_type].is_too_small(pack.size) {
+                    let size_mismatch = !pack_sizer[pack.blob_type].size_ok(pack.size)?;
+                    if pack_sizer[pack.blob_type].is_too_small(pack.size)? {
                         _ = status.insert(PackStatus::TooSmall);
                     }
-                    if pack_sizer[pack.blob_type].is_too_large(pack.size) {
+                    if pack_sizer[pack.blob_type].is_too_large(pack.size)? {
                         _ = status.insert(PackStatus::TooLarge);
                     }
                     match (pack.delete_mark, pi.used_blobs, pi.unused_blobs) {
@@ -934,7 +934,7 @@ impl PrunePlan {
         repack_uncompressed: bool,
         no_resize: bool,
         pack_sizer: &BlobTypeMap<PackSizer>,
-    ) {
+    ) -> RusticResult<()> {
         let max_unused = match (repack_uncompressed, max_unused) {
             (true, _) => 0,
             (false, LimitOption::Unlimited) => u64::MAX,
@@ -983,7 +983,7 @@ impl PrunePlan {
             // packs in resize_packs are only repacked if we anyway repack this blob type or
             // if the target pack size is reached for the blob type.
             let todo = if do_repack[blob_type]
-                || repack_size[blob_type] > u64::from(pack_sizer[blob_type].pack_size())
+                || repack_size[blob_type] > u64::from(pack_sizer[blob_type].pack_size()?)
             {
                 PackToDo::Repack
             } else {
@@ -994,6 +994,7 @@ impl PrunePlan {
                 pack.set_todo(todo, &pi, status, &mut self.stats);
             }
         }
+        Ok(())
     }
 
     /// Checks if the existing packs are ok
@@ -1170,7 +1171,9 @@ impl PrunePlan {
             } else {
                 let p =
                     pb.progress_counter("marking unneeded unindexed pack files for deletion...");
-                p.set_length(self.existing_packs.len().try_into().unwrap());
+                p.set_length(u64::try_from(self.existing_packs.len()).map_err(|_| {
+                    CommandErrorKind::TooManyPacksToDelete(self.existing_packs.len())
+                })?);
                 for (id, size) in self.existing_packs {
                     let pack = IndexPack {
                         id,
@@ -1202,11 +1205,25 @@ impl PrunePlan {
         let tree_packs_remove = Arc::new(Mutex::new(Vec::new()));
         let data_packs_remove = Arc::new(Mutex::new(Vec::new()));
 
-        let delete_pack = |pack: PrunePack| {
+        let delete_pack = |pack: PrunePack| -> RusticResult<()> {
             // delete pack
             match pack.blob_type {
-                BlobType::Data => data_packs_remove.lock().unwrap().push(pack.id),
-                BlobType::Tree => tree_packs_remove.lock().unwrap().push(pack.id),
+                BlobType::Data => {
+                    if let Ok(mut lock) = data_packs_remove.lock() {
+                        lock.push(pack.id);
+                        Ok(())
+                    } else {
+                        Err(CommandErrorKind::MutexLockFailed.into())
+                    }
+                }
+                BlobType::Tree => {
+                    if let Ok(mut lock) = tree_packs_remove.lock() {
+                        lock.push(pack.id);
+                        Ok(())
+                    } else {
+                        Err(CommandErrorKind::MutexLockFailed.into())
+                    }
+                }
             }
         };
 
@@ -1237,15 +1254,19 @@ impl PrunePlan {
                     PackToDo::Keep => {
                         // keep pack: add to new index
                         let pack = pack.into_index_pack();
-                        indexer.write().unwrap().add(pack)?;
+                        indexer.write().add(pack)?;
                     }
                     PackToDo::Repack => {
                         // TODO: repack in parallel
                         for blob in &pack.blobs {
-                            if used_ids.lock().unwrap().remove(&blob.id).is_none() {
-                                // don't save duplicate blobs
-                                continue;
-                            }
+                            if let Ok(mut lock) = used_ids.lock() {
+                                if lock.remove(&blob.id).is_none() {
+                                    // don't save duplicate blobs
+                                    continue;
+                                }
+                            } else {
+                                return Err(CommandErrorKind::MutexLockFailed.into());
+                            };
 
                             let repacker = match blob.tpe {
                                 BlobType::Data => &data_repacker,
@@ -1259,7 +1280,7 @@ impl PrunePlan {
                             p.inc(u64::from(blob.length));
                         }
                         if opts.instant_delete {
-                            delete_pack(pack);
+                            delete_pack(pack)?;
                         } else {
                             // mark pack for removal
                             let pack = pack.into_index_pack_with_time(self.time);
@@ -1268,7 +1289,7 @@ impl PrunePlan {
                     }
                     PackToDo::MarkDelete => {
                         if opts.instant_delete {
-                            delete_pack(pack);
+                            delete_pack(pack)?;
                         } else {
                             // mark pack for removal
                             let pack = pack.into_index_pack_with_time(self.time);
@@ -1277,7 +1298,7 @@ impl PrunePlan {
                     }
                     PackToDo::KeepMarked | PackToDo::KeepMarkedAndCorrect => {
                         if opts.instant_delete {
-                            delete_pack(pack);
+                            delete_pack(pack)?;
                         } else {
                             // keep pack: add to new index; keep the timestamp.
                             // Note the timestap shouldn't be None here, however if it is not not set, use the current time to heal the entry!
@@ -1291,7 +1312,7 @@ impl PrunePlan {
                         let pack = pack.into_index_pack_with_time(self.time);
                         indexer.write().add(pack)?;
                     }
-                    PackToDo::Delete => delete_pack(pack),
+                    PackToDo::Delete => delete_pack(pack)?,
                 }
                 Ok(())
             })?;
@@ -1306,18 +1327,24 @@ impl PrunePlan {
             be.delete_list(FileType::Index, true, indexes_remove.iter(), p)?;
         }
 
-        // get variable out of Arc<Mutex<_>>
-        let data_packs_remove = data_packs_remove.lock().unwrap();
-        if !data_packs_remove.is_empty() {
-            let p = pb.progress_counter("removing old data packs...");
-            be.delete_list(FileType::Pack, false, data_packs_remove.iter(), p)?;
+        // remove old data packs
+        if let Ok(data_packs_remove) = data_packs_remove.lock() {
+            if !data_packs_remove.is_empty() {
+                let p = pb.progress_counter("removing old data packs...");
+                be.delete_list(FileType::Pack, false, data_packs_remove.iter(), p)?;
+            }
+        } else {
+            return Err(CommandErrorKind::MutexLockFailed.into());
         }
 
-        // get variable out of Arc<Mutex<_>>
-        let tree_packs_remove = tree_packs_remove.lock().unwrap();
-        if !tree_packs_remove.is_empty() {
-            let p = pb.progress_counter("removing old tree packs...");
-            be.delete_list(FileType::Pack, true, tree_packs_remove.iter(), p)?;
+        // remove old tree packs
+        if let Ok(tree_packs_remove) = tree_packs_remove.lock() {
+            if !tree_packs_remove.is_empty() {
+                let p = pb.progress_counter("removing old tree packs...");
+                be.delete_list(FileType::Pack, true, tree_packs_remove.iter(), p)?;
+            }
+        } else {
+            return Err(CommandErrorKind::MutexLockFailed.into());
         }
 
         Ok(())
@@ -1325,7 +1352,7 @@ impl PrunePlan {
 }
 
 /// `PackInfo` contains information about a pack which is needed to decide what to do with the pack.
-#[derive(PartialEq, Eq, Clone, Copy, Debug)]
+#[derive(PartialEq, Eq, Clone, Copy, Debug, Serialize)]
 struct PackInfo {
     /// What type of blobs are in the pack
     blob_type: BlobType,
@@ -1485,7 +1512,11 @@ fn find_used_blobs(
                     ids.extend(node.content.iter().flatten().map(|id| (*id, 0)));
                 }
                 NodeType::Dir => {
-                    _ = ids.insert(node.subtree.unwrap(), 0);
+                    let Some(id) = node.subtree else {
+                        warn!("subtree not found in dir node!");
+                        continue;
+                    };
+                    _ = ids.insert(id, 0);
                 }
                 _ => {} // nothing to do
             }
