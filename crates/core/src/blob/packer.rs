@@ -259,7 +259,7 @@ impl<BE: DecryptWriteBackend> Packer<BE> {
             indexer.clone(),
             config,
             total_size,
-        )));
+        )?));
 
         let (tx, rx) = bounded(0);
         let (finish_tx, finish_rx) = bounded::<RusticResult<PackerStats>>(0);
@@ -270,8 +270,9 @@ impl<BE: DecryptWriteBackend> Packer<BE> {
             finish: finish_rx,
         };
 
-        let _join_handle = std::thread::spawn(move || {
-            scope(|scope| {
+        // TODO!: store join handle?
+        let _join_handle = std::thread::spawn(move || -> RusticResult<()> {
+            let scoped_work = scope(|scope| -> RusticResult<()> {
                 let status = rx
                     .into_iter()
                     .readahead_scoped(scope)
@@ -296,6 +297,7 @@ impl<BE: DecryptWriteBackend> Packer<BE> {
                     // check again if id is already contained
                     // TODO: We may still save duplicate blobs - the indexer is only updated when the packfile write has completed
                     .filter(|res| {
+                        res.as_ref()
                             .map_or_else(|_| true, |(_, id, _, _, _)| !indexer.read().has(id))
                     })
                     .try_for_each(|item: RusticResult<_>| {
@@ -305,6 +307,19 @@ impl<BE: DecryptWriteBackend> Packer<BE> {
                             .add_raw(&data, &id, data_len, ul, size_limit)
                     })
                     .and_then(|()| raw_packer.write().finalize());
+                if finish_tx.send(status).is_err() {
+                    error!("receiver has been dropped unexpectedly.");
+                    return Err(MultiprocessingErrorKind::ReceiverDropped.into());
+                }
+                Ok(())
+            });
+            if scoped_work.is_err() {
+                Err(MultiprocessingErrorKind::SendingCrossbeamMessageFailed.into())
+            } else if let Ok(Err(err)) = scoped_work {
+                Err(err)
+            } else {
+                Ok(())
+            }
         });
 
         Ok(packer)
@@ -341,9 +356,10 @@ impl<BE: DecryptWriteBackend> Packer<BE> {
     ///
     /// [`PackerErrorKind::SendingCrossbeamMessageFailed`]: crate::error::PackerErrorKind::SendingCrossbeamMessageFailed
     fn add_with_sizelimit(&self, data: Bytes, id: Id, size_limit: Option<u32>) -> RusticResult<()> {
-        self.sender
-            .send((data, id, size_limit))
-            .map_err(PackerErrorKind::SendingCrossbeamMessageFailed)?;
+        if self.sender.send((data, id, size_limit)).is_err() {
+            error!("receiver has been dropped unexpectedly.");
+            return Err(MultiprocessingErrorKind::ReceiverDropped.into());
+        }
         Ok(())
     }
 
@@ -574,7 +590,7 @@ impl<BE: DecryptWriteBackend> RawPacker<BE> {
         indexer: SharedIndexer<BE>,
         config: &ConfigFile,
         total_size: u64,
-    ) -> Self {
+    ) -> RusticResult<Self> {
         let file_writer = Some(Actor::new(
             FileWriterHandle {
                 be: be.clone(),
@@ -583,11 +599,11 @@ impl<BE: DecryptWriteBackend> RawPacker<BE> {
             },
             1,
             1,
-        ));
+        )?);
 
         let pack_sizer = PackSizer::from_config(config, blob_type, total_size);
 
-        Self {
+        Ok(Self {
             be,
             blob_type,
             file: BytesMut::new(),
@@ -598,7 +614,7 @@ impl<BE: DecryptWriteBackend> RawPacker<BE> {
             file_writer,
             pack_sizer,
             stats: PackerStats::default(),
-        }
+        })
     }
 
     /// Saves the packfile and returns the stats
@@ -608,7 +624,10 @@ impl<BE: DecryptWriteBackend> RawPacker<BE> {
     /// If the packfile could not be saved
     fn finalize(&mut self) -> RusticResult<PackerStats> {
         self.save()?;
-        self.file_writer.take().unwrap().finalize()?;
+        self.file_writer
+            .take()
+            .ok_or(PackerErrorKind::ActorHandleNotPresent)?
+            .finalize()?;
         Ok(std::mem::take(&mut self.stats))
     }
 
@@ -665,7 +684,11 @@ impl<BE: DecryptWriteBackend> RawPacker<BE> {
             .map_err(PackerErrorKind::IntConversionFailed)?;
         self.stats.data_packed += data_len_packed;
 
-        let size_limit = size_limit.unwrap_or_else(|| self.pack_sizer.pack_size());
+        let size_limit = if let Some(size_limit) = size_limit {
+            size_limit
+        } else {
+            self.pack_sizer.pack_size()?
+        };
         let offset = self.size;
         let len = self.write_data(data)?;
         self.index
@@ -681,7 +704,7 @@ impl<BE: DecryptWriteBackend> RawPacker<BE> {
             || self.size >= size_limit
             || elapsed >= constants::MAX_AGE
         {
-            self.pack_sizer.add_size(self.index.pack_size());
+            self.pack_sizer.add_size(self.index.pack_size())?;
             self.save()?;
             self.size = 0;
             self.count = 0;
@@ -741,10 +764,16 @@ impl<BE: DecryptWriteBackend> RawPacker<BE> {
         // write file to backend
         let index = std::mem::take(&mut self.index);
         let file = std::mem::replace(&mut self.file, BytesMut::new());
-        self.file_writer
+        if self
+            .file_writer
             .as_ref()
-            .unwrap()
-            .send((file.into(), index))?;
+            .ok_or(PackerErrorKind::FileWriterHandleNotPresent)?
+            .send((file.into(), index))
+            .is_err()
+        {
+            error!("receiver has been dropped unexpectedly.");
+            return Err(MultiprocessingErrorKind::ReceiverDropped.into());
+        }
 
         Ok(())
     }
@@ -833,12 +862,13 @@ impl Actor {
         fwh: FileWriterHandle<BE>,
         queue_len: usize,
         _par: usize,
-    ) -> Self {
+    ) -> RusticResult<Self> {
         let (tx, rx) = bounded(queue_len);
         let (finish_tx, finish_rx) = bounded::<RusticResult<()>>(0);
 
-        let _join_handle = std::thread::spawn(move || {
-            scope(|scope| {
+        // TODO!: store join handle?
+        let _join_handle = std::thread::spawn(move || -> RusticResult<()> {
+            let scoped_work = scope(|scope| -> RusticResult<()> {
                 let status = rx
                     .into_iter()
                     .readahead_scoped(scope)
@@ -850,15 +880,28 @@ impl Actor {
                     .map(|load| fwh.process(load))
                     .readahead_scoped(scope)
                     .try_for_each(|index| fwh.index(index?));
-                _ = finish_tx.send(status);
-            })
-            .unwrap();
+
+                if finish_tx.send(status).is_err() {
+                    error!("receiver has been dropped unexpectedly.");
+                    return Err(MultiprocessingErrorKind::ReceiverDropped.into());
+                };
+
+                Ok(())
+            });
+
+            if scoped_work.is_err() {
+                Err(MultiprocessingErrorKind::SendingCrossbeamMessageFailed.into())
+            } else if let Ok(Err(err)) = scoped_work {
+                Err(err)
+            } else {
+                Ok(())
+            }
         });
 
-        Self {
+        Ok(Self {
             sender: tx,
             finish: finish_rx,
-        }
+        })
     }
 
     /// Sends the given data to the actor.
@@ -875,9 +918,11 @@ impl Actor {
     ///
     /// Ok if the message was sent successfully
     fn send(&self, load: (Bytes, IndexPack)) -> RusticResult<()> {
-        self.sender
-            .send(load)
-            .map_err(PackerErrorKind::SendingCrossbeamMessageFailedForIndexPack)?;
+        if self.sender.send(load).is_err() {
+            error!("receiver has been dropped unexpectedly.");
+            return Err(MultiprocessingErrorKind::ReceiverDropped.into());
+        }
+
         Ok(())
     }
 
@@ -893,8 +938,13 @@ impl Actor {
     fn finalize(self) -> RusticResult<()> {
         // cancel channel
         drop(self.sender);
+
         // wait for items in channel to be processed
-        self.finish.recv().unwrap()
+        if self.finish.recv().is_err() {
+            error!("sender has been dropped unexpectedly.");
+            return Err(MultiprocessingErrorKind::SenderDropped.into());
+        }
+        Ok(())
     }
 }
 
@@ -942,7 +992,7 @@ impl<BE: DecryptFullBackend> Repacker<BE> {
         total_size: u64,
     ) -> RusticResult<Self> {
         let packer = Packer::new(be.clone(), blob_type, indexer, config, total_size)?;
-        let size_limit = PackSizer::from_config(config, blob_type, total_size).pack_size();
+        let size_limit = PackSizer::from_config(config, blob_type, total_size).pack_size()?;
         Ok(Self {
             be,
             packer,
