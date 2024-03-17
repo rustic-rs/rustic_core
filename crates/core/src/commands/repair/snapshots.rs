@@ -149,7 +149,7 @@ impl RepairSnapshotsOptions {
 
         if !dry_run {
             _ = packer.finalize()?;
-            indexer.write().unwrap().finalize()?;
+            indexer.write().finalize()?;
         }
 
         if self.delete {
