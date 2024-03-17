@@ -170,7 +170,11 @@ impl RcloneBackend {
         let mut command = Command::new(&rclone_command[0]);
 
         if use_password {
-            // TODO: We should handle errors here
+            // Check if RCLONE_USER and RCLONE_PASS are already set
+            if std::env::var("RCLONE_USER").is_ok() || std::env::var("RCLONE_PASS").is_ok() {
+                warn!("RCLONE_USER or RCLONE_PASS already set, we will overwrite them for this rclone instance.");
+                // return Err(RcloneErrorKind::RCloneUserOrPassAlreadySet.into());
+            }
             _ = command
                 .env("RCLONE_USER", &user)
                 .env("RCLONE_PASS", &password);
