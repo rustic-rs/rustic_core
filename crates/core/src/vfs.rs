@@ -195,9 +195,9 @@ impl Vfs {
     ///
     /// The created [`Vfs`] or `None` if the node has no subtree
     #[must_use]
-    pub fn from_dir_node(node: &Node) -> Self {
-        let tree = VfsTree::RusticTree(node.subtree.unwrap());
-        Self { tree }
+    pub fn from_dir_node(node: &Node) -> Option<Self> {
+        let tree = VfsTree::RusticTree(node.subtree?);
+        Some(Self { tree })
     }
 
     /// Create a new [`Vfs`] from a list of snapshots.
