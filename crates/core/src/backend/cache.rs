@@ -1,5 +1,6 @@
 use std::{
     collections::HashMap,
+    fmt::{self, Display},
     fs::{self, File},
     io::{ErrorKind, Read, Seek, SeekFrom, Write},
     path::PathBuf,
@@ -206,6 +207,12 @@ impl WriteBackend for CachedBackend {
 pub struct Cache {
     /// The path to the cache.
     path: PathBuf,
+}
+
+impl Display for Cache {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.path.display())
+    }
 }
 
 impl Cache {
