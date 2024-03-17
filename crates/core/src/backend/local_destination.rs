@@ -103,7 +103,7 @@ impl LocalDestination {
     ///
     /// * If the destination is a file, this will return the base path.
     /// * If the destination is a directory, this will return the base path joined with the item.
-    pub(crate) fn path(&self, item: impl AsRef<Path>) -> PathBuf {
+    pub(crate) fn path_of(&self, item: impl AsRef<Path>) -> PathBuf {
         if self.is_file {
             self.path.clone()
         } else {
@@ -170,8 +170,8 @@ impl LocalDestination {
     ///
     /// [`LocalDestinationErrorKind::DirectoryCreationFailed`]: crate::error::LocalDestinationErrorKind::DirectoryCreationFailed
     pub fn create_dir(&self, item: impl AsRef<Path>) -> RusticResult<()> {
-        let dirname = self.path.join(item);
-        fs::create_dir_all(dirname).map_err(LocalDestinationErrorKind::DirectoryCreationFailed)?;
+        fs::create_dir_all(self.path_of(item))
+            .map_err(LocalDestinationErrorKind::DirectoryCreationFailed)?;
         Ok(())
     }
 

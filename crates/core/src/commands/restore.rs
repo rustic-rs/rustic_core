@@ -159,7 +159,7 @@ impl RestoreOptions {
         dry_run: bool,
     ) -> RusticResult<RestorePlan> {
         let p = repo.pb.progress_spinner("collecting file information...");
-        let dest_path = dest.path("");
+        let dest_path = dest.path_of("");
 
         let mut stats = RestoreStats::default();
         let mut restore_infos = RestorePlan::default();
@@ -285,7 +285,7 @@ impl RestoreOptions {
                     next_dst = dst_iter.next();
                 }
                 (Some(destination), Some((path, node))) => {
-                    match destination.path().cmp(&dest.path(path)) {
+                    match destination.path().cmp(&dest.path_of(path)) {
                         Ordering::Less => {
                             process_existing(destination)?;
                             next_dst = dst_iter.next();
