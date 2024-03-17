@@ -43,7 +43,7 @@ pub struct Parent {
 /// # Type Parameters
 ///
 /// * `T` - The type of the matched parent.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum ParentResult<T> {
     /// The parent was found and matches.
     Matched(T),
@@ -54,11 +54,13 @@ pub(crate) enum ParentResult<T> {
 }
 
 impl<T> ParentResult<T> {
-    /// Maps a `ParentResult<T>` to a `ParentResult<R>` by applying a function to a contained value.
+    /// Maps a `ParentResult<T>` to a `ParentResult<U>` by applying a function to a contained value.
     ///
     /// # Type Parameters
     ///
-    /// * `R` - The type of the returned `ParentResult`.
+    /// * `T` - The type of the contained value.
+    /// * `U` - The type of the returned `ParentResult`.
+    /// * `F` - The function to apply.
     ///
     /// # Arguments
     ///
@@ -66,12 +68,43 @@ impl<T> ParentResult<T> {
     ///
     /// # Returns
     ///
-    /// A `ParentResult<R>` with the result of the function for each `ParentResult<T>`.
-    fn map<R>(self, f: impl FnOnce(T) -> R) -> ParentResult<R> {
+    /// A `ParentResult<U>` with the result of the function for each `ParentResult<T>`.
+    #[inline]
+    fn map<U, F>(self, f: F) -> ParentResult<U>
+    where
+        F: FnOnce(T) -> U,
+    {
         match self {
             Self::Matched(t) => ParentResult::Matched(f(t)),
             Self::NotFound => ParentResult::NotFound,
             Self::NotMatched => ParentResult::NotMatched,
+        }
+    }
+}
+
+impl<T, E> ParentResult<Result<T, E>> {
+    /// Transposes a [`ParentResult`] of a [`Result`] into a [`Result`] of a [`ParentResult`].
+    ///
+    /// # Type Parameters
+    ///
+    /// * `T` - The type of the inner `Result`.
+    /// * `E` - The error type of the inner `Result`.
+    ///
+    /// # Errors
+    ///
+    /// If the `ParentResult` is `Matched` and the inner `Result` is `Err`, the error is returned.
+    ///
+    /// # Returns
+    ///
+    /// A `Result` of a `ParentResult<T>`.
+    #[inline]
+    pub fn transpose(self) -> Result<ParentResult<T>, E> {
+        match self {
+            Self::Matched(Ok(x)) => Ok(ParentResult::Matched(x)),
+
+            Self::Matched(Err(e)) => Err(e),
+            Self::NotFound => Ok(ParentResult::NotFound),
+            Self::NotMatched => Ok(ParentResult::NotMatched),
         }
     }
 }
@@ -266,8 +299,11 @@ impl Parent {
             TreeType::NewTree((path, node, tree)) => {
                 let parent_result = self
                     .is_parent(&node, &tree)
-                    .map(|node| node.subtree.unwrap());
+                    .map(|node| node.subtree.ok_or(ArchiverErrorKind::ParentNodeIsNoTree))
+                    .transpose()?;
+
                 self.set_dir(be, index, &tree);
+
                 TreeType::NewTree((path, node, parent_result))
             }
             TreeType::EndTree => {
