@@ -139,7 +139,8 @@ impl Tree {
         id: Id,
         path: &Path,
     ) -> RusticResult<Node> {
-        let mut node = Node::new_node(OsStr::new(""), NodeType::Dir, Metadata::default());
+        let mut node =
+            Node::from_type_and_metadata(OsStr::new(""), NodeType::Dir, Metadata::default())?;
         node.subtree = Some(id);
 
         for p in path.components() {

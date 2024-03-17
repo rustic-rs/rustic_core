@@ -382,7 +382,7 @@ impl Vfs {
                         VfsTree::Link(target) => NodeType::from_link(Path::new(target)),
                         _ => NodeType::Dir,
                     };
-                    Node::new_node(name, node_type, Metadata::default())
+                    Node::from_type_and_metadata(name, node_type, Metadata::default())
                 })
                 .collect(),
             VfsPath::Link(str) => {

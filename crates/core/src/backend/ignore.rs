@@ -392,13 +392,13 @@ fn map_entry(
     };
 
     let node = if m.is_dir() {
-        Node::new_node(name, NodeType::Dir, meta)
+        Node::from_type_and_metadata(name, NodeType::Dir, meta)
     } else if m.is_symlink() {
         let target = read_link(entry.path()).map_err(IgnoreErrorKind::FromIoError)?;
         let node_type = NodeType::from_link(&target);
-        Node::new_node(name, node_type, meta)
+        Node::from_type_and_metadata(name, node_type, meta)
     } else {
-        Node::new_node(name, NodeType::File, meta)
+        Node::from_type_and_metadata(name, NodeType::File, meta)
     };
 
     let path = entry.into_path();
@@ -546,23 +546,23 @@ fn map_entry(
     let filetype = m.file_type();
 
     let node = if m.is_dir() {
-        Node::new_node(name, NodeType::Dir, meta)
+        Node::from_type_and_metadata(name, NodeType::Dir, meta)
     } else if m.is_symlink() {
         let target = read_link(entry.path()).map_err(IgnoreErrorKind::FromIoError)?;
         let node_type = NodeType::from_link(&target);
-        Node::new_node(name, node_type, meta)
+        Node::from_type_and_metadata(name, node_type, meta)
     } else if filetype.is_block_device() {
         let node_type = NodeType::Dev { device: m.rdev() };
-        Node::new_node(name, node_type, meta)
+        Node::from_type_and_metadata(name, node_type, meta)
     } else if filetype.is_char_device() {
         let node_type = NodeType::Chardev { device: m.rdev() };
-        Node::new_node(name, node_type, meta)
+        Node::from_type_and_metadata(name, node_type, meta)
     } else if filetype.is_fifo() {
-        Node::new_node(name, NodeType::Fifo, meta)
+        Node::from_type_and_metadata(name, NodeType::Fifo, meta)
     } else if filetype.is_socket() {
-        Node::new_node(name, NodeType::Socket, meta)
+        Node::from_type_and_metadata(name, NodeType::Socket, meta)
     } else {
-        Node::new_node(name, NodeType::File, meta)
+        Node::from_type_and_metadata(name, NodeType::File, meta)
     };
     let path = entry.into_path();
     let open = Some(OpenFile(path.clone()));

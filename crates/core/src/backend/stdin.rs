@@ -69,7 +69,7 @@ impl Iterator for StdinSource {
 
         Some(Ok(ReadSourceEntry {
             path: self.path.clone(),
-            node: Node::new_node(
+            node: Node::from_type_and_metadata(
                 self.path.file_name().unwrap(),
                 NodeType::File,
                 Metadata::default(),

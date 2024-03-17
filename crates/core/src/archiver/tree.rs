@@ -99,7 +99,8 @@ where
                                     mode: Some(0o755),
                                     ..Default::default()
                                 };
-                                let node = Node::new_node(&p, NodeType::Dir, meta);
+                                let node =
+                                    Node::from_type_and_metadata(&p, NodeType::Dir, meta).ok()?;
                                 return Some(TreeType::NewTree((self.path.clone(), node, p)));
                             }
                         }

@@ -283,13 +283,20 @@ impl Node {
     /// # Returns
     ///
     /// The created [`Node`]
+    pub fn from_type_and_metadata(
+        name: &OsStr,
+        node_type: NodeType,
+        meta: Metadata,
+    ) -> RusticResult<Self> {
+        Ok(Self {
             name: escape_file_name(name)?,
             node_type,
             content: None,
             subtree: None,
             meta,
-        }
+        })
     }
+
     #[must_use]
     /// Evaluates if this node is a directory
     pub const fn is_dir(&self) -> bool {
