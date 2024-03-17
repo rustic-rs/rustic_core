@@ -133,11 +133,6 @@ impl RcloneBackend {
     /// # Returns
     ///
     /// The created [`RcloneBackend`].
-    ///
-    /// # Panics
-    ///
-    /// If the rclone command is not found.
-    // TODO: This should be an error, not a panic.
     pub fn new(url: impl AsRef<str>, options: HashMap<String, String>) -> Result<Self> {
         let rclone_command = options.get("rclone-command");
         let use_password = options

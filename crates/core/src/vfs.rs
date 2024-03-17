@@ -356,10 +356,6 @@ impl Vfs {
     ///
     /// [`VfsErrorKind::NameDoesNotExist`]: crate::error::VfsErrorKind::NameDoesNotExist
     /// [`Tree`]: crate::repofile::Tree
-    ///
-    /// # Panics
-    ///
-    /// Panics if the path is not a directory.
     pub fn dir_entries_from_path<P, S: IndexedFull>(
         &self,
         repo: &Repository<P, S>,

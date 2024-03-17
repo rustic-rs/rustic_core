@@ -1014,9 +1014,9 @@ impl<P: ProgressBars, S: Open> Repository<P, S> {
     ///
     // TODO: Document errors
     ///
-    /// # Panics
+    /// # Returns
     ///
-    /// If the files could not be deleted.
+    /// Ok if the snapshots were removed successfully
     pub fn delete_snapshots(&self, ids: &[Id]) -> RusticResult<()> {
         if self.config().append_only == Some(true) {
             return Err(CommandErrorKind::NotAllowedWithAppendOnly(
