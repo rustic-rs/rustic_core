@@ -1290,7 +1290,9 @@ impl quick_cache::Weighter<Id, Bytes> for BytesWeighter {
     ///
     /// The weight of the blob
     fn weight(&self, _key: &Id, val: &Bytes) -> u32 {
-        // Be cautions out about zero weights!
+        // Be cautious about zero weights!
+        #[allow(clippy::expect_used)]
+        // We allow this here, because we can't change the function signature to return a Result
         u32::try_from(val.len().clamp(1, u32::MAX as usize))
             .expect("weight overflow in cache should not happen")
     }
