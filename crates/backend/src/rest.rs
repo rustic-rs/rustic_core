@@ -4,7 +4,7 @@ use std::time::Duration;
 use anyhow::Result;
 use backoff::{backoff::Backoff, ExponentialBackoff, ExponentialBackoffBuilder};
 use bytes::Bytes;
-use log::{trace, warn};
+use log::{error, trace, warn};
 use reqwest::{
     blocking::{Client, ClientBuilder, Response},
     header::{HeaderMap, HeaderValue},
@@ -437,12 +437,18 @@ impl WriteBackend for RestBackend {
     ///
     /// [`RestErrorKind::BackoffError`]: RestErrorKind::BackoffError
     fn write_bytes(&self, tpe: FileType, id: &Id, _cacheable: bool, buf: Bytes) -> Result<()> {
-        trace!("writing tpe: {:?}, id: {}", &tpe, &id);
+        trace!("writing tpe: {tpe:?}, id: {id}");
         let req_builder = self.client.post(self.url(tpe, id)?).body(buf);
+
+        #[allow(clippy::expect_used)]
         Ok(backoff::retry_notify(
             self.backoff.clone(),
             || {
                 // Note: try_clone() always gives Some(_) as the body is Bytes which is clonable
+                _ = req_builder
+                    .try_clone()
+                    .expect("Should always give a value")
+                    .send()?
                     .validate()?;
                 Ok(())
             },
