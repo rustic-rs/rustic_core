@@ -379,26 +379,57 @@ impl RestoreOptions {
     /// # Errors
     ///
     /// If the metadata could not be set.
-    // TODO: Return a result here, introduce errors and get rid of logging.
-    fn set_metadata(self, dest: &LocalDestination, path: &PathBuf, node: &Node) {
+    fn set_metadata(
+        self,
+        dest: &LocalDestination,
+        path: &PathBuf,
+        node: &Node,
+    ) -> RusticResult<()> {
         debug!("setting metadata for {:?}", path);
-        dest.create_special(path, node)
-            .unwrap_or_else(|_| warn!("restore {:?}: creating special file failed.", path));
+
+        let mut errors = vec![];
+
+        if let Err(err) = dest.create_special(path, node) {
+            warn!("restore {:?}: creating special file failed.", path);
+            errors.push(err);
+        }
+
         match (self.no_ownership, self.numeric_id) {
             (true, _) => {}
-            (false, true) => dest
-                .set_uid_gid(path, &node.meta)
-                .unwrap_or_else(|_| warn!("restore {:?}: setting UID/GID failed.", path)),
-            (false, false) => dest
-                .set_user_group(path, &node.meta)
-                .unwrap_or_else(|_| warn!("restore {:?}: setting User/Group failed.", path)),
+            (false, true) => {
+                if let Err(err) = dest.set_uid_gid(path, &node.meta) {
+                    warn!("restore {:?}: setting UID/GID failed.", path);
+                    errors.push(err);
+                }
+            }
+            (false, false) => {
+                if let Err(err) = dest.set_user_group(path, &node.meta) {
+                    warn!("restore {:?}: setting User/Group failed.", path);
+                    errors.push(err);
+                }
+            }
         }
-        dest.set_permission(path, node)
-            .unwrap_or_else(|_| warn!("restore {:?}: chmod failed.", path));
-        dest.set_extended_attributes(path, &node.meta.extended_attributes)
-            .unwrap_or_else(|_| warn!("restore {:?}: setting extended attributes failed.", path));
-        dest.set_times(path, &node.meta)
-            .unwrap_or_else(|_| warn!("restore {:?}: setting file times failed.", path));
+
+        if let Err(err) = dest.set_permission(path, node) {
+            warn!("restore {:?}: chmod failed.", path);
+            errors.push(err);
+        };
+
+        if let Err(err) = dest.set_extended_attributes(path, &node.meta.extended_attributes) {
+            warn!("restore {:?}: setting extended attributes failed.", path);
+            errors.push(err);
+        };
+
+        if let Err(err) = dest.set_times(path, &node.meta) {
+            warn!("restore {:?}: setting file times failed.", path);
+            errors.push(err);
+        };
+
+        if !errors.is_empty() {
+            return Err(CommandErrorKind::ErrorSettingMetadata(path.clone(), errors).into());
+        }
+
+        Ok(())
     }
 }
 
