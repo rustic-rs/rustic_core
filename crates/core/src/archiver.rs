@@ -211,7 +211,7 @@ impl<'a, BE: DecryptFullBackend, I: ReadGlobalIndex> Archiver<'a, BE, I> {
         stats.apply(&mut summary, BlobType::Data);
         self.snap.tree = id;
 
-        self.indexer.write().unwrap().finalize()?;
+        self.indexer.write().finalize()?;
 
         summary.finalize(self.snap.time)?;
         self.snap.summary = Some(summary);

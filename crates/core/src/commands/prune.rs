@@ -1178,7 +1178,7 @@ impl PrunePlan {
                         time: Some(Local::now()),
                         blobs: Vec::new(),
                     };
-                    indexer.write().unwrap().add_remove(pack)?;
+                    indexer.write().add_remove(pack)?;
                     p.inc(1);
                 }
                 p.finish();
@@ -1263,7 +1263,7 @@ impl PrunePlan {
                         } else {
                             // mark pack for removal
                             let pack = pack.into_index_pack_with_time(self.time);
-                            indexer.write().unwrap().add_remove(pack)?;
+                            indexer.write().add_remove(pack)?;
                         }
                     }
                     PackToDo::MarkDelete => {
@@ -1272,7 +1272,7 @@ impl PrunePlan {
                         } else {
                             // mark pack for removal
                             let pack = pack.into_index_pack_with_time(self.time);
-                            indexer.write().unwrap().add_remove(pack)?;
+                            indexer.write().add_remove(pack)?;
                         }
                     }
                     PackToDo::KeepMarked | PackToDo::KeepMarkedAndCorrect => {
@@ -1283,13 +1283,13 @@ impl PrunePlan {
                             // Note the timestap shouldn't be None here, however if it is not not set, use the current time to heal the entry!
                             let time = pack.time.unwrap_or(self.time);
                             let pack = pack.into_index_pack_with_time(time);
-                            indexer.write().unwrap().add_remove(pack)?;
+                            indexer.write().add_remove(pack)?;
                         }
                     }
                     PackToDo::Recover => {
                         // recover pack: add to new index in section packs
                         let pack = pack.into_index_pack_with_time(self.time);
-                        indexer.write().unwrap().add(pack)?;
+                        indexer.write().add(pack)?;
                     }
                     PackToDo::Delete => delete_pack(pack),
                 }
@@ -1297,7 +1297,7 @@ impl PrunePlan {
             })?;
         _ = tree_repacker.finalize()?;
         _ = data_repacker.finalize()?;
-        indexer.write().unwrap().finalize()?;
+        indexer.write().finalize()?;
         p.finish();
 
         // remove old index files first as they may reference pack files which are removed soon.

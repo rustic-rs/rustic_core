@@ -3,9 +3,11 @@ use log::warn;
 
 use std::{
     num::NonZeroU32,
-    sync::{Arc, RwLock},
+    sync::Arc,
     time::{Duration, SystemTime},
 };
+
+use parking_lot::RwLock;
 
 use bytes::{Bytes, BytesMut};
 use chrono::Local;
@@ -29,6 +31,8 @@ use crate::{
         snapshotfile::SnapshotSummary,
     },
 };
+
+pub(crate) type SharedPacker<BE> = Arc<RwLock<RawPacker<BE>>>;
 
 pub(super) mod constants {
     use std::time::Duration;
@@ -163,7 +167,7 @@ pub struct Packer<BE: DecryptWriteBackend> {
     /// The raw packer wrapped in an Arc and RwLock.
     // This is a hack: raw_packer and indexer are only used in the add_raw() method.
     // TODO: Refactor as actor, like the other add() methods
-    raw_packer: Arc<RwLock<RawPacker<BE>>>,
+    raw_packer: SharedPacker<BE>,
     /// The shared indexer containing the backend.
     indexer: SharedIndexer<BE>,
     /// The sender to send blobs to the raw packer.
@@ -225,8 +229,8 @@ impl<BE: DecryptWriteBackend> Packer<BE> {
                     .into_iter()
                     .readahead_scoped(scope)
                     // early check if id is already contained
-                    .filter(|(_, id, _)| !indexer.read().unwrap().has(id))
-                    .filter(|(_, id, _)| !raw_packer.read().unwrap().has(id))
+                    .filter(|(_, id, _)| !indexer.read().has(id))
+                    .filter(|(_, id, _)| !raw_packer.read().has(id))
                     .readahead_scoped(scope)
                     .parallel_map_scoped(
                         scope,
@@ -245,22 +249,15 @@ impl<BE: DecryptWriteBackend> Packer<BE> {
                     // check again if id is already contained
                     // TODO: We may still save duplicate blobs - the indexer is only updated when the packfile write has completed
                     .filter(|res| {
-                        res.as_ref().map_or_else(
-                            |_| true,
-                            |(_, id, _, _, _)| !indexer.read().unwrap().has(id),
-                        )
+                            .map_or_else(|_| true, |(_, id, _, _, _)| !indexer.read().has(id))
                     })
                     .try_for_each(|item: RusticResult<_>| {
                         let (data, id, data_len, ul, size_limit) = item?;
                         raw_packer
                             .write()
-                            .unwrap()
                             .add_raw(&data, &id, data_len, ul, size_limit)
                     })
-                    .and_then(|()| raw_packer.write().unwrap().finalize());
-                _ = finish_tx.send(status);
-            })
-            .unwrap();
+                    .and_then(|()| raw_packer.write().finalize());
         });
 
         Ok(packer)
@@ -326,16 +323,12 @@ impl<BE: DecryptWriteBackend> Packer<BE> {
         size_limit: Option<u32>,
     ) -> RusticResult<()> {
         // only add if this blob is not present
-        if self.indexer.read().unwrap().has(id) {
+        if self.indexer.read().has(id) {
             Ok(())
         } else {
-            self.raw_packer.write().unwrap().add_raw(
-                data,
-                id,
-                data_len,
-                uncompressed_length,
-                size_limit,
-            )
+            self.raw_packer
+                .write()
+                .add_raw(data, id, data_len, uncompressed_length, size_limit)
         }
     }
 
@@ -347,8 +340,15 @@ impl<BE: DecryptWriteBackend> Packer<BE> {
     pub fn finalize(self) -> RusticResult<PackerStats> {
         // cancel channel
         drop(self.sender);
+
         // wait for items in channel to be processed
-        self.finish.recv().unwrap()
+        self.finish.recv().map_or_else(
+            |_| {
+                error!("sender has been dropped unexpectedly.");
+                Err(MultiprocessingErrorKind::SenderDropped.into())
+            },
+            |stats| stats,
+        )
     }
 }
 
@@ -648,7 +648,7 @@ impl<BE: DecryptWriteBackend> FileWriterHandle<BE> {
     }
 
     fn index(&self, index: IndexPack) -> RusticResult<()> {
-        self.indexer.write().unwrap().add(index)?;
+        self.indexer.write().add(index)?;
         Ok(())
     }
 }

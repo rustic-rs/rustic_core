@@ -1,8 +1,10 @@
 use std::{
     collections::BTreeSet,
-    sync::{Arc, RwLock},
+    sync::Arc,
     time::{Duration, SystemTime},
 };
+
+use parking_lot::RwLock;
 
 use log::warn;
 
