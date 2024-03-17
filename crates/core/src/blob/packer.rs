@@ -99,10 +99,18 @@ impl PackSizer {
     // `current_size` is `u64`, the maximum value is `2^64-1`.
     // `isqrt(2^64-1) = 2^32-1` which fits into a `u32`. (@aawsome)
     #[allow(clippy::cast_possible_truncation)]
-    pub fn pack_size(&self) -> u32 {
-        (self.current_size.integer_sqrt() as u32 * self.grow_factor + self.default_size)
-            .min(self.size_limit)
-            .min(constants::MAX_SIZE)
+    pub fn pack_size(&self) -> RusticResult<u32> {
+        Ok(calculate_pack_size(
+            u32::try_from(self.current_size).map_err(|err| {
+                PackerErrorKind::IntConversionFailedInPackSizeCalculation {
+                    value: self.current_size,
+                    comment: err.to_string(),
+                }
+            })?,
+            self.grow_factor,
+            self.default_size,
+            self.size_limit,
+        ))
     }
 
     /// Evaluates whether the given size is not too small or too large
@@ -909,6 +917,17 @@ impl<BE: DecryptFullBackend> Repacker<BE> {
 /// # Returns
 ///
 /// The pack size.
+#[must_use]
+#[inline]
+pub fn calculate_pack_size(
+    current_size: u32,
+    grow_factor: u32,
+    default_size: u32,
+    size_limit: u32,
+) -> u32 {
+    current_size.integer_sqrt() * grow_factor
+        + default_size.min(size_limit).min(constants::MAX_SIZE)
+}
 
 #[cfg(test)]
 mod tests {
