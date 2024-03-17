@@ -44,14 +44,14 @@ pub struct LocalDestination {
 #[cfg(not(windows))]
 #[cached]
 fn uid_from_name(name: String) -> Option<Uid> {
-    User::from_name(&name).unwrap().map(|u| u.uid)
+    User::from_name(&name).ok()?.map(|u| u.uid)
 }
 
 // Helper function to cache mapping group name -> gid
 #[cfg(not(windows))]
 #[cached]
 fn gid_from_name(name: String) -> Option<Gid> {
-    Group::from_name(&name).unwrap().map(|g| g.gid)
+    Group::from_name(&name).ok()?.map(|g| g.gid)
 }
 
 impl LocalDestination {
