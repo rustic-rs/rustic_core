@@ -123,6 +123,8 @@ impl PackSizer {
     ///
     /// `True` if the given size is not too small _and_ too large,
     /// `False` otherwise
+    pub fn size_ok(&self, size: u32) -> RusticResult<bool> {
+        Ok(!self.is_too_small(size)? && !self.is_too_large(size)?)
     }
 
     /// Evaluates whether the given size is too small
@@ -130,12 +132,20 @@ impl PackSizer {
     /// # Arguments
     ///
     /// * `size` - The size to check
-    #[must_use]
-    pub fn is_too_small(&self, size: u32) -> bool {
-        let target_size = self.pack_size();
+    pub fn is_too_small(&self, size: u32) -> RusticResult<bool> {
+        let target_size = self.pack_size()?;
         // Note: we cast to u64 so that no overflow can occur in the multiplications
-        u64::from(size) * 100
-            < u64::from(target_size) * u64::from(self.min_packsize_tolerate_percent)
+        Ok(u64::from(size).checked_mul(100).ok_or(
+            PackerErrorKind::IntConversionFailedInPackSizeCalculation {
+                value: u64::from(size),
+                comment: "overflow".into(),
+            },
+        )? < u64::from(target_size)
+            .checked_mul(u64::from(self.min_packsize_tolerate_percent))
+            .ok_or(PackerErrorKind::IntConversionFailedInPackSizeCalculation {
+                value: u64::from(target_size),
+                comment: "overflow".into(),
+            })?)
     }
 
     /// Evaluates whether the given size is too large
@@ -143,12 +153,20 @@ impl PackSizer {
     /// # Arguments
     ///
     /// * `size` - The size to check
-    #[must_use]
-    pub fn is_too_large(&self, size: u32) -> bool {
-        let target_size = self.pack_size();
+    pub fn is_too_large(&self, size: u32) -> RusticResult<bool> {
+        let target_size = self.pack_size()?;
         // Note: we cast to u64 so that no overflow can occur in the multiplications
-        u64::from(size) * 100
-            > u64::from(target_size) * u64::from(self.max_packsize_tolerate_percent)
+        Ok(u64::from(size).checked_mul(100).ok_or(
+            PackerErrorKind::IntConversionFailedInPackSizeCalculation {
+                value: u64::from(size),
+                comment: "overflow".into(),
+            },
+        )? > u64::from(target_size)
+            .checked_mul(u64::from(self.max_packsize_tolerate_percent))
+            .ok_or(PackerErrorKind::IntConversionFailedInPackSizeCalculation {
+                value: u64::from(target_size),
+                comment: "overflow".into(),
+            })?)
     }
 
     /// Adds the given size to the current size.
@@ -156,12 +174,20 @@ impl PackSizer {
     /// # Arguments
     ///
     /// * `added` - The size to add
-    ///
-    /// # Panics
-    ///
-    /// If the size is too large
-    fn add_size(&mut self, added: u32) {
-        self.current_size += u64::from(added);
+    fn add_size(&mut self, added: u32) -> RusticResult<()> {
+        if added > self.size_limit {
+            return Err(PackerErrorKind::SizeLimitExceeded(added).into());
+        }
+        if let Some(value) = self.current_size.checked_add(u64::from(added)) {
+            self.current_size = value;
+        } else {
+            return Err(PackerErrorKind::AddingSizeToCurrentSizeFailed {
+                current_size: self.current_size,
+                to_be_added: added,
+            }
+            .into());
+        }
+        Ok(())
     }
 }
 
