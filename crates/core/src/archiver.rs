@@ -136,7 +136,7 @@ impl<'a, BE: DecryptFullBackend, I: ReadGlobalIndex> Archiver<'a, BE, I> {
         <R as ReadSource>::Open: Send,
         <R as ReadSource>::Iter: Send,
     {
-        std::thread::scope(|s| -> RusticResult<_> {
+        std::thread::scope(|s| -> RusticResult<()> {
             // determine backup size in parallel to running backup
             let src_size_handle = s.spawn(|| {
                 if !no_scan && !p.is_hidden() {
@@ -156,30 +156,31 @@ impl<'a, BE: DecryptFullBackend, I: ReadGlobalIndex> Archiver<'a, BE, I> {
                 }
                 Ok(ReadSourceEntry { path, node, open }) => {
                     let snapshot_path = if let Some(as_path) = as_path {
-                        as_path
-                            .clone()
-                            .join(path.strip_prefix(backup_path).unwrap())
+                        as_path.clone().join(path.strip_prefix(backup_path).ok()?)
                     } else {
                         path
                     };
                     Some(if node.is_dir() {
                         (snapshot_path, node, open)
                     } else {
-                        (
-                            snapshot_path
-                                .parent()
-                                .expect("file path should have a parent!")
-                                .to_path_buf(),
-                            node,
-                            open,
-                        )
+                        let Some(parent) = snapshot_path.parent() else {
+                            warn!(
+                                "ignoring file {}: no parent found!",
+                                snapshot_path.display()
+                            );
+
+                            return None;
+                        };
+
+                        (parent.to_path_buf(), node, open)
                     })
                 }
             });
+
             // handle beginning and ending of trees
             let iter = TreeIterator::new(iter);
 
-            scope(|scope| -> RusticResult<_> {
+            let scoped_work = scope(|scope| -> RusticResult<()> {
                 // use parent snapshot
                 iter.filter_map(
                     |item| match self.parent.process(&self.be, self.index, item) {
@@ -201,10 +202,26 @@ impl<'a, BE: DecryptFullBackend, I: ReadGlobalIndex> Archiver<'a, BE, I> {
                     }
                 })
                 .try_for_each(|item| self.tree_archiver.add(item))
-            })
-            .unwrap()?;
-            src_size_handle.join().unwrap();
-            Ok(())
+            });
+            if let Err(err) = scoped_work {
+                error!("thread panicked: {err:?}");
+                return Err(MultiprocessingErrorKind::JoinError {
+                    location: format!("archiver::archive, {}", line!()),
+                }
+                .into());
+            } else if let Ok(Err(err)) = scoped_work {
+                return Err(err);
+            };
+            if let Err(err) = src_size_handle.join() {
+                error!("error joining src_size_handle: {err:?}");
+
+                Err(MultiprocessingErrorKind::JoinError {
+                    location: format!("archiver::archive::src_size_handle, {}", line!()),
+                }
+                .into())
+            } else {
+                Ok(())
+            }
         })?;
 
         let stats = self.file_archiver.finalize()?;
