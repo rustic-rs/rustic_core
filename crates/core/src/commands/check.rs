@@ -119,18 +119,21 @@ impl CheckOptions {
             let p = pb.progress_bytes("reading pack data...");
             p.set_length(total_pack_size);
 
+            // REVIEW: Behaviour could have changed here, check!
             index_be
-                .into_index()
+                .into_index()?
                 .into_iter()
                 .par_bridge()
-                .for_each(|pack| {
+                .map(|pack| -> RusticResult<()> {
                     let id = pack.id;
-                    let data = be.read_full(FileType::Pack, &id).unwrap();
-                    match check_pack(be, pack, data, &p) {
-                        Ok(()) => {}
-                        Err(err) => error!("Error reading pack {id} : {err}",),
-                    }
-                });
+                    let data = be
+                        .read_full(FileType::Pack, &id)
+                        .map_err(RusticErrorKind::Backend)?;
+
+                    check_pack(be, pack, data, &p)
+                })
+                .collect::<RusticResult<()>>()?;
+
             p.finish();
         }
         Ok(())
@@ -389,38 +392,55 @@ fn check_snapshots(
 
     let p = pb.progress_counter("checking trees...");
     let mut tree_streamer = TreeStreamerOnce::new(be, index, snap_trees, p)?;
+    let mut errors = vec![];
     while let Some(item) = tree_streamer.next().transpose()? {
         let (path, tree) = item;
         for node in tree.nodes {
             match node.node_type {
-                NodeType::File => node.content.as_ref().map_or_else(
-                    || {
-                        error!("file {:?} doesn't have a content", path.join(node.name()));
-                    },
-                    |content| {
-                        for (i, id) in content.iter().enumerate() {
-                            if id.is_null() {
-                                error!("file {:?} blob {} has null ID", path.join(node.name()), i);
-                            }
-
-                            if !index.has_data(id) {
-                                error!(
-                                    "file {:?} blob {} is missing in index",
-                                    path.join(node.name()),
-                                    id
-                                );
-                            }
+                NodeType::File => {
+                    let Some(content) = node.content.as_ref() else {
+                        error!("file {:?} doesn't have content", path.join(node.name()));
+                        errors.push(CheckErrorKind::MissingContent {
+                            path: path.join(node.name()),
+                        });
+                        continue;
+                    };
+                    for (i, id) in content.iter().enumerate() {
+                        if id.is_null() {
+                            error!("file {:?} blob {} has null ID", path.join(node.name()), i);
+                            errors.push(CheckErrorKind::BlobHasNullId {
+                                path: path.join(node.name()),
+                                index: i,
+                            });
                         }
-                    },
-                ),
 
+                        if !index.has_data(id) {
+                            error!(
+                                "file {:?} blob {} is missing in index",
+                                path.join(node.name()),
+                                id
+                            );
+                            errors.push(CheckErrorKind::MissingBlob {
+                                path: path.join(node.name()),
+                                id: *id,
+                                index: i,
+                            });
+                        }
+                    }
+                }
                 NodeType::Dir => {
                     match node.subtree {
                         None => {
                             error!("dir {:?} subtree does not exist", path.join(node.name()));
+                            errors.push(CheckErrorKind::MissingSubtree {
+                                path: path.join(node.name()),
+                            });
                         }
                         Some(tree) if tree.is_null() => {
                             error!("dir {:?} subtree has null ID", path.join(node.name()));
+                            errors.push(CheckErrorKind::SubtreeHasNullId {
+                                path: path.join(node.name()),
+                            });
                         }
                         _ => {} // subtree is ok
                     }
@@ -429,6 +449,9 @@ fn check_snapshots(
                 _ => {} // nothing to check
             }
         }
+    }
+    if !errors.is_empty() {
+        return Err(CheckErrorKind::ErrorCollection(errors).into());
     }
 
     Ok(())
@@ -501,7 +524,7 @@ fn check_pack(
 
         // TODO: this is identical to backend/decrypt.rs; unify these two parts!
         if let Some(length) = blob.uncompressed_length {
-            blob_data = decode_all(&*blob_data).unwrap();
+            blob_data = decode_all(&*blob_data)?;
             if blob_data.len() != length.get() as usize {
                 error!("pack {id}, blob {blob_id}: Actual uncompressed length does not fit saved uncompressed length");
                 return Ok(());
