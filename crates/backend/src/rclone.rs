@@ -7,7 +7,7 @@ use std::{
 
 use anyhow::Result;
 use bytes::Bytes;
-use log::{debug, info};
+use log::{debug, info, warn};
 use rand::{
     distributions::{Alphanumeric, DistString},
     thread_rng,
@@ -30,21 +30,33 @@ pub(super) mod constants {
 pub struct RcloneBackend {
     /// The REST backend.
     rest: RestBackend,
+
     /// The url of the backend.
     url: String,
+
     /// The child data contains the child process and is used to kill the child process when the backend is dropped.
     child: Child,
+
     /// The [`JoinHandle`] of the thread printing rclone's output
-    handle: Option<JoinHandle<()>>,
+    handle: Option<JoinHandle<Result<()>>>,
 }
 
 impl Drop for RcloneBackend {
     /// Kill the child process.
     fn drop(&mut self) {
         debug!("killing rclone.");
-        self.child.kill().unwrap();
-        // TODO: Handle error and log it
-        _ = self.handle.take().map(JoinHandle::join);
+        if let Err(err) = self.child.kill() {
+            warn!("failed to kill rclone: {err}");
+        };
+        match self.handle.take().map(JoinHandle::join) {
+            Some(Err(err)) => {
+                warn!("rclone panicked: {err:?}");
+            }
+            Some(Ok(Err(err))) => {
+                warn!("rclone failed: {err}");
+            }
+            _ => (),
+        };
     }
 }
 
@@ -213,21 +225,27 @@ impl RcloneBackend {
         debug!("using REST backend with url {}.", url.as_ref());
         let rest = RestBackend::new(rest_url, options)?;
 
-        let handle = Some(std::thread::spawn(move || loop {
-            let mut line = String::new();
-            if stderr.read_line(&mut line).unwrap() == 0 {
-                break;
+        let handle = std::thread::spawn(move || -> Result<()> {
+            loop {
+                let mut line = String::new();
+                let line_length = stderr
+                    .read_line(&mut line)
+                    .map_err(RcloneErrorKind::FromIoError)?;
+                if line_length == 0 {
+                    break;
+                }
+                if !line.is_empty() {
+                    info!("rclone output: {line}");
+                }
             }
-            if !line.is_empty() {
-                info!("rclone output: {line}");
-            }
-        }));
+            Ok(())
+        });
 
         Ok(Self {
             child,
             url: String::from(url.as_ref()),
             rest,
-            handle,
+            handle: Some(handle),
         })
     }
 }
