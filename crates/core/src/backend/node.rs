@@ -80,13 +80,13 @@ pub enum NodeType {
         ///
         /// This contains the target only if it is a valid unicode target.
         /// Don't access this field directly, use the [`NodeType::to_link()`] method instead!
-        linktarget: String,
+        link_target: String,
         #[serde_as(as = "Option<Base64>")]
         #[serde(default, skip_serializing_if = "Option::is_none")]
         /// The raw link target saved as bytes.
         ///
         /// This is only filled (and mandatory) if the link target is non-unicode.
-        linktarget_raw: Option<Vec<u8>>,
+        link_target_raw: Option<Vec<u8>>,
     },
     /// Node is a block device file
     Dev {
@@ -108,10 +108,10 @@ pub enum NodeType {
 
 impl NodeType {
     #[cfg(not(windows))]
-    /// Get a [`NodeType`] from a linktarget path
+    /// Get a [`NodeType`] from a link target path
     #[must_use]
     pub fn from_link(target: &Path) -> Self {
-        let (linktarget, linktarget_raw) = target.to_str().map_or_else(
+        let (link_target, link_target_raw) = target.to_str().map_or_else(
             || {
                 (
                     target.as_os_str().to_string_lossy().to_string(),
@@ -121,20 +121,20 @@ impl NodeType {
             |t| (t.to_string(), None),
         );
         Self::Symlink {
-            linktarget,
-            linktarget_raw,
+            link_target,
+            link_target_raw,
         }
     }
 
     #[cfg(windows)]
     // Windows doesn't support non-unicode link targets, so we assume unicode here.
     // TODO: Test and check this!
-    /// Get a [`NodeType`] from a linktarget path
+    /// Get a [`NodeType`] from a link target path
     #[must_use]
     pub fn from_link(target: &Path) -> Self {
         Self::Symlink {
-            linktarget: target.as_os_str().to_string_lossy().to_string(),
-            linktarget_raw: None,
+            link_target: target.as_os_str().to_string_lossy().to_string(),
+            link_target_raw: None,
         }
     }
 
