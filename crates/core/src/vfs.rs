@@ -364,8 +364,13 @@ impl Vfs {
         let result = match self.tree.get_path(path)? {
             VfsPath::RusticPath(tree_id, path) => {
                 let node = repo.node_from_path(*tree_id, &path)?;
-                if node.is_dir() {
-                    let tree = repo.get_tree(&node.subtree.unwrap())?;
+                if node.is_dir() && node.subtree.is_some() {
+                    let Some(id) = node.subtree else {
+                        return Err(
+                            VfsErrorKind::NoDirectoryEntriesForSymlinkFound(path.into()).into()
+                        );
+                    };
+                    let tree = repo.get_tree(&id)?;
                     tree.nodes
                 } else {
                     Vec::new()
@@ -373,14 +378,14 @@ impl Vfs {
             }
             VfsPath::VirtualTree(virtual_tree) => virtual_tree
                 .iter()
-                .map(|(name, tree)| {
+                .map(|(name, tree)| -> RusticResult<_> {
                     let node_type = match tree {
                         VfsTree::Link(target) => NodeType::from_link(Path::new(target)),
                         _ => NodeType::Dir,
                     };
                     Node::from_type_and_metadata(name, node_type, Metadata::default())
                 })
-                .collect(),
+                .collect::<RusticResult<Vec<Node>>>()?,
             VfsPath::Link(str) => {
                 return Err(VfsErrorKind::NoDirectoryEntriesForSymlinkFound(str.clone()).into());
             }
