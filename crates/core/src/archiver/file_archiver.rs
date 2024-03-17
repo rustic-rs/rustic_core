@@ -168,10 +168,6 @@ impl<'a, BE: DecryptWriteBackend, I: ReadGlobalIndex> FileArchiver<'a, BE, I> {
     /// # Returns
     ///
     /// The statistics of the archiver.
-    ///
-    /// # Panics
-    ///
-    /// If the channel could not be dropped
     pub(crate) fn finalize(self) -> RusticResult<PackerStats> {
         self.data_packer.finalize()
     }

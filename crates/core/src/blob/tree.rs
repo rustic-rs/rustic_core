@@ -209,7 +209,7 @@ pub struct TreeStreamerOptions {
     #[cfg_attr(feature = "clap", clap(long, help_heading = "Exclude options"))]
     pub glob: Vec<String>,
 
-    /// Same as --glob pattern but ignores the casing of filenames
+    /// Same as --glob pattern but ignores the casing of file names
     #[cfg_attr(
         feature = "clap",
         clap(long, value_name = "GLOB", help_heading = "Exclude options")
@@ -223,7 +223,7 @@ pub struct TreeStreamerOptions {
     )]
     pub glob_file: Vec<String>,
 
-    /// Same as --glob-file ignores the casing of filenames in patterns
+    /// Same as --glob-file ignores the casing of file names in patterns
     #[cfg_attr(
         feature = "clap",
         clap(long, value_name = "FILE", help_heading = "Exclude options")
@@ -245,16 +245,22 @@ where
 {
     /// The open iterators for subtrees
     open_iterators: Vec<std::vec::IntoIter<Node>>,
+
     /// Inner iterator for the current subtree nodes
     inner: std::vec::IntoIter<Node>,
+
     /// The current path
     path: PathBuf,
+
     /// The backend to read from
     be: BE,
+
     /// index
     index: &'a I,
+
     /// The glob overrides
     overrides: Option<Override>,
+
     /// Whether to stream recursively
     recursive: bool,
 }
@@ -323,6 +329,7 @@ where
             recursive,
         })
     }
+
     /// Creates a new `NodeStreamer` with glob patterns.
     ///
     /// # Arguments
@@ -446,14 +453,19 @@ where
 pub struct TreeStreamerOnce<P> {
     /// The visited tree IDs
     visited: BTreeSet<Id>,
+
     /// The queue to send tree IDs to
     queue_in: Option<Sender<(PathBuf, Id, usize)>>,
+
     /// The queue to receive trees from
     queue_out: Receiver<RusticResult<(PathBuf, Tree, usize)>>,
+
     /// The progress indicator
     p: P,
+
     /// The number of trees that are not yet finished
     counter: Vec<usize>,
+
     /// The number of finished trees
     finished_ids: usize,
 }
@@ -536,9 +548,11 @@ impl<P: Progress> TreeStreamerOnce<P> {
     ///
     /// # Errors
     ///
-    /// * [`TreeErrorKind::SendingCrossbeamMessageFailed`] - If sending the message fails.
+    /// * [`MultiprocessingErrorKind::ReceiverDropped`] - If sending the message fails.
+    /// * [`MultiprocessingErrorKind::QueueInNotAvailable`] - If the queue is not available.
     ///
-    /// [`TreeErrorKind::SendingCrossbeamMessageFailed`]: crate::error::TreeErrorKind::SendingCrossbeamMessageFailed
+    /// [`MultiprocessingErrorKind::ReceiverDropped`]: crate::error::MultiprocessingErrorKind::ReceiverDropped
+    /// [`MultiprocessingErrorKind::QueueInNotAvailable`]: crate::error::MultiprocessingErrorKind::QueueInNotAvailable
     fn add_pending(&mut self, path: PathBuf, id: Id, count: usize) -> RusticResult<bool> {
         if self.visited.insert(id) {
             self.queue_in

@@ -87,7 +87,7 @@ impl OpenDALBackend {
     /// # Returns
     ///
     /// The path for the given file type and id.
-    // Let's keep this for now, as it's being used in the trait implementations.
+    // INFO!: Let's keep this for now, as it's being used in the trait implementations.
     #[allow(clippy::unused_self)]
     fn path(&self, tpe: FileType, id: &Id) -> String {
         let hex_id = id.to_hex();
@@ -232,6 +232,14 @@ impl WriteBackend for OpenDALBackend {
     /// * `id` - The id of the file.
     /// * `cacheable` - Whether the file is cacheable.
     /// * `buf` - The bytes to write.
+    ///
+    /// # Errors
+    ///
+    /// If the file cannot be written, an error is returned.
+    ///
+    /// # Returns
+    ///
+    /// If the file is written successfully, `Ok(())` is returned.
     fn write_bytes(&self, tpe: FileType, id: &Id, _cacheable: bool, buf: Bytes) -> Result<()> {
         trace!("writing tpe: {:?}, id: {}", &tpe, &id);
         let file_name = self.path(tpe, id);
@@ -246,6 +254,14 @@ impl WriteBackend for OpenDALBackend {
     /// * `tpe` - The type of the file.
     /// * `id` - The id of the file.
     /// * `cacheable` - Whether the file is cacheable.
+    ///
+    /// # Errors
+    ///
+    /// If the file does not exist, an error is returned.
+    ///
+    /// # Returns
+    ///
+    /// If the file is removed successfully, `Ok(())` is returned.
     fn remove(&self, tpe: FileType, id: &Id, _cacheable: bool) -> Result<()> {
         trace!("removing tpe: {:?}, id: {}", &tpe, &id);
         let file_name = self.path(tpe, id);

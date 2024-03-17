@@ -212,10 +212,6 @@ impl<'a, BE: DecryptWriteBackend, I: ReadGlobalIndex> TreeArchiver<'a, BE, I> {
     ///
     /// A tuple containing the id of the tree and the summary of the snapshot.
     ///
-    /// # Panics
-    ///
-    /// If the channel of the tree packer is not dropped.
-    ///
     /// [`PackerErrorKind::SendingCrossbeamMessageFailed`]: crate::error::PackerErrorKind::SendingCrossbeamMessageFailed
     pub(crate) fn finalize(
         mut self,

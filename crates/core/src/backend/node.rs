@@ -33,11 +33,11 @@ use crate::id::Id;
 #[derive(Default, Serialize, Deserialize, Clone, Debug, PartialEq, Eq, Constructor)]
 /// A node within the tree hierarchy
 pub struct Node {
-    /// Name of the node: filename or dirname.
+    /// Name of the node: file name or dirname.
     ///
     /// # Warning
     ///
-    /// This contains an escaped variant of the name in order to handle non-unicode filenames.
+    /// This contains an escaped variant of the name in order to handle non-unicode file names.
     /// Don't access this field directly, use the [`Node::name()`] method instead!
     pub name: String,
     #[serde(flatten)]
@@ -140,9 +140,13 @@ impl NodeType {
     // Must be only called on NodeType::Symlink!
     /// Get the link path from a `NodeType::Symlink`.
     ///
-    /// # Panics
+    /// # Errors
     ///
     /// If called on a non-symlink node
+    ///
+    /// # Returns
+    ///
+    /// The link target as `Path`
     #[cfg(not(windows))]
     #[must_use]
     pub fn to_link(&self) -> &Path {
@@ -160,14 +164,14 @@ impl NodeType {
 
     /// Convert a `NodeType::Symlink` to a `Path`.
     ///
-    /// # Warning
+    /// # Errors
     ///
-    /// Must be only called on `NodeType::Symlink`!
+    /// If called on a non-symlink node
+    /// If the link target is not valid unicode
     ///
-    /// # Panics
+    /// # Returns
     ///
-    /// * If called on a non-symlink node
-    /// * If the link target is not valid unicode
+    /// The link target as `Path`
     // TODO: Implement non-unicode link targets correctly for windows
     #[cfg(windows)]
     #[must_use]
@@ -272,6 +276,10 @@ impl Node {
     /// * `node_type` - Type of the node
     /// * `meta` - Metadata of the node
     ///
+    /// # Errors
+    ///
+    /// If the name contains invalid characters
+    ///
     /// # Returns
     ///
     /// The created [`Node`]
@@ -314,11 +322,15 @@ impl Node {
     }
 
     #[must_use]
-    /// Get the node name as `OsString`, handling name ecaping
+    /// Get the node name as `OsString`, handling name escaping
     ///
     /// # Panics
     ///
-    /// If the name is not valid unicode
+    /// If the name contains invalid characters
+    ///
+    /// # Returns
+    ///
+    /// The name of the node
     pub fn name(&self) -> OsString {
         unescape_file_name(&self.name).expect("unescaping should be infallible")
     }
@@ -340,8 +352,8 @@ pub fn last_modified_node(n1: &Node, n2: &Node) -> Ordering {
 }
 
 // TODO: Should be probably called `_lossy`
-// TODO(Windows): This is not able to handle non-unicode filenames and
-// doesn't treat filenames which need and escape (like `\`, `"`, ...) correctly
+// TODO(Windows): This is not able to handle non-unicode file names and
+// doesn't treat file names which need and escape (like `\`, `"`, ...) correctly
 #[cfg(windows)]
 fn escape_file_name(name: &OsStr) -> RusticResult<String> {
 }

@@ -281,6 +281,14 @@ impl<P: Debug + Send + Sync, S: IndexedFull + Debug + Send + Sync> DavFile for D
         .boxed()
     }
 
+    #[allow(clippy::expect_used)]
+    /// # Panics
+    ///
+    /// This function panics if the seek position is not representable as a `usize`.
+    /// Or if the seek position is greater than the file size.
+    /// Or if the seek position is greater than `usize::MAX`.
+    ///
+    /// In reality, these panics should not happen.
     fn seek(&mut self, pos: SeekFrom) -> FsFuture<'_, u64> {
         async move {
             match pos {

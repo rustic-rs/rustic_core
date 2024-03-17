@@ -83,7 +83,14 @@ impl FileType {
 /// This trait is implemented by all backends that can read data.
 pub trait ReadBackend: Send + Sync + 'static {
     /// Returns the location of the backend.
-    fn location(&self) -> String;
+    ///
+    /// # Errors
+    ///
+    /// If the location could not be determined.
+    ///
+    /// # Returns
+    ///
+    /// The location of the backend.
 
     /// Lists all files with their size of the given type.
     ///

@@ -523,6 +523,10 @@ impl KeepOptions {
     /// * `snapshots` - The list of snapshots to apply the options to
     /// * `now` - The current time
     ///
+    /// # Errors
+    ///
+    /// * If a given snapshot doesn't match the keep options
+    ///
     /// # Returns
     ///
     /// The list of snapshots with the attribute `keep` set to `true` if the snapshot should be kept and

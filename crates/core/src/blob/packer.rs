@@ -110,9 +110,11 @@ impl PackSizer {
     /// # Arguments
     ///
     /// * `size` - The size to check
-    #[must_use]
-    pub fn size_ok(&self, size: u32) -> bool {
-        !self.is_too_small(size) && !self.is_too_large(size)
+    ///
+    /// # Returns
+    ///
+    /// `True` if the given size is not too small _and_ too large,
+    /// `False` otherwise
     }
 
     /// Evaluates whether the given size is too small
@@ -290,7 +292,7 @@ impl<BE: DecryptWriteBackend> Packer<BE> {
     ///
     /// # Errors
     ///
-    /// * [`PackerErrorKind::SendingCrossbeamMessageFailed`] - If sending the message to the raw packer fails.
+    /// * [`ChannelErrorKind::SendingCrossbeamMessageFailedWithBytes`] - If sending the message to the raw packer fails.
     ///
     /// [`PackerErrorKind::SendingCrossbeamMessageFailed`]: crate::error::PackerErrorKind::SendingCrossbeamMessageFailed
     fn add_with_sizelimit(&self, data: Bytes, id: Id, size_limit: Option<u32>) -> RusticResult<()> {
@@ -334,9 +336,13 @@ impl<BE: DecryptWriteBackend> Packer<BE> {
 
     /// Finalizes the packer and does cleanup
     ///
-    /// # Panics
+    /// # Errors
     ///
-    /// If the channel could not be dropped
+    /// [`MultiprocessingErrorKind::SenderDropped`] - If receiving the message from the raw packer fails.
+    ///
+    /// # Returns
+    ///
+    /// The packer stats
     pub fn finalize(self) -> RusticResult<PackerStats> {
         // cancel channel
         drop(self.sender);
@@ -371,12 +377,14 @@ impl PackerStats {
     /// * `summary` - The summary to add to
     /// * `tpe` - The blob type
     ///
-    /// # Panics
+    /// # Errors
     ///
-    /// If the blob type is invalid
-    pub fn apply(self, summary: &mut SnapshotSummary, tpe: BlobType) {
-        summary.data_added += self.data;
-        summary.data_added_packed += self.data_packed;
+    /// If the summary could not be updated
+    /// If the addition of the stats to the summary overflowed
+    ///
+    /// # Returns
+    ///
+    /// The updated summary
         match tpe {
             BlobType::Tree => {
                 summary.tree_blobs += self.blobs;
@@ -636,7 +644,19 @@ pub(crate) struct FileWriterHandle<BE: DecryptWriteBackend> {
 }
 
 impl<BE: DecryptWriteBackend> FileWriterHandle<BE> {
-    // TODO: add documentation
+    /// Processes the given data and writes it to the backend.
+    ///
+    /// # Arguments
+    ///
+    /// * `load` - The data to process.
+    ///
+    /// # Errors
+    ///
+    /// If writing the data to the backend fails.
+    ///
+    /// # Returns
+    ///
+    /// The index pack.
     fn process(&self, load: (Bytes, Id, IndexPack)) -> RusticResult<IndexPack> {
         let (file, id, mut index) = load;
         index.id = id;
@@ -673,6 +693,15 @@ impl Actor {
     /// * `fwh` - The file writer handle.
     /// * `queue_len` - The length of the queue.
     /// * `par` - The number of parallel threads.
+    ///
+    /// # Errors
+    ///
+    /// If sending the message to the actor fails.
+    ///
+    /// # Returns
+    ///
+    /// A new `Actor`.
+    #[allow(clippy::unnecessary_wraps)]
     fn new<BE: DecryptWriteBackend>(
         fwh: FileWriterHandle<BE>,
         queue_len: usize,
@@ -713,7 +742,11 @@ impl Actor {
     ///
     /// # Errors
     ///
-    /// If sending the message to the actor fails.
+    /// [`ChannelErrorKind::SendingCrossbeamMessageFailedForIndexPack`] - If sending the message to the actor fails.
+    ///
+    /// # Returns
+    ///
+    /// Ok if the message was sent successfully
     fn send(&self, load: (Bytes, IndexPack)) -> RusticResult<()> {
         self.sender
             .send(load)
@@ -723,9 +756,13 @@ impl Actor {
 
     /// Finalizes the actor and does cleanup
     ///
-    /// # Panics
+    /// # Errors
     ///
-    /// If the receiver is not present
+    /// [`ChannelErrorKind::ReceivingCrossbeamMessageFailedForActorFinalizing`] - If receiving the message from the actor fails.
+    ///
+    /// # Returns
+    ///
+    /// Ok if the message was received successfully
     fn finalize(self) -> RusticResult<()> {
         // cancel channel
         drop(self.sender);
@@ -848,6 +885,19 @@ impl<BE: DecryptFullBackend> Repacker<BE> {
         self.packer.finalize()
     }
 }
+
+/// Calculates the pack size.
+///
+/// # Arguments
+///
+/// * `current_size` - The current size of the pack file.
+/// * `grow_factor` - The grow factor.
+/// * `default_size` - The default size.
+/// * `size_limit` - The size limit.
+///
+/// # Returns
+///
+/// The pack size.
 
 #[cfg(test)]
 mod tests {

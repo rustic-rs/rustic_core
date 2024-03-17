@@ -131,7 +131,8 @@ impl VfsTree {
     ///
     /// # Errors
     ///
-    // TODO: Document errors
+    /// * [`VfsErrorKind::NameDoesNotExist`] - if the component name doesn't exist
+    ///
     ///
     /// # Returns
     ///
@@ -190,9 +191,9 @@ impl Vfs {
     ///
     /// * `node` - The directory [`Node`] to create the [`Vfs`] from
     ///
-    /// # Panics
+    /// # Returns
     ///
-    /// If the node is not a directory
+    /// The created [`Vfs`] or `None` if the node has no subtree
     #[must_use]
     pub fn from_dir_node(node: &Node) -> Self {
         let tree = VfsTree::RusticTree(node.subtree.unwrap());
@@ -347,6 +348,7 @@ impl Vfs {
     /// # Errors
     ///
     /// * [`VfsErrorKind::NameDoesNotExist`] - if the component name doesn't exist
+    /// * [`VfsErrorKind::NoDirectoryEntriesForSymlinkFound`] - if no directory entries for the symlink are found
     ///
     /// # Returns
     ///
@@ -437,7 +439,10 @@ impl OpenFile {
     ///
     /// # Errors
     ///
-    // TODO: Document errors
+    /// * [`VfsErrorKind::DataBlobNotFound`] - If the data blob is not found
+    /// * [`VfsErrorKind::DataBlobTooLarge`] - If the data blob is too large
+    /// * [`VfsErrorKind::ConversionFromU32ToUsizeFailed`] - If the conversion from `u32` to `usize` failed
+    /// * [`VfsErrorKind::HexError`] - If the conversion from `Id` to `HexId` failed
     ///
     /// # Returns
     ///

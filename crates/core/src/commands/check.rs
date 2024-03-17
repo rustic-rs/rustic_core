@@ -366,6 +366,10 @@ fn check_packs_list(be: &impl ReadBackend, mut packs: HashMap<Id, u32>) -> Rusti
 /// # Errors
 ///
 /// If a snapshot or tree is missing or has a different size
+///
+/// # Returns
+///
+/// Ok if everything is fine
 fn check_snapshots(
     be: &impl DecryptReadBackend,
     index: &impl ReadGlobalIndex,
@@ -439,9 +443,9 @@ fn check_snapshots(
 ///
 /// If the pack is invalid
 ///
-/// # Panics
+/// # Returns
 ///
-/// If zstd decompression fails.
+/// Ok if the pack is valid
 fn check_pack(
     be: &impl DecryptReadBackend,
     index_pack: IndexPack,

@@ -1275,6 +1275,20 @@ impl<P, S: IndexedTree> IndexedTree for Repository<P, S> {
 pub(crate) struct BytesWeighter;
 
 impl quick_cache::Weighter<Id, Bytes> for BytesWeighter {
+    /// Get the weight of a blob
+    ///
+    /// # Arguments
+    ///
+    /// * `key` - The key of the blob
+    /// * `val` - The blob
+    ///
+    /// # Panics
+    ///
+    /// If the weight of the blob is overflowing `u32::MAX`
+    ///
+    /// # Returns
+    ///
+    /// The weight of the blob
     fn weight(&self, _key: &Id, val: &Bytes) -> u32 {
         // Be cautions out about zero weights!
         u32::try_from(val.len().clamp(1, u32::MAX as usize))
