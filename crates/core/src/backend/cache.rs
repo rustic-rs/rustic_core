@@ -432,6 +432,7 @@ impl Cache {
         let filename = self.path(tpe, id);
         let mut file = fs::OpenOptions::new()
             .create(true)
+            .truncate(true)
             .write(true)
             .open(filename)
             .map_err(CacheBackendErrorKind::FromIoError)?;

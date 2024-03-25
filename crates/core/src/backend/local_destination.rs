@@ -470,6 +470,7 @@ impl LocalDestination {
 
         OpenOptions::new()
             .create(true)
+            .truncate(false)
             .write(true)
             .open(filename)
             .map_err(LocalDestinationErrorKind::OpeningFileFailed)?
@@ -661,6 +662,7 @@ impl LocalDestination {
         let filename = self.path(item);
         let mut file = fs::OpenOptions::new()
             .create(true)
+            .truncate(false)
             .write(true)
             .open(filename)
             .map_err(LocalDestinationErrorKind::OpeningFileFailed)?;
