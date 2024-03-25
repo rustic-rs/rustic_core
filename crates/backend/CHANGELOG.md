@@ -2,6 +2,29 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.2.0](https://github.com/rustic-rs/rustic_core/compare/rustic_backend-v0.1.1...rustic_backend-v0.2.0) - 2024-03-25
+
+### Added
+- *(backend)* [**breaking**] remove s3 and sftp wrapper around opendal ([#200](https://github.com/rustic-rs/rustic_core/pull/200))
+- [**breaking**] move clippy lints to cargo manifest and fix upcoming issues all over the workspace ([#176](https://github.com/rustic-rs/rustic_core/pull/176))
+- *(opendal)* Add option connections ([#155](https://github.com/rustic-rs/rustic_core/pull/155))
+
+### Fixed
+- *(deps)* update rust crate reqwest to 0.11.26 ([#196](https://github.com/rustic-rs/rustic_core/pull/196))
+- *(deps)* update rust crate thiserror to 1.0.58 ([#192](https://github.com/rustic-rs/rustic_core/pull/192))
+- *(deps)* update rust crate anyhow to 1.0.81 ([#191](https://github.com/rustic-rs/rustic_core/pull/191))
+- *(rclone)* Use semver for version checking ([#188](https://github.com/rustic-rs/rustic_core/pull/188))
+- *(deps)* update rust crate clap to 4.5.2 ([#183](https://github.com/rustic-rs/rustic_core/pull/183))
+- *(config)* Merge repository options for multiple config sources ([#171](https://github.com/rustic-rs/rustic_core/pull/171))
+- *(backend)* Give useful error message when no repository is given.
+- updated msrv and fix clippy lints ([#160](https://github.com/rustic-rs/rustic_core/pull/160))
+
+### Other
+- fix clippy lints
+- *(deps)* update dependencies ([#180](https://github.com/rustic-rs/rustic_core/pull/180))
+- add rustic_testing to workspace crates
+- reset again after release to workspace dependencies for workspace crates
+
 ## [rustic_backend-v0.1.1] - 2024-02-02
 
 ### Documentation
