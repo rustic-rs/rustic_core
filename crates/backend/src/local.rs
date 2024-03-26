@@ -346,6 +346,7 @@ impl WriteBackend for LocalBackend {
         let filename = self.path(tpe, id);
         let mut file = fs::OpenOptions::new()
             .create(true)
+            .truncate(true)
             .write(true)
             .open(&filename)
             .map_err(LocalBackendErrorKind::OpeningFileFailed)?;
