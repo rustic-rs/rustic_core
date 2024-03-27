@@ -200,10 +200,9 @@ impl BackendChoice for SupportedBackend {
 
 #[cfg(test)]
 mod tests {
-
-    use rstest::rstest;
-
     use super::*;
+    use anyhow::Result;
+    use rstest::rstest;
 
     #[rstest]
     #[case("local", SupportedBackend::Local)]
@@ -213,12 +212,14 @@ mod tests {
     #[case("rest", SupportedBackend::Rest)]
     #[cfg(feature = "opendal")]
     #[case("opendal", SupportedBackend::OpenDAL)]
-    fn test_try_from_is_ok(#[case] input: &str, #[case] expected: SupportedBackend) {
-        assert_eq!(SupportedBackend::try_from(input).unwrap(), expected);
+    fn test_try_from_passes(#[case] input: &str, #[case] expected: SupportedBackend) -> Result<()> {
+        assert_eq!(SupportedBackend::try_from(input)?, expected);
+
+        Ok(())
     }
 
     #[test]
-    fn test_try_from_unknown_is_err() {
+    fn test_try_from_unknown_fails() {
         assert!(SupportedBackend::try_from("unknown").is_err());
     }
 }

@@ -306,14 +306,14 @@ impl GlobalIndex {
     }
 
     /// Convert the `Arc<Index>` to an Index
-    pub fn into_index(self) -> Index {
+    pub fn into_index(self) -> RusticResult<Index> {
         match Arc::try_unwrap(self.index) {
-            Ok(index) => index,
+            Ok(index) => Ok(index),
             Err(arc) => {
                 // Seems index is still in use; this could be due to some threads using it which didn't yet completely shut down.
                 // sleep a bit to let threads using the index shut down, after this index should be available to unwrap
                 sleep(Duration::from_millis(100));
-                Arc::try_unwrap(arc).expect("index still in use")
+                Arc::try_unwrap(arc).map_err(|_| IndexErrorKind::IndexStillInUse.into())
             }
         }
     }

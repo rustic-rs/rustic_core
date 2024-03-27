@@ -94,7 +94,7 @@ impl LocalBackend {
     ///
     /// * `tpe` - The type of the file.
     /// * `id` - The id of the file.
-    /// * `filename` - The path to the file.
+    /// * `file_name` - The path to the file.
     /// * `command` - The command to call.
     ///
     /// # Errors
@@ -115,11 +115,19 @@ impl LocalBackend {
     /// [`LocalBackendErrorKind::FromSplitError`]: LocalBackendErrorKind::FromSplitError
     /// [`LocalBackendErrorKind::CommandExecutionFailed`]: LocalBackendErrorKind::CommandExecutionFailed
     /// [`LocalBackendErrorKind::CommandNotSuccessful`]: LocalBackendErrorKind::CommandNotSuccessful
-    fn call_command(tpe: FileType, id: &Id, filename: &Path, command: &str) -> Result<()> {
+    fn call_command(tpe: FileType, id: &Id, file_name: &Path, command: &str) -> Result<()> {
         let id = id.to_hex();
         let patterns = &["%file", "%type", "%id"];
         let ac = AhoCorasick::new(patterns).map_err(LocalBackendErrorKind::FromAhoCorasick)?;
-        let replace_with = &[filename.to_str().unwrap(), tpe.dirname(), id.as_str()];
+        let replace_with = &[
+            file_name
+                .to_str()
+                .ok_or(LocalBackendErrorKind::PathToStringFailed {
+                    path: file_name.to_owned(),
+                })?,
+            tpe.dirname(),
+            id.as_str(),
+        ];
         let actual_command = ac.replace_all(command, replace_with);
         debug!("calling {actual_command}...");
         let commands = split(&actual_command).map_err(LocalBackendErrorKind::FromSplitError)?;
@@ -141,13 +149,25 @@ impl LocalBackend {
 }
 
 impl ReadBackend for LocalBackend {
-    /// Returns the location of the backend.
+    /// Get the location name of the backend.
     ///
     /// This is `local:<path>`.
-    fn location(&self) -> String {
+    ///
+    /// # Returns
+    ///
+    /// The location of the backend.
+    ///
+    /// # Notes
+    ///
+    /// The path is the path to the backend. In case the path is not a valid UTF-8 string,
+    /// the path is converted to a string lossy.
+    fn location(&self) -> Result<String> {
         let mut location = "local:".to_string();
-        location.push_str(&self.path.to_string_lossy());
-        location
+        let string_lossy = &self.path.to_string_lossy().to_string();
+        let string_lossy = string_lossy.as_str();
+        let path = self.path.to_str().map_or_else(|| string_lossy, |path| path);
+        location.push_str(path);
+        Ok(location)
     }
 
     /// Lists all files of the given type.
@@ -173,7 +193,7 @@ impl ReadBackend for LocalBackend {
             .into_iter()
             .filter_map(walkdir::Result::ok)
             .filter(|e| e.file_type().is_file())
-            .map(|e| Id::from_hex(&e.file_name().to_string_lossy()))
+            .map(|entry| Id::from_hex(&entry.file_name().to_string_lossy()))
             .filter_map(std::result::Result::ok);
         Ok(walker.collect())
     }
@@ -215,11 +235,12 @@ impl ReadBackend for LocalBackend {
         let walker = WalkDir::new(path)
             .into_iter()
             .filter_map(walkdir::Result::ok)
-            .filter(|e| e.file_type().is_file())
-            .map(|e| -> Result<_> {
+            .filter(|entry| entry.file_type().is_file())
+            .map(|entry| -> Result<_> {
                 Ok((
-                    Id::from_hex(&e.file_name().to_string_lossy())?,
-                    e.metadata()
+                    Id::from_hex(&entry.file_name().to_string_lossy())?,
+                    entry
+                        .metadata()
                         .map_err(LocalBackendErrorKind::QueryingWalkDirMetadataFailed)?
                         .len()
                         .try_into()
@@ -343,12 +364,12 @@ impl WriteBackend for LocalBackend {
     /// [`LocalBackendErrorKind::SyncingOfOsMetadataFailed`]: LocalBackendErrorKind::SyncingOfOsMetadataFailed
     fn write_bytes(&self, tpe: FileType, id: &Id, _cacheable: bool, buf: Bytes) -> Result<()> {
         trace!("writing tpe: {:?}, id: {}", &tpe, &id);
-        let filename = self.path(tpe, id);
+        let file_name = self.path(tpe, id);
         let mut file = fs::OpenOptions::new()
             .create(true)
             .truncate(true)
             .write(true)
-            .open(&filename)
+            .open(&file_name)
             .map_err(LocalBackendErrorKind::OpeningFileFailed)?;
         file.set_len(
             buf.len()
@@ -361,7 +382,7 @@ impl WriteBackend for LocalBackend {
         file.sync_all()
             .map_err(LocalBackendErrorKind::SyncingOfOsMetadataFailed)?;
         if let Some(command) = &self.post_create_command {
-            if let Err(err) = Self::call_command(tpe, id, &filename, command) {
+            if let Err(err) = Self::call_command(tpe, id, &file_name, command) {
                 warn!("post-create: {err}");
             }
         }
@@ -383,10 +404,10 @@ impl WriteBackend for LocalBackend {
     /// [`LocalBackendErrorKind::FileRemovalFailed`]: LocalBackendErrorKind::FileRemovalFailed
     fn remove(&self, tpe: FileType, id: &Id, _cacheable: bool) -> Result<()> {
         trace!("removing tpe: {:?}, id: {}", &tpe, &id);
-        let filename = self.path(tpe, id);
-        fs::remove_file(&filename).map_err(LocalBackendErrorKind::FileRemovalFailed)?;
+        let file_name = self.path(tpe, id);
+        fs::remove_file(&file_name).map_err(LocalBackendErrorKind::FileRemovalFailed)?;
         if let Some(command) = &self.post_delete_command {
-            if let Err(err) = Self::call_command(tpe, id, &filename, command) {
+            if let Err(err) = Self::call_command(tpe, id, &file_name, command) {
                 warn!("post-delete: {err}");
             }
         }

@@ -7,7 +7,7 @@ use serde_derive::{Deserialize, Serialize};
 use serde_with::{serde_as, DisplayFromStr};
 
 use crate::{
-    error::RusticResult,
+    error::{CommandErrorKind, RusticResult},
     id::Id,
     progress::ProgressBars,
     repofile::{
@@ -86,11 +86,13 @@ pub(crate) fn get_forget_snapshots<P: ProgressBars, S: Open>(
     let groups = repo
         .get_snapshot_group(&[], group_by, filter)?
         .into_iter()
-        .map(|(group, snapshots)| ForgetGroup {
-            group,
-            snapshots: keep.apply(snapshots, now),
+        .map(|(group, snapshots)| -> RusticResult<ForgetGroup> {
+            Ok(ForgetGroup {
+                group,
+                snapshots: keep.apply(snapshots, now)?,
+            })
         })
-        .collect();
+        .collect::<RusticResult<Vec<ForgetGroup>>>()?;
 
     Ok(ForgetGroups(groups))
 }
@@ -273,11 +275,13 @@ pub struct KeepOptions {
 /// # Example
 ///
 /// ```
-/// use rustic_core::commands::forget::overwrite_zero_duration;
+/// use rustic_core::overwrite_zero_duration;
 /// use humantime::Duration;
 ///
 /// let mut left = "0s".parse::<humantime::Duration>().unwrap().into();
 /// let right = "60s".parse::<humantime::Duration>().unwrap().into();
+///
+///
 /// overwrite_zero_duration(&mut left, right);
 /// assert_eq!(left, "60s".parse::<humantime::Duration>().unwrap().into());
 /// ```
@@ -416,13 +420,14 @@ impl KeepOptions {
     /// # Returns
     ///
     /// The list of reasons why the snapshot should be kept
+    #[allow(clippy::too_many_lines)]
     fn matches(
         &mut self,
         sn: &SnapshotFile,
         last: Option<&SnapshotFile>,
         has_next: bool,
         latest_time: DateTime<Local>,
-    ) -> Vec<&str> {
+    ) -> RusticResult<Vec<&str>> {
         let mut reason = Vec::new();
 
         let snapshot_id_hex = sn.id.to_hex();
@@ -498,19 +503,35 @@ impl KeepOptions {
         ];
 
         for (check_fun, counter, reason1, within, reason2) in keep_checks {
-            if !has_next || last.is_none() || !check_fun(sn, last.unwrap()) {
+            if !has_next
+                || last.is_none()
+                || !check_fun(
+                    sn,
+                    last.ok_or(CommandErrorKind::NoLastSnapshot {
+                        snapshot_id: sn.id.to_hex().as_str().to_string(),
+                    })?,
+                )
+            {
                 if *counter != 0 {
                     reason.push(reason1);
                     if *counter > 0 {
                         *counter -= 1;
                     }
                 }
-                if sn.time + Duration::from_std(*within).unwrap() > latest_time {
+                if sn.time
+                    + Duration::from_std(*within).map_err(|src| {
+                        CommandErrorKind::DurationError {
+                            duration: within.to_string(),
+                            source: src,
+                        }
+                    })?
+                    > latest_time
+                {
                     reason.push(reason2);
                 }
             }
         }
-        reason
+        Ok(reason)
     }
 
     /// Apply the `[KeepOptions]` to the given list of [`SnapshotFile`]s returning the corresponding
@@ -521,19 +542,23 @@ impl KeepOptions {
     /// * `snapshots` - The list of snapshots to apply the options to
     /// * `now` - The current time
     ///
+    /// # Errors
+    ///
+    /// * If a given snapshot doesn't match the keep options
+    ///
     /// # Returns
     ///
     /// The list of snapshots with the attribute `keep` set to `true` if the snapshot should be kept and
-    /// `reasons` set to the list of reasons why the snapshot should be kept
+    /// `reasons` set to the list of reasons why the snapshot should be kept.
     pub fn apply(
         &self,
         mut snapshots: Vec<SnapshotFile>,
         now: DateTime<Local>,
-    ) -> Vec<ForgetSnapshot> {
+    ) -> RusticResult<Vec<ForgetSnapshot>> {
         let mut group_keep = self.clone();
         let mut snaps = Vec::new();
         if snapshots.is_empty() {
-            return snaps;
+            return Ok(snaps);
         }
 
         snapshots.sort_unstable_by(|sn1, sn2| sn1.cmp(sn2).reverse());
@@ -549,8 +574,12 @@ impl KeepOptions {
                 } else if sn.must_delete(now) {
                     (false, vec!["snapshot"])
                 } else {
-                    let reasons =
-                        group_keep.matches(&sn, last.as_ref(), iter.peek().is_some(), latest_time);
+                    let reasons = group_keep.matches(
+                        &sn,
+                        last.as_ref(),
+                        iter.peek().is_some(),
+                        latest_time,
+                    )?;
                     let keep = !reasons.is_empty();
                     (keep, reasons)
                 }
@@ -563,6 +592,6 @@ impl KeepOptions {
                 reasons: reasons.iter().map(ToString::to_string).collect(),
             });
         }
-        snaps
+        Ok(snaps)
     }
 }

@@ -1,11 +1,14 @@
 use integer_sqrt::IntegerSquareRoot;
-use log::warn;
+use log::{error, warn};
 
 use std::{
+    fmt::Debug,
     num::NonZeroU32,
-    sync::{Arc, RwLock},
+    sync::Arc,
     time::{Duration, SystemTime},
 };
+
+use parking_lot::RwLock;
 
 use bytes::{Bytes, BytesMut};
 use chrono::Local;
@@ -19,7 +22,7 @@ use crate::{
     },
     blob::BlobType,
     crypto::{hasher::hash, CryptoKey},
-    error::{PackerErrorKind, RusticErrorKind, RusticResult},
+    error::{MultiprocessingErrorKind, PackerErrorKind, RusticErrorKind, RusticResult},
     id::Id,
     index::indexer::SharedIndexer,
     repofile::{
@@ -29,6 +32,8 @@ use crate::{
         snapshotfile::SnapshotSummary,
     },
 };
+
+pub(crate) type SharedPacker<BE> = Arc<RwLock<RawPacker<BE>>>;
 
 pub(super) mod constants {
     use std::time::Duration;
@@ -90,15 +95,22 @@ impl PackSizer {
     }
 
     /// Computes the size of the pack file.
-    #[must_use]
     // The cast actually shouldn't pose any problems.
     // `current_size` is `u64`, the maximum value is `2^64-1`.
     // `isqrt(2^64-1) = 2^32-1` which fits into a `u32`. (@aawsome)
     #[allow(clippy::cast_possible_truncation)]
-    pub fn pack_size(&self) -> u32 {
-        (self.current_size.integer_sqrt() as u32 * self.grow_factor + self.default_size)
-            .min(self.size_limit)
-            .min(constants::MAX_SIZE)
+    pub fn pack_size(&self) -> RusticResult<u32> {
+        Ok(calculate_pack_size(
+            u32::try_from(self.current_size).map_err(|err| {
+                PackerErrorKind::IntConversionFailedInPackSizeCalculation {
+                    value: self.current_size,
+                    comment: err.to_string(),
+                }
+            })?,
+            self.grow_factor,
+            self.default_size,
+            self.size_limit,
+        ))
     }
 
     /// Evaluates whether the given size is not too small or too large
@@ -106,9 +118,13 @@ impl PackSizer {
     /// # Arguments
     ///
     /// * `size` - The size to check
-    #[must_use]
-    pub fn size_ok(&self, size: u32) -> bool {
-        !self.is_too_small(size) && !self.is_too_large(size)
+    ///
+    /// # Returns
+    ///
+    /// `True` if the given size is not too small _and_ too large,
+    /// `False` otherwise
+    pub fn size_ok(&self, size: u32) -> RusticResult<bool> {
+        Ok(!self.is_too_small(size)? && !self.is_too_large(size)?)
     }
 
     /// Evaluates whether the given size is too small
@@ -116,12 +132,20 @@ impl PackSizer {
     /// # Arguments
     ///
     /// * `size` - The size to check
-    #[must_use]
-    pub fn is_too_small(&self, size: u32) -> bool {
-        let target_size = self.pack_size();
+    pub fn is_too_small(&self, size: u32) -> RusticResult<bool> {
+        let target_size = self.pack_size()?;
         // Note: we cast to u64 so that no overflow can occur in the multiplications
-        u64::from(size) * 100
-            < u64::from(target_size) * u64::from(self.min_packsize_tolerate_percent)
+        Ok(u64::from(size).checked_mul(100).ok_or(
+            PackerErrorKind::IntConversionFailedInPackSizeCalculation {
+                value: u64::from(size),
+                comment: "overflow".into(),
+            },
+        )? < u64::from(target_size)
+            .checked_mul(u64::from(self.min_packsize_tolerate_percent))
+            .ok_or(PackerErrorKind::IntConversionFailedInPackSizeCalculation {
+                value: u64::from(target_size),
+                comment: "overflow".into(),
+            })?)
     }
 
     /// Evaluates whether the given size is too large
@@ -129,12 +153,20 @@ impl PackSizer {
     /// # Arguments
     ///
     /// * `size` - The size to check
-    #[must_use]
-    pub fn is_too_large(&self, size: u32) -> bool {
-        let target_size = self.pack_size();
+    pub fn is_too_large(&self, size: u32) -> RusticResult<bool> {
+        let target_size = self.pack_size()?;
         // Note: we cast to u64 so that no overflow can occur in the multiplications
-        u64::from(size) * 100
-            > u64::from(target_size) * u64::from(self.max_packsize_tolerate_percent)
+        Ok(u64::from(size).checked_mul(100).ok_or(
+            PackerErrorKind::IntConversionFailedInPackSizeCalculation {
+                value: u64::from(size),
+                comment: "overflow".into(),
+            },
+        )? > u64::from(target_size)
+            .checked_mul(u64::from(self.max_packsize_tolerate_percent))
+            .ok_or(PackerErrorKind::IntConversionFailedInPackSizeCalculation {
+                value: u64::from(target_size),
+                comment: "overflow".into(),
+            })?)
     }
 
     /// Adds the given size to the current size.
@@ -142,12 +174,20 @@ impl PackSizer {
     /// # Arguments
     ///
     /// * `added` - The size to add
-    ///
-    /// # Panics
-    ///
-    /// If the size is too large
-    fn add_size(&mut self, added: u32) {
-        self.current_size += u64::from(added);
+    fn add_size(&mut self, added: u32) -> RusticResult<()> {
+        if added > self.size_limit {
+            return Err(PackerErrorKind::SizeLimitExceeded(added).into());
+        }
+        if let Some(value) = self.current_size.checked_add(u64::from(added)) {
+            self.current_size = value;
+        } else {
+            return Err(PackerErrorKind::AddingSizeToCurrentSizeFailed {
+                current_size: self.current_size,
+                to_be_added: added,
+            }
+            .into());
+        }
+        Ok(())
     }
 }
 
@@ -163,13 +203,24 @@ pub struct Packer<BE: DecryptWriteBackend> {
     /// The raw packer wrapped in an Arc and RwLock.
     // This is a hack: raw_packer and indexer are only used in the add_raw() method.
     // TODO: Refactor as actor, like the other add() methods
-    raw_packer: Arc<RwLock<RawPacker<BE>>>,
+    raw_packer: SharedPacker<BE>,
     /// The shared indexer containing the backend.
     indexer: SharedIndexer<BE>,
     /// The sender to send blobs to the raw packer.
     sender: Sender<(Bytes, Id, Option<u32>)>,
     /// The receiver to receive the status from the raw packer.
     finish: Receiver<RusticResult<PackerStats>>,
+}
+
+impl<BE: DecryptWriteBackend + Debug> Debug for Packer<BE> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Packer")
+            .field("raw_packer", &self.raw_packer)
+            .field("indexer", &self.indexer)
+            .field("sender", &self.sender)
+            .field("finish", &self.finish)
+            .finish()
+    }
 }
 
 impl<BE: DecryptWriteBackend> Packer<BE> {
@@ -208,7 +259,7 @@ impl<BE: DecryptWriteBackend> Packer<BE> {
             indexer.clone(),
             config,
             total_size,
-        )));
+        )?));
 
         let (tx, rx) = bounded(0);
         let (finish_tx, finish_rx) = bounded::<RusticResult<PackerStats>>(0);
@@ -219,14 +270,15 @@ impl<BE: DecryptWriteBackend> Packer<BE> {
             finish: finish_rx,
         };
 
-        let _join_handle = std::thread::spawn(move || {
-            scope(|scope| {
+        // TODO!: store join handle?
+        let _join_handle = std::thread::spawn(move || -> RusticResult<()> {
+            let scoped_work = scope(|scope| -> RusticResult<()> {
                 let status = rx
                     .into_iter()
                     .readahead_scoped(scope)
                     // early check if id is already contained
-                    .filter(|(_, id, _)| !indexer.read().unwrap().has(id))
-                    .filter(|(_, id, _)| !raw_packer.read().unwrap().has(id))
+                    .filter(|(_, id, _)| !indexer.read().has(id))
+                    .filter(|(_, id, _)| !raw_packer.read().has(id))
                     .readahead_scoped(scope)
                     .parallel_map_scoped(
                         scope,
@@ -245,22 +297,29 @@ impl<BE: DecryptWriteBackend> Packer<BE> {
                     // check again if id is already contained
                     // TODO: We may still save duplicate blobs - the indexer is only updated when the packfile write has completed
                     .filter(|res| {
-                        res.as_ref().map_or_else(
-                            |_| true,
-                            |(_, id, _, _, _)| !indexer.read().unwrap().has(id),
-                        )
+                        res.as_ref()
+                            .map_or_else(|_| true, |(_, id, _, _, _)| !indexer.read().has(id))
                     })
                     .try_for_each(|item: RusticResult<_>| {
                         let (data, id, data_len, ul, size_limit) = item?;
                         raw_packer
                             .write()
-                            .unwrap()
                             .add_raw(&data, &id, data_len, ul, size_limit)
                     })
-                    .and_then(|()| raw_packer.write().unwrap().finalize());
-                _ = finish_tx.send(status);
-            })
-            .unwrap();
+                    .and_then(|()| raw_packer.write().finalize());
+                if finish_tx.send(status).is_err() {
+                    error!("receiver has been dropped unexpectedly.");
+                    return Err(MultiprocessingErrorKind::ReceiverDropped.into());
+                }
+                Ok(())
+            });
+            if scoped_work.is_err() {
+                Err(MultiprocessingErrorKind::SendingCrossbeamMessageFailed.into())
+            } else if let Ok(Err(err)) = scoped_work {
+                Err(err)
+            } else {
+                Ok(())
+            }
         });
 
         Ok(packer)
@@ -293,13 +352,14 @@ impl<BE: DecryptWriteBackend> Packer<BE> {
     ///
     /// # Errors
     ///
-    /// * [`PackerErrorKind::SendingCrossbeamMessageFailed`] - If sending the message to the raw packer fails.
+    /// * [`ChannelErrorKind::SendingCrossbeamMessageFailedWithBytes`] - If sending the message to the raw packer fails.
     ///
     /// [`PackerErrorKind::SendingCrossbeamMessageFailed`]: crate::error::PackerErrorKind::SendingCrossbeamMessageFailed
     fn add_with_sizelimit(&self, data: Bytes, id: Id, size_limit: Option<u32>) -> RusticResult<()> {
-        self.sender
-            .send((data, id, size_limit))
-            .map_err(PackerErrorKind::SendingCrossbeamMessageFailed)?;
+        if self.sender.send((data, id, size_limit)).is_err() {
+            error!("receiver has been dropped unexpectedly.");
+            return Err(MultiprocessingErrorKind::ReceiverDropped.into());
+        }
         Ok(())
     }
 
@@ -326,29 +386,36 @@ impl<BE: DecryptWriteBackend> Packer<BE> {
         size_limit: Option<u32>,
     ) -> RusticResult<()> {
         // only add if this blob is not present
-        if self.indexer.read().unwrap().has(id) {
+        if self.indexer.read().has(id) {
             Ok(())
         } else {
-            self.raw_packer.write().unwrap().add_raw(
-                data,
-                id,
-                data_len,
-                uncompressed_length,
-                size_limit,
-            )
+            self.raw_packer
+                .write()
+                .add_raw(data, id, data_len, uncompressed_length, size_limit)
         }
     }
 
     /// Finalizes the packer and does cleanup
     ///
-    /// # Panics
+    /// # Errors
     ///
-    /// If the channel could not be dropped
+    /// [`MultiprocessingErrorKind::SenderDropped`] - If receiving the message from the raw packer fails.
+    ///
+    /// # Returns
+    ///
+    /// The packer stats
     pub fn finalize(self) -> RusticResult<PackerStats> {
         // cancel channel
         drop(self.sender);
+
         // wait for items in channel to be processed
-        self.finish.recv().unwrap()
+        self.finish.recv().map_or_else(
+            |_| {
+                error!("sender has been dropped unexpectedly.");
+                Err(MultiprocessingErrorKind::SenderDropped.into())
+            },
+            |stats| stats,
+        )
     }
 }
 
@@ -371,24 +438,105 @@ impl PackerStats {
     /// * `summary` - The summary to add to
     /// * `tpe` - The blob type
     ///
-    /// # Panics
+    /// # Errors
     ///
-    /// If the blob type is invalid
-    pub fn apply(self, summary: &mut SnapshotSummary, tpe: BlobType) {
-        summary.data_added += self.data;
-        summary.data_added_packed += self.data_packed;
+    /// If the summary could not be updated
+    /// If the addition of the stats to the summary overflowed
+    ///
+    /// # Returns
+    ///
+    /// The updated summary
+    pub fn apply(self, summary: &mut SnapshotSummary, tpe: BlobType) -> RusticResult<()> {
+        let mut errors = vec![];
+        if let Some(val) = summary.data_added.checked_add(self.data) {
+            summary.data_added = val;
+        } else {
+            warn!("data_added overflowed");
+            errors.push(PackerErrorKind::DataAddedOverflowed {
+                data_added: summary.data_added,
+                data: self.data,
+            });
+        }
+        if let Some(val) = summary.data_added_packed.checked_add(self.data_packed) {
+            summary.data_added_packed = val;
+        } else {
+            warn!("data_added_packed overflowed");
+            errors.push(PackerErrorKind::DataAddedPackedOverflowed {
+                data_added_packed: summary.data_added_packed,
+                data_packed: self.data_packed,
+            });
+        };
         match tpe {
             BlobType::Tree => {
-                summary.tree_blobs += self.blobs;
-                summary.data_added_trees += self.data;
-                summary.data_added_trees_packed += self.data_packed;
+                if let Some(val) = summary.tree_blobs.checked_add(self.blobs) {
+                    summary.tree_blobs = val;
+                } else {
+                    warn!("tree_blobs overflowed");
+
+                    errors.push(PackerErrorKind::TreeBlobsOverflowed {
+                        tree_blobs: summary.tree_blobs,
+                        blobs: self.blobs,
+                    });
+                }
+                if let Some(val) = summary.data_added_trees.checked_add(self.data) {
+                    summary.data_added_trees = val;
+                } else {
+                    warn!("data_added_trees overflowed");
+                    errors.push(PackerErrorKind::DataAddedTreesOverflowed {
+                        data_added_trees: summary.data_added_trees,
+                        data: self.data,
+                    });
+                }
+                if let Some(val) = summary
+                    .data_added_trees_packed
+                    .checked_add(self.data_packed)
+                {
+                    summary.data_added_trees_packed = val;
+                } else {
+                    warn!("data_added_trees_packed overflowed");
+                    errors.push(PackerErrorKind::DataAddedTreesPackedOverflowed {
+                        data_added_trees_packed: summary.data_added_trees_packed,
+                        data_packed: self.data_packed,
+                    });
+                };
             }
             BlobType::Data => {
-                summary.data_blobs += self.blobs;
-                summary.data_added_files += self.data;
-                summary.data_added_files_packed += self.data_packed;
+                if let Some(val) = summary.data_blobs.checked_add(self.blobs) {
+                    summary.data_blobs = val;
+                } else {
+                    warn!("data_blobs overflowed");
+                    errors.push(PackerErrorKind::DataBlobsOverflowed {
+                        data_blobs: summary.data_blobs,
+                        blobs: self.blobs,
+                    });
+                };
+                if let Some(val) = summary.data_added_files.checked_add(self.data) {
+                    summary.data_added_files = val;
+                } else {
+                    warn!("data_added_files overflowed");
+                    errors.push(PackerErrorKind::DataAddedFilesOverflowed {
+                        data_added_files: summary.data_added_files,
+                        data: self.data,
+                    });
+                };
+                if let Some(val) = summary
+                    .data_added_files_packed
+                    .checked_add(self.data_packed)
+                {
+                    summary.data_added_files_packed = val;
+                } else {
+                    warn!("data_added_files_packed overflowed");
+                    errors.push(PackerErrorKind::DataAddedFilesPackedOverflowed {
+                        data_added_files_packed: summary.data_added_files_packed,
+                        data_packed: self.data_packed,
+                    });
+                };
             }
         }
+        if !errors.is_empty() {
+            return Err(PackerErrorKind::MultipleFromSummary(errors).into());
+        }
+        Ok(())
     }
 }
 
@@ -397,7 +545,8 @@ impl PackerStats {
 /// # Type Parameters
 ///
 /// * `BE` - The backend type.
-#[allow(missing_debug_implementations, clippy::module_name_repetitions)]
+#[allow(clippy::module_name_repetitions)]
+#[derive(Clone, Debug)]
 pub(crate) struct RawPacker<BE: DecryptWriteBackend> {
     /// The backend to write to.
     be: BE,
@@ -441,7 +590,7 @@ impl<BE: DecryptWriteBackend> RawPacker<BE> {
         indexer: SharedIndexer<BE>,
         config: &ConfigFile,
         total_size: u64,
-    ) -> Self {
+    ) -> RusticResult<Self> {
         let file_writer = Some(Actor::new(
             FileWriterHandle {
                 be: be.clone(),
@@ -450,11 +599,11 @@ impl<BE: DecryptWriteBackend> RawPacker<BE> {
             },
             1,
             1,
-        ));
+        )?);
 
         let pack_sizer = PackSizer::from_config(config, blob_type, total_size);
 
-        Self {
+        Ok(Self {
             be,
             blob_type,
             file: BytesMut::new(),
@@ -465,7 +614,7 @@ impl<BE: DecryptWriteBackend> RawPacker<BE> {
             file_writer,
             pack_sizer,
             stats: PackerStats::default(),
-        }
+        })
     }
 
     /// Saves the packfile and returns the stats
@@ -475,7 +624,10 @@ impl<BE: DecryptWriteBackend> RawPacker<BE> {
     /// If the packfile could not be saved
     fn finalize(&mut self) -> RusticResult<PackerStats> {
         self.save()?;
-        self.file_writer.take().unwrap().finalize()?;
+        self.file_writer
+            .take()
+            .ok_or(PackerErrorKind::ActorHandleNotPresent)?
+            .finalize()?;
         Ok(std::mem::take(&mut self.stats))
     }
 
@@ -532,7 +684,11 @@ impl<BE: DecryptWriteBackend> RawPacker<BE> {
             .map_err(PackerErrorKind::IntConversionFailed)?;
         self.stats.data_packed += data_len_packed;
 
-        let size_limit = size_limit.unwrap_or_else(|| self.pack_sizer.pack_size());
+        let size_limit = if let Some(size_limit) = size_limit {
+            size_limit
+        } else {
+            self.pack_sizer.pack_size()?
+        };
         let offset = self.size;
         let len = self.write_data(data)?;
         self.index
@@ -548,7 +704,7 @@ impl<BE: DecryptWriteBackend> RawPacker<BE> {
             || self.size >= size_limit
             || elapsed >= constants::MAX_AGE
         {
-            self.pack_sizer.add_size(self.index.pack_size());
+            self.pack_sizer.add_size(self.index.pack_size())?;
             self.save()?;
             self.size = 0;
             self.count = 0;
@@ -608,10 +764,16 @@ impl<BE: DecryptWriteBackend> RawPacker<BE> {
         // write file to backend
         let index = std::mem::take(&mut self.index);
         let file = std::mem::replace(&mut self.file, BytesMut::new());
-        self.file_writer
+        if self
+            .file_writer
             .as_ref()
-            .unwrap()
-            .send((file.into(), index))?;
+            .ok_or(PackerErrorKind::FileWriterHandleNotPresent)?
+            .send((file.into(), index))
+            .is_err()
+        {
+            error!("receiver has been dropped unexpectedly.");
+            return Err(MultiprocessingErrorKind::ReceiverDropped.into());
+        }
 
         Ok(())
     }
@@ -636,7 +798,19 @@ pub(crate) struct FileWriterHandle<BE: DecryptWriteBackend> {
 }
 
 impl<BE: DecryptWriteBackend> FileWriterHandle<BE> {
-    // TODO: add documentation
+    /// Processes the given data and writes it to the backend.
+    ///
+    /// # Arguments
+    ///
+    /// * `load` - The data to process.
+    ///
+    /// # Errors
+    ///
+    /// If writing the data to the backend fails.
+    ///
+    /// # Returns
+    ///
+    /// The index pack.
     fn process(&self, load: (Bytes, Id, IndexPack)) -> RusticResult<IndexPack> {
         let (file, id, mut index) = load;
         index.id = id;
@@ -648,15 +822,17 @@ impl<BE: DecryptWriteBackend> FileWriterHandle<BE> {
     }
 
     fn index(&self, index: IndexPack) -> RusticResult<()> {
-        self.indexer.write().unwrap().add(index)?;
+        self.indexer.write().add(index)?;
         Ok(())
     }
 }
 
 // TODO: add documentation
+#[derive(Debug, Clone)]
 pub(crate) struct Actor {
     /// The sender to send blobs to the raw packer.
     sender: Sender<(Bytes, IndexPack)>,
+
     /// The receiver to receive the status from the raw packer.
     finish: Receiver<RusticResult<()>>,
 }
@@ -673,16 +849,26 @@ impl Actor {
     /// * `fwh` - The file writer handle.
     /// * `queue_len` - The length of the queue.
     /// * `par` - The number of parallel threads.
+    ///
+    /// # Errors
+    ///
+    /// If sending the message to the actor fails.
+    ///
+    /// # Returns
+    ///
+    /// A new `Actor`.
+    #[allow(clippy::unnecessary_wraps)]
     fn new<BE: DecryptWriteBackend>(
         fwh: FileWriterHandle<BE>,
         queue_len: usize,
         _par: usize,
-    ) -> Self {
+    ) -> RusticResult<Self> {
         let (tx, rx) = bounded(queue_len);
         let (finish_tx, finish_rx) = bounded::<RusticResult<()>>(0);
 
-        let _join_handle = std::thread::spawn(move || {
-            scope(|scope| {
+        // TODO!: store join handle?
+        let _join_handle = std::thread::spawn(move || -> RusticResult<()> {
+            let scoped_work = scope(|scope| -> RusticResult<()> {
                 let status = rx
                     .into_iter()
                     .readahead_scoped(scope)
@@ -694,15 +880,28 @@ impl Actor {
                     .map(|load| fwh.process(load))
                     .readahead_scoped(scope)
                     .try_for_each(|index| fwh.index(index?));
-                _ = finish_tx.send(status);
-            })
-            .unwrap();
+
+                if finish_tx.send(status).is_err() {
+                    error!("receiver has been dropped unexpectedly.");
+                    return Err(MultiprocessingErrorKind::ReceiverDropped.into());
+                };
+
+                Ok(())
+            });
+
+            if scoped_work.is_err() {
+                Err(MultiprocessingErrorKind::SendingCrossbeamMessageFailed.into())
+            } else if let Ok(Err(err)) = scoped_work {
+                Err(err)
+            } else {
+                Ok(())
+            }
         });
 
-        Self {
+        Ok(Self {
             sender: tx,
             finish: finish_rx,
-        }
+        })
     }
 
     /// Sends the given data to the actor.
@@ -713,24 +912,39 @@ impl Actor {
     ///
     /// # Errors
     ///
-    /// If sending the message to the actor fails.
+    /// [`ChannelErrorKind::SendingCrossbeamMessageFailedForIndexPack`] - If sending the message to the actor fails.
+    ///
+    /// # Returns
+    ///
+    /// Ok if the message was sent successfully
     fn send(&self, load: (Bytes, IndexPack)) -> RusticResult<()> {
-        self.sender
-            .send(load)
-            .map_err(PackerErrorKind::SendingCrossbeamMessageFailedForIndexPack)?;
+        if self.sender.send(load).is_err() {
+            error!("receiver has been dropped unexpectedly.");
+            return Err(MultiprocessingErrorKind::ReceiverDropped.into());
+        }
+
         Ok(())
     }
 
     /// Finalizes the actor and does cleanup
     ///
-    /// # Panics
+    /// # Errors
     ///
-    /// If the receiver is not present
+    /// [`ChannelErrorKind::ReceivingCrossbeamMessageFailedForActorFinalizing`] - If receiving the message from the actor fails.
+    ///
+    /// # Returns
+    ///
+    /// Ok if the message was received successfully
     fn finalize(self) -> RusticResult<()> {
         // cancel channel
         drop(self.sender);
+
         // wait for items in channel to be processed
-        self.finish.recv().unwrap()
+        if self.finish.recv().is_err() {
+            error!("sender has been dropped unexpectedly.");
+            return Err(MultiprocessingErrorKind::SenderDropped.into());
+        }
+        Ok(())
     }
 }
 
@@ -778,7 +992,7 @@ impl<BE: DecryptFullBackend> Repacker<BE> {
         total_size: u64,
     ) -> RusticResult<Self> {
         let packer = Packer::new(be.clone(), blob_type, indexer, config, total_size)?;
-        let size_limit = PackSizer::from_config(config, blob_type, total_size).pack_size();
+        let size_limit = PackSizer::from_config(config, blob_type, total_size).pack_size()?;
         Ok(Self {
             be,
             packer,
@@ -846,5 +1060,94 @@ impl<BE: DecryptFullBackend> Repacker<BE> {
     /// Finalizes the repacker and returns the stats
     pub fn finalize(self) -> RusticResult<PackerStats> {
         self.packer.finalize()
+    }
+}
+
+/// Calculates the pack size.
+///
+/// # Arguments
+///
+/// * `current_size` - The current size of the pack file.
+/// * `grow_factor` - The grow factor.
+/// * `default_size` - The default size.
+/// * `size_limit` - The size limit.
+///
+/// # Returns
+///
+/// The pack size.
+#[must_use]
+#[inline]
+pub fn calculate_pack_size(
+    current_size: u32,
+    grow_factor: u32,
+    default_size: u32,
+    size_limit: u32,
+) -> u32 {
+    current_size.integer_sqrt() * grow_factor
+        + default_size.min(size_limit).min(constants::MAX_SIZE)
+}
+
+#[cfg(test)]
+mod tests {
+
+    use super::*;
+
+    use rstest::{fixture, rstest};
+
+    #[fixture]
+    fn pack_sizer() -> PackSizer {
+        let config = ConfigFile {
+            max_packsize_tolerate_percent: Some(80),
+            ..Default::default()
+        };
+        let blob_type = BlobType::Data;
+        let current_size = 100;
+        PackSizer::from_config(&config, blob_type, current_size)
+    }
+
+    #[test]
+    fn test_pack_sizer_from_config_passes() {
+        let config = ConfigFile::default();
+        let blob_type = BlobType::Data;
+        let (default_size, grow_factor, size_limit) = config.packsize(blob_type);
+        let current_size = 0;
+        let pack_sizer = PackSizer::from_config(&config, blob_type, current_size);
+        let (min_packsize_tolerate_percent, max_packsize_tolerate_percent) =
+            config.packsize_ok_percents();
+
+        assert_eq!(pack_sizer.default_size, default_size, "default_size");
+        assert_eq!(pack_sizer.grow_factor, grow_factor);
+        assert_eq!(pack_sizer.size_limit, size_limit);
+        assert_eq!(
+            pack_sizer.min_packsize_tolerate_percent,
+            min_packsize_tolerate_percent
+        );
+        assert_eq!(
+            pack_sizer.max_packsize_tolerate_percent,
+            max_packsize_tolerate_percent
+        );
+        assert_eq!(pack_sizer.current_size, current_size);
+    }
+
+    #[rstest]
+    #[case(0.5f32, false, "size is too small, should be 'false'")]
+    #[case(1.1f32, true, "size is ok, should be 'true'")]
+    #[case(1_000_000.0f32, false, "size is too huge: should be 'false'")]
+    fn test_compute_pack_size_ok_passes(
+        pack_sizer: PackSizer,
+        #[case] input: f32,
+        #[case] expected: bool,
+        #[case] comment: &str,
+    ) -> RusticResult<()> {
+        let size_limit = pack_sizer.pack_size()? * 30 / 100;
+
+        #[allow(clippy::cast_possible_truncation)]
+        #[allow(clippy::cast_sign_loss)]
+        #[allow(clippy::cast_precision_loss)]
+        let size = (input * size_limit as f32) as u32;
+
+        assert_eq!(pack_sizer.size_ok(size)?, expected, "{comment}");
+
+        Ok(())
     }
 }

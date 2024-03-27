@@ -1,5 +1,6 @@
 //! `restore` subcommand
 
+use crossbeam_channel::unbounded;
 use derive_setters::Setters;
 use log::{debug, error, info, trace, warn};
 
@@ -14,7 +15,7 @@ use std::{
 use chrono::{DateTime, Local, Utc};
 use ignore::{DirEntry, WalkBuilder};
 use itertools::Itertools;
-use rayon::ThreadPoolBuilder;
+use rayon::{Scope, ThreadPoolBuilder};
 
 use crate::{
     backend::{
@@ -24,10 +25,11 @@ use crate::{
         FileType, ReadBackend,
     },
     blob::BlobType,
-    error::{CommandErrorKind, RusticResult},
+    error::{CommandErrorKind, IgnoreErrorKind, RusticErrorKind, RusticResult},
     id::Id,
     progress::{Progress, ProgressBars},
     repository::{IndexedFull, IndexedTree, Open, Repository},
+    RusticError,
 };
 
 pub(crate) mod constants {
@@ -39,7 +41,7 @@ pub(crate) mod constants {
 }
 
 type RestoreInfo = BTreeMap<(Id, BlobLocation), Vec<FileLocation>>;
-type Filenames = Vec<PathBuf>;
+type FileNames = Vec<PathBuf>;
 
 #[allow(clippy::struct_excessive_bools)]
 #[cfg_attr(feature = "clap", derive(clap::Parser))]
@@ -157,7 +159,7 @@ impl RestoreOptions {
         dry_run: bool,
     ) -> RusticResult<RestorePlan> {
         let p = repo.pb.progress_spinner("collecting file information...");
-        let dest_path = dest.path("");
+        let dest_path = dest.path_of("");
 
         let mut stats = RestoreStats::default();
         let mut restore_infos = RestorePlan::default();
@@ -171,12 +173,25 @@ impl RestoreOptions {
             }
 
             debug!("additional {:?}", entry.path());
-            if entry.file_type().unwrap().is_dir() {
+            if entry
+                .file_type()
+                .ok_or_else(|| CommandErrorKind::ErrorReadingFileType(entry.path().to_path_buf()))?
+                .is_dir()
+            {
                 stats.dirs.additional += 1;
             } else {
                 stats.files.additional += 1;
             }
-            match (self.delete, dry_run, entry.file_type().unwrap().is_dir()) {
+            match (
+                self.delete,
+                dry_run,
+                entry
+                    .file_type()
+                    .ok_or_else(|| {
+                        CommandErrorKind::ErrorReadingFileType(entry.path().to_path_buf())
+                    })?
+                    .is_dir(),
+            ) {
                 (true, true, true) => {
                     info!("would have removed the additional dir: {:?}", entry.path());
                 }
@@ -283,15 +298,27 @@ impl RestoreOptions {
                     next_dst = dst_iter.next();
                 }
                 (Some(destination), Some((path, node))) => {
-                    match destination.path().cmp(&dest.path(path)) {
+                    match destination.path().cmp(&dest.path_of(path)) {
                         Ordering::Less => {
                             process_existing(destination)?;
                             next_dst = dst_iter.next();
                         }
                         Ordering::Equal => {
                             // process existing node
-                            if (node.is_dir() && !destination.file_type().unwrap().is_dir())
-                                || (node.is_file() && !destination.metadata().unwrap().is_file())
+                            if (node.is_dir()
+                                && !destination
+                                    .file_type()
+                                    .ok_or_else(|| {
+                                        CommandErrorKind::ErrorReadingFileType(
+                                            destination.path().to_path_buf(),
+                                        )
+                                    })?
+                                    .is_dir())
+                                || (node.is_file()
+                                    && !destination
+                                        .metadata()
+                                        .map_err(IgnoreErrorKind::GenericError)?
+                                        .is_file())
                                 || node.is_special()
                             {
                                 // if types do not match, first remove the existing file
@@ -341,26 +368,26 @@ impl RestoreOptions {
     ) -> RusticResult<()> {
         let mut dir_stack = Vec::new();
         while let Some((path, node)) = node_streamer.next().transpose()? {
-            match node.node_type {
-                NodeType::Dir => {
-                    // set metadata for all non-parent paths in stack
-                    while let Some((stackpath, _)) = dir_stack.last() {
-                        if path.starts_with(stackpath) {
-                            break;
-                        }
-                        let (path, node) = dir_stack.pop().unwrap();
-                        self.set_metadata(dest, &path, &node);
+            if node.node_type == NodeType::Dir {
+                // set metadata for all non-parent paths in stack
+                while let Some((stack_path, stack_node)) = dir_stack.last() {
+                    if path.starts_with(stack_path) {
+                        break;
                     }
-                    // push current path to the stack
-                    dir_stack.push((path, node));
+                    self.set_metadata(dest, stack_path, stack_node)?;
+                    _ = dir_stack.pop();
                 }
-                _ => self.set_metadata(dest, &path, &node),
+
+                // push current path to the stack
+                dir_stack.push((path, node));
+            } else {
+                self.set_metadata(dest, &path, &node)?;
             }
         }
 
         // empty dir stack and set metadata
         for (path, node) in dir_stack.into_iter().rev() {
-            self.set_metadata(dest, &path, &node);
+            self.set_metadata(dest, &path, &node)?;
         }
 
         Ok(())
@@ -377,26 +404,57 @@ impl RestoreOptions {
     /// # Errors
     ///
     /// If the metadata could not be set.
-    // TODO: Return a result here, introduce errors and get rid of logging.
-    fn set_metadata(self, dest: &LocalDestination, path: &PathBuf, node: &Node) {
+    fn set_metadata(
+        self,
+        dest: &LocalDestination,
+        path: &PathBuf,
+        node: &Node,
+    ) -> RusticResult<()> {
         debug!("setting metadata for {:?}", path);
-        dest.create_special(path, node)
-            .unwrap_or_else(|_| warn!("restore {:?}: creating special file failed.", path));
+
+        let mut errors = vec![];
+
+        if let Err(err) = dest.create_special(path, node) {
+            warn!("restore {:?}: creating special file failed.", path);
+            errors.push(err);
+        }
+
         match (self.no_ownership, self.numeric_id) {
             (true, _) => {}
-            (false, true) => dest
-                .set_uid_gid(path, &node.meta)
-                .unwrap_or_else(|_| warn!("restore {:?}: setting UID/GID failed.", path)),
-            (false, false) => dest
-                .set_user_group(path, &node.meta)
-                .unwrap_or_else(|_| warn!("restore {:?}: setting User/Group failed.", path)),
+            (false, true) => {
+                if let Err(err) = dest.set_uid_gid(path, &node.meta) {
+                    warn!("restore {:?}: setting UID/GID failed.", path);
+                    errors.push(err);
+                }
+            }
+            (false, false) => {
+                if let Err(err) = dest.set_user_group(path, &node.meta) {
+                    warn!("restore {:?}: setting User/Group failed.", path);
+                    errors.push(err);
+                }
+            }
         }
-        dest.set_permission(path, node)
-            .unwrap_or_else(|_| warn!("restore {:?}: chmod failed.", path));
-        dest.set_extended_attributes(path, &node.meta.extended_attributes)
-            .unwrap_or_else(|_| warn!("restore {:?}: setting extended attributes failed.", path));
-        dest.set_times(path, &node.meta)
-            .unwrap_or_else(|_| warn!("restore {:?}: setting file times failed.", path));
+
+        if let Err(err) = dest.set_permission(path, node) {
+            warn!("restore {:?}: chmod failed.", path);
+            errors.push(err);
+        };
+
+        if let Err(err) = dest.set_extended_attributes(path, &node.meta.extended_attributes) {
+            warn!("restore {:?}: setting extended attributes failed.", path);
+            errors.push(err);
+        };
+
+        if let Err(err) = dest.set_times(path, &node.meta) {
+            warn!("restore {:?}: setting file times failed.", path);
+            errors.push(err);
+        };
+
+        if !errors.is_empty() {
+            return Err(CommandErrorKind::ErrorSettingMetadata(path.clone(), errors).into());
+        }
+
+        Ok(())
     }
 }
 
@@ -428,19 +486,19 @@ fn restore_contents<P: ProgressBars, S: Open>(
     file_infos: RestorePlan,
 ) -> RusticResult<()> {
     let RestorePlan {
-        names: filenames,
+        names: file_names,
         file_lengths,
         r: restore_info,
         restore_size: total_size,
         ..
     } = file_infos;
-    let filenames = &filenames;
+    let file_names = &file_names;
     let be = repo.dbe();
 
     // first create needed empty files, as they are not created later.
     for (i, size) in file_lengths.iter().enumerate() {
         if *size == 0 {
-            let path = &filenames[i];
+            let path = &file_names[i];
             dest.set_length(path, *size)
                 .map_err(|err| CommandErrorKind::ErrorSettingLength(path.clone(), Box::new(err)))?;
         }
@@ -487,23 +545,62 @@ fn restore_contents<P: ProgressBars, S: Open>(
         .num_threads(constants::MAX_READER_THREADS_NUM)
         .build()
         .map_err(CommandErrorKind::FromRayonError)?;
-    pool.in_place_scope(|s| {
+    let (error_tx, error_rx) = unbounded::<RusticError>();
+    let error_sender_outer = error_tx.clone();
+    let error_sender_inner = error_tx;
+
+    // This is a workaround for the fact that we can't use the `?` operator in a closure
+    // Still we want to propagate the error to the main thread.
+    // Handle errors `in_place_scope`
+    // TODO!: store join handle?
+    let _join_handle = std::thread::spawn(move || {
+        let mut count = 0;
+
+        while let Ok(err) = error_rx.recv() {
+            error!("Error during restore: {:?}", err);
+            count += 1;
+        }
+
+        if count > 0 {
+            error!("{count} errors occurred during restore.",);
+        }
+    });
+
+    pool.in_place_scope(|outer_scope| -> RusticResult<()> {
         for (pack, offset, length, from_file, name_dests) in blobs {
             let p = &p;
+            let error_sender_outer_clone = error_sender_outer.clone();
+            let error_sender_inner_clone = error_sender_inner.clone();
 
             if !name_dests.is_empty() {
-                // TODO: error handling!
-                s.spawn(move |s1| {
+                outer_scope.spawn(move |inner_scope: &Scope<'_>| {
                     let read_data = match &from_file {
                         Some((file_idx, offset_file, length_file)) => {
                             // read from existing file
-                            dest.read_at(&filenames[*file_idx], *offset_file, *length_file)
-                                .unwrap()
+                            match dest.read_at(&file_names[*file_idx], *offset_file, *length_file) {
+                                Ok(val) => val,
+                                Err(err) => {
+                                    if error_sender_outer_clone.send(err).is_err() {
+                                        error!("receiver has been dropped unexpectedly.");
+                                    };
+                                    return;
+                                }
+                            }
                         }
                         None => {
                             // read needed part of the pack
-                            be.read_partial(FileType::Pack, &pack, false, offset, length)
-                                .unwrap()
+                            match be
+                                .read_partial(FileType::Pack, &pack, false, offset, length)
+                                .map_err(RusticErrorKind::Backend)
+                            {
+                                Ok(val) => val,
+                                Err(err) => {
+                                    if error_sender_outer_clone.send(err.into()).is_err() {
+                                        error!("receiver has been dropped unexpectedly.");
+                                    };
+                                    return;
+                                }
+                            }
                         }
                     };
 
@@ -513,34 +610,91 @@ fn restore_contents<P: ProgressBars, S: Open>(
                         let data = if from_file.is_some() {
                             read_data.clone()
                         } else {
-                            let start = usize::try_from(bl.offset - offset).unwrap();
-                            let end = usize::try_from(bl.offset + bl.length - offset).unwrap();
-                            be.read_encrypted_from_partial(
+                            let start = match usize::try_from(bl.offset - offset) {
+                                Ok(val) => val,
+                                Err(err) => {
+                                    if error_sender_outer_clone
+                                        .send(CommandErrorKind::ConversionFromIntFailed(err).into())
+                                        .is_err()
+                                    {
+                                        error!("receiver has been dropped unexpectedly.");
+                                    };
+                                    return;
+                                }
+                            };
+                            let end = match usize::try_from(bl.offset + bl.length - offset) {
+                                Ok(val) => val,
+                                Err(err) => {
+                                    if error_sender_outer_clone
+                                        .send(CommandErrorKind::ConversionFromIntFailed(err).into())
+                                        .is_err()
+                                    {
+                                        error!("receiver has been dropped unexpectedly.");
+                                    };
+                                    return;
+                                }
+                            };
+
+                            match be.read_encrypted_from_partial(
                                 &read_data[start..end],
                                 bl.uncompressed_length,
-                            )
-                            .unwrap()
+                            ) {
+                                Ok(val) => val,
+                                Err(err) => {
+                                    if error_sender_outer_clone.send(err).is_err() {
+                                        error!("receiver has been dropped unexpectedly.");
+                                    };
+                                    return;
+                                }
+                            }
                         };
+
                         for (_, file_idx, start) in group {
                             let data = data.clone();
-                            s1.spawn(move |_| {
-                                let path = &filenames[file_idx];
+
+                            let error_sender_inner_clone = error_sender_inner_clone.clone();
+
+                            inner_scope.spawn(move |_| {
+                                let path = &file_names[file_idx];
+
                                 // Allocate file if it is not yet allocated
-                                let mut sizes_guard = sizes.lock().unwrap();
-                                let filesize = sizes_guard[file_idx];
-                                if filesize > 0 {
-                                    dest.set_length(path, filesize)
-                                        .map_err(|err| {
-                                            CommandErrorKind::ErrorSettingLength(
-                                                path.clone(),
-                                                Box::new(err),
-                                            )
-                                        })
-                                        .unwrap();
-                                    sizes_guard[file_idx] = 0;
-                                }
-                                drop(sizes_guard);
-                                dest.write_at(path, start, &data).unwrap();
+                                if let Ok(mut sizes_guard) = sizes.lock() {
+                                    let filesize = sizes_guard[file_idx];
+                                    if filesize > 0 {
+                                        match dest.set_length(path, filesize) {
+                                            Ok(val) => val,
+                                            Err(err) => {
+                                                if error_sender_inner_clone.send(err).is_err() {
+                                                    error!(
+                                                        "receiver has been dropped unexpectedly."
+                                                    );
+                                                };
+
+                                                return;
+                                            }
+                                        };
+
+                                        sizes_guard[file_idx] = 0;
+                                    }
+                                } else {
+                                    if error_sender_inner_clone
+                                        .send(CommandErrorKind::MutexLockFailed.into())
+                                        .is_err()
+                                    {
+                                        error!("receiver has been dropped unexpectedly.");
+                                    };
+
+                                    return;
+                                };
+
+                                if let Err(err) = dest.write_at(path, start, &data) {
+                                    if error_sender_inner_clone.send(err).is_err() {
+                                        error!("receiver has been dropped unexpectedly.");
+                                    };
+
+                                    return;
+                                };
+
                                 p.inc(size);
                             });
                         }
@@ -548,7 +702,8 @@ fn restore_contents<P: ProgressBars, S: Open>(
                 });
             }
         }
-    });
+        Ok(())
+    })?;
 
     p.finish();
 
@@ -565,7 +720,7 @@ fn restore_contents<P: ProgressBars, S: Open>(
 #[derive(Debug, Default)]
 pub struct RestorePlan {
     /// The names of the files to restore
-    names: Filenames,
+    names: FileNames,
     /// The length of the files to restore
     file_lengths: Vec<u64>,
     /// The restore information

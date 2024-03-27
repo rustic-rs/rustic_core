@@ -99,11 +99,11 @@ impl RepairIndexOptions {
 
             if !dry_run {
                 // write pack file to index - without the delete mark
-                indexer.write().unwrap().add_with(pack, false)?;
+                indexer.write().add_with(pack, false)?;
             }
             p.inc(1);
         }
-        indexer.write().unwrap().finalize()?;
+        indexer.write().finalize()?;
         p.finish();
 
         Ok(())

@@ -1,8 +1,10 @@
 use std::{
     collections::BTreeSet,
-    sync::{Arc, RwLock},
+    sync::Arc,
     time::{Duration, SystemTime},
 };
+
+use parking_lot::RwLock;
 
 use log::warn;
 
@@ -25,7 +27,7 @@ pub(super) mod constants {
 pub(crate) type SharedIndexer<BE> = Arc<RwLock<Indexer<BE>>>;
 
 /// The `Indexer` is responsible for indexing blobs.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Indexer<BE>
 where
     BE: DecryptWriteBackend,

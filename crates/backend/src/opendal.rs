@@ -27,10 +27,11 @@ pub struct OpenDALBackend {
 fn runtime() -> &'static Runtime {
     static RUNTIME: OnceLock<Runtime> = OnceLock::new();
     RUNTIME.get_or_init(|| {
+        #[allow(clippy::expect_used)]
         tokio::runtime::Builder::new_multi_thread()
             .enable_all()
             .build()
-            .unwrap()
+            .expect("Failed to create tokio runtime.")
     })
 }
 
@@ -87,7 +88,7 @@ impl OpenDALBackend {
     /// # Returns
     ///
     /// The path for the given file type and id.
-    // Let's keep this for now, as it's being used in the trait implementations.
+    // INFO!: Let's keep this for now, as it's being used in the trait implementations.
     #[allow(clippy::unused_self)]
     fn path(&self, tpe: FileType, id: &Id) -> String {
         let hex_id = id.to_hex();
@@ -105,10 +106,10 @@ impl ReadBackend for OpenDALBackend {
     /// Returns the location of the backend.
     ///
     /// This is `local:<path>`.
-    fn location(&self) -> String {
+    fn location(&self) -> Result<String> {
         let mut location = "opendal:".to_string();
         location.push_str(self.operator.info().name());
-        location
+        Ok(location)
     }
 
     /// Lists all files of the given type.
@@ -232,10 +233,18 @@ impl WriteBackend for OpenDALBackend {
     /// * `id` - The id of the file.
     /// * `cacheable` - Whether the file is cacheable.
     /// * `buf` - The bytes to write.
+    ///
+    /// # Errors
+    ///
+    /// If the file cannot be written, an error is returned.
+    ///
+    /// # Returns
+    ///
+    /// If the file is written successfully, `Ok(())` is returned.
     fn write_bytes(&self, tpe: FileType, id: &Id, _cacheable: bool, buf: Bytes) -> Result<()> {
         trace!("writing tpe: {:?}, id: {}", &tpe, &id);
-        let filename = self.path(tpe, id);
-        self.operator.write(&filename, buf)?;
+        let file_name = self.path(tpe, id);
+        self.operator.write(&file_name, buf)?;
         Ok(())
     }
 
@@ -246,10 +255,18 @@ impl WriteBackend for OpenDALBackend {
     /// * `tpe` - The type of the file.
     /// * `id` - The id of the file.
     /// * `cacheable` - Whether the file is cacheable.
+    ///
+    /// # Errors
+    ///
+    /// If the file does not exist, an error is returned.
+    ///
+    /// # Returns
+    ///
+    /// If the file is removed successfully, `Ok(())` is returned.
     fn remove(&self, tpe: FileType, id: &Id, _cacheable: bool) -> Result<()> {
         trace!("removing tpe: {:?}, id: {}", &tpe, &id);
-        let filename = self.path(tpe, id);
-        self.operator.delete(&filename)?;
+        let file_name = self.path(tpe, id);
+        self.operator.delete(&file_name)?;
         Ok(())
     }
 }

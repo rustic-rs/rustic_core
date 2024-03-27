@@ -3,16 +3,16 @@ use std::{
     ffi::{OsStr, OsString},
     fmt::Debug,
     path::Path,
-    str::FromStr,
 };
+
+#[cfg(windows)]
+use std::str::FromStr;
 
 #[cfg(not(windows))]
 use std::fmt::Write;
-#[cfg(not(windows))]
-use std::os::unix::ffi::OsStrExt;
 
 #[cfg(not(windows))]
-use crate::RusticResult;
+use std::os::unix::ffi::OsStrExt;
 
 use chrono::{DateTime, Local};
 use derive_more::Constructor;
@@ -25,19 +25,18 @@ use serde_with::{
     serde_as, DeserializeAs, SerializeAs,
 };
 
-#[cfg(not(windows))]
 use crate::error::NodeErrorKind;
-
+use crate::error::RusticResult;
 use crate::id::Id;
 
 #[derive(Default, Serialize, Deserialize, Clone, Debug, PartialEq, Eq, Constructor)]
 /// A node within the tree hierarchy
 pub struct Node {
-    /// Name of the node: filename or dirname.
+    /// Name of the node: file name or dirname.
     ///
     /// # Warning
     ///
-    /// This contains an escaped variant of the name in order to handle non-unicode filenames.
+    /// This contains an escaped variant of the name in order to handle non-unicode file names.
     /// Don't access this field directly, use the [`Node::name()`] method instead!
     pub name: String,
     #[serde(flatten)]
@@ -63,11 +62,12 @@ pub struct Node {
 }
 
 #[serde_as]
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, Default)]
 #[serde(tag = "type", rename_all = "lowercase")]
 /// Types a [`Node`] can have with type-specific additional information
 pub enum NodeType {
     /// Node is a regular file
+    #[default]
     File,
     /// Node is a directory
     Dir,
@@ -79,13 +79,13 @@ pub enum NodeType {
         ///
         /// This contains the target only if it is a valid unicode target.
         /// Don't access this field directly, use the [`NodeType::to_link()`] method instead!
-        linktarget: String,
+        link_target: String,
         #[serde_as(as = "Option<Base64>")]
         #[serde(default, skip_serializing_if = "Option::is_none")]
         /// The raw link target saved as bytes.
         ///
         /// This is only filled (and mandatory) if the link target is non-unicode.
-        linktarget_raw: Option<Vec<u8>>,
+        link_target_raw: Option<Vec<u8>>,
     },
     /// Node is a block device file
     Dev {
@@ -107,10 +107,10 @@ pub enum NodeType {
 
 impl NodeType {
     #[cfg(not(windows))]
-    /// Get a [`NodeType`] from a linktarget path
+    /// Get a [`NodeType`] from a link target path
     #[must_use]
     pub fn from_link(target: &Path) -> Self {
-        let (linktarget, linktarget_raw) = target.to_str().map_or_else(
+        let (link_target, link_target_raw) = target.to_str().map_or_else(
             || {
                 (
                     target.as_os_str().to_string_lossy().to_string(),
@@ -120,68 +120,64 @@ impl NodeType {
             |t| (t.to_string(), None),
         );
         Self::Symlink {
-            linktarget,
-            linktarget_raw,
+            link_target,
+            link_target_raw,
         }
     }
 
     #[cfg(windows)]
     // Windows doesn't support non-unicode link targets, so we assume unicode here.
     // TODO: Test and check this!
-    /// Get a [`NodeType`] from a linktarget path
+    /// Get a [`NodeType`] from a link target path
     #[must_use]
     pub fn from_link(target: &Path) -> Self {
         Self::Symlink {
-            linktarget: target.as_os_str().to_string_lossy().to_string(),
-            linktarget_raw: None,
+            link_target: target.as_os_str().to_string_lossy().to_string(),
+            link_target_raw: None,
         }
     }
 
     // Must be only called on NodeType::Symlink!
     /// Get the link path from a `NodeType::Symlink`.
     ///
-    /// # Panics
+    /// # Errors
     ///
     /// If called on a non-symlink node
+    ///
+    /// # Returns
+    ///
+    /// The link target as `Path`
     #[cfg(not(windows))]
-    #[must_use]
-    pub fn to_link(&self) -> &Path {
+    pub fn to_link(&self) -> RusticResult<&Path> {
         match self {
             Self::Symlink {
-                linktarget,
-                linktarget_raw,
-            } => linktarget_raw.as_ref().map_or_else(
-                || Path::new(linktarget),
+                link_target,
+                link_target_raw,
+            } => Ok(link_target_raw.as_ref().map_or_else(
+                || Path::new(link_target),
                 |t| Path::new(OsStr::from_bytes(t)),
-            ),
-            _ => panic!("called method to_link on non-symlink!"),
+            )),
+            _ => Err(NodeErrorKind::InvalidLinkTarget.into()),
         }
     }
 
     /// Convert a `NodeType::Symlink` to a `Path`.
     ///
-    /// # Warning
+    /// # Errors
     ///
-    /// Must be only called on `NodeType::Symlink`!
+    /// If called on a non-symlink node
+    /// If the link target is not valid unicode
     ///
-    /// # Panics
+    /// # Returns
     ///
-    /// * If called on a non-symlink node
-    /// * If the link target is not valid unicode
+    /// The link target as `Path`
     // TODO: Implement non-unicode link targets correctly for windows
     #[cfg(windows)]
-    #[must_use]
-    pub fn to_link(&self) -> &Path {
+    pub fn to_link(&self) -> RusticResult<&Path> {
         match self {
-            Self::Symlink { linktarget, .. } => Path::new(linktarget),
-            _ => panic!("called method to_link on non-symlink!"),
+            Self::Symlink { link_target, .. } => Ok(Path::new(link_target)),
+            _ => Err(NodeErrorKind::InvalidLinkTarget.into()),
         }
-    }
-}
-
-impl Default for NodeType {
-    fn default() -> Self {
-        Self::File
     }
 }
 
@@ -272,19 +268,27 @@ impl Node {
     /// * `node_type` - Type of the node
     /// * `meta` - Metadata of the node
     ///
+    /// # Errors
+    ///
+    /// If the name contains invalid characters
+    ///
     /// # Returns
     ///
     /// The created [`Node`]
-    #[must_use]
-    pub fn new_node(name: &OsStr, node_type: NodeType, meta: Metadata) -> Self {
-        Self {
-            name: escape_filename(name),
+    pub fn from_type_and_metadata(
+        name: &OsStr,
+        node_type: NodeType,
+        meta: Metadata,
+    ) -> RusticResult<Self> {
+        Ok(Self {
+            name: escape_file_name(name)?,
             node_type,
             content: None,
             subtree: None,
             meta,
-        }
+        })
     }
+
     #[must_use]
     /// Evaluates if this node is a directory
     pub const fn is_dir(&self) -> bool {
@@ -317,13 +321,18 @@ impl Node {
     }
 
     #[must_use]
-    /// Get the node name as `OsString`, handling name ecaping
+    /// Get the node name as `OsString`, handling name escaping
     ///
     /// # Panics
     ///
-    /// If the name is not valid unicode
+    /// If the name contains invalid characters
+    ///
+    /// # Returns
+    ///
+    /// The name of the node
     pub fn name(&self) -> OsString {
-        unescape_filename(&self.name).unwrap_or_else(|_| OsString::from_str(&self.name).unwrap())
+        #[allow(clippy::expect_used)]
+        unescape_file_name(&self.name).expect("unescaping should be infallible")
     }
 }
 
@@ -343,34 +352,37 @@ pub fn last_modified_node(n1: &Node, n2: &Node) -> Ordering {
 }
 
 // TODO: Should be probably called `_lossy`
-// TODO(Windows): This is not able to handle non-unicode filenames and
-// doesn't treat filenames which need and escape (like `\`, `"`, ...) correctly
+// TODO(Windows): This is not able to handle non-unicode file names and
+// doesn't treat file names which need and escape (like `\`, `"`, ...) correctly
 #[cfg(windows)]
-fn escape_filename(name: &OsStr) -> String {
-    name.to_string_lossy().to_string()
+fn escape_file_name(name: &OsStr) -> RusticResult<String> {
+    Ok(name
+        .to_str()
+        .ok_or_else(|| NodeErrorKind::InvalidFileName(name.to_os_string()))?
+        .to_string())
 }
 
-/// Unescape a filename
+/// Unescape a file name
 ///
 /// # Arguments
 ///
-/// * `s` - The escaped filename
+/// * `s` - The escaped file name
 #[cfg(windows)]
-fn unescape_filename(s: &str) -> Result<OsString, core::convert::Infallible> {
+fn unescape_file_name(s: &str) -> Result<OsString, core::convert::Infallible> {
     OsString::from_str(s)
 }
 
 #[cfg(not(windows))]
-/// Escape a filename
+/// Escape a file name
 ///
 /// # Arguments
 ///
-/// * `name` - The filename to escape
-// This escapes the filename in a way that *should* be compatible to golangs
+/// * `name` - The file name to escape
+// This escapes the file name in a way that *should* be compatible to golangs
 // stconv.Quote, see https://pkg.go.dev/strconv#Quote
 // However, so far there was no specification what Quote really does, so this
 // is some kind of try-and-error and maybe does not cover every case.
-fn escape_filename(name: &OsStr) -> String {
+fn escape_file_name(name: &OsStr) -> RusticResult<String> {
     let mut input = name.as_bytes();
     let mut s = String::with_capacity(name.len());
 
@@ -399,33 +411,39 @@ fn escape_filename(name: &OsStr) -> String {
             }
             Err(error) => {
                 let (valid, after_valid) = input.split_at(error.valid_up_to());
-                push(&mut s, std::str::from_utf8(valid).unwrap());
+                push(
+                    &mut s,
+                    std::str::from_utf8(valid)
+                        .map_err(|e| NodeErrorKind::FromUtf8Error(e.to_string()))?,
+                );
 
                 if let Some(invalid_sequence_length) = error.error_len() {
                     for b in &after_valid[..invalid_sequence_length] {
-                        write!(s, "\\x{b:02x}").unwrap();
+                        write!(s, "\\x{b:02x}")
+                            .map_err(|e| NodeErrorKind::SignWriteError(e.to_string()))?;
                     }
                     input = &after_valid[invalid_sequence_length..];
                 } else {
                     for b in after_valid {
-                        write!(s, "\\x{b:02x}").unwrap();
+                        write!(s, "\\x{b:02x}")
+                            .map_err(|e| NodeErrorKind::SignWriteError(e.to_string()))?;
                     }
                     break;
                 }
             }
         }
     }
-    s
+    Ok(s)
 }
 
 #[cfg(not(windows))]
-/// Unescape a filename
+/// Unescape a file name
 ///
 /// # Arguments
 ///
-/// * `s` - The escaped filename
+/// * `s` - The escaped file name
 // inspired by the enquote crate
-fn unescape_filename(s: &str) -> RusticResult<OsString> {
+fn unescape_file_name(s: &str) -> RusticResult<OsString> {
     let mut chars = s.chars();
     let mut u = Vec::new();
     loop {
@@ -504,17 +522,34 @@ fn take<I: Iterator<Item = char>>(iterator: &mut I, n: usize) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-
     use quickcheck_macros::quickcheck;
     use rstest::rstest;
+    use std::error::Error;
+    // #[cfg(windows)]
+    // use std::os::windows::prelude::*;
+
+    // #[cfg(windows)]
+    // use std::os::windows::ffi::OsStrExt;
+    // #[cfg(windows)]
+    // use std::os::windows::ffi::OsStringExt;
 
     #[quickcheck]
     #[allow(clippy::needless_pass_by_value)]
-    fn escape_unescape_is_identity(bytes: Vec<u8>) -> bool {
-        let name = OsStr::from_bytes(&bytes);
-        name == match unescape_filename(&escape_filename(name)) {
-            Ok(s) => s,
-            Err(_) => return false,
+    fn test_escape_unescape_is_identity_passes(bytes: Vec<u8>) -> Result<bool, Box<dyn Error>> {
+        cfg_if::cfg_if! {
+            if #[cfg(not(windows))] {
+                let name = OsStr::from_bytes(&bytes);
+                let res = name == unescape_file_name(&escape_file_name(name)?)?;
+                Ok(res)
+            } else if #[cfg(windows)] {
+                // #[allow(unsafe_code)]
+                // unsafe {
+                //     let name = OsStr::from_encoded_bytes_unchecked(bytes.as_slice());
+                //     let res = name == unescape_file_name(&escape_file_name(name)?)?;
+                //     Ok(res)
+                // }
+                Ok(true)
+            }
         }
     }
 
@@ -536,9 +571,24 @@ mod tests {
     #[case(b"\xc3\x9f", "\u{00df}")]
     #[case(b"\xe2\x9d\xa4", "\u{2764}")]
     #[case(b"\xf0\x9f\x92\xaf", "\u{01f4af}")]
-    fn escape_cases(#[case] input: &[u8], #[case] expected: &str) {
-        let name = OsStr::from_bytes(input);
-        assert_eq!(expected, escape_filename(name));
+    fn test_escape_cases_passes(
+        #[case] input: &[u8],
+        #[case] expected: &str,
+    ) -> Result<(), Box<dyn Error>> {
+        cfg_if::cfg_if! {
+            if #[cfg(not(windows))] {
+                let name = OsStr::from_bytes(input);
+                assert_eq!(expected, escape_file_name(name)?);
+            } else if #[cfg(windows)] {
+            // #[allow(unsafe_code)]
+            // unsafe {
+            //     let name = OsStr::from_encoded_bytes_unchecked(input);
+            //     assert_eq!(expected, escape_file_name(name)?);
+            // }
+            }
+        }
+
+        Ok(())
     }
 
     #[rstest]
@@ -560,15 +610,41 @@ mod tests {
     #[case(r#"\u00DF"#, b"\xc3\x9f")]
     #[case(r#"\u2764"#, b"\xe2\x9d\xa4")]
     #[case(r#"\U0001f4af"#, b"\xf0\x9f\x92\xaf")]
-    fn unescape_cases(#[case] input: &str, #[case] expected: &[u8]) {
-        let expected = OsStr::from_bytes(expected);
-        assert_eq!(expected, unescape_filename(input).unwrap());
+    fn test_unescape_cases_passes(
+        #[case] input: &str,
+        #[case] expected: &[u8],
+    ) -> Result<(), Box<dyn Error>> {
+        cfg_if::cfg_if! {
+            if #[cfg(not(windows))] {
+                let expected = OsStr::from_bytes(expected);
+                assert_eq!(expected, unescape_file_name(input)?);
+            } else if #[cfg(windows)] {
+            // #[allow(unsafe_code)]
+            // unsafe {
+            //     let expected = OsStr::from_encoded_bytes_unchecked(expected);
+            //     assert_eq!(expected, unescape_file_name(input)?);
+            // }
+            }
+        }
+
+        Ok(())
     }
 
     #[quickcheck]
     #[allow(clippy::needless_pass_by_value)]
-    fn from_link_to_link_is_identity(bytes: Vec<u8>) -> bool {
-        let path = Path::new(OsStr::from_bytes(&bytes));
-        path == NodeType::from_link(path).to_link()
+    fn test_from_link_to_link_is_identity_passes(bytes: Vec<u8>) -> RusticResult<bool> {
+        cfg_if::cfg_if! {
+            if #[cfg(not(windows))] {
+                let path = Path::new(OsStr::from_bytes(&bytes));
+                Ok(path == NodeType::from_link(path).to_link()?)
+            } else if #[cfg(windows)] {
+            // #[allow(unsafe_code)]
+            // unsafe {
+            //     let path = Path::new(OsStr::from_encoded_bytes_unchecked(bytes.as_slice()));
+            //     Ok(path == NodeType::from_link(path).to_link()?)
+            // }
+            Ok(true)
+            }
+        }
     }
 }

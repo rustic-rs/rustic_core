@@ -287,12 +287,13 @@ fn qp(p: i32, g: Polynom64) -> Polynom64 {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
     use std::io::{repeat, Cursor};
 
     #[test]
-    fn chunk_empty() {
+    fn test_chunk_empty_passes() {
         let empty: Vec<u8> = vec![];
         let mut reader = Cursor::new(empty);
 
@@ -304,7 +305,7 @@ mod tests {
     }
 
     #[test]
-    fn chunk_empty_wrong_hint() {
+    fn test_chunk_empty_wrong_hint_passes() {
         let empty: Vec<u8> = vec![];
         let mut reader = Cursor::new(empty);
 
@@ -316,7 +317,7 @@ mod tests {
     }
 
     #[test]
-    fn chunk_zeros() {
+    fn test_chunk_zeros_passes() {
         let mut reader = repeat(0u8);
 
         let poly = random_poly().unwrap();

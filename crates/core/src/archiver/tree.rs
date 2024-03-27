@@ -89,7 +89,7 @@ where
                             // process next normal path component - other components are simply ignored
                             if let Some(p) = comp_to_osstr(comp).ok().flatten() {
                                 if node.is_dir() && path == &self.path {
-                                    let (path, node, _) = self.item.take().unwrap();
+                                    let (path, node, _) = self.item.take()?;
                                     self.item = self.iter.next();
                                     let name = node.name();
                                     return Some(TreeType::NewTree((path, node, name)));
@@ -99,12 +99,13 @@ where
                                     mode: Some(0o755),
                                     ..Default::default()
                                 };
-                                let node = Node::new_node(&p, NodeType::Dir, meta);
+                                let node =
+                                    Node::from_type_and_metadata(&p, NodeType::Dir, meta).ok()?;
                                 return Some(TreeType::NewTree((self.path.clone(), node, p)));
                             }
                         }
                         // there wasn't any normal path component to process - return current item
-                        let item = self.item.take().unwrap();
+                        let item = self.item.take()?;
                         self.item = self.iter.next();
                         Some(TreeType::Other(item))
                     }

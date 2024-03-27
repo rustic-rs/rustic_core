@@ -7,7 +7,7 @@ use std::{
 
 use anyhow::Result;
 use bytes::Bytes;
-use log::{debug, info};
+use log::{debug, info, warn};
 use rand::{
     distributions::{Alphanumeric, DistString},
     thread_rng,
@@ -30,21 +30,33 @@ pub(super) mod constants {
 pub struct RcloneBackend {
     /// The REST backend.
     rest: RestBackend,
+
     /// The url of the backend.
     url: String,
+
     /// The child data contains the child process and is used to kill the child process when the backend is dropped.
     child: Child,
+
     /// The [`JoinHandle`] of the thread printing rclone's output
-    handle: Option<JoinHandle<()>>,
+    handle: Option<JoinHandle<Result<()>>>,
 }
 
 impl Drop for RcloneBackend {
     /// Kill the child process.
     fn drop(&mut self) {
         debug!("killing rclone.");
-        self.child.kill().unwrap();
-        // TODO: Handle error and log it
-        _ = self.handle.take().map(JoinHandle::join);
+        if let Err(err) = self.child.kill() {
+            warn!("failed to kill rclone: {err}");
+        };
+        match self.handle.take().map(JoinHandle::join) {
+            Some(Err(err)) => {
+                warn!("rclone panicked: {err:?}");
+            }
+            Some(Ok(Err(err))) => {
+                warn!("rclone failed: {err}");
+            }
+            _ => (),
+        };
     }
 }
 
@@ -121,11 +133,6 @@ impl RcloneBackend {
     /// # Returns
     ///
     /// The created [`RcloneBackend`].
-    ///
-    /// # Panics
-    ///
-    /// If the rclone command is not found.
-    // TODO: This should be an error, not a panic.
     pub fn new(url: impl AsRef<str>, options: HashMap<String, String>) -> Result<Self> {
         let rclone_command = options.get("rclone-command");
         let use_password = options
@@ -158,7 +165,11 @@ impl RcloneBackend {
         let mut command = Command::new(&rclone_command[0]);
 
         if use_password {
-            // TODO: We should handle errors here
+            // Check if RCLONE_USER and RCLONE_PASS are already set
+            if std::env::var("RCLONE_USER").is_ok() || std::env::var("RCLONE_PASS").is_ok() {
+                warn!("RCLONE_USER or RCLONE_PASS already set, we will overwrite them for this rclone instance.");
+                // return Err(RcloneErrorKind::RCloneUserOrPassAlreadySet.into());
+            }
             _ = command
                 .env("RCLONE_USER", &user)
                 .env("RCLONE_PASS", &password);
@@ -213,29 +224,35 @@ impl RcloneBackend {
         debug!("using REST backend with url {}.", url.as_ref());
         let rest = RestBackend::new(rest_url, options)?;
 
-        let handle = Some(std::thread::spawn(move || loop {
-            let mut line = String::new();
-            if stderr.read_line(&mut line).unwrap() == 0 {
-                break;
+        let handle = std::thread::spawn(move || -> Result<()> {
+            loop {
+                let mut line = String::new();
+                let line_length = stderr
+                    .read_line(&mut line)
+                    .map_err(RcloneErrorKind::FromIoError)?;
+                if line_length == 0 {
+                    break;
+                }
+                if !line.is_empty() {
+                    info!("rclone output: {line}");
+                }
             }
-            if !line.is_empty() {
-                info!("rclone output: {line}");
-            }
-        }));
+            Ok(())
+        });
 
         Ok(Self {
             child,
             url: String::from(url.as_ref()),
             rest,
-            handle,
+            handle: Some(handle),
         })
     }
 }
 
 impl ReadBackend for RcloneBackend {
     /// Returns the location of the backend.
-    fn location(&self) -> String {
-        "rclone:".to_string() + &self.url
+    fn location(&self) -> Result<String> {
+        Ok("rclone:".to_string() + &self.url)
     }
 
     /// Returns the size of the given file.
