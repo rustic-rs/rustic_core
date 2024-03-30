@@ -41,7 +41,7 @@ impl HotColdBackend {
 }
 
 impl ReadBackend for HotColdBackend {
-    fn location(&self) -> String {
+    fn location(&self) -> Result<String> {
         self.be.location()
     }
 

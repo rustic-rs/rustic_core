@@ -35,7 +35,7 @@ pub(crate) trait RollingHash64 {
 }
 
 /// A rolling hash implementation for 64 bit polynoms from Rabin.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub(crate) struct Rabin64 {
     // Configuration
     /// Window size.

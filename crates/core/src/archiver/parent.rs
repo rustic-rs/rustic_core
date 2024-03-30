@@ -43,7 +43,7 @@ pub struct Parent {
 /// # Type Parameters
 ///
 /// * `T` - The type of the matched parent.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum ParentResult<T> {
     /// The parent was found and matches.
     Matched(T),
@@ -54,11 +54,13 @@ pub(crate) enum ParentResult<T> {
 }
 
 impl<T> ParentResult<T> {
-    /// Maps a `ParentResult<T>` to a `ParentResult<R>` by applying a function to a contained value.
+    /// Maps a `ParentResult<T>` to a `ParentResult<U>` by applying a function to a contained value.
     ///
     /// # Type Parameters
     ///
-    /// * `R` - The type of the returned `ParentResult`.
+    /// * `T` - The type of the contained value.
+    /// * `U` - The type of the returned `ParentResult`.
+    /// * `F` - The function to apply.
     ///
     /// # Arguments
     ///
@@ -66,12 +68,43 @@ impl<T> ParentResult<T> {
     ///
     /// # Returns
     ///
-    /// A `ParentResult<R>` with the result of the function for each `ParentResult<T>`.
-    fn map<R>(self, f: impl FnOnce(T) -> R) -> ParentResult<R> {
+    /// A `ParentResult<U>` with the result of the function for each `ParentResult<T>`.
+    #[inline]
+    fn map<U, F>(self, f: F) -> ParentResult<U>
+    where
+        F: FnOnce(T) -> U,
+    {
         match self {
             Self::Matched(t) => ParentResult::Matched(f(t)),
             Self::NotFound => ParentResult::NotFound,
             Self::NotMatched => ParentResult::NotMatched,
+        }
+    }
+}
+
+impl<T, E> ParentResult<Result<T, E>> {
+    /// Transposes a [`ParentResult`] of a [`Result`] into a [`Result`] of a [`ParentResult`].
+    ///
+    /// # Type Parameters
+    ///
+    /// * `T` - The type of the inner `Result`.
+    /// * `E` - The error type of the inner `Result`.
+    ///
+    /// # Errors
+    ///
+    /// If the `ParentResult` is `Matched` and the inner `Result` is `Err`, the error is returned.
+    ///
+    /// # Returns
+    ///
+    /// A `Result` of a `ParentResult<T>`.
+    #[inline]
+    pub fn transpose(self) -> Result<ParentResult<T>, E> {
+        match self {
+            Self::Matched(Ok(x)) => Ok(ParentResult::Matched(x)),
+
+            Self::Matched(Err(e)) => Err(e),
+            Self::NotFound => Ok(ParentResult::NotFound),
+            Self::NotMatched => Ok(ParentResult::NotMatched),
         }
     }
 }
@@ -266,8 +299,11 @@ impl Parent {
             TreeType::NewTree((path, node, tree)) => {
                 let parent_result = self
                     .is_parent(&node, &tree)
-                    .map(|node| node.subtree.unwrap());
+                    .map(|node| node.subtree.ok_or(ArchiverErrorKind::ParentNodeIsNoTree))
+                    .transpose()?;
+
                 self.set_dir(be, index, &tree);
+
                 TreeType::NewTree((path, node, parent_result))
             }
             TreeType::EndTree => {
@@ -294,5 +330,60 @@ impl Parent {
             }
         };
         Ok(result)
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used)]
+mod tests {
+
+    use super::*;
+    use std::error::Error;
+
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    pub struct TestStruct {
+        pub value: Option<i32>,
+    }
+
+    #[test]
+    fn test_map_parent_result_passes() {
+        let result = ParentResult::Matched(1);
+        let mapped = result.map(|x| x + 1);
+        assert_eq!(mapped, ParentResult::Matched(2));
+    }
+
+    #[test]
+    #[allow(clippy::unnecessary_literal_unwrap)]
+    fn test_map_parent_result_with_unwrap_passes() {
+        let opt = Some(1);
+
+        let result = ParentResult::Matched(10);
+        let mapped = result.map(|_match| opt.unwrap());
+        assert_eq!(mapped, ParentResult::Matched(1));
+    }
+
+    #[test]
+    #[allow(clippy::unnecessary_literal_unwrap)]
+    fn test_map_parent_result_with_option_passes() {
+        let opt = Some(1);
+
+        let result = ParentResult::Matched(10);
+        let mapped = result.map(|_match| opt);
+        assert_eq!(mapped, ParentResult::Matched(opt));
+    }
+
+    #[test]
+    // Result should be `Result<(), Box<dyn Error>>` so check ergonomics with usage of standard utilities, not anyhow
+    fn test_map_parent_result_and_transpose_passes() -> Result<(), Box<dyn Error>> {
+        let item = TestStruct { value: Some(1) };
+
+        let result = ParentResult::Matched("str");
+        let mapped = result
+            .map(|_i| -> Result<i32, Box<dyn Error>> { item.value.ok_or_else(|| "error".into()) })
+            .transpose()?;
+
+        assert_eq!(mapped, ParentResult::Matched(item.value.unwrap()));
+
+        Ok(())
     }
 }

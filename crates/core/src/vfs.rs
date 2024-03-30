@@ -131,7 +131,8 @@ impl VfsTree {
     ///
     /// # Errors
     ///
-    // TODO: Document errors
+    /// * [`VfsErrorKind::NameDoesNotExist`] - if the component name doesn't exist
+    ///
     ///
     /// # Returns
     ///
@@ -190,13 +191,13 @@ impl Vfs {
     ///
     /// * `node` - The directory [`Node`] to create the [`Vfs`] from
     ///
-    /// # Panics
+    /// # Returns
     ///
-    /// If the node is not a directory
+    /// The created [`Vfs`] or `None` if the node has no subtree
     #[must_use]
-    pub fn from_dir_node(node: &Node) -> Self {
-        let tree = VfsTree::RusticTree(node.subtree.unwrap());
-        Self { tree }
+    pub fn from_dir_node(node: &Node) -> Option<Self> {
+        let tree = VfsTree::RusticTree(node.subtree?);
+        Some(Self { tree })
     }
 
     /// Create a new [`Vfs`] from a list of snapshots.
@@ -245,19 +246,19 @@ impl Vfs {
             )
             .to_string();
             let path = Path::new(&path);
-            let filename = path.file_name().map(OsStr::to_os_string);
+            let file_name = path.file_name().map(OsStr::to_os_string);
             let parent_path = path.parent().map(Path::to_path_buf);
 
             // Save pathes for latest entries, if requested
             if matches!(latest_option, Latest::AsLink) {
-                _ = dirs_for_link.insert(parent_path.clone(), filename.clone());
+                _ = dirs_for_link.insert(parent_path.clone(), file_name.clone());
             }
             if matches!(latest_option, Latest::AsDir) {
                 _ = dirs_for_snap.insert(parent_path.clone(), snap.tree);
             }
 
             // Create the entry, potentially as symlink if requested
-            if last_parent != parent_path || last_name != filename {
+            if last_parent != parent_path || last_name != file_name {
                 if matches!(id_snap_option, IdenticalSnapshot::AsLink)
                     && last_parent == parent_path
                     && last_tree == snap.tree
@@ -270,7 +271,7 @@ impl Vfs {
                 }
             }
             last_parent = parent_path;
-            last_name = filename;
+            last_name = file_name;
             last_tree = snap.tree;
         }
 
@@ -347,6 +348,7 @@ impl Vfs {
     /// # Errors
     ///
     /// * [`VfsErrorKind::NameDoesNotExist`] - if the component name doesn't exist
+    /// * [`VfsErrorKind::NoDirectoryEntriesForSymlinkFound`] - if no directory entries for the symlink are found
     ///
     /// # Returns
     ///
@@ -354,10 +356,6 @@ impl Vfs {
     ///
     /// [`VfsErrorKind::NameDoesNotExist`]: crate::error::VfsErrorKind::NameDoesNotExist
     /// [`Tree`]: crate::repofile::Tree
-    ///
-    /// # Panics
-    ///
-    /// Panics if the path is not a directory.
     pub fn dir_entries_from_path<P, S: IndexedFull>(
         &self,
         repo: &Repository<P, S>,
@@ -366,8 +364,13 @@ impl Vfs {
         let result = match self.tree.get_path(path)? {
             VfsPath::RusticPath(tree_id, path) => {
                 let node = repo.node_from_path(*tree_id, &path)?;
-                if node.is_dir() {
-                    let tree = repo.get_tree(&node.subtree.unwrap())?;
+                if node.is_dir() && node.subtree.is_some() {
+                    let Some(id) = node.subtree else {
+                        return Err(
+                            VfsErrorKind::NoDirectoryEntriesForSymlinkFound(path.into()).into()
+                        );
+                    };
+                    let tree = repo.get_tree(&id)?;
                     tree.nodes
                 } else {
                     Vec::new()
@@ -375,14 +378,14 @@ impl Vfs {
             }
             VfsPath::VirtualTree(virtual_tree) => virtual_tree
                 .iter()
-                .map(|(name, tree)| {
+                .map(|(name, tree)| -> RusticResult<_> {
                     let node_type = match tree {
                         VfsTree::Link(target) => NodeType::from_link(Path::new(target)),
                         _ => NodeType::Dir,
                     };
-                    Node::new_node(name, node_type, Metadata::default())
+                    Node::from_type_and_metadata(name, node_type, Metadata::default())
                 })
-                .collect(),
+                .collect::<RusticResult<Vec<Node>>>()?,
             VfsPath::Link(str) => {
                 return Err(VfsErrorKind::NoDirectoryEntriesForSymlinkFound(str.clone()).into());
             }
@@ -437,36 +440,51 @@ impl OpenFile {
     ///
     /// # Errors
     ///
-    // TODO: Document errors
+    /// * [`VfsErrorKind::DataBlobNotFound`] - If the data blob is not found
+    /// * [`VfsErrorKind::DataBlobTooLarge`] - If the data blob is too large
+    /// * [`VfsErrorKind::ConversionFromU32ToUsizeFailed`] - If the conversion from `u32` to `usize` failed
+    /// * [`VfsErrorKind::HexError`] - If the conversion from `Id` to `HexId` failed
     ///
     /// # Returns
     ///
     /// The created `OpenFile`
-    ///
-    /// # Panics
-    ///
-    /// Panics if the `Node` has no content
-    pub fn from_node<P, S: IndexedFull>(repo: &Repository<P, S>, node: &Node) -> Self {
+    pub fn from_node<P, S: IndexedFull>(
+        repo: &Repository<P, S>,
+        node: &Node,
+    ) -> RusticResult<Self> {
         let mut start = 0;
-        let mut content: Vec<_> = node
+        let mut content = node
             .content
-            .as_ref()
-            .unwrap()
             .iter()
-            .map(|id| {
-                let starts_at = start;
-                start += repo.index().get_data(id).unwrap().data_length() as usize;
-                BlobInfo { id: *id, starts_at }
+            .flatten()
+            .map(|id| -> RusticResult<_> {
+                let starts_at: usize = start;
+                let hex_id = id.to_hex();
+                let hex_id = hex_id.as_str();
+                let data_length = repo
+                    .index()
+                    .get_data(id)
+                    .ok_or_else(|| VfsErrorKind::DataBlobNotFound(hex_id.to_string()))?
+                    .data_length();
+                let data_length = usize::try_from(data_length).map_err(|err| {
+                    VfsErrorKind::ConversionFromU32ToUsizeFailed(err, hex_id.to_string())
+                })?;
+                if let Some(val) = start.checked_add(data_length) {
+                    start = val;
+                } else {
+                    return Err(VfsErrorKind::DataBlobTooLarge(hex_id.to_string()).into());
+                };
+                Ok(BlobInfo { id: *id, starts_at })
             })
-            .collect();
+            .collect::<RusticResult<Vec<_>>>()?;
 
-        // content is assumed to be partioned, so we add a starts_at:MAX entry
+        // content is assumed to be partitioned, so we add a starts_at:MAX entry
         content.push(BlobInfo {
             id: Id::default(),
             starts_at: usize::MAX,
         });
 
-        Self { content }
+        Ok(Self { content })
     }
 
     /// Read the `OpenFile` at the given `offset` from the `repo`.

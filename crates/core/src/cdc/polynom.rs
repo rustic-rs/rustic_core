@@ -35,7 +35,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn polynom_degree() {
+    fn test_polynom_degree_passes() {
         assert_eq!(0u64.degree(), -1);
         assert_eq!(1u64.degree(), 0);
 
@@ -45,7 +45,7 @@ mod tests {
     }
 
     #[test]
-    fn polynom_modulo() {
+    fn test_polynom_modulo_passes() {
         assert_eq!(7u64.modulo(3), 1);
         assert_eq!(7u64.modulo(4), 3);
         assert_eq!(7u64.modulo(2), 1);

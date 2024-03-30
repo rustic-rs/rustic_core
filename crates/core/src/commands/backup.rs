@@ -130,13 +130,19 @@ impl ParentOptions {
 #[non_exhaustive]
 /// Options for the `backup` command.
 pub struct BackupOptions {
-    /// Set filename to be used when backing up from stdin
+    /// Set file name to be used when backing up from stdin
     #[cfg_attr(
         feature = "clap",
-        clap(long, value_name = "FILENAME", default_value = "stdin")
+        clap(
+            long,
+            value_name = "FILE_NAME",
+            alias = "stdin-filename",
+            default_value = "stdin"
+        )
     )]
+    #[serde(alias = "stdin-filename")]
     #[cfg_attr(feature = "merge", merge(skip))]
-    pub stdin_filename: String,
+    pub stdin_file_name: String,
 
     /// Manually set backup path in snapshot
     #[cfg_attr(feature = "clap", clap(long, value_name = "PATH"))]
@@ -209,7 +215,7 @@ pub(crate) fn backup<P: ProgressBars, S: IndexedIds>(
 
     let backup_stdin = *source == PathList::from_string("-")?;
     let backup_path = if backup_stdin {
-        vec![PathBuf::from(&opts.stdin_filename)]
+        vec![PathBuf::from(&opts.stdin_file_name)]
     } else {
         source.paths()
     };

@@ -14,7 +14,7 @@ use crate::{
 /// Index files describe index information about multiple `pack` files.
 ///
 /// They are usually stored in the repository under `/index/<ID>`
-#[derive(Serialize, Deserialize, Debug, Default)]
+#[derive(Serialize, Deserialize, Debug, Default, Clone)]
 pub struct IndexFile {
     #[serde(skip_serializing_if = "Option::is_none")]
     /// which other index files are superseded by this (not actively used)

@@ -3,6 +3,7 @@ use std::{num::NonZeroU32, sync::Arc};
 use anyhow::Result;
 use bytes::Bytes;
 use crossbeam_channel::{unbounded, Receiver};
+use log::error;
 use rayon::prelude::*;
 use zstd::stream::{copy_encode, decode_all, encode_all};
 
@@ -17,7 +18,7 @@ pub fn max_compression_level() -> i32 {
 use crate::{
     backend::{FileType, ReadBackend, WriteBackend},
     crypto::{hasher::hash, CryptoKey},
-    error::{CryptBackendErrorKind, RusticErrorKind},
+    error::{CryptBackendErrorKind, MultiprocessingErrorKind, RusticErrorKind},
     id::Id,
     repofile::RepoFile,
     Progress, RusticResult,
@@ -166,12 +167,18 @@ pub trait DecryptReadBackend: ReadBackend + Clone + 'static {
         p.set_length(list.len() as u64);
         let (tx, rx) = unbounded();
 
-        list.into_par_iter()
-            .for_each_with((self, p, tx), |(be, p, tx), id| {
+        list.into_par_iter().try_for_each_with(
+            (self, p, tx),
+            |(be, p, tx), id| -> RusticResult<()> {
                 let file = be.get_file::<F>(&id).map(|file| (id, file));
                 p.inc(1);
-                tx.send(file).unwrap();
-            });
+                if tx.send(file).is_err() {
+                    error!("receiver has been dropped unexpectedly.");
+                    return Err(MultiprocessingErrorKind::ReceiverDropped.into());
+                }
+                Ok(())
+            },
+        )?;
         Ok(rx)
     }
 }
@@ -304,9 +311,13 @@ pub trait DecryptWriteBackend: WriteBackend + Clone + 'static {
     /// * `list` - The list of files to delete.
     /// * `p` - The progress bar.
     ///
-    /// # Panics
+    /// # Errors
     ///
     /// If the files could not be deleted.
+    ///
+    /// # Returns
+    ///
+    /// Ok if the files were deleted.
     fn delete_list<'a, I: ExactSizeIterator<Item = &'a Id> + Send>(
         &self,
         tpe: FileType,
@@ -316,8 +327,8 @@ pub trait DecryptWriteBackend: WriteBackend + Clone + 'static {
     ) -> RusticResult<()> {
         p.set_length(list.len() as u64);
         list.par_bridge().try_for_each(|id| -> RusticResult<_> {
-            // TODO: Don't panic on file not being able to be deleted.
-            self.remove(tpe, id, cacheable).unwrap();
+            self.remove(tpe, id, cacheable)
+                .map_err(RusticErrorKind::Backend)?;
             p.inc(1);
             Ok(())
         })?;
@@ -540,7 +551,7 @@ impl<C: CryptoKey> DecryptReadBackend for DecryptBackend<C> {
 }
 
 impl<C: CryptoKey> ReadBackend for DecryptBackend<C> {
-    fn location(&self) -> String {
+    fn location(&self) -> Result<String> {
         self.be.location()
     }
 
@@ -599,7 +610,7 @@ mod tests {
     }
 
     #[test]
-    fn verify_encrypt_file_ok() -> Result<()> {
+    fn test_verify_encrypt_file_passes() -> Result<()> {
         let (mut be, data) = init();
         be.set_extra_verify(true);
         let data_encrypted = be.encrypt_file(data)?;
@@ -608,7 +619,7 @@ mod tests {
     }
 
     #[test]
-    fn verify_encrypt_file_no_test() -> Result<()> {
+    fn test_verify_encrypt_file_no_test_passes() -> Result<()> {
         let (be, data) = init();
         let mut data_encrypted = be.encrypt_file(data)?;
         // modify some data
@@ -619,7 +630,7 @@ mod tests {
     }
 
     #[test]
-    fn verify_encrypt_file_nok() -> Result<()> {
+    fn test_verify_encrypt_file_nok_passes() -> Result<()> {
         let (mut be, data) = init();
         be.set_extra_verify(true);
         let mut data_encrypted = be.encrypt_file(data)?;
@@ -631,7 +642,7 @@ mod tests {
     }
 
     #[test]
-    fn verify_encrypt_data_ok() -> Result<()> {
+    fn test_verify_encrypt_data_passes() -> Result<()> {
         let (mut be, data) = init();
         be.set_extra_verify(true);
         let (data_encrypted, _, ul) = be.encrypt_data(data)?;
@@ -640,7 +651,7 @@ mod tests {
     }
 
     #[test]
-    fn verify_encrypt_data_no_test() -> Result<()> {
+    fn test_verify_encrypt_data_no_test_passes() -> Result<()> {
         let (be, data) = init();
         let (mut data_encrypted, _, ul) = be.encrypt_data(data)?;
         // modify some data
@@ -651,7 +662,7 @@ mod tests {
     }
 
     #[test]
-    fn verify_encrypt_data_nok() -> Result<()> {
+    fn test_verify_encrypt_data_nok_passes() -> Result<()> {
         let (mut be, data) = init();
         be.set_extra_verify(true);
         let (mut data_encrypted, _, ul) = be.encrypt_data(data)?;

@@ -72,7 +72,7 @@ pub struct LocalSourceFilterOptions {
     #[cfg_attr(feature = "merge", merge(strategy = merge::vec::overwrite_empty))]
     pub glob: Vec<String>,
 
-    /// Same as --glob pattern but ignores the casing of filenames
+    /// Same as --glob pattern but ignores the casing of file names
     #[cfg_attr(feature = "clap", clap(long, value_name = "GLOB"))]
     #[cfg_attr(feature = "merge", merge(strategy = merge::vec::overwrite_empty))]
     pub iglob: Vec<String>,
@@ -82,7 +82,7 @@ pub struct LocalSourceFilterOptions {
     #[cfg_attr(feature = "merge", merge(strategy = merge::vec::overwrite_empty))]
     pub glob_file: Vec<String>,
 
-    /// Same as --glob-file ignores the casing of filenames in patterns
+    /// Same as --glob-file ignores the casing of file names in patterns
     #[cfg_attr(feature = "clap", clap(long, value_name = "FILE"))]
     #[cfg_attr(feature = "merge", merge(strategy = merge::vec::overwrite_empty))]
     pub iglob_file: Vec<String>,
@@ -97,12 +97,12 @@ pub struct LocalSourceFilterOptions {
     #[cfg_attr(feature = "merge", merge(strategy = merge::bool::overwrite_false))]
     pub no_require_git: bool,
 
-    /// Treat the provided filename like a .gitignore file (can be specified multiple times)
+    /// Treat the provided file name like a .gitignore file (can be specified multiple times)
     #[cfg_attr(feature = "clap", clap(long, value_name = "FILE"))]
     #[cfg_attr(feature = "merge", merge(strategy = merge::vec::overwrite_empty))]
     pub custom_ignorefile: Vec<String>,
 
-    /// Exclude contents of directories containing this filename (can be specified multiple times)
+    /// Exclude contents of directories containing this file name (can be specified multiple times)
     #[cfg_attr(feature = "clap", clap(long, value_name = "FILE"))]
     #[cfg_attr(feature = "merge", merge(strategy = merge::vec::overwrite_empty))]
     pub exclude_if_present: Vec<String>,
@@ -305,7 +305,7 @@ impl Iterator for LocalSourceWalker {
     fn next(&mut self) -> Option<Self::Item> {
         match self.walker.next() {
             // ignore root dir, i.e. an entry with depth 0 of type dir
-            Some(Ok(entry)) if entry.depth() == 0 && entry.file_type().unwrap().is_dir() => {
+            Some(Ok(entry)) if entry.depth() == 0 && entry.file_type()?.is_dir() => {
                 self.walker.next()
             }
             item => item,
@@ -392,18 +392,22 @@ fn map_entry(
     };
 
     let node = if m.is_dir() {
-        Node::new_node(name, NodeType::Dir, meta)
+        Node::from_type_and_metadata(name, NodeType::Dir, meta)
     } else if m.is_symlink() {
         let target = read_link(entry.path()).map_err(IgnoreErrorKind::FromIoError)?;
         let node_type = NodeType::from_link(&target);
-        Node::new_node(name, node_type, meta)
+        Node::from_type_and_metadata(name, node_type, meta)
     } else {
-        Node::new_node(name, NodeType::File, meta)
+        Node::from_type_and_metadata(name, NodeType::File, meta)
     };
 
     let path = entry.into_path();
     let open = Some(OpenFile(path.clone()));
-    Ok(ReadSourceEntry { path, node, open })
+    Ok(ReadSourceEntry {
+        path,
+        node: node?,
+        open,
+    })
 }
 
 /// Get the user name for the given uid.
@@ -520,9 +524,11 @@ fn map_entry(
             .map(|name| {
                 Ok(ExtendedAttribute {
                     name: name.to_string_lossy().to_string(),
-                    value: xattr::get(path, name)
+                    value: xattr::get(path, name.clone())
                         .map_err(IgnoreErrorKind::FromIoError)?
-                        .unwrap(),
+                        .ok_or({
+                            IgnoreErrorKind::XattrNotFound(name.to_string_lossy().to_string())
+                        })?,
                 })
             })
             .collect::<RusticResult<_>>()?
@@ -546,27 +552,31 @@ fn map_entry(
     let filetype = m.file_type();
 
     let node = if m.is_dir() {
-        Node::new_node(name, NodeType::Dir, meta)
+        Node::from_type_and_metadata(name, NodeType::Dir, meta)
     } else if m.is_symlink() {
         let target = read_link(entry.path()).map_err(IgnoreErrorKind::FromIoError)?;
         let node_type = NodeType::from_link(&target);
-        Node::new_node(name, node_type, meta)
+        Node::from_type_and_metadata(name, node_type, meta)
     } else if filetype.is_block_device() {
         let node_type = NodeType::Dev { device: m.rdev() };
-        Node::new_node(name, node_type, meta)
+        Node::from_type_and_metadata(name, node_type, meta)
     } else if filetype.is_char_device() {
         let node_type = NodeType::Chardev { device: m.rdev() };
-        Node::new_node(name, node_type, meta)
+        Node::from_type_and_metadata(name, node_type, meta)
     } else if filetype.is_fifo() {
-        Node::new_node(name, NodeType::Fifo, meta)
+        Node::from_type_and_metadata(name, NodeType::Fifo, meta)
     } else if filetype.is_socket() {
-        Node::new_node(name, NodeType::Socket, meta)
+        Node::from_type_and_metadata(name, NodeType::Socket, meta)
     } else {
-        Node::new_node(name, NodeType::File, meta)
+        Node::from_type_and_metadata(name, NodeType::File, meta)
     };
     let path = entry.into_path();
     let open = Some(OpenFile(path.clone()));
-    Ok(ReadSourceEntry { path, node, open })
+    Ok(ReadSourceEntry {
+        path,
+        node: node?,
+        open,
+    })
 }
 
 #[cfg(not(windows))]

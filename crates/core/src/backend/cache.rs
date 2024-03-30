@@ -1,8 +1,9 @@
 use std::{
     collections::HashMap,
+    fmt::{self, Display},
     fs::{self, File},
     io::{ErrorKind, Read, Seek, SeekFrom, Write},
-    path::PathBuf,
+    path::{Path, PathBuf},
     sync::Arc,
 };
 
@@ -40,14 +41,14 @@ impl CachedBackend {
     /// # Type Parameters
     ///
     /// * `BE` - The backend to cache.
-    pub fn new_cache(be: Arc<dyn WriteBackend>, cache: Cache) -> Arc<dyn WriteBackend> {
+    pub fn from_backend(be: Arc<dyn WriteBackend>, cache: Cache) -> Arc<dyn WriteBackend> {
         Arc::new(Self { be, cache })
     }
 }
 
 impl ReadBackend for CachedBackend {
     /// Returns the location of the backend as a String.
-    fn location(&self) -> String {
+    fn location(&self) -> Result<String> {
         self.be.location()
     }
 
@@ -208,6 +209,12 @@ pub struct Cache {
     path: PathBuf,
 }
 
+impl Display for Cache {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.path.display())
+    }
+}
+
 impl Cache {
     /// Creates a new [`Cache`] with the given id.
     ///
@@ -240,13 +247,16 @@ impl Cache {
 
     /// Returns the path to the location of this [`Cache`].
     ///
-    /// # Panics
+    /// # Errors
     ///
-    /// Panics if the path is not valid unicode.
-    // TODO: Does this need to panic? Result?
+    /// * [`CacheBackendErrorKind::CacheLocationInvalid`] - If the path is not a valid string.
+    ///
+    /// # Returns
+    ///
+    /// The path to the location of this [`Cache`].
     #[must_use]
-    pub fn location(&self) -> &str {
-        self.path.to_str().unwrap()
+    pub fn location(&self) -> &Path {
+        self.path.as_path()
     }
 
     /// Returns the path to the directory of the given type.
@@ -296,25 +306,37 @@ impl Cache {
         let walker = WalkDir::new(path)
             .into_iter()
             .filter_map(walkdir::Result::ok)
-            .filter(|e| {
+            .filter(|entry| {
                 // only use files with length of 64 which are valid hex
-                e.file_type().is_file()
-                    && e.file_name().len() == 64
-                    && e.file_name().is_ascii()
-                    && e.file_name().to_str().is_some_and(|c| {
-                        c.chars()
-                            .all(|c| c.is_ascii_digit() || ('a'..='f').contains(&c))
+                entry.file_type().is_file()
+                    && entry.file_name().len() == 64
+                    && entry.file_name().is_ascii()
+                    && entry.file_name().to_str().is_some_and(|c| {
+                        c.chars().all(|character| {
+                            character.is_ascii_digit() || ('a'..='f').contains(&character)
+                        })
                     })
             })
-            .map(|e| {
-                (
-                    Id::from_hex(e.file_name().to_str().unwrap()).unwrap(),
-                    // handle errors in metadata by returning a size of 0
-                    e.metadata().map_or(0, |m| m.len().try_into().unwrap_or(0)),
-                )
-            });
+            .map(|entry| -> RusticResult<(Id, u32)> {
+                let id = entry
+                    .file_name()
+                    .to_str()
+                    .and_then(|str| Id::from_hex(str).ok())
+                    .ok_or_else(|| CacheBackendErrorKind::InvalidId)?;
 
-        Ok(walker.collect())
+                // handle errors in metadata by returning a size of 0
+                let size = entry
+                    .metadata()
+                    .map(|metadata| u32::try_from(metadata.len()).ok())?
+                    .ok_or_else(|| {
+                        CacheBackendErrorKind::MetadataError(entry.path().to_path_buf())
+                    })?;
+
+                Ok((id, size))
+            })
+            .filter_map(Result::ok)
+            .collect::<_>();
+        Ok(walker)
     }
 
     /// Removes all files from the cache that are not in the given list.
@@ -429,12 +451,12 @@ impl Cache {
     pub fn write_bytes(&self, tpe: FileType, id: &Id, buf: &Bytes) -> RusticResult<()> {
         trace!("cache writing tpe: {:?}, id: {}", &tpe, &id);
         fs::create_dir_all(self.dir(tpe, id)).map_err(CacheBackendErrorKind::FromIoError)?;
-        let filename = self.path(tpe, id);
+        let file_name = self.path(tpe, id);
         let mut file = fs::OpenOptions::new()
             .create(true)
             .truncate(true)
             .write(true)
-            .open(filename)
+            .open(file_name)
             .map_err(CacheBackendErrorKind::FromIoError)?;
         file.write_all(buf)
             .map_err(CacheBackendErrorKind::FromIoError)?;
@@ -455,8 +477,8 @@ impl Cache {
     /// [`CacheBackendErrorKind::FromIoError`]: crate::error::CacheBackendErrorKind::FromIoError
     pub fn remove(&self, tpe: FileType, id: &Id) -> RusticResult<()> {
         trace!("cache writing tpe: {:?}, id: {}", &tpe, &id);
-        let filename = self.path(tpe, id);
-        fs::remove_file(filename).map_err(CacheBackendErrorKind::FromIoError)?;
+        let file_name = self.path(tpe, id);
+        fs::remove_file(file_name).map_err(CacheBackendErrorKind::FromIoError)?;
         Ok(())
     }
 }

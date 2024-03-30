@@ -15,10 +15,6 @@ use anyhow::Result;
 use bytes::Bytes;
 use enum_map::Enum;
 use log::trace;
-
-#[cfg(test)]
-use mockall::mock;
-
 use serde_derive::{Deserialize, Serialize};
 
 use crate::{
@@ -27,6 +23,12 @@ use crate::{
     id::Id,
     RusticResult,
 };
+
+/// Backend to be used solely for testing.
+pub(crate) mod in_memory;
+
+#[cfg(test)]
+use mockall::mock;
 
 /// All [`FileType`]s which are located in separated directories
 pub const ALL_FILE_TYPES: [FileType; 4] = [
@@ -83,7 +85,15 @@ impl FileType {
 /// This trait is implemented by all backends that can read data.
 pub trait ReadBackend: Send + Sync + 'static {
     /// Returns the location of the backend.
-    fn location(&self) -> String;
+    ///
+    /// # Errors
+    ///
+    /// If the location could not be determined.
+    ///
+    /// # Returns
+    ///
+    /// The location of the backend.
+    fn location(&self) -> Result<String>;
 
     /// Lists all files with their size of the given type.
     ///
@@ -343,7 +353,7 @@ mock! {
     Backend {}
 
     impl ReadBackend for Backend{
-        fn location(&self) -> String;
+        fn location(&self) -> Result<String>;
         fn list_with_size(&self, tpe: FileType) -> Result<Vec<(Id, u32)>>;
         fn read_full(&self, tpe: FileType, id: &Id) -> Result<Bytes>;
         fn read_partial(
@@ -376,7 +386,7 @@ impl WriteBackend for Arc<dyn WriteBackend> {
 }
 
 impl ReadBackend for Arc<dyn WriteBackend> {
-    fn location(&self) -> String {
+    fn location(&self) -> Result<String> {
         self.deref().location()
     }
     fn list_with_size(&self, tpe: FileType) -> Result<Vec<(Id, u32)>> {
@@ -403,7 +413,7 @@ impl ReadBackend for Arc<dyn WriteBackend> {
 
 impl std::fmt::Debug for dyn WriteBackend {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "WriteBackend{{{}}}", self.location())
+        write!(f, "WriteBackend{{{:#?}}}", self.location())
     }
 }
 

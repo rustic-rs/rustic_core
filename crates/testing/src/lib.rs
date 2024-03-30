@@ -1,8 +1,5 @@
 //! Testing utilities for the `rustic` ecosystem.
 
-/// Backends to be used solely for testing.
-pub mod backend;
-
 use aho_corasick::{AhoCorasick, PatternID};
 use std::{error::Error, ffi::OsStr};
 use tempfile::NamedTempFile;

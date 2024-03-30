@@ -58,9 +58,9 @@ use crate::{
         snapshotfile::{SnapshotGroup, SnapshotGroupCriterion},
         ConfigFile, PathList, RepoFile, SnapshotFile, SnapshotSummary, Tree,
     },
-    repository::{warm_up::warm_up, warm_up::warm_up_wait},
+    repository::warm_up::{warm_up, warm_up_wait},
     vfs::OpenFile,
-    RepositoryBackends, RusticResult,
+    InMemoryBackend, RepositoryBackends, RusticResult,
 };
 
 mod constants {
@@ -332,11 +332,11 @@ impl<P> Repository<P, ()> {
             be = WarmUpAccessBackend::new_warm_up(be);
         }
 
-        let mut name = be.location();
+        let mut name = be.location().map_err(RusticErrorKind::Backend)?;
         if let Some(be_hot) = &be_hot {
             be = Arc::new(HotColdBackend::new(be, be_hot.clone()));
             name.push('#');
-            name.push_str(&be_hot.location());
+            name.push_str(&be_hot.location().map_err(RusticErrorKind::Backend)?);
         }
 
         Ok(Self {
@@ -634,8 +634,8 @@ impl<P, S> Repository<P, S> {
             .flatten();
 
         if let Some(cache) = &cache {
-            self.be = CachedBackend::new_cache(self.be.clone(), cache.clone());
-            info!("using cache at {}", cache.location());
+            self.be = CachedBackend::from_backend(self.be.clone(), cache.clone());
+            info!("using cache at {cache}");
         } else {
             info!("using no cache");
         }
@@ -1014,9 +1014,9 @@ impl<P: ProgressBars, S: Open> Repository<P, S> {
     ///
     // TODO: Document errors
     ///
-    /// # Panics
+    /// # Returns
     ///
-    /// If the files could not be deleted.
+    /// Ok if the snapshots were removed successfully
     pub fn delete_snapshots(&self, ids: &[Id]) -> RusticResult<()> {
         if self.config().append_only == Some(true) {
             return Err(CommandErrorKind::NotAllowedWithAppendOnly(
@@ -1275,8 +1275,24 @@ impl<P, S: IndexedTree> IndexedTree for Repository<P, S> {
 pub(crate) struct BytesWeighter;
 
 impl quick_cache::Weighter<Id, Bytes> for BytesWeighter {
+    /// Get the weight of a blob
+    ///
+    /// # Arguments
+    ///
+    /// * `key` - The key of the blob
+    /// * `val` - The blob
+    ///
+    /// # Panics
+    ///
+    /// If the weight of the blob is overflowing `u32::MAX`
+    ///
+    /// # Returns
+    ///
+    /// The weight of the blob
     fn weight(&self, _key: &Id, val: &Bytes) -> u32 {
-        // Be cautions out about zero weights!
+        // Be cautious about zero weights!
+        #[allow(clippy::expect_used)]
+        // We allow this here, because we can't change the function signature to return a Result
         u32::try_from(val.len().clamp(1, u32::MAX as usize))
             .expect("weight overflow in cache should not happen")
     }
@@ -1422,7 +1438,7 @@ impl<P, S: IndexedFull> Repository<P, S> {
     ///
     // TODO: Document errors
     pub fn open_file(&self, node: &Node) -> RusticResult<OpenFile> {
-        Ok(OpenFile::from_node(self, node))
+        OpenFile::from_node(self, node)
     }
 
     /// Reads an opened file at the given position
@@ -1616,7 +1632,7 @@ impl<P: ProgressBars, S: IndexedTree> Repository<P, S> {
     /// Merge the given trees.
     ///
     /// This method creates needed tree blobs within the repository.
-    /// Merge conflicts (identical filenames which do not match) will be resolved using the ordering given by `cmp`.
+    /// Merge conflicts (identical file names which do not match) will be resolved using the ordering given by `cmp`.
     ///
     /// # Arguments
     ///
@@ -1643,7 +1659,7 @@ impl<P: ProgressBars, S: IndexedTree> Repository<P, S> {
     /// Merge the given snapshots.
     ///
     /// This method will create needed tree blobs within the repository.
-    /// Merge conflicts (identical filenames which do not match) will be resolved using the ordering given by `cmp`.
+    /// Merge conflicts (identical file names which do not match) will be resolved using the ordering given by `cmp`.
     ///
     /// # Arguments
     ///
@@ -1848,4 +1864,29 @@ impl<P: ProgressBars, S: IndexedFull> Repository<P, S> {
     ) -> RusticResult<()> {
         opts.repair(self, snapshots, dry_run)
     }
+}
+
+/// Initialize a repository for testing
+///
+/// # Errors
+///
+/// If the repository could not be initialized
+///
+/// # Returns
+///
+/// The initialized repository
+///
+/// # Notes
+///
+/// The repository is initialized with an in-memory backend and a password of "test".
+pub fn init_test_repository() -> RusticResult<Repository<NoProgressBars, OpenStatus>> {
+    let be = InMemoryBackend::new();
+    let be = RepositoryBackends::new(Arc::new(be), None);
+    let options = RepositoryOptions::default().password("test").no_cache(true);
+    let repo = Repository::new(&options, &be)?;
+    let key_opts = KeyOptions::default();
+    let config_opts = &ConfigOptions::default();
+    let repo = repo.init(&key_opts, config_opts)?;
+
+    Ok(repo)
 }

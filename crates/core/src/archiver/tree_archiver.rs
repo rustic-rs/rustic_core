@@ -132,18 +132,18 @@ impl<'a, BE: DecryptWriteBackend, I: ReadGlobalIndex> TreeArchiver<'a, BE, I> {
     /// * `node` - The node of the file.
     /// * `parent` - The parent result of the file.
     fn add_file(&mut self, path: &Path, node: Node, parent: &ParentResult<()>, size: u64) {
-        let filename = path.join(node.name());
+        let file_name = path.join(node.name());
         match parent {
             ParentResult::Matched(()) => {
-                debug!("unchanged file: {:?}", filename);
+                debug!("unchanged file: {:?}", file_name);
                 self.summary.files_unmodified += 1;
             }
             ParentResult::NotMatched => {
-                debug!("changed   file: {:?}", filename);
+                debug!("changed   file: {:?}", file_name);
                 self.summary.files_changed += 1;
             }
             ParentResult::NotFound => {
-                debug!("new       file: {:?}", filename);
+                debug!("new       file: {:?}", file_name);
                 self.summary.files_new += 1;
             }
         }
@@ -212,10 +212,6 @@ impl<'a, BE: DecryptWriteBackend, I: ReadGlobalIndex> TreeArchiver<'a, BE, I> {
     ///
     /// A tuple containing the id of the tree and the summary of the snapshot.
     ///
-    /// # Panics
-    ///
-    /// If the channel of the tree packer is not dropped.
-    ///
     /// [`PackerErrorKind::SendingCrossbeamMessageFailed`]: crate::error::PackerErrorKind::SendingCrossbeamMessageFailed
     pub(crate) fn finalize(
         mut self,
@@ -224,7 +220,7 @@ impl<'a, BE: DecryptWriteBackend, I: ReadGlobalIndex> TreeArchiver<'a, BE, I> {
         let parent = parent_tree.map_or(ParentResult::NotFound, ParentResult::Matched);
         let id = self.backup_tree(&PathBuf::new(), &parent)?;
         let stats = self.tree_packer.finalize()?;
-        stats.apply(&mut self.summary, BlobType::Tree);
+        stats.apply(&mut self.summary, BlobType::Tree)?;
 
         Ok((id, self.summary))
     }
