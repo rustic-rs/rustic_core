@@ -248,6 +248,18 @@ fn test_backup_with_tar_gz_passes(
     // pack files should be unchanged
     let packs2: Vec<_> = repo.list(rustic_core::FileType::Pack)?.collect();
     assert_eq!(packs1, packs2);
+
+    // Check if snapshots can be retrieved
+    let mut ids: Vec<_> = all_snapshots.iter().map(|sn| sn.id.to_string()).collect();
+    let snaps = repo.get_snapshots(&ids)?;
+    assert_eq!(snaps, all_snapshots);
+
+    // reverse order
+    all_snapshots.reverse();
+    ids.reverse();
+    let snaps = repo.get_snapshots(&ids)?;
+    assert_eq!(snaps, all_snapshots);
+
     Ok(())
 }
 
