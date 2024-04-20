@@ -571,7 +571,8 @@ impl SnapshotFile {
     /// # Returns
     ///
     /// The ordering of the two [`SnapshotFile`]s
-    fn cmp_group(&self, crit: SnapshotGroupCriterion, other: &Self) -> Ordering {
+    #[must_use]
+    pub fn cmp_group(&self, crit: SnapshotGroupCriterion, other: &Self) -> Ordering {
         if crit.hostname {
             self.hostname.cmp(&other.hostname)
         } else {
