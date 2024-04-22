@@ -290,8 +290,6 @@ pub enum RepositoryErrorKind {
     /// error accessing config file
     AccessToConfigFileFailed,
     /// {0:?}
-    FromSplitError(#[from] shell_words::ParseError),
-    /// {0:?}
     FromThreadPoolbilderError(rayon::ThreadPoolBuildError),
     /// reading Password failed: `{0:?}`
     ReadingPasswordFromReaderFailed(std::io::Error),
@@ -437,8 +435,6 @@ pub enum SnapshotFileErrorKind {
     UnpackingSnapshotFileResultFailed,
     /// collecting IDs failed: {0:?}
     FindingIdsFailed(Vec<String>),
-    /// {0:?}
-    FromSplitError(#[from] shell_words::ParseError),
     /// removing dots from paths failed: `{0:?}`
     RemovingDotsFromPathFailed(std::io::Error),
     /// canonicalizing path failed: `{0:?}`

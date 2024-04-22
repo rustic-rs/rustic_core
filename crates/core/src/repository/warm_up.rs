@@ -3,7 +3,6 @@ use std::thread::sleep;
 
 use log::{debug, error, warn};
 use rayon::ThreadPoolBuilder;
-use shell_words::split;
 
 use crate::{
     backend::{FileType, ReadBackend},
@@ -63,8 +62,8 @@ pub(crate) fn warm_up<P: ProgressBars, S>(
     repo: &Repository<P, S>,
     packs: impl ExactSizeIterator<Item = Id>,
 ) -> RusticResult<()> {
-    if let Some(command) = &repo.opts.warm_up_command {
-        warm_up_command(packs, command, &repo.pb)?;
+    if !repo.opts.warm_up_command.is_empty() {
+        warm_up_command(packs, &repo.opts.warm_up_command, &repo.pb)?;
     } else if repo.be.needs_warm_up() {
         warm_up_repo(repo, packs)?;
     }
@@ -86,16 +85,18 @@ pub(crate) fn warm_up<P: ProgressBars, S>(
 /// [`RepositoryErrorKind::FromSplitError`]: crate::error::RepositoryErrorKind::FromSplitError
 fn warm_up_command<P: ProgressBars>(
     packs: impl ExactSizeIterator<Item = Id>,
-    command: &str,
+    command: &[String],
     pb: &P,
 ) -> RusticResult<()> {
     let p = pb.progress_counter("warming up packs...");
     p.set_length(packs.len() as u64);
     for pack in packs {
-        let actual_command = command.replace("%id", &pack.to_hex());
-        debug!("calling {actual_command}...");
-        let commands = split(&actual_command).map_err(RepositoryErrorKind::FromSplitError)?;
-        let status = Command::new(&commands[0]).args(&commands[1..]).status()?;
+        let command: Vec<_> = command
+            .iter()
+            .map(|c| c.replace("%id", &pack.to_hex()))
+            .collect();
+        debug!("calling {command:?}...");
+        let status = Command::new(&command[0]).args(&command[1..]).status()?;
         if !status.success() {
             warn!("warm-up command was not successful for pack {pack:?}. {status}");
         }

@@ -4,7 +4,7 @@ use chrono::{DateTime, Datelike, Duration, Local, Timelike};
 use derivative::Derivative;
 use derive_setters::Setters;
 use serde_derive::{Deserialize, Serialize};
-use serde_with::{serde_as, DisplayFromStr};
+use serde_with::{serde_as, DisplayFromStr, OneOrMany};
 
 use crate::{
     error::RusticResult,
@@ -107,13 +107,14 @@ pub(crate) fn get_forget_snapshots<P: ProgressBars, S: Open>(
 pub struct KeepOptions {
     /// Keep snapshots with this taglist (can be specified multiple times)
     #[cfg_attr(feature = "clap", clap(long, value_name = "TAG[,TAG,..]"))]
-    #[serde_as(as = "Vec<DisplayFromStr>")]
+    #[serde_as(as = "OneOrMany<DisplayFromStr>")]
     #[cfg_attr(feature = "merge", merge(strategy=merge::vec::overwrite_empty))]
     pub keep_tags: Vec<StringList>,
 
     /// Keep snapshots ids that start with ID (can be specified multiple times)
     #[cfg_attr(feature = "clap", clap(long = "keep-id", value_name = "ID"))]
     #[cfg_attr(feature = "merge", merge(strategy=merge::vec::overwrite_empty))]
+    #[serde_as(as = "OneOrMany<_>")]
     pub keep_ids: Vec<String>,
 
     /// Keep the last N snapshots (N == -1: keep all snapshots)

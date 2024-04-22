@@ -12,8 +12,7 @@ use std::{
 use bytes::Bytes;
 use derive_setters::Setters;
 use log::{debug, error, info};
-use serde_with::{serde_as, DisplayFromStr};
-use shell_words::split;
+use serde_with::{serde_as, DisplayFromStr, OneOrMany};
 
 use crate::{
     backend::{
@@ -111,7 +110,9 @@ pub struct RepositoryOptions {
         env = "RUSTIC_PASSWORD_COMMAND",
         conflicts_with_all = &["password", "password_file"],
     ))]
-    pub password_command: Option<String>,
+    #[cfg_attr(feature = "merge", merge(strategy = merge::vec::overwrite_empty))]
+    #[serde_as(as = "OneOrMany<_>")]
+    pub password_command: Vec<String>,
 
     /// Don't use a cache.
     #[cfg_attr(feature = "clap", clap(long, global = true, env = "RUSTIC_NO_CACHE"))]
@@ -140,7 +141,9 @@ pub struct RepositoryOptions {
         feature = "clap",
         clap(long, global = true, conflicts_with = "warm_up")
     )]
-    pub warm_up_command: Option<String>,
+    #[cfg_attr(feature = "merge", merge(strategy = merge::vec::overwrite_empty))]
+    #[serde_as(as = "OneOrMany<_>")]
+    pub warm_up_command: Vec<String>,
 
     /// Duration (e.g. 10m) to wait after warm up
     #[cfg_attr(feature = "clap", clap(long, global = true, value_name = "DURATION"))]
@@ -177,11 +180,10 @@ impl RepositoryOptions {
                 );
                 Ok(Some(read_password_from_reader(&mut file)?))
             }
-            (_, _, Some(command)) => {
-                let commands = split(command).map_err(RepositoryErrorKind::FromSplitError)?;
-                debug!("commands: {commands:?}");
-                let command = Command::new(&commands[0])
-                    .args(&commands[1..])
+            (_, _, command) if !command.is_empty() => {
+                debug!("commands: {command:?}");
+                let command = Command::new(&command[0])
+                    .args(&command[1..])
                     .stdout(Stdio::piped())
                     .spawn()?;
                 let Ok(output) = command.wait_with_output() else {
@@ -205,7 +207,7 @@ impl RepositoryOptions {
                     }
                 }))
             }
-            (None, None, None) => Ok(None),
+            (None, None, _) => Ok(None),
         }
     }
 }
@@ -321,11 +323,11 @@ impl<P> Repository<P, ()> {
         let mut be = backends.repository();
         let be_hot = backends.repo_hot();
 
-        if let Some(command) = &opts.warm_up_command {
-            if !command.contains("%id") {
+        if !opts.warm_up_command.is_empty() {
+            if opts.warm_up_command.iter().all(|c| !c.contains("%id")) {
                 return Err(RepositoryErrorKind::NoIDSpecified.into());
             }
-            info!("using warm-up command {command}");
+            info!("using warm-up command {:?}", opts.warm_up_command);
         }
 
         if opts.warm_up {
