@@ -6,7 +6,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use serde_with::{serde_as, DisplayFromStr};
+use serde_with::{serde_as, DisplayFromStr, OneOrMany};
 
 use bytesize::ByteSize;
 #[cfg(not(windows))]
@@ -70,21 +70,25 @@ pub struct LocalSourceFilterOptions {
     /// Glob pattern to exclude/include (can be specified multiple times)
     #[cfg_attr(feature = "clap", clap(long))]
     #[cfg_attr(feature = "merge", merge(strategy = merge::vec::overwrite_empty))]
+    #[serde_as(as = "OneOrMany<_>")]
     pub glob: Vec<String>,
 
     /// Same as --glob pattern but ignores the casing of filenames
     #[cfg_attr(feature = "clap", clap(long, value_name = "GLOB"))]
     #[cfg_attr(feature = "merge", merge(strategy = merge::vec::overwrite_empty))]
+    #[serde_as(as = "OneOrMany<_>")]
     pub iglob: Vec<String>,
 
     /// Read glob patterns to exclude/include from this file (can be specified multiple times)
     #[cfg_attr(feature = "clap", clap(long, value_name = "FILE"))]
     #[cfg_attr(feature = "merge", merge(strategy = merge::vec::overwrite_empty))]
+    #[serde_as(as = "OneOrMany<_>")]
     pub glob_file: Vec<String>,
 
     /// Same as --glob-file ignores the casing of filenames in patterns
     #[cfg_attr(feature = "clap", clap(long, value_name = "FILE"))]
     #[cfg_attr(feature = "merge", merge(strategy = merge::vec::overwrite_empty))]
+    #[serde_as(as = "OneOrMany<_>")]
     pub iglob_file: Vec<String>,
 
     /// Ignore files based on .gitignore files
@@ -100,11 +104,13 @@ pub struct LocalSourceFilterOptions {
     /// Treat the provided filename like a .gitignore file (can be specified multiple times)
     #[cfg_attr(feature = "clap", clap(long, value_name = "FILE"))]
     #[cfg_attr(feature = "merge", merge(strategy = merge::vec::overwrite_empty))]
+    #[serde_as(as = "OneOrMany<_>")]
     pub custom_ignorefile: Vec<String>,
 
     /// Exclude contents of directories containing this filename (can be specified multiple times)
     #[cfg_attr(feature = "clap", clap(long, value_name = "FILE"))]
     #[cfg_attr(feature = "merge", merge(strategy = merge::vec::overwrite_empty))]
+    #[serde_as(as = "OneOrMany<_>")]
     pub exclude_if_present: Vec<String>,
 
     /// Exclude other file systems, don't cross filesystem boundaries and subvolumes

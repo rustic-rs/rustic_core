@@ -85,7 +85,6 @@ filetime = "0.2.23"
 ignore = "0.4.22"
 nix = { version = "0.28", default-features = false, features = ["user", "fs"] }
 path-dedot = "3.1.1"
-shell-words = "1.1.0"
 walkdir = "2.5.0"
 
 # cache

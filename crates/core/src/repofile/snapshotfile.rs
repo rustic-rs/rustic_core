@@ -15,8 +15,7 @@ use itertools::Itertools;
 use log::info;
 use path_dedot::ParseDot;
 use serde_derive::{Deserialize, Serialize};
-use serde_with::{serde_as, DisplayFromStr};
-use shell_words::split;
+use serde_with::{serde_as, DisplayFromStr, OneOrMany};
 
 use crate::{
     backend::{decrypt::DecryptReadBackend, FileType, FindInBackend},
@@ -52,7 +51,7 @@ pub struct SnapshotOptions {
 
     /// Tags to add to snapshot (can be specified multiple times)
     #[cfg_attr(feature = "clap", clap(long, value_name = "TAG[,TAG,..]"))]
-    #[serde_as(as = "Vec<DisplayFromStr>")]
+    #[serde_as(as = "OneOrMany<DisplayFromStr>")]
     #[cfg_attr(feature = "merge", merge(strategy = merge::vec::overwrite_empty))]
     pub tag: Vec<StringList>,
 
@@ -1106,45 +1105,24 @@ impl Display for PathList {
     }
 }
 
-impl FromIterator<PathBuf> for PathList {
-    fn from_iter<I: IntoIterator<Item = PathBuf>>(iter: I) -> Self {
-        Self(iter.into_iter().collect())
-    }
-}
-
-impl<'a> FromIterator<&'a String> for PathList {
-    fn from_iter<I: IntoIterator<Item = &'a String>>(iter: I) -> Self {
-        Self(iter.into_iter().map(PathBuf::from).collect())
-    }
-}
-
-impl FromIterator<String> for PathList {
-    fn from_iter<I: IntoIterator<Item = String>>(iter: I) -> Self {
-        Self(iter.into_iter().map(PathBuf::from).collect())
-    }
-}
-
-impl<'a> FromIterator<&'a str> for PathList {
-    fn from_iter<I: IntoIterator<Item = &'a str>>(iter: I) -> Self {
-        Self(iter.into_iter().map(PathBuf::from).collect())
+impl<T: Into<PathBuf>> FromIterator<T> for PathList {
+    fn from_iter<I: IntoIterator<Item = T>>(iter: I) -> Self {
+        Self(iter.into_iter().map(T::into).collect())
     }
 }
 
 impl PathList {
-    /// Create a `PathList` by parsing a Strings containing paths separated by whitspaces.
+    /// Create a `PathList` from a String containing a single path
+    /// Note: for multiple paths, use `PathList::from_iter`.
     ///
     /// # Arguments
     ///
-    /// * `sources` - The String to parse
+    /// * `source` - The String to parse
     ///
     /// # Errors
-    ///
-    /// * [`SnapshotFileErrorKind::FromSplitError`] - If the parsing failed
-    ///
-    /// [`SnapshotFileErrorKind::FromSplitError`]: crate::error::SnapshotFileErrorKind::FromSplitError
-    pub fn from_string(sources: &str) -> RusticResult<Self> {
-        let sources = split(sources).map_err(SnapshotFileErrorKind::FromSplitError)?;
-        Ok(Self::from_iter(sources))
+    /// no errors can occur here
+    pub fn from_string(source: &str) -> RusticResult<Self> {
+        Ok(Self(vec![source.into()]))
     }
 
     /// Number of paths in the `PathList`.
