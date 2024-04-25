@@ -1499,6 +1499,15 @@ impl<P, S: IndexedTree> Repository<P, S> {
     pub fn node_from_path(&self, root_tree: Id, path: &Path) -> RusticResult<Node> {
         Tree::node_from_path(self.dbe(), self.index(), root_tree, Path::new(path))
     }
+
+    /// Get all [`Node`]s from given root trees and a path
+    pub fn find_nodes_from_path(
+        &self,
+        ids: impl IntoIterator<Item = Id>,
+        path: &Path,
+    ) -> RusticResult<(Vec<Node>, Vec<Option<usize>>)> {
+        Tree::find_nodes_from_path(self.dbe(), self.index(), ids, path)
+    }
 }
 
 impl<P: ProgressBars, S: IndexedTree> Repository<P, S> {

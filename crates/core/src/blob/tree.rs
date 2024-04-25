@@ -1,6 +1,6 @@
 use std::{
     cmp::Ordering,
-    collections::{BTreeSet, BinaryHeap},
+    collections::{BTreeMap, BTreeSet, BinaryHeap},
     ffi::{OsStr, OsString},
     mem,
     path::{Component, Path, PathBuf, Prefix},
@@ -157,6 +157,90 @@ impl Tree {
         }
 
         Ok(node)
+    }
+
+    pub(crate) fn find_nodes_from_path(
+        be: &impl DecryptReadBackend,
+        index: &impl ReadGlobalIndex,
+        ids: impl IntoIterator<Item = Id>,
+        path: &Path,
+    ) -> RusticResult<(Vec<Node>, Vec<Option<usize>>)> {
+        let path_comp: Vec<_> = path
+            .components()
+            .filter_map(|p| comp_to_osstr(p).transpose())
+            .collect::<RusticResult<_>>()?;
+
+        // caching all results
+        let mut results_cache = vec![BTreeMap::new(); path_comp.len()];
+        let mut nodes = BTreeMap::new();
+
+        let results: Vec<_> = ids
+            .into_iter()
+            .map(|id| {
+                Self::find_node_from_component(
+                    be,
+                    index,
+                    id,
+                    &path_comp,
+                    &mut results_cache,
+                    &mut nodes,
+                    0,
+                )
+            })
+            .collect::<RusticResult<_>>()?;
+
+        // sort nodes by index and return a Vec
+        let mut nodes: Vec<_> = nodes.into_iter().collect();
+        nodes.sort_unstable_by_key(|n| n.1);
+        let nodes = nodes.into_iter().map(|n| n.0).collect();
+
+        Ok((nodes, results))
+    }
+
+    // helper function which is recursively called
+    fn find_node_from_component(
+        be: &impl DecryptReadBackend,
+        index: &impl ReadGlobalIndex,
+        tree_id: Id,
+        path_comp: &[OsString],
+        results_cache: &mut [BTreeMap<Id, Option<usize>>],
+        nodes: &mut BTreeMap<Node, usize>,
+        idx: usize,
+    ) -> RusticResult<Option<usize>> {
+        if let Some(result) = results_cache[idx].get(&tree_id) {
+            return Ok(*result);
+        }
+
+        let tree = Self::from_backend(be, index, tree_id)?;
+        let result = if let Some(node) = tree
+            .nodes
+            .into_iter()
+            .find(|node| node.name() == path_comp[idx])
+        {
+            if idx == path_comp.len() - 1 {
+                let new_idx = nodes.len();
+                let node_idx = nodes.entry(node).or_insert(new_idx);
+                Some(*node_idx)
+            } else {
+                let id = node
+                    .subtree
+                    .ok_or_else(|| TreeErrorKind::NotADirectory(path_comp[idx].clone()))?;
+
+                Self::find_node_from_component(
+                    be,
+                    index,
+                    id,
+                    path_comp,
+                    results_cache,
+                    nodes,
+                    idx + 1,
+                )?
+            }
+        } else {
+            None
+        };
+        _ = results_cache[idx].insert(tree_id, result);
+        Ok(result)
     }
 }
 
