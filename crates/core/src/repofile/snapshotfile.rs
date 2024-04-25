@@ -1154,10 +1154,7 @@ impl PathList {
     /// [`SnapshotFileErrorKind::CanonicalizingPathFailed`]: crate::error::SnapshotFileErrorKind::CanonicalizingPathFailed
     pub fn sanitize(mut self) -> RusticResult<Self> {
         for path in &mut self.0 {
-            *path = path
-                .parse_dot()
-                .map_err(SnapshotFileErrorKind::RemovingDotsFromPathFailed)?
-                .to_path_buf();
+            *path = sanitize_dot(path)?;
         }
         if self.0.iter().any(|p| p.is_absolute()) {
             for path in &mut self.0 {
@@ -1187,5 +1184,46 @@ impl PathList {
         });
 
         Self(paths)
+    }
+}
+
+// helper function to sanitize paths containing dots
+fn sanitize_dot(path: &Path) -> RusticResult<PathBuf> {
+    if path == Path::new(".") || path == Path::new("./") {
+        return Ok(PathBuf::from("."));
+    }
+
+    let path = if path.starts_with("./") {
+        path.strip_prefix("./").unwrap()
+    } else {
+        path
+    };
+
+    let path = path
+        .parse_dot()
+        .map_err(SnapshotFileErrorKind::RemovingDotsFromPathFailed)?
+        .to_path_buf();
+
+    Ok(path)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use rstest::rstest;
+
+    #[rstest]
+    #[case(".", ".")]
+    #[case("./", ".")]
+    #[case("test", "test")]
+    #[case("test/", "test")]
+    #[case("./test", "test")]
+    #[case("./test/", "test")]
+    fn escape_cases(#[case] input: &str, #[case] expected: &str) {
+        let path = Path::new(input);
+        let expected = PathBuf::from(expected);
+
+        assert_eq!(expected, sanitize_dot(path).unwrap());
     }
 }
