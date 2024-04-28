@@ -1508,6 +1508,15 @@ impl<P, S: IndexedTree> Repository<P, S> {
     ) -> RusticResult<(Vec<Node>, Vec<Option<usize>>)> {
         Tree::find_nodes_from_path(self.dbe(), self.index(), ids, path)
     }
+
+    /// Get all [`Node`]s from given root trees and a path
+    pub fn find_matching_nodes(
+        &self,
+        ids: impl IntoIterator<Item = Id>,
+        matches: &impl Fn(&Path, &Node) -> bool,
+    ) -> RusticResult<(Vec<PathBuf>, Vec<Node>, Vec<Vec<(usize, usize)>>)> {
+        Tree::find_matching_nodes(self.dbe(), self.index(), ids, matches)
+    }
 }
 
 impl<P: ProgressBars, S: IndexedTree> Repository<P, S> {

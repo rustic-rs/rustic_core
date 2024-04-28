@@ -242,6 +242,94 @@ impl Tree {
         _ = results_cache[idx].insert(tree_id, result);
         Ok(result)
     }
+
+    pub(crate) fn find_matching_nodes(
+        be: &impl DecryptReadBackend,
+        index: &impl ReadGlobalIndex,
+        ids: impl IntoIterator<Item = Id>,
+        matches: &impl Fn(&Path, &Node) -> bool,
+    ) -> RusticResult<(Vec<PathBuf>, Vec<Node>, Vec<Vec<(usize, usize)>>)> {
+        // caching all results
+        let mut results_cache = BTreeMap::new();
+        let mut nodes = BTreeMap::new();
+        let mut paths = BTreeMap::new();
+
+        let initial_path = PathBuf::new();
+        let results: Vec<_> = ids
+            .into_iter()
+            .map(|id| {
+                Self::find_matching_nodes_recursive(
+                    be,
+                    index,
+                    id,
+                    &initial_path,
+                    &mut results_cache,
+                    &mut nodes,
+                    &mut paths,
+                    matches,
+                )
+            })
+            .collect::<RusticResult<_>>()?;
+
+        // sort paths by index and return a Vec
+        let mut paths: Vec<_> = paths.into_iter().collect();
+        paths.sort_unstable_by_key(|n| n.1);
+        let paths = paths.into_iter().map(|n| n.0).collect();
+
+        // sort nodes by index and return a Vec
+        let mut nodes: Vec<_> = nodes.into_iter().collect();
+        nodes.sort_unstable_by_key(|n| n.1);
+        let nodes = nodes.into_iter().map(|n| n.0).collect();
+        Ok((paths, nodes, results))
+    }
+
+    // helper function which is recursively called
+    fn find_matching_nodes_recursive(
+        be: &impl DecryptReadBackend,
+        index: &impl ReadGlobalIndex,
+        tree_id: Id,
+        path: &Path,
+        results_cache: &mut BTreeMap<(Id, usize), Vec<(usize, usize)>>,
+        nodes: &mut BTreeMap<Node, usize>,
+        paths: &mut BTreeMap<PathBuf, usize>,
+        matches: &impl Fn(&Path, &Node) -> bool,
+    ) -> RusticResult<Vec<(usize, usize)>> {
+        let mut result = Vec::new();
+        let new_idx = paths.len();
+        let path_idx = *paths.entry(path.to_path_buf()).or_insert(new_idx);
+        if let Some(result) = results_cache.get(&(tree_id, path_idx)) {
+            return Ok(result.clone());
+        }
+
+        let tree = Self::from_backend(be, index, tree_id)?;
+        for node in tree.nodes {
+            let node_path = path.join(node.name());
+            if node.is_dir() {
+                let id = node
+                    .subtree
+                    .ok_or_else(|| TreeErrorKind::NotADirectory(node.name()))?;
+                result.append(&mut Self::find_matching_nodes_recursive(
+                    be,
+                    index,
+                    id,
+                    &node_path,
+                    results_cache,
+                    nodes,
+                    paths,
+                    matches,
+                )?);
+            }
+            if matches(&node_path, &node) {
+                let new_idx = nodes.len();
+                let node_idx = nodes.entry(node).or_insert(new_idx);
+                let new_idx = paths.len();
+                let node_path_idx = paths.entry(node_path.to_path_buf()).or_insert(new_idx);
+                result.push((*node_path_idx, *node_idx));
+            }
+        }
+        _ = results_cache.insert((tree_id, path_idx), result.clone());
+        Ok(result)
+    }
 }
 
 /// Converts a [`Component`] to an [`OsString`].
