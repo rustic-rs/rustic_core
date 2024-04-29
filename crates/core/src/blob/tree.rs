@@ -333,6 +333,7 @@ impl Tree {
 /// Results from `find_node_from_path`
 #[derive(Debug)]
 pub struct FindNode {
+    /// found nodes for the given path
     pub nodes: Vec<Node>,
     /// found nodes for all given snapshots. usize is the index of the node
     pub matches: Vec<Option<usize>>,
@@ -341,7 +342,9 @@ pub struct FindNode {
 /// Results from `find_matching_nodes`
 #[derive(Debug)]
 pub struct FindMatches {
+    /// found matching paths
     pub paths: Vec<PathBuf>,
+    /// found matching nodes
     pub nodes: Vec<Node>,
     /// found paths/nodes for all given snapshots. (usize,usize) is the path / node index
     pub matches: Vec<Vec<(usize, usize)>>,
