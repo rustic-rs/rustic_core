@@ -164,7 +164,53 @@ impl Tree {
         index: &impl ReadGlobalIndex,
         ids: impl IntoIterator<Item = Id>,
         path: &Path,
-    ) -> RusticResult<(Vec<Node>, Vec<Option<usize>>)> {
+    ) -> RusticResult<FindNode> {
+        // helper function which is recursively called
+        fn find_node_from_component(
+            be: &impl DecryptReadBackend,
+            index: &impl ReadGlobalIndex,
+            tree_id: Id,
+            path_comp: &[OsString],
+            results_cache: &mut [BTreeMap<Id, Option<usize>>],
+            nodes: &mut BTreeMap<Node, usize>,
+            idx: usize,
+        ) -> RusticResult<Option<usize>> {
+            if let Some(result) = results_cache[idx].get(&tree_id) {
+                return Ok(*result);
+            }
+
+            let tree = Tree::from_backend(be, index, tree_id)?;
+            let result = if let Some(node) = tree
+                .nodes
+                .into_iter()
+                .find(|node| node.name() == path_comp[idx])
+            {
+                if idx == path_comp.len() - 1 {
+                    let new_idx = nodes.len();
+                    let node_idx = nodes.entry(node).or_insert(new_idx);
+                    Some(*node_idx)
+                } else {
+                    let id = node
+                        .subtree
+                        .ok_or_else(|| TreeErrorKind::NotADirectory(path_comp[idx].clone()))?;
+
+                    find_node_from_component(
+                        be,
+                        index,
+                        id,
+                        path_comp,
+                        results_cache,
+                        nodes,
+                        idx + 1,
+                    )?
+                }
+            } else {
+                None
+            };
+            _ = results_cache[idx].insert(tree_id, result);
+            Ok(result)
+        }
+
         let path_comp: Vec<_> = path
             .components()
             .filter_map(|p| comp_to_osstr(p).transpose())
@@ -174,10 +220,10 @@ impl Tree {
         let mut results_cache = vec![BTreeMap::new(); path_comp.len()];
         let mut nodes = BTreeMap::new();
 
-        let results: Vec<_> = ids
+        let matches: Vec<_> = ids
             .into_iter()
             .map(|id| {
-                Self::find_node_from_component(
+                find_node_from_component(
                     be,
                     index,
                     id,
@@ -194,53 +240,7 @@ impl Tree {
         nodes.sort_unstable_by_key(|n| n.1);
         let nodes = nodes.into_iter().map(|n| n.0).collect();
 
-        Ok((nodes, results))
-    }
-
-    // helper function which is recursively called
-    fn find_node_from_component(
-        be: &impl DecryptReadBackend,
-        index: &impl ReadGlobalIndex,
-        tree_id: Id,
-        path_comp: &[OsString],
-        results_cache: &mut [BTreeMap<Id, Option<usize>>],
-        nodes: &mut BTreeMap<Node, usize>,
-        idx: usize,
-    ) -> RusticResult<Option<usize>> {
-        if let Some(result) = results_cache[idx].get(&tree_id) {
-            return Ok(*result);
-        }
-
-        let tree = Self::from_backend(be, index, tree_id)?;
-        let result = if let Some(node) = tree
-            .nodes
-            .into_iter()
-            .find(|node| node.name() == path_comp[idx])
-        {
-            if idx == path_comp.len() - 1 {
-                let new_idx = nodes.len();
-                let node_idx = nodes.entry(node).or_insert(new_idx);
-                Some(*node_idx)
-            } else {
-                let id = node
-                    .subtree
-                    .ok_or_else(|| TreeErrorKind::NotADirectory(path_comp[idx].clone()))?;
-
-                Self::find_node_from_component(
-                    be,
-                    index,
-                    id,
-                    path_comp,
-                    results_cache,
-                    nodes,
-                    idx + 1,
-                )?
-            }
-        } else {
-            None
-        };
-        _ = results_cache[idx].insert(tree_id, result);
-        Ok(result)
+        Ok(FindNode { nodes, matches })
     }
 
     pub(crate) fn find_matching_nodes(
@@ -248,88 +248,103 @@ impl Tree {
         index: &impl ReadGlobalIndex,
         ids: impl IntoIterator<Item = Id>,
         matches: &impl Fn(&Path, &Node) -> bool,
-    ) -> RusticResult<(Vec<PathBuf>, Vec<Node>, Vec<Vec<(usize, usize)>>)> {
-        // caching all results
-        let mut results_cache = BTreeMap::new();
-        let mut nodes = BTreeMap::new();
-        let mut paths = BTreeMap::new();
+    ) -> RusticResult<FindMatches> {
+        // internal state used to save match information in find_matching_nodes
+        #[derive(Default)]
+        struct MatchInternalState {
+            // we cache all results
+            cache: BTreeMap<(Id, PathBuf), Vec<(usize, usize)>>,
+            nodes: BTreeMap<Node, usize>,
+            paths: BTreeMap<PathBuf, usize>,
+        }
+
+        impl MatchInternalState {
+            fn insert_result(&mut self, path: PathBuf, node: Node) -> (usize, usize) {
+                let new_idx = self.nodes.len();
+                let node_idx = self.nodes.entry(node).or_insert(new_idx);
+                let new_idx = self.paths.len();
+                let node_path_idx = self.paths.entry(path).or_insert(new_idx);
+                (*node_path_idx, *node_idx)
+            }
+        }
+
+        // helper function which is recursively called
+        fn find_matching_nodes_recursive(
+            be: &impl DecryptReadBackend,
+            index: &impl ReadGlobalIndex,
+            tree_id: Id,
+            path: &Path,
+            state: &mut MatchInternalState,
+            matches: &impl Fn(&Path, &Node) -> bool,
+        ) -> RusticResult<Vec<(usize, usize)>> {
+            let mut result = Vec::new();
+            if let Some(result) = state.cache.get(&(tree_id, path.to_path_buf())) {
+                return Ok(result.clone());
+            }
+
+            let tree = Tree::from_backend(be, index, tree_id)?;
+            for node in tree.nodes {
+                let node_path = path.join(node.name());
+                if node.is_dir() {
+                    let id = node
+                        .subtree
+                        .ok_or_else(|| TreeErrorKind::NotADirectory(node.name()))?;
+                    result.append(&mut find_matching_nodes_recursive(
+                        be, index, id, &node_path, state, matches,
+                    )?);
+                }
+                if matches(&node_path, &node) {
+                    result.push(state.insert_result(node_path, node));
+                }
+            }
+            _ = state
+                .cache
+                .insert((tree_id, path.to_path_buf()), result.clone());
+            Ok(result)
+        }
+
+        let mut state = MatchInternalState::default();
 
         let initial_path = PathBuf::new();
-        let results: Vec<_> = ids
+        let matches: Vec<_> = ids
             .into_iter()
             .map(|id| {
-                Self::find_matching_nodes_recursive(
-                    be,
-                    index,
-                    id,
-                    &initial_path,
-                    &mut results_cache,
-                    &mut nodes,
-                    &mut paths,
-                    matches,
-                )
+                find_matching_nodes_recursive(be, index, id, &initial_path, &mut state, matches)
             })
             .collect::<RusticResult<_>>()?;
 
         // sort paths by index and return a Vec
-        let mut paths: Vec<_> = paths.into_iter().collect();
+        let mut paths: Vec<_> = state.paths.into_iter().collect();
         paths.sort_unstable_by_key(|n| n.1);
         let paths = paths.into_iter().map(|n| n.0).collect();
 
         // sort nodes by index and return a Vec
-        let mut nodes: Vec<_> = nodes.into_iter().collect();
+        let mut nodes: Vec<_> = state.nodes.into_iter().collect();
         nodes.sort_unstable_by_key(|n| n.1);
         let nodes = nodes.into_iter().map(|n| n.0).collect();
-        Ok((paths, nodes, results))
+        Ok(FindMatches {
+            paths,
+            nodes,
+            matches,
+        })
     }
+}
 
-    // helper function which is recursively called
-    fn find_matching_nodes_recursive(
-        be: &impl DecryptReadBackend,
-        index: &impl ReadGlobalIndex,
-        tree_id: Id,
-        path: &Path,
-        results_cache: &mut BTreeMap<(Id, usize), Vec<(usize, usize)>>,
-        nodes: &mut BTreeMap<Node, usize>,
-        paths: &mut BTreeMap<PathBuf, usize>,
-        matches: &impl Fn(&Path, &Node) -> bool,
-    ) -> RusticResult<Vec<(usize, usize)>> {
-        let mut result = Vec::new();
-        let new_idx = paths.len();
-        let path_idx = *paths.entry(path.to_path_buf()).or_insert(new_idx);
-        if let Some(result) = results_cache.get(&(tree_id, path_idx)) {
-            return Ok(result.clone());
-        }
+/// Results from `find_node_from_path`
+#[derive(Debug)]
+pub struct FindNode {
+    pub nodes: Vec<Node>,
+    /// found nodes for all given snapshots. usize is the index of the node
+    pub matches: Vec<Option<usize>>,
+}
 
-        let tree = Self::from_backend(be, index, tree_id)?;
-        for node in tree.nodes {
-            let node_path = path.join(node.name());
-            if node.is_dir() {
-                let id = node
-                    .subtree
-                    .ok_or_else(|| TreeErrorKind::NotADirectory(node.name()))?;
-                result.append(&mut Self::find_matching_nodes_recursive(
-                    be,
-                    index,
-                    id,
-                    &node_path,
-                    results_cache,
-                    nodes,
-                    paths,
-                    matches,
-                )?);
-            }
-            if matches(&node_path, &node) {
-                let new_idx = nodes.len();
-                let node_idx = nodes.entry(node).or_insert(new_idx);
-                let new_idx = paths.len();
-                let node_path_idx = paths.entry(node_path.to_path_buf()).or_insert(new_idx);
-                result.push((*node_path_idx, *node_idx));
-            }
-        }
-        _ = results_cache.insert((tree_id, path_idx), result.clone());
-        Ok(result)
-    }
+/// Results from `find_matching_nodes`
+#[derive(Debug)]
+pub struct FindMatches {
+    pub paths: Vec<PathBuf>,
+    pub nodes: Vec<Node>,
+    /// found paths/nodes for all given snapshots. (usize,usize) is the path / node index
+    pub matches: Vec<Vec<(usize, usize)>>,
 }
 
 /// Converts a [`Component`] to an [`OsString`].
