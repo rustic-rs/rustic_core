@@ -1,0 +1,15 @@
+---
+source: crates/core/tests/integration.rs
+expression: snap
+---
+([
+  "test\\0\\tests\\testfile",
+  "test\\0\\tests\\testfile-hardlink",
+  "test\\0\\tests\\testfile-symlink",
+], [
+  [
+    (0, 0),
+    (1, 1),
+    (2, 2),
+  ],
+])

@@ -331,7 +331,7 @@ impl Tree {
 }
 
 /// Results from `find_node_from_path`
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 pub struct FindNode {
     /// found nodes for the given path
     pub nodes: Vec<Node>,
@@ -340,7 +340,7 @@ pub struct FindNode {
 }
 
 /// Results from `find_matching_nodes`
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 pub struct FindMatches {
     /// found matching paths
     pub paths: Vec<PathBuf>,

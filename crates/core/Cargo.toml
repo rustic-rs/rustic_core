@@ -132,6 +132,7 @@ xattr = "1"
 [dev-dependencies]
 expect-test = "1.4.1"
 flate2 = "1.0.28"
+globset = "0.4.14"
 insta = { version = "1.36.1", features = ["redactions", "ron"] }
 mockall = "0.12.1"
 pretty_assertions = "1.4.0"
