@@ -25,7 +25,7 @@ use crate::{
         FileType, ReadBackend, WriteBackend,
     },
     blob::{
-        tree::{NodeStreamer, TreeStreamerOptions as LsOptions},
+        tree::{FindMatches, FindNode, NodeStreamer, TreeStreamerOptions as LsOptions},
         BlobType,
     },
     commands::{
@@ -1498,6 +1498,40 @@ impl<P, S: IndexedTree> Repository<P, S> {
     /// [`TreeErrorKind::PathIsNotUtf8Conform`]: crate::error::TreeErrorKind::PathIsNotUtf8Conform
     pub fn node_from_path(&self, root_tree: Id, path: &Path) -> RusticResult<Node> {
         Tree::node_from_path(self.dbe(), self.index(), root_tree, Path::new(path))
+    }
+
+    /// Get all [`Node`]s from given root trees and a path
+    ///
+    /// # Arguments
+    ///
+    /// * `ids` - The tree ids to search in
+    /// * `path` - The path
+    ///
+    /// # Errors
+    /// if loading trees from the backend fails
+    pub fn find_nodes_from_path(
+        &self,
+        ids: impl IntoIterator<Item = Id>,
+        path: &Path,
+    ) -> RusticResult<FindNode> {
+        Tree::find_nodes_from_path(self.dbe(), self.index(), ids, path)
+    }
+
+    /// Get all [`Node`]s/[`Path`]s from given root trees and a matching criterion
+    ///
+    /// # Arguments
+    ///
+    /// * `ids` - The tree ids to search in
+    /// * `matches` - The matching criterion
+    ///
+    /// # Errors
+    /// if loading trees from the backend fails
+    pub fn find_matching_nodes(
+        &self,
+        ids: impl IntoIterator<Item = Id>,
+        matches: &impl Fn(&Path, &Node) -> bool,
+    ) -> RusticResult<FindMatches> {
+        Tree::find_matching_nodes(self.dbe(), self.index(), ids, matches)
     }
 }
 

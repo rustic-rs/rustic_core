@@ -25,19 +25,23 @@
 
 use anyhow::Result;
 use flate2::read::GzDecoder;
+use globset::Glob;
 use insta::internals::{Content, ContentPath};
 use insta::{assert_ron_snapshot, Settings};
 use pretty_assertions::assert_eq;
 use rstest::fixture;
 use rstest::rstest;
+use rustic_core::repofile::{Metadata, Node};
 use rustic_core::{
-    repofile::SnapshotFile, BackupOptions, ConfigOptions, KeyOptions, NoProgressBars, OpenStatus,
-    PathList, Repository, RepositoryBackends, RepositoryOptions,
+    repofile::SnapshotFile, BackupOptions, ConfigOptions, KeyOptions, LsOptions, NoProgressBars,
+    OpenStatus, PathList, Repository, RepositoryBackends, RepositoryOptions,
 };
-use serde_derive::Serialize;
+use rustic_core::{FindMatches, FindNode, RusticResult};
+use serde::Serialize;
 
 use rustic_testing::backend::in_memory_backend::InMemoryBackend;
 
+use std::ffi::OsStr;
 use std::{
     env,
     fs::File,
@@ -153,6 +157,13 @@ fn tar_gz_testdata() -> Result<TestSource> {
     Ok(TestSource::new(dir))
 }
 
+// helper function to do windows-specific snapshots (needed e.g. if paths are contained in the snapshot)
+fn assert_with_win<T: Serialize>(test: &str, snap: T) {
+    #[cfg(windows)]
+    assert_ron_snapshot!(format!("{test}-windows"), snap);
+    #[cfg(not(windows))]
+    assert_ron_snapshot!(format!("{test}-nix"), snap);
+}
 // Parts of the snapshot summary we want to test against references
 //
 // # Note
@@ -189,13 +200,7 @@ fn test_backup_with_tar_gz_passes(
     // But I think that can get messy with a lot of tests, also checking which settings are currently applied
     // will be probably harder
     insta_summary_redaction.bind(|| {
-        #[cfg(windows)]
-        assert_ron_snapshot!(
-            "backup-tar-summary-first-windows",
-            TestSummary(&first_snapshot)
-        );
-        #[cfg(not(windows))]
-        assert_ron_snapshot!("backup-tar-summary-first-nix", TestSummary(&first_snapshot));
+        assert_with_win("backup-tar-summary-first", TestSummary(&first_snapshot));
     });
 
     assert_eq!(first_snapshot.parent, None);
@@ -207,10 +212,7 @@ fn test_backup_with_tar_gz_passes(
     let tree: rustic_core::repofile::Tree = repo.get_tree(&tree.subtree.expect("Sub tree"))?;
 
     insta_tree_redaction.bind(|| {
-        #[cfg(windows)]
-        assert_ron_snapshot!("backup-tar-tree-windows", tree);
-        #[cfg(not(windows))]
-        assert_ron_snapshot!("backup-tar-tree-nix", tree);
+        assert_with_win("backup-tar-tree", tree);
     });
 
     // get all snapshots and check them
@@ -225,16 +227,7 @@ fn test_backup_with_tar_gz_passes(
     let second_snapshot = repo.backup(&opts, paths, SnapshotFile::default())?;
 
     insta_summary_redaction.bind(|| {
-        #[cfg(windows)]
-        assert_ron_snapshot!(
-            "backup-tar-summary-second-windows",
-            TestSummary(&second_snapshot)
-        );
-        #[cfg(not(windows))]
-        assert_ron_snapshot!(
-            "backup-tar-summary-second-nix",
-            TestSummary(&second_snapshot)
-        );
+        assert_with_win("backup-tar-summary-second", TestSummary(&second_snapshot));
     });
 
     assert_eq!(second_snapshot.parent, Some(first_snapshot.id));
@@ -284,13 +277,7 @@ fn test_backup_dry_run_with_tar_gz_passes(
     let snap_dry_run = repo.backup(&opts, paths, SnapshotFile::default())?;
 
     insta_summary_redaction.bind(|| {
-        #[cfg(windows)]
-        assert_ron_snapshot!(
-            "dryrun-tar-summary-first-windows",
-            TestSummary(&snap_dry_run)
-        );
-        #[cfg(not(windows))]
-        assert_ron_snapshot!("dryrun-tar-summary-first-nix", TestSummary(&snap_dry_run));
+        assert_with_win("dryrun-tar-summary-first", TestSummary(&snap_dry_run));
     });
 
     // check that repo is still empty
@@ -312,10 +299,7 @@ fn test_backup_dry_run_with_tar_gz_passes(
     let tree = repo.get_tree(&tree.subtree.expect("Sub tree"))?;
 
     insta_tree_redaction.bind(|| {
-        #[cfg(windows)]
-        assert_ron_snapshot!("dryrun-tar-tree-windows", tree);
-        #[cfg(not(windows))]
-        assert_ron_snapshot!("dryrun-tar-tree-nix", tree);
+        assert_with_win("dryrun-tar-tree", tree);
     });
 
     // re-read index
@@ -325,13 +309,7 @@ fn test_backup_dry_run_with_tar_gz_passes(
     let snap_dry_run = repo.backup(&opts, paths, SnapshotFile::default())?;
 
     insta_summary_redaction.bind(|| {
-        #[cfg(windows)]
-        assert_ron_snapshot!(
-            "dryrun-tar-summary-second-windows",
-            TestSummary(&snap_dry_run)
-        );
-        #[cfg(not(windows))]
-        assert_ron_snapshot!("dryrun-tar-summary-second-nix", TestSummary(&snap_dry_run));
+        assert_with_win("dryrun-tar-summary-second", TestSummary(&snap_dry_run));
     });
 
     // check that no data has been added
@@ -346,5 +324,81 @@ fn test_backup_dry_run_with_tar_gz_passes(
     let opts = opts.dry_run(false);
     let second_snapshot = repo.backup(&opts, paths, SnapshotFile::default())?;
     assert_eq!(snap_dry_run.tree, second_snapshot.tree);
+    Ok(())
+}
+
+#[rstest]
+fn test_ls(tar_gz_testdata: Result<TestSource>, set_up_repo: Result<RepoOpen>) -> Result<()> {
+    // Fixtures
+    let (source, repo) = (tar_gz_testdata?, set_up_repo?.to_indexed_ids()?);
+    let paths = &source.path_list();
+
+    // we use as_path to not depend on the actual tempdir
+    let opts = BackupOptions::default().as_path(PathBuf::from_str("test")?);
+    // backup test-data
+    let snapshot = repo.backup(&opts, paths, SnapshotFile::default())?;
+
+    // test non-existing entries
+    let mut node = Node::new_node(
+        OsStr::new(""),
+        rustic_core::repofile::NodeType::Dir,
+        Metadata::default(),
+    );
+    node.subtree = Some(snapshot.tree);
+
+    // re-read index
+    let repo = repo.to_indexed_ids()?;
+
+    let _entries: Vec<_> = repo
+        .ls(&node, &LsOptions::default())?
+        .collect::<RusticResult<_>>()?;
+    // TODO: Snapshot-test entries
+    // assert_ron_snapshot!("ls", entries);
+    Ok(())
+}
+
+#[rstest]
+fn test_find(tar_gz_testdata: Result<TestSource>, set_up_repo: Result<RepoOpen>) -> Result<()> {
+    // Fixtures
+    let (source, repo) = (tar_gz_testdata?, set_up_repo?.to_indexed_ids()?);
+    let paths = &source.path_list();
+
+    // we use as_path to not depend on the actual tempdir
+    let opts = BackupOptions::default().as_path(PathBuf::from_str("test")?);
+    // backup test-data
+    let snapshot = repo.backup(&opts, paths, SnapshotFile::default())?;
+
+    // re-read index
+    let repo = repo.to_indexed_ids()?;
+
+    // test non-existing path
+    let not_found = repo.find_nodes_from_path(vec![snapshot.tree], Path::new("not_existing"))?;
+    assert_with_win("find-nodes-not-found", not_found);
+    // test non-existing match
+    let glob = Glob::new("not_existing")?.compile_matcher();
+    let not_found =
+        repo.find_matching_nodes(vec![snapshot.tree], &|path, _| glob.is_match(path))?;
+    assert_with_win("find-matching-nodes-not-found", not_found);
+
+    // test existing path
+    let FindNode { matches, .. } =
+        repo.find_nodes_from_path(vec![snapshot.tree], Path::new("test/0/tests/testfile"))?;
+    assert_with_win("find-nodes-existing", matches);
+    // test existing match
+    let glob = Glob::new("testfile")?.compile_matcher();
+    let match_func = |path: &Path, _: &Node| {
+        glob.is_match(path) || path.file_name().is_some_and(|f| glob.is_match(f))
+    };
+    let FindMatches { paths, matches, .. } =
+        repo.find_matching_nodes(vec![snapshot.tree], &match_func)?;
+    assert_with_win("find-matching-existing", (paths, matches));
+    // test existing match
+    let glob = Glob::new("testfile*")?.compile_matcher();
+    let match_func = |path: &Path, _: &Node| {
+        glob.is_match(path) || path.file_name().is_some_and(|f| glob.is_match(f))
+    };
+    let FindMatches { paths, matches, .. } =
+        repo.find_matching_nodes(vec![snapshot.tree], &match_func)?;
+    assert_with_win("find-matching-wildcard-existing", (paths, matches));
     Ok(())
 }

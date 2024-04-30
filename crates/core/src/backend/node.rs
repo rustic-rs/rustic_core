@@ -30,7 +30,9 @@ use crate::error::NodeErrorKind;
 
 use crate::id::Id;
 
-#[derive(Default, Serialize, Deserialize, Clone, Debug, PartialEq, Eq, Constructor)]
+#[derive(
+    Default, Serialize, Deserialize, Clone, Debug, PartialEq, Eq, Constructor, PartialOrd, Ord,
+)]
 /// A node within the tree hierarchy
 pub struct Node {
     /// Name of the node: filename or dirname.
@@ -63,7 +65,7 @@ pub struct Node {
 }
 
 #[serde_as]
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 #[serde(tag = "type", rename_all = "lowercase")]
 /// Types a [`Node`] can have with type-specific additional information
 pub enum NodeType {
@@ -190,7 +192,7 @@ impl Default for NodeType {
     Option => #[serde(default, skip_serializing_if = "Option::is_none")],
     u64 => #[serde(default, skip_serializing_if = "is_default")],
 )]
-#[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Metadata {
     /// Unix file mode
     pub mode: Option<u32>,
@@ -247,7 +249,7 @@ where
 }
 
 /// Extended attribute of a [`Node`]
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, PartialOrd, Ord)]
 pub struct ExtendedAttribute {
     /// Name of the extended attribute
     pub name: String,
