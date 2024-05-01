@@ -165,7 +165,10 @@ impl LocalSource {
 
         for file in &filter_opts.glob_file {
             for line in std::fs::read_to_string(file)
-                .map_err(IgnoreErrorKind::FromIoError)?
+                .map_err(|err| IgnoreErrorKind::ErrorGlob {
+                    file: file.into(),
+                    err,
+                })?
                 .lines()
             {
                 _ = override_builder
@@ -185,7 +188,10 @@ impl LocalSource {
 
         for file in &filter_opts.iglob_file {
             for line in std::fs::read_to_string(file)
-                .map_err(IgnoreErrorKind::FromIoError)?
+                .map_err(|err| IgnoreErrorKind::ErrorGlob {
+                    file: file.into(),
+                    err,
+                })?
                 .lines()
             {
                 _ = override_builder
@@ -254,7 +260,8 @@ impl ReadSourceOpen for OpenFile {
     /// [`IgnoreErrorKind::UnableToOpenFile`]: crate::error::IgnoreErrorKind::UnableToOpenFile
     fn open(self) -> RusticResult<Self::Reader> {
         let path = self.0;
-        File::open(path).map_err(|err| IgnoreErrorKind::UnableToOpenFile(err).into())
+        File::open(&path)
+            .map_err(|err| IgnoreErrorKind::UnableToOpenFile { file: path, err }.into())
     }
 }
 
@@ -400,7 +407,11 @@ fn map_entry(
     let node = if m.is_dir() {
         Node::new_node(name, NodeType::Dir, meta)
     } else if m.is_symlink() {
-        let target = read_link(entry.path()).map_err(IgnoreErrorKind::FromIoError)?;
+        let path = entry.path();
+        let target = read_link(path).map_err(|err| IgnoreErrorKind::ErrorLink {
+            path: path.to_path_buf(),
+            err,
+        })?;
         let node_type = NodeType::from_link(&target);
         Node::new_node(name, node_type, meta)
     } else {
@@ -522,12 +533,18 @@ fn map_entry(
     let extended_attributes = {
         let path = entry.path();
         xattr::list(path)
-            .map_err(IgnoreErrorKind::FromIoError)?
+            .map_err(|err| IgnoreErrorKind::ErrorXattr {
+                path: path.to_path_buf(),
+                err,
+            })?
             .map(|name| {
                 Ok(ExtendedAttribute {
                     name: name.to_string_lossy().to_string(),
                     value: xattr::get(path, name)
-                        .map_err(IgnoreErrorKind::FromIoError)?
+                        .map_err(|err| IgnoreErrorKind::ErrorXattr {
+                            path: path.to_path_buf(),
+                            err,
+                        })?
                         .unwrap(),
                 })
             })
@@ -554,7 +571,11 @@ fn map_entry(
     let node = if m.is_dir() {
         Node::new_node(name, NodeType::Dir, meta)
     } else if m.is_symlink() {
-        let target = read_link(entry.path()).map_err(IgnoreErrorKind::FromIoError)?;
+        let path = entry.path();
+        let target = read_link(path).map_err(|err| IgnoreErrorKind::ErrorLink {
+            path: path.to_path_buf(),
+            err,
+        })?;
         let node_type = NodeType::from_link(&target);
         Node::new_node(name, node_type, meta)
     } else if filetype.is_block_device() {
