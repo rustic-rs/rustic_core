@@ -390,9 +390,12 @@ impl LocalDestination {
         let filename = self.path(item);
         let mut done = vec![false; extended_attributes.len()];
 
-        for curr_name in xattr::list(&filename)
-            .map_err(|err| LocalDestinationErrorKind::ListingXattrsFailed(err, filename.clone()))?
-        {
+        for curr_name in xattr::list(&filename).map_err(|err| {
+            LocalDestinationErrorKind::ListingXattrsFailed {
+                source: err,
+                path: filename.clone(),
+            }
+        })? {
             match extended_attributes.iter().enumerate().find(
                 |(_, ExtendedAttribute { name, .. })| name == curr_name.to_string_lossy().as_ref(),
             ) {

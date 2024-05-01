@@ -578,14 +578,30 @@ pub enum CryptBackendErrorKind {
 pub enum IgnoreErrorKind {
     /// generic Ignore error: `{0:?}`
     GenericError(#[from] ignore::Error),
-    /// Error reading glob file {file:?}: {err:?}
-    ErrorGlob { file: PathBuf, err: std::io::Error },
-    /// Unable to open file {file:?}: {err:?}
-    UnableToOpenFile { file: PathBuf, err: std::io::Error },
-    /// Error getting xattrs for {path:?}: {err:?}
-    ErrorXattr { path: PathBuf, err: std::io::Error },
-    /// Error reading link target for {path:?}: {err:?}
-    ErrorLink { path: PathBuf, err: std::io::Error },
+    /// Error reading glob file {file:?}: {source:?}
+    ErrorGlob {
+        file: PathBuf,
+        #[source]
+        source: std::io::Error,
+    },
+    /// Unable to open file {file:?}: {source:?}
+    UnableToOpenFile {
+        file: PathBuf,
+        #[source]
+        source: std::io::Error,
+    },
+    /// Error getting xattrs for {path:?}: {source:?}
+    ErrorXattr {
+        path: PathBuf,
+        #[source]
+        source: std::io::Error,
+    },
+    /// Error reading link target for {path:?}: {source:?}
+    ErrorLink {
+        path: PathBuf,
+        #[source]
+        source: std::io::Error,
+    },
     /// `{0:?}`
     #[error(transparent)]
     FromTryFromIntError(#[from] TryFromIntError),
@@ -611,9 +627,13 @@ pub enum LocalDestinationErrorKind {
     #[error(transparent)]
     #[cfg(not(windows))]
     FromErrnoError(#[from] Errno),
-    /// listing xattrs on {1:?}: {0}
+    /// listing xattrs on {path:?}: {source:?}
     #[cfg(not(any(windows, target_os = "openbsd")))]
-    ListingXattrsFailed(std::io::Error, PathBuf),
+    ListingXattrsFailed {
+        path: PathBuf,
+        #[source]
+        source: std::io::Error,
+    },
     /// setting xattr {name} on {filename:?} with {source:?}
     #[cfg(not(any(windows, target_os = "openbsd")))]
     SettingXattrFailed {
