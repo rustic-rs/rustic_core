@@ -578,16 +578,17 @@ pub enum CryptBackendErrorKind {
 pub enum IgnoreErrorKind {
     /// generic Ignore error: `{0:?}`
     GenericError(#[from] ignore::Error),
-    /// Unable to open file: {0:?}
-    UnableToOpenFile(std::io::Error),
-    /// `{0:?}`
-    #[error(transparent)]
-    FromIoError(#[from] std::io::Error),
+    /// Error reading glob file {file:?}: {err:?}
+    ErrorGlob { file: PathBuf, err: std::io::Error },
+    /// Unable to open file {file:?}: {err:?}
+    UnableToOpenFile { file: PathBuf, err: std::io::Error },
+    /// Error getting xattrs for {path:?}: {err:?}
+    ErrorXattr { path: PathBuf, err: std::io::Error },
+    /// Error reading link target for {path:?}: {err:?}
+    ErrorLink { path: PathBuf, err: std::io::Error },
     /// `{0:?}`
     #[error(transparent)]
     FromTryFromIntError(#[from] TryFromIntError),
-    /// no unicode link target. File: {file:?}, target: {target:?}
-    TargetIsNotValidUnicode { file: PathBuf, target: PathBuf },
 }
 
 /// [`LocalDestinationErrorKind`] describes the errors that can be returned by an action on the filesystem in Backends
