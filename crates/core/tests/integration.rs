@@ -33,11 +33,14 @@ use insta::{
 };
 use pretty_assertions::assert_eq;
 use rstest::{fixture, rstest};
-use rustic_core::repofile::{Metadata, Node};
 use rustic_core::{
-    repofile::SnapshotFile, BackupOptions, ConfigOptions, FindMatches, FindNode, KeyOptions,
-    LsOptions, NoProgressBars, OpenStatus, PathList, Repository, RepositoryBackends,
-    RepositoryOptions, RusticResult,
+    repofile::SnapshotFile, BackupOptions, CheckOptions, ConfigOptions, FindMatches, FindNode,
+    KeyOptions, LimitOption, LsOptions, NoProgressBars, OpenStatus, PathList, Repository,
+    RepositoryBackends, RepositoryOptions, RusticResult,
+};
+use rustic_core::{
+    repofile::{Metadata, Node},
+    PruneOptions,
 };
 use serde::Serialize;
 
@@ -50,6 +53,7 @@ use std::{
     path::{Path, PathBuf},
     str::FromStr,
     sync::Arc,
+    time::Duration,
 };
 // uncomment for logging output
 // use simplelog::{Config, SimpleLogger};
@@ -399,5 +403,64 @@ fn test_find(tar_gz_testdata: Result<TestSource>, set_up_repo: Result<RepoOpen>)
     let FindMatches { paths, matches, .. } =
         repo.find_matching_nodes(vec![snapshot.tree], &match_func)?;
     assert_with_win("find-matching-wildcard-existing", (paths, matches));
+    Ok(())
+}
+
+#[rstest]
+fn test_prune(
+    tar_gz_testdata: Result<TestSource>,
+    set_up_repo: Result<RepoOpen>,
+    #[values(true, false)] instant_delete: bool,
+    #[values(
+        LimitOption::Percentage(0),
+        LimitOption::Percentage(50),
+        LimitOption::Unlimited
+    )]
+    max_unused: LimitOption,
+) -> Result<()> {
+    // Fixtures
+    let (source, repo) = (tar_gz_testdata?, set_up_repo?.to_indexed_ids()?);
+
+    let opts = BackupOptions::default();
+
+    // first backup
+    let paths = PathList::from_iter(Some(source.0.path().join("0/0/9")));
+    let snapshot1 = repo.backup(&opts, &paths, SnapshotFile::default())?;
+
+    // re-read index
+    let repo = repo.to_indexed_ids()?;
+    // second backup
+    let paths = PathList::from_iter(Some(source.0.path().join("0/0/9/2")));
+    let _ = repo.backup(&opts, &paths, SnapshotFile::default())?;
+
+    // re-read index
+    let repo = repo.to_indexed_ids()?;
+    // third backup
+    let paths = PathList::from_iter(Some(source.0.path().join("0/0/9/3")));
+    let _ = repo.backup(&opts, &paths, SnapshotFile::default())?;
+
+    repo.delete_snapshots(&[snapshot1.id])?;
+
+    // get prune plan
+    let prune_opts = PruneOptions::default()
+        .instant_delete(instant_delete)
+        .max_unused(max_unused)
+        .keep_delete(Duration::ZERO);
+    let plan = repo.prune_plan(&prune_opts)?;
+    // TODO: Snapshot-test the plan (currently doesn't impl Serialize)
+    // assert_ron_snapshot!("prune", plan);
+    plan.do_prune(&repo, &prune_opts)?;
+
+    // run check
+    let check_opts = CheckOptions::default().read_data(true);
+    repo.check(check_opts)?;
+
+    if !instant_delete {
+        // re-run if we only marked pack files. As keep-delete = 0, they should be removed here
+        let plan = repo.prune_plan(&prune_opts)?;
+        plan.do_prune(&repo, &prune_opts)?;
+        repo.check(check_opts)?;
+    }
+
     Ok(())
 }
