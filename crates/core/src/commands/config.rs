@@ -125,7 +125,7 @@ pub struct ConfigOptions {
     pub set_treepack_size: Option<ByteSize>,
 
     /// Set upper limit for default packsize for tree packs.
-    /// Note that packs actually can get up to some MiBs larger.
+    /// Note that packs actually can get a bit larger.
     /// If not set, pack sizes can grow up to approximately `4 GiB`.
     #[cfg_attr(feature = "clap", clap(long, value_name = "SIZE"))]
     pub set_treepack_size_limit: Option<ByteSize>,
@@ -151,7 +151,7 @@ pub struct ConfigOptions {
     pub set_datapack_growfactor: Option<u32>,
 
     /// Set upper limit for default packsize for tree packs.
-    /// Note that packs actually can get up to some MiBs larger.
+    /// Note that packs actually can get a bit larger.
     /// If not set, pack sizes can grow up to approximately `4 GiB`.
     #[cfg_attr(feature = "clap", clap(long, value_name = "SIZE"))]
     pub set_datapack_size_limit: Option<ByteSize>,

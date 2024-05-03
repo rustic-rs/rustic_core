@@ -824,7 +824,7 @@ pub(crate) fn merge_trees(
 
     let mut tree_iters: Vec<_> = trees
         .iter()
-        .map(|id| Tree::from_backend(be, index, *id).map(std::iter::IntoIterator::into_iter))
+        .map(|id| Tree::from_backend(be, index, *id).map(IntoIterator::into_iter))
         .collect::<RusticResult<_>>()?;
 
     // fill Heap with first elements from all trees

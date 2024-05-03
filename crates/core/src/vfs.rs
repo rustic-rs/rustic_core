@@ -146,7 +146,7 @@ impl VfsTree {
                     return Ok(VfsPath::RusticPath(id, path));
                 }
                 Self::VirtualTree(virtual_tree) => match components.next() {
-                    Some(std::path::Component::Normal(name)) => {
+                    Some(Component::Normal(name)) => {
                         if let Some(new_tree) = virtual_tree.get(name) {
                             tree = new_tree;
                         } else {
