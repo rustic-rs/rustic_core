@@ -385,7 +385,7 @@ impl SnapshotFile {
                     .collect::<Vec<_>>()
                     .join(" ")
             },
-            std::clone::Clone::clone,
+            Clone::clone,
         );
 
         let mut snap = Self {
@@ -951,9 +951,7 @@ pub struct StringList(pub(crate) Vec<String>);
 impl FromStr for StringList {
     type Err = RusticError;
     fn from_str(s: &str) -> RusticResult<Self> {
-        Ok(Self(
-            s.split(',').map(std::string::ToString::to_string).collect(),
-        ))
+        Ok(Self(s.split(',').map(ToString::to_string).collect()))
     }
 }
 

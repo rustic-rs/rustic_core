@@ -40,7 +40,7 @@ pub struct Archiver<'a, BE: DecryptFullBackend, I: ReadGlobalIndex> {
     /// The parent snapshot to use.
     parent: Parent,
 
-    /// The SharedIndexer is used to index the data.
+    /// The `SharedIndexer` is used to index the data.
     indexer: SharedIndexer<BE>,
 
     /// The backend to write to.
@@ -49,7 +49,7 @@ pub struct Archiver<'a, BE: DecryptFullBackend, I: ReadGlobalIndex> {
     /// The backend to write to.
     index: &'a I,
 
-    /// The SnapshotFile to write to.
+    /// The `SnapshotFile` to write to.
     snap: SnapshotFile,
 }
 

@@ -334,7 +334,7 @@ impl Iterator for LocalSourceWalker {
                 self.save_opts.with_atime,
                 self.save_opts.ignore_devid,
             )
-            .map_err(std::convert::Into::into)
+            .map_err(Into::into)
         })
     }
 }
