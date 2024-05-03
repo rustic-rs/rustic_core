@@ -43,7 +43,7 @@ use serde::Serialize;
 
 use rustic_testing::backend::in_memory_backend::InMemoryBackend;
 
-use std::ffi::OsStr;
+use std::{collections::BTreeMap, ffi::OsStr};
 use std::{
     env,
     fs::File,
@@ -129,19 +129,20 @@ fn insta_summary_redaction() -> Settings {
 }
 
 #[fixture]
-fn insta_tree_redaction() -> Settings {
+fn insta_node_redaction() -> Settings {
     let mut settings = Settings::clone_current();
 
-    settings.add_redaction(".nodes[].inode", "[inode]");
-    settings.add_redaction(".nodes[].device_id", "[device_id]");
-    settings.add_redaction(".nodes[].uid", "[uid]");
-    settings.add_redaction(".nodes[].user", "[user]");
-    settings.add_redaction(".nodes[].gid", "[gid]");
-    settings.add_redaction(".nodes[].group", "[group]");
-    settings.add_dynamic_redaction(".nodes[].mode", handle_option);
-    settings.add_dynamic_redaction(".nodes[].mtime", handle_option);
-    settings.add_dynamic_redaction(".nodes[].atime", handle_option);
-    settings.add_dynamic_redaction(".nodes[].ctime", handle_option);
+    settings.add_redaction(".**.inode", "[inode]");
+    settings.add_redaction(".**.device_id", "[device_id]");
+    settings.add_redaction(".**.uid", "[uid]");
+    settings.add_redaction(".**.user", "[user]");
+    settings.add_redaction(".**.gid", "[gid]");
+    settings.add_redaction(".**.group", "[group]");
+    settings.add_dynamic_redaction(".**.mode", handle_option);
+    settings.add_dynamic_redaction(".**.mtime", handle_option);
+    settings.add_dynamic_redaction(".**.atime", handle_option);
+    settings.add_dynamic_redaction(".**.ctime", handle_option);
+    settings.add_dynamic_redaction(".**.subtree", handle_option);
 
     settings
 }
@@ -172,7 +173,7 @@ fn test_backup_with_tar_gz_passes(
     tar_gz_testdata: Result<TestSource>,
     set_up_repo: Result<RepoOpen>,
     insta_summary_redaction: Settings,
-    insta_tree_redaction: Settings,
+    insta_node_redaction: Settings,
 ) -> Result<()> {
     // uncomment for logging output
     // SimpleLogger::init(log::LevelFilter::Debug, Config::default())?;
@@ -203,7 +204,7 @@ fn test_backup_with_tar_gz_passes(
     let tree = repo.node_from_path(first_snapshot.tree, Path::new("test/0/tests"))?;
     let tree: rustic_core::repofile::Tree = repo.get_tree(&tree.subtree.expect("Sub tree"))?;
 
-    insta_tree_redaction.bind(|| {
+    insta_node_redaction.bind(|| {
         assert_with_win("backup-tar-tree", tree);
     });
 
@@ -253,7 +254,7 @@ fn test_backup_dry_run_with_tar_gz_passes(
     tar_gz_testdata: Result<TestSource>,
     set_up_repo: Result<RepoOpen>,
     insta_summary_redaction: Settings,
-    insta_tree_redaction: Settings,
+    insta_node_redaction: Settings,
 ) -> Result<()> {
     // Fixtures
     let (source, repo) = (tar_gz_testdata?, set_up_repo?.to_indexed_ids()?);
@@ -290,7 +291,7 @@ fn test_backup_dry_run_with_tar_gz_passes(
     let tree = repo.node_from_path(first_snapshot.tree, Path::new("test/0/tests"))?;
     let tree = repo.get_tree(&tree.subtree.expect("Sub tree"))?;
 
-    insta_tree_redaction.bind(|| {
+    insta_node_redaction.bind(|| {
         assert_with_win("dryrun-tar-tree", tree);
     });
 
@@ -320,7 +321,11 @@ fn test_backup_dry_run_with_tar_gz_passes(
 }
 
 #[rstest]
-fn test_ls(tar_gz_testdata: Result<TestSource>, set_up_repo: Result<RepoOpen>) -> Result<()> {
+fn test_ls(
+    tar_gz_testdata: Result<TestSource>,
+    set_up_repo: Result<RepoOpen>,
+    insta_node_redaction: Settings,
+) -> Result<()> {
     // Fixtures
     let (source, repo) = (tar_gz_testdata?, set_up_repo?.to_indexed_ids()?);
     let paths = &source.path_list();
@@ -341,12 +346,13 @@ fn test_ls(tar_gz_testdata: Result<TestSource>, set_up_repo: Result<RepoOpen>) -
     // re-read index
     let repo = repo.to_indexed_ids()?;
 
-
-    let _entries: Vec<_> = repo
+    let entries: BTreeMap<_, _> = repo
         .ls(&node, &LsOptions::default())?
         .collect::<RusticResult<_>>()?;
-    // TODO: Snapshot-test entries
-    // assert_ron_snapshot!("ls", entries);
+
+    insta_node_redaction.bind(|| {
+        assert_with_win("ls", entries);
+    });
     Ok(())
 }
 
