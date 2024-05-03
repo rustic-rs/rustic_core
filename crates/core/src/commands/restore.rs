@@ -595,7 +595,7 @@ impl BlobLocation {
         self.uncompressed_length
             .map_or(
                 self.length - 32, // crypto overhead
-                std::num::NonZeroU32::get,
+                NonZeroU32::get,
             )
             .into()
     }
