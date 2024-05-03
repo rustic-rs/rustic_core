@@ -1,3 +1,4 @@
+#![allow(clippy::doc_markdown)]
 use std::{num::TryFromIntError, process::ExitStatus, str::Utf8Error};
 
 use displaydoc::Display;
