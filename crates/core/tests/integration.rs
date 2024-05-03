@@ -26,17 +26,19 @@
 use anyhow::Result;
 use flate2::read::GzDecoder;
 use globset::Glob;
-use insta::internals::{Content, ContentPath};
-use insta::{assert_ron_snapshot, Settings};
+use insta::{
+    assert_ron_snapshot,
+    internals::{Content, ContentPath},
+    Settings,
+};
 use pretty_assertions::assert_eq;
-use rstest::fixture;
-use rstest::rstest;
+use rstest::{fixture, rstest};
 use rustic_core::repofile::{Metadata, Node};
 use rustic_core::{
-    repofile::SnapshotFile, BackupOptions, ConfigOptions, KeyOptions, LsOptions, NoProgressBars,
-    OpenStatus, PathList, Repository, RepositoryBackends, RepositoryOptions,
+    repofile::SnapshotFile, BackupOptions, ConfigOptions, FindMatches, FindNode, KeyOptions,
+    LsOptions, NoProgressBars, OpenStatus, PathList, Repository, RepositoryBackends,
+    RepositoryOptions, RusticResult,
 };
-use rustic_core::{FindMatches, FindNode, RusticResult};
 use serde::Serialize;
 
 use rustic_testing::backend::in_memory_backend::InMemoryBackend;
@@ -93,7 +95,7 @@ fn handle_option(val: Content, _: ContentPath<'_>) -> String {
 
 #[fixture]
 fn insta_summary_redaction() -> Settings {
-    let mut settings = insta::Settings::clone_current();
+    let mut settings = Settings::clone_current();
 
     settings.add_redaction(".tree", "[tree_id]");
     settings.add_dynamic_redaction(".program_version", |val, _| {
@@ -128,7 +130,7 @@ fn insta_summary_redaction() -> Settings {
 
 #[fixture]
 fn insta_tree_redaction() -> Settings {
-    let mut settings = insta::Settings::clone_current();
+    let mut settings = Settings::clone_current();
 
     settings.add_redaction(".nodes[].inode", "[inode]");
     settings.add_redaction(".nodes[].device_id", "[device_id]");

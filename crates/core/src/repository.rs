@@ -257,7 +257,7 @@ pub struct Repository<P, S> {
     /// The name of the repository
     pub name: String,
 
-    /// The HotColdBackend to use for this repository
+    /// The `HotColdBackend` to use for this repository
     pub(crate) be: Arc<dyn WriteBackend>,
 
     /// The Backend to use for hot files

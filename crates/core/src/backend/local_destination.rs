@@ -330,7 +330,7 @@ impl LocalDestination {
 
         if let Some(mode) = node.meta.mode {
             let mode = map_mode_from_go(mode);
-            std::fs::set_permissions(filename, fs::Permissions::from_mode(mode))
+            fs::set_permissions(filename, fs::Permissions::from_mode(mode))
                 .map_err(LocalDestinationErrorKind::SettingFilePermissionsFailed)?;
         }
         Ok(())
@@ -660,7 +660,7 @@ impl LocalDestination {
     /// [`LocalDestinationErrorKind::CouldNotWriteToBuffer`]: crate::error::LocalDestinationErrorKind::CouldNotWriteToBuffer
     pub fn write_at(&self, item: impl AsRef<Path>, offset: u64, data: &[u8]) -> RusticResult<()> {
         let filename = self.path(item);
-        let mut file = fs::OpenOptions::new()
+        let mut file = OpenOptions::new()
             .create(true)
             .truncate(false)
             .write(true)
