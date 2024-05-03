@@ -1,5 +1,6 @@
 //! Error types and Result module.
 
+// FIXME: Remove when 'displaydoc' has fixed/recommended further treatment upstream: https://github.com/yaahc/displaydoc/issues/48
 #![allow(clippy::doc_markdown)]
 // use std::error::Error as StdError;
 // use std::fmt;
