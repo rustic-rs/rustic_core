@@ -166,16 +166,6 @@ fn assert_with_win<T: Serialize>(test: &str, snap: T) {
     #[cfg(not(windows))]
     assert_ron_snapshot!(format!("{test}-nix"), snap);
 }
-// Parts of the snapshot summary we want to test against references
-//
-// # Note
-//
-// We use a struct to avoid having to escape the field names in the snapshot
-// we use insta redactions to replace the actual values with placeholders in case
-// there are changes in the actual values
-// Readme: https://insta.rs/docs/redactions/
-#[derive(Serialize)]
-struct TestSummary<'a>(&'a SnapshotFile);
 
 #[rstest]
 fn test_backup_with_tar_gz_passes(
@@ -202,7 +192,7 @@ fn test_backup_with_tar_gz_passes(
     // But I think that can get messy with a lot of tests, also checking which settings are currently applied
     // will be probably harder
     insta_summary_redaction.bind(|| {
-        assert_with_win("backup-tar-summary-first", TestSummary(&first_snapshot));
+        assert_with_win("backup-tar-summary-first", &first_snapshot);
     });
 
     assert_eq!(first_snapshot.parent, None);
@@ -229,7 +219,7 @@ fn test_backup_with_tar_gz_passes(
     let second_snapshot = repo.backup(&opts, paths, SnapshotFile::default())?;
 
     insta_summary_redaction.bind(|| {
-        assert_with_win("backup-tar-summary-second", TestSummary(&second_snapshot));
+        assert_with_win("backup-tar-summary-second", &second_snapshot);
     });
 
     assert_eq!(second_snapshot.parent, Some(first_snapshot.id));
@@ -279,7 +269,7 @@ fn test_backup_dry_run_with_tar_gz_passes(
     let snap_dry_run = repo.backup(&opts, paths, SnapshotFile::default())?;
 
     insta_summary_redaction.bind(|| {
-        assert_with_win("dryrun-tar-summary-first", TestSummary(&snap_dry_run));
+        assert_with_win("dryrun-tar-summary-first", &snap_dry_run);
     });
 
     // check that repo is still empty
@@ -311,7 +301,7 @@ fn test_backup_dry_run_with_tar_gz_passes(
     let snap_dry_run = repo.backup(&opts, paths, SnapshotFile::default())?;
 
     insta_summary_redaction.bind(|| {
-        assert_with_win("dryrun-tar-summary-second", TestSummary(&snap_dry_run));
+        assert_with_win("dryrun-tar-summary-second", &snap_dry_run);
     });
 
     // check that no data has been added
@@ -350,6 +340,7 @@ fn test_ls(tar_gz_testdata: Result<TestSource>, set_up_repo: Result<RepoOpen>) -
 
     // re-read index
     let repo = repo.to_indexed_ids()?;
+
 
     let _entries: Vec<_> = repo
         .ls(&node, &LsOptions::default())?
