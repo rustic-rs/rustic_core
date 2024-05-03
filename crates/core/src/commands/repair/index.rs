@@ -85,21 +85,21 @@ impl RepairIndexOptions {
         );
         for (id, size_hint, packsize) in pack_read_header {
             debug!("reading pack {id}...");
-            let pack = IndexPack {
-                id,
-                blobs: match PackHeader::from_file(be, id, size_hint, packsize) {
-                    Err(err) => {
-                        warn!("error reading pack {id} (not processed): {err}");
-                        Vec::new()
+            match PackHeader::from_file(be, id, size_hint, packsize) {
+                Err(err) => {
+                    warn!("error reading pack {id} (-> removing from index): {err}");
+                }
+                Ok(header) => {
+                    let pack = IndexPack {
+                        blobs: header.into_blobs(),
+                        id,
+                        ..Default::default()
+                    };
+                    if !dry_run {
+                        // write pack file to index - without the delete mark
+                        indexer.write().unwrap().add_with(pack, false)?;
                     }
-                    Ok(header) => header.into_blobs(),
-                },
-                ..Default::default()
-            };
-
-            if !dry_run {
-                // write pack file to index - without the delete mark
-                indexer.write().unwrap().add_with(pack, false)?;
+                }
             }
             p.inc(1);
         }
