@@ -167,7 +167,7 @@ impl LocalSource {
             for line in std::fs::read_to_string(file)
                 .map_err(|err| IgnoreErrorKind::ErrorGlob {
                     file: file.into(),
-                    err,
+                    source: err,
                 })?
                 .lines()
             {
@@ -190,7 +190,7 @@ impl LocalSource {
             for line in std::fs::read_to_string(file)
                 .map_err(|err| IgnoreErrorKind::ErrorGlob {
                     file: file.into(),
-                    err,
+                    source: err,
                 })?
                 .lines()
             {
@@ -260,8 +260,13 @@ impl ReadSourceOpen for OpenFile {
     /// [`IgnoreErrorKind::UnableToOpenFile`]: crate::error::IgnoreErrorKind::UnableToOpenFile
     fn open(self) -> RusticResult<Self::Reader> {
         let path = self.0;
-        File::open(&path)
-            .map_err(|err| IgnoreErrorKind::UnableToOpenFile { file: path, err }.into())
+        File::open(&path).map_err(|err| {
+            IgnoreErrorKind::UnableToOpenFile {
+                file: path,
+                source: err,
+            }
+            .into()
+        })
     }
 }
 
@@ -410,7 +415,7 @@ fn map_entry(
         let path = entry.path();
         let target = read_link(path).map_err(|err| IgnoreErrorKind::ErrorLink {
             path: path.to_path_buf(),
-            err,
+            source: err,
         })?;
         let node_type = NodeType::from_link(&target);
         Node::new_node(name, node_type, meta)
@@ -535,7 +540,7 @@ fn map_entry(
         xattr::list(path)
             .map_err(|err| IgnoreErrorKind::ErrorXattr {
                 path: path.to_path_buf(),
-                err,
+                source: err,
             })?
             .map(|name| {
                 Ok(ExtendedAttribute {
@@ -543,7 +548,7 @@ fn map_entry(
                     value: xattr::get(path, name)
                         .map_err(|err| IgnoreErrorKind::ErrorXattr {
                             path: path.to_path_buf(),
-                            err,
+                            source: err,
                         })?
                         .unwrap(),
                 })
@@ -574,7 +579,7 @@ fn map_entry(
         let path = entry.path();
         let target = read_link(path).map_err(|err| IgnoreErrorKind::ErrorLink {
             path: path.to_path_buf(),
-            err,
+            source: err,
         })?;
         let node_type = NodeType::from_link(&target);
         Node::new_node(name, node_type, meta)
