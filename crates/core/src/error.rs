@@ -1,5 +1,6 @@
 //! Error types and Result module.
 
+#![allow(clippy::doc_markdown)]
 // use std::error::Error as StdError;
 // use std::fmt;
 
