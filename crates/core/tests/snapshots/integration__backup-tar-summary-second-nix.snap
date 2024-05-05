@@ -1,8 +1,8 @@
 ---
 source: crates/core/tests/integration.rs
-expression: TestSummary(&second_snapshot)
+expression: snap
 ---
-TestSummary(SnapshotFile(
+SnapshotFile(
   time: "[time]",
   program_version: "rustic [rustic_core_version]",
   parent: "[some]",
@@ -41,4 +41,4 @@ TestSummary(SnapshotFile(
     total_duration: "[total_duration]",
   )),
   id: "[id]",
-))
+)

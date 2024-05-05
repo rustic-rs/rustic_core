@@ -33,23 +33,27 @@ use insta::{
 };
 use pretty_assertions::assert_eq;
 use rstest::{fixture, rstest};
-use rustic_core::repofile::{Metadata, Node};
 use rustic_core::{
-    repofile::SnapshotFile, BackupOptions, ConfigOptions, FindMatches, FindNode, KeyOptions,
-    LsOptions, NoProgressBars, OpenStatus, PathList, Repository, RepositoryBackends,
-    RepositoryOptions, RusticResult,
+    repofile::SnapshotFile, BackupOptions, CheckOptions, ConfigOptions, FindMatches, FindNode,
+    KeyOptions, LimitOption, LsOptions, NoProgressBars, OpenStatus, PathList, Repository,
+    RepositoryBackends, RepositoryOptions, RusticResult,
+};
+use rustic_core::{
+    repofile::{Metadata, Node},
+    PruneOptions,
 };
 use serde::Serialize;
 
 use rustic_testing::backend::in_memory_backend::InMemoryBackend;
 
-use std::ffi::OsStr;
+use std::{collections::BTreeMap, ffi::OsStr};
 use std::{
     env,
     fs::File,
     path::{Path, PathBuf},
     str::FromStr,
     sync::Arc,
+    time::Duration,
 };
 // uncomment for logging output
 // use simplelog::{Config, SimpleLogger};
@@ -129,19 +133,20 @@ fn insta_summary_redaction() -> Settings {
 }
 
 #[fixture]
-fn insta_tree_redaction() -> Settings {
+fn insta_node_redaction() -> Settings {
     let mut settings = Settings::clone_current();
 
-    settings.add_redaction(".nodes[].inode", "[inode]");
-    settings.add_redaction(".nodes[].device_id", "[device_id]");
-    settings.add_redaction(".nodes[].uid", "[uid]");
-    settings.add_redaction(".nodes[].user", "[user]");
-    settings.add_redaction(".nodes[].gid", "[gid]");
-    settings.add_redaction(".nodes[].group", "[group]");
-    settings.add_dynamic_redaction(".nodes[].mode", handle_option);
-    settings.add_dynamic_redaction(".nodes[].mtime", handle_option);
-    settings.add_dynamic_redaction(".nodes[].atime", handle_option);
-    settings.add_dynamic_redaction(".nodes[].ctime", handle_option);
+    settings.add_redaction(".**.inode", "[inode]");
+    settings.add_redaction(".**.device_id", "[device_id]");
+    settings.add_redaction(".**.uid", "[uid]");
+    settings.add_redaction(".**.user", "[user]");
+    settings.add_redaction(".**.gid", "[gid]");
+    settings.add_redaction(".**.group", "[group]");
+    settings.add_dynamic_redaction(".**.mode", handle_option);
+    settings.add_dynamic_redaction(".**.mtime", handle_option);
+    settings.add_dynamic_redaction(".**.atime", handle_option);
+    settings.add_dynamic_redaction(".**.ctime", handle_option);
+    settings.add_dynamic_redaction(".**.subtree", handle_option);
 
     settings
 }
@@ -166,23 +171,13 @@ fn assert_with_win<T: Serialize>(test: &str, snap: T) {
     #[cfg(not(windows))]
     assert_ron_snapshot!(format!("{test}-nix"), snap);
 }
-// Parts of the snapshot summary we want to test against references
-//
-// # Note
-//
-// We use a struct to avoid having to escape the field names in the snapshot
-// we use insta redactions to replace the actual values with placeholders in case
-// there are changes in the actual values
-// Readme: https://insta.rs/docs/redactions/
-#[derive(Serialize)]
-struct TestSummary<'a>(&'a SnapshotFile);
 
 #[rstest]
 fn test_backup_with_tar_gz_passes(
     tar_gz_testdata: Result<TestSource>,
     set_up_repo: Result<RepoOpen>,
     insta_summary_redaction: Settings,
-    insta_tree_redaction: Settings,
+    insta_node_redaction: Settings,
 ) -> Result<()> {
     // uncomment for logging output
     // SimpleLogger::init(log::LevelFilter::Debug, Config::default())?;
@@ -202,7 +197,7 @@ fn test_backup_with_tar_gz_passes(
     // But I think that can get messy with a lot of tests, also checking which settings are currently applied
     // will be probably harder
     insta_summary_redaction.bind(|| {
-        assert_with_win("backup-tar-summary-first", TestSummary(&first_snapshot));
+        assert_with_win("backup-tar-summary-first", &first_snapshot);
     });
 
     assert_eq!(first_snapshot.parent, None);
@@ -213,7 +208,7 @@ fn test_backup_with_tar_gz_passes(
     let tree = repo.node_from_path(first_snapshot.tree, Path::new("test/0/tests"))?;
     let tree: rustic_core::repofile::Tree = repo.get_tree(&tree.subtree.expect("Sub tree"))?;
 
-    insta_tree_redaction.bind(|| {
+    insta_node_redaction.bind(|| {
         assert_with_win("backup-tar-tree", tree);
     });
 
@@ -229,7 +224,7 @@ fn test_backup_with_tar_gz_passes(
     let second_snapshot = repo.backup(&opts, paths, SnapshotFile::default())?;
 
     insta_summary_redaction.bind(|| {
-        assert_with_win("backup-tar-summary-second", TestSummary(&second_snapshot));
+        assert_with_win("backup-tar-summary-second", &second_snapshot);
     });
 
     assert_eq!(second_snapshot.parent, Some(first_snapshot.id));
@@ -263,7 +258,7 @@ fn test_backup_dry_run_with_tar_gz_passes(
     tar_gz_testdata: Result<TestSource>,
     set_up_repo: Result<RepoOpen>,
     insta_summary_redaction: Settings,
-    insta_tree_redaction: Settings,
+    insta_node_redaction: Settings,
 ) -> Result<()> {
     // Fixtures
     let (source, repo) = (tar_gz_testdata?, set_up_repo?.to_indexed_ids()?);
@@ -279,7 +274,7 @@ fn test_backup_dry_run_with_tar_gz_passes(
     let snap_dry_run = repo.backup(&opts, paths, SnapshotFile::default())?;
 
     insta_summary_redaction.bind(|| {
-        assert_with_win("dryrun-tar-summary-first", TestSummary(&snap_dry_run));
+        assert_with_win("dryrun-tar-summary-first", &snap_dry_run);
     });
 
     // check that repo is still empty
@@ -300,7 +295,7 @@ fn test_backup_dry_run_with_tar_gz_passes(
     let tree = repo.node_from_path(first_snapshot.tree, Path::new("test/0/tests"))?;
     let tree = repo.get_tree(&tree.subtree.expect("Sub tree"))?;
 
-    insta_tree_redaction.bind(|| {
+    insta_node_redaction.bind(|| {
         assert_with_win("dryrun-tar-tree", tree);
     });
 
@@ -311,7 +306,7 @@ fn test_backup_dry_run_with_tar_gz_passes(
     let snap_dry_run = repo.backup(&opts, paths, SnapshotFile::default())?;
 
     insta_summary_redaction.bind(|| {
-        assert_with_win("dryrun-tar-summary-second", TestSummary(&snap_dry_run));
+        assert_with_win("dryrun-tar-summary-second", &snap_dry_run);
     });
 
     // check that no data has been added
@@ -330,7 +325,11 @@ fn test_backup_dry_run_with_tar_gz_passes(
 }
 
 #[rstest]
-fn test_ls(tar_gz_testdata: Result<TestSource>, set_up_repo: Result<RepoOpen>) -> Result<()> {
+fn test_ls(
+    tar_gz_testdata: Result<TestSource>,
+    set_up_repo: Result<RepoOpen>,
+    insta_node_redaction: Settings,
+) -> Result<()> {
     // Fixtures
     let (source, repo) = (tar_gz_testdata?, set_up_repo?.to_indexed_ids()?);
     let paths = &source.path_list();
@@ -351,11 +350,13 @@ fn test_ls(tar_gz_testdata: Result<TestSource>, set_up_repo: Result<RepoOpen>) -
     // re-read index
     let repo = repo.to_indexed_ids()?;
 
-    let _entries: Vec<_> = repo
+    let entries: BTreeMap<_, _> = repo
         .ls(&node, &LsOptions::default())?
         .collect::<RusticResult<_>>()?;
-    // TODO: Snapshot-test entries
-    // assert_ron_snapshot!("ls", entries);
+
+    insta_node_redaction.bind(|| {
+        assert_with_win("ls", entries);
+    });
     Ok(())
 }
 
@@ -402,5 +403,64 @@ fn test_find(tar_gz_testdata: Result<TestSource>, set_up_repo: Result<RepoOpen>)
     let FindMatches { paths, matches, .. } =
         repo.find_matching_nodes(vec![snapshot.tree], &match_func)?;
     assert_with_win("find-matching-wildcard-existing", (paths, matches));
+    Ok(())
+}
+
+#[rstest]
+fn test_prune(
+    tar_gz_testdata: Result<TestSource>,
+    set_up_repo: Result<RepoOpen>,
+    #[values(true, false)] instant_delete: bool,
+    #[values(
+        LimitOption::Percentage(0),
+        LimitOption::Percentage(50),
+        LimitOption::Unlimited
+    )]
+    max_unused: LimitOption,
+) -> Result<()> {
+    // Fixtures
+    let (source, repo) = (tar_gz_testdata?, set_up_repo?.to_indexed_ids()?);
+
+    let opts = BackupOptions::default();
+
+    // first backup
+    let paths = PathList::from_iter(Some(source.0.path().join("0/0/9")));
+    let snapshot1 = repo.backup(&opts, &paths, SnapshotFile::default())?;
+
+    // re-read index
+    let repo = repo.to_indexed_ids()?;
+    // second backup
+    let paths = PathList::from_iter(Some(source.0.path().join("0/0/9/2")));
+    let _ = repo.backup(&opts, &paths, SnapshotFile::default())?;
+
+    // re-read index
+    let repo = repo.to_indexed_ids()?;
+    // third backup
+    let paths = PathList::from_iter(Some(source.0.path().join("0/0/9/3")));
+    let _ = repo.backup(&opts, &paths, SnapshotFile::default())?;
+
+    repo.delete_snapshots(&[snapshot1.id])?;
+
+    // get prune plan
+    let prune_opts = PruneOptions::default()
+        .instant_delete(instant_delete)
+        .max_unused(max_unused)
+        .keep_delete(Duration::ZERO);
+    let plan = repo.prune_plan(&prune_opts)?;
+    // TODO: Snapshot-test the plan (currently doesn't impl Serialize)
+    // assert_ron_snapshot!("prune", plan);
+    plan.do_prune(&repo, &prune_opts)?;
+
+    // run check
+    let check_opts = CheckOptions::default().read_data(true);
+    repo.check(check_opts)?;
+
+    if !instant_delete {
+        // re-run if we only marked pack files. As keep-delete = 0, they should be removed here
+        let plan = repo.prune_plan(&prune_opts)?;
+        plan.do_prune(&repo, &prune_opts)?;
+        repo.check(check_opts)?;
+    }
+
     Ok(())
 }
