@@ -119,6 +119,8 @@ pub(crate) mod repository;
 /// Virtual File System support - allows to act on the repository like on a file system
 pub mod vfs;
 
+pub use log::Level as LogLevel;
+
 // rustic_core Public API
 pub use crate::{
     backend::{

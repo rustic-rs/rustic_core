@@ -31,7 +31,7 @@ use crate::{
     commands::{
         self,
         backup::BackupOptions,
-        check::CheckOptions,
+        check::{CheckOptions, CheckResults, CheckResultsCollector},
         config::ConfigOptions,
         copy::CopySnapshot,
         forget::{ForgetGroups, KeepOptions},
@@ -57,7 +57,7 @@ use crate::{
         snapshotfile::{SnapshotGroup, SnapshotGroupCriterion},
         ConfigFile, PathList, RepoFile, SnapshotFile, SnapshotSummary, Tree,
     },
-    repository::{warm_up::warm_up, warm_up::warm_up_wait},
+    repository::warm_up::{warm_up, warm_up_wait},
     vfs::OpenFile,
     RepositoryBackends, RusticResult,
 };
@@ -1065,7 +1065,24 @@ impl<P: ProgressBars, S: Open> Repository<P, S> {
     ///
     // TODO: Document errors
     pub fn check(&self, opts: CheckOptions) -> RusticResult<()> {
-        opts.run(self)
+        let results = CheckResultsCollector::default().log(true);
+        results.check(opts, self)?;
+        results.into_check_results().is_ok()
+    }
+
+    /// Check the repository for errors or inconsistencies
+    ///
+    /// # Arguments
+    ///
+    /// * `opts` - The options to use
+    ///
+    /// # Errors
+    ///
+    // TODO: Document errors
+    pub fn check_results(&self, opts: CheckOptions) -> RusticResult<CheckResults> {
+        let results = CheckResultsCollector::default();
+        results.check(opts, self)?;
+        Ok(results.into_check_results())
     }
 
     /// Get the plan about what should be pruned and/or repacked.
