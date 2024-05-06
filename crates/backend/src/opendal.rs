@@ -1,11 +1,12 @@
 /// `OpenDAL` backend for rustic.
 use std::{collections::HashMap, path::PathBuf, str::FromStr, sync::OnceLock};
 
-use anyhow::Result;
+use anyhow::{anyhow, Error, Result};
 use bytes::Bytes;
+use bytesize::ByteSize;
 use log::trace;
 use opendal::{
-    layers::{BlockingLayer, ConcurrentLimitLayer, LoggingLayer, RetryLayer},
+    layers::{BlockingLayer, ConcurrentLimitLayer, LoggingLayer, RetryLayer, ThrottleLayer},
     BlockingOperator, ErrorKind, Metakey, Operator, Scheme,
 };
 use rayon::prelude::{IntoParallelIterator, ParallelIterator};
@@ -34,6 +35,30 @@ fn runtime() -> &'static Runtime {
     })
 }
 
+/// Throttling parameters
+///
+/// Note: Throttle implements [`FromStr`] to read it from something like "10kiB,10MB"
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Throttle {
+    bandwidth: u32,
+    burst: u32,
+}
+
+impl FromStr for Throttle {
+    type Err = Error;
+    fn from_str(s: &str) -> Result<Self> {
+        let mut values = s
+            .split(',')
+            .map(|s| ByteSize::from_str(s.trim()).map_err(|err| anyhow!("Error: {err}")))
+            .map(|b| -> Result<u32> { Ok(b?.as_u64().try_into()?) });
+        let bandwidth = values
+            .next()
+            .ok_or_else(|| anyhow!("no bandwidth given"))??;
+        let burst = values.next().ok_or_else(|| anyhow!("no burst given"))??;
+        Ok(Self { bandwidth, burst })
+    }
+}
+
 impl OpenDALBackend {
     /// Create a new openDAL backend.
     ///
@@ -60,9 +85,18 @@ impl OpenDALBackend {
             .map(|c| usize::from_str(c))
             .transpose()?;
 
+        let throttle = options
+            .get("throttle")
+            .map(|t| Throttle::from_str(t))
+            .transpose()?;
+
         let schema = Scheme::from_str(path.as_ref())?;
         let mut operator = Operator::via_map(schema, options)?
             .layer(RetryLayer::new().with_max_times(max_retries).with_jitter());
+
+        if let Some(Throttle { bandwidth, burst }) = throttle {
+            operator = operator.layer(ThrottleLayer::new(bandwidth, burst));
+        }
 
         if let Some(connections) = connections {
             operator = operator.layer(ConcurrentLimitLayer::new(connections));
@@ -250,6 +284,50 @@ impl WriteBackend for OpenDALBackend {
         trace!("removing tpe: {:?}, id: {}", &tpe, &id);
         let filename = self.path(tpe, id);
         self.operator.delete(&filename)?;
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::fs;
+
+    use super::*;
+    use rstest::rstest;
+    use serde::Deserialize;
+
+    #[rstest]
+    #[case("10kB,10MB", Throttle{bandwidth:10_000, burst:10_000_000})]
+    #[case("10 kB,10  MB", Throttle{bandwidth:10_000, burst:10_000_000})]
+    #[case("10kB, 10MB", Throttle{bandwidth:10_000, burst:10_000_000})]
+    #[case(" 10kB,   10MB", Throttle{bandwidth:10_000, burst:10_000_000})]
+    #[case("10kiB,10MiB", Throttle{bandwidth:10_240, burst:10_485_760})]
+    fn correct_throttle(#[case] input: &str, #[case] expected: Throttle) {
+        assert_eq!(Throttle::from_str(input).unwrap(), expected);
+    }
+
+    #[rstest]
+    #[case("")]
+    #[case("10kiB")]
+    #[case("no_number,10MiB")]
+    #[case("10kB;10MB")]
+    fn invalid_throttle(#[case] input: &str) {
+        assert!(Throttle::from_str(input).is_err());
+    }
+
+    #[rstest]
+    fn new_opendal_backend(
+        #[files("tests/fixtures/opendal/*.toml")] test_case: PathBuf,
+    ) -> Result<()> {
+        #[derive(Deserialize)]
+        struct TestCase {
+            path: String,
+            options: HashMap<String, String>,
+        }
+
+        let test: TestCase = toml::from_str(&fs::read_to_string(test_case)?)?;
+
+        _ = OpenDALBackend::new(test.path, test.options)?;
         Ok(())
     }
 }

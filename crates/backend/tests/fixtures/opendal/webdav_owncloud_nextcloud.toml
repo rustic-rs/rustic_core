@@ -1,0 +1,5 @@
+path = "webdav"
+[options]
+endpoint = "https://my-owncloud-or-nextcloud-server.com"
+username = "user"
+password = "token"

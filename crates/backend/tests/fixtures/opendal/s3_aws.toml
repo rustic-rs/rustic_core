@@ -1,0 +1,7 @@
+path = "s3"
+[options]
+access_key_id = "xxx"
+secret_access_key = "xxx"
+region = "test_region"
+bucket = "bucket_name"
+root = "/path/to/repo"
