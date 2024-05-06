@@ -1,0 +1,6 @@
+path = "b2"
+[options]
+application_key_id = "my_id" # B2 application key ID
+application_key = "my_key" # B2 application key secret. Can be also set using OPENDAL_APPLICATION_KEY
+bucket = "bucket_name" # B2 bucket name
+bucket_id = "bucket_id" # B2 bucket ID

@@ -38,7 +38,7 @@ fn runtime() -> &'static Runtime {
 /// Throttling parameters
 ///
 /// Note: Throttle implements [`FromStr`] to read it from something like "10kiB,10MB"
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Throttle {
     bandwidth: u32,
     burst: u32,
@@ -49,7 +49,7 @@ impl FromStr for Throttle {
     fn from_str(s: &str) -> Result<Self> {
         let mut values = s
             .split(',')
-            .map(|s| ByteSize::from_str(s).map_err(|err| anyhow!("Error: {err}")))
+            .map(|s| ByteSize::from_str(s.trim()).map_err(|err| anyhow!("Error: {err}")))
             .map(|b| -> Result<u32> { Ok(b?.as_u64().try_into()?) });
         let bandwidth = values
             .next()
@@ -284,6 +284,50 @@ impl WriteBackend for OpenDALBackend {
         trace!("removing tpe: {:?}, id: {}", &tpe, &id);
         let filename = self.path(tpe, id);
         self.operator.delete(&filename)?;
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::fs;
+
+    use super::*;
+    use rstest::rstest;
+    use serde::Deserialize;
+
+    #[rstest]
+    #[case("10kB,10MB", Throttle{bandwidth:10_000, burst:10_000_000})]
+    #[case("10 kB,10  MB", Throttle{bandwidth:10_000, burst:10_000_000})]
+    #[case("10kB, 10MB", Throttle{bandwidth:10_000, burst:10_000_000})]
+    #[case(" 10kB,   10MB", Throttle{bandwidth:10_000, burst:10_000_000})]
+    #[case("10kiB,10MiB", Throttle{bandwidth:10_240, burst:10_485_760})]
+    fn correct_throttle(#[case] input: &str, #[case] expected: Throttle) {
+        assert_eq!(Throttle::from_str(input).unwrap(), expected);
+    }
+
+    #[rstest]
+    #[case("")]
+    #[case("10kiB")]
+    #[case("no_number,10MiB")]
+    #[case("10kB;10MB")]
+    fn invalid_throttle(#[case] input: &str) {
+        assert!(Throttle::from_str(input).is_err());
+    }
+
+    #[rstest]
+    fn new_opendal_backend(
+        #[files("tests/fixtures/opendal/*.toml")] test_case: PathBuf,
+    ) -> Result<()> {
+        #[derive(Deserialize)]
+        struct TestCase {
+            path: String,
+            options: HashMap<String, String>,
+        }
+
+        let test: TestCase = toml::from_str(&fs::read_to_string(test_case)?)?;
+
+        _ = OpenDALBackend::new(test.path, test.options)?;
         Ok(())
     }
 }
