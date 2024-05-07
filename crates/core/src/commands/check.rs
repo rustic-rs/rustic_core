@@ -38,9 +38,6 @@ pub struct CheckOptions {
     pub read_data: bool,
 }
 
-#[allow(clippy::enum_glob_use)]
-use CheckError::*;
-
 #[derive(Debug)]
 pub struct CheckResults {
     pub errors: Vec<(LogLevel, CheckError)>,
@@ -166,7 +163,7 @@ impl CheckResultsCollector {
                     let data = be.read_full(FileType::Pack, &id).unwrap();
                     match self.check_pack(be, pack, data, &p) {
                         Ok(()) => {}
-                        Err(err) => self.add_error(ErrorReadingPack { id, err }),
+                        Err(err) => self.add_error(CheckError::ErrorReadingPack { id, err }),
                     }
                 });
             p.finish();
@@ -220,8 +217,8 @@ impl CheckResultsCollector {
 
         for (id, size_hot) in files_hot {
             match files.remove(&id) {
-                None => self.add_error(NoColdFile { id, file_type }),
-                Some(size) if size != size_hot => self.add_error(HotFileSizeMismatch {
+                None => self.add_error(CheckError::NoColdFile { id, file_type }),
+                Some(size) if size != size_hot => self.add_error(CheckError::HotFileSizeMismatch {
                     id,
                     file_type,
                     size_hot,
@@ -232,7 +229,7 @@ impl CheckResultsCollector {
         }
 
         for (id, _) in files {
-            self.add_error(NoHotFile { id, file_type });
+            self.add_error(CheckError::NoHotFile { id, file_type });
         }
         p.finish();
 
@@ -277,18 +274,18 @@ impl CheckResultsCollector {
                     cache.read_full(file_type, &id),
                     be.read_full(file_type, &id),
                 ) {
-                    (Err(err), _) => self.add_error(ErrorReadingCache {
+                    (Err(err), _) => self.add_error(CheckError::ErrorReadingCache {
                         id,
                         file_type,
                         err: Box::new(err),
                     }),
-                    (_, Err(err)) => self.add_error(ErrorReadingFile {
+                    (_, Err(err)) => self.add_error(CheckError::ErrorReadingFile {
                         id,
                         file_type,
                         err: Box::new(RusticErrorKind::Backend(err).into()),
                     }),
                     (Ok(Some(data_cached)), Ok(data)) if data_cached != data => {
-                        self.add_error(CacheMismatch { id, file_type });
+                        self.add_error(CheckError::CacheMismatch { id, file_type });
                     }
                     (Ok(_), Ok(_)) => {} // everything ok
                 }
@@ -347,7 +344,7 @@ impl CheckResultsCollector {
 
                 // Check if time is set _
                 if check_time && p.time.is_none() {
-                    self.add_error(PackTimeNotSet { id: p.id });
+                    self.add_error(CheckError::PackTimeNotSet { id: p.id });
                 }
 
                 // check offsests in index
@@ -356,7 +353,7 @@ impl CheckResultsCollector {
                 blobs.sort_unstable();
                 for blob in blobs {
                     if blob.tpe != blob_type {
-                        self.add_error(PackBlobTypesMismatch {
+                        self.add_error(CheckError::PackBlobTypesMismatch {
                             id: p.id,
                             blob_id: blob.id,
                             blob_type: blob.tpe,
@@ -365,7 +362,7 @@ impl CheckResultsCollector {
                     }
 
                     if blob.offset != expected_offset {
-                        self.add_error(PackBlobOffsetMismatch {
+                        self.add_error(CheckError::PackBlobOffsetMismatch {
                             id: p.id,
                             blob_id: blob.id,
                             offset: blob.offset,
@@ -413,18 +410,20 @@ impl CheckResultsCollector {
             .map_err(RusticErrorKind::Backend)?
         {
             match packs.remove(&id) {
-                None => self.add_warn(PackNotReferenced { id }),
-                Some(index_size) if index_size != size => self.add_error(PackSizeMismatchIndex {
-                    id,
-                    index_size,
-                    size,
-                }),
+                None => self.add_warn(CheckError::PackNotReferenced { id }),
+                Some(index_size) if index_size != size => {
+                    self.add_error(CheckError::PackSizeMismatchIndex {
+                        id,
+                        index_size,
+                        size,
+                    });
+                }
                 _ => {} //everything ok
             }
         }
 
         for (id, _) in packs {
-            self.add_error(NoPack { id });
+            self.add_error(CheckError::NoPack { id });
         }
         Ok(())
     }
@@ -461,21 +460,21 @@ impl CheckResultsCollector {
                 match node.node_type {
                     NodeType::File => node.content.as_ref().map_or_else(
                         || {
-                            self.add_error(FileHasNoContent {
+                            self.add_error(CheckError::FileHasNoContent {
                                 file: path.join(node.name()),
                             });
                         },
                         |content| {
                             for (i, id) in content.iter().enumerate() {
                                 if id.is_null() {
-                                    self.add_error(FileBlobHasNullId {
+                                    self.add_error(CheckError::FileBlobHasNullId {
                                         file: path.join(node.name()),
                                         blob_num: i,
                                     });
                                 }
 
                                 if !index.has_data(id) {
-                                    self.add_error(FileBlobNotInIndex {
+                                    self.add_error(CheckError::FileBlobNotInIndex {
                                         file: path.join(node.name()),
                                         blob_id: *id,
                                     });
@@ -486,12 +485,14 @@ impl CheckResultsCollector {
 
                     NodeType::Dir => {
                         match node.subtree {
-                            None => self.add_error(NoSubTree {
+                            None => self.add_error(CheckError::NoSubTree {
                                 dir: path.join(node.name()),
                             }),
-                            Some(tree) if tree.is_null() => self.add_error(NullSubTree {
-                                dir: path.join(node.name()),
-                            }),
+                            Some(tree) if tree.is_null() => {
+                                self.add_error(CheckError::NullSubTree {
+                                    dir: path.join(node.name()),
+                                });
+                            }
                             _ => {} // subtree is ok
                         }
                     }
@@ -529,7 +530,7 @@ impl CheckResultsCollector {
         let id = index_pack.id;
         let size = index_pack.pack_size();
         if data.len() != size as usize {
-            self.add_error(PackSizeMismatch {
+            self.add_error(CheckError::PackSizeMismatch {
                 id,
                 size: data.len(),
                 expected: size as usize,
@@ -539,7 +540,7 @@ impl CheckResultsCollector {
 
         let computed = hash(&data);
         if id != computed {
-            self.add_error(PackHashMismatch { id, computed });
+            self.add_error(CheckError::PackHashMismatch { id, computed });
             return Ok(());
         }
 
@@ -548,7 +549,7 @@ impl CheckResultsCollector {
         let pack_header_len =
             PackHeaderLength::from_binary(&data.split_off(data.len() - 4))?.to_u32();
         if pack_header_len != header_len {
-            self.add_error(PackHeaderLengthMismatch {
+            self.add_error(CheckError::PackHeaderLengthMismatch {
                 id,
                 length: pack_header_len,
                 computed: header_len,
@@ -563,7 +564,7 @@ impl CheckResultsCollector {
         let mut blobs = index_pack.blobs;
         blobs.sort_unstable_by_key(|b| b.offset);
         if pack_blobs != blobs {
-            self.add_error(PackHeaderMismatchIndex { id });
+            self.add_error(CheckError::PackHeaderMismatchIndex { id });
             debug!("pack file header: {pack_blobs:?}");
             debug!("index: {:?}", blobs);
             return Ok(());
@@ -579,14 +580,14 @@ impl CheckResultsCollector {
             if let Some(length) = blob.uncompressed_length {
                 blob_data = decode_all(&*blob_data).unwrap();
                 if blob_data.len() != length.get() as usize {
-                    self.add_error(PackBlobLengthMismatch { id, blob_id });
+                    self.add_error(CheckError::PackBlobLengthMismatch { id, blob_id });
                     return Ok(());
                 }
             }
 
             let computed = hash(&blob_data);
             if blob.id != computed {
-                self.add_error(PackBlobHashMismatch {
+                self.add_error(CheckError::PackBlobHashMismatch {
                     id,
                     blob_id,
                     computed,
