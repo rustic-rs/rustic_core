@@ -118,12 +118,10 @@ zstd = "0.13.0"
 [target.'cfg(not(windows))'.dependencies]
 sha2 = { version = "0.10", features = ["asm"] }
 
-[target.'cfg(all(windows, not(target_env="gnu")))'.dependencies]
-# unfortunately, the asm extensions do not build on MSVC, see https://github.com/RustCrypto/asm-hashes/issues/17
+[target.'cfg(windows)'.dependencies]
+# unfortunately, the asm extensions do not build on Windows, see https://github.com/RustCrypto/asm-hashes/issues/17
+# and https://github.com/RustCrypto/asm-hashes/pull/issues/78
 sha2 = "0.10"
-
-[target.'cfg(all(windows, target_env="gnu"))'.dependencies]
-sha2 = { version = "0.10", features = ["asm"] }
 
 [target.'cfg(not(any(windows, target_os="openbsd")))'.dependencies]
 # for local source/destination
