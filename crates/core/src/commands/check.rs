@@ -163,7 +163,10 @@ impl CheckResultsCollector {
                     let data = be.read_full(FileType::Pack, &id).unwrap();
                     match self.check_pack(be, pack, data, &p) {
                         Ok(()) => {}
-                        Err(err) => self.add_error(CheckError::ErrorReadingPack { id, err }),
+                        Err(err) => self.add_error(CheckError::ErrorReadingPack {
+                            id,
+                            err: Box::new(err),
+                        }),
                     }
                 });
             p.finish();

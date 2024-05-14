@@ -802,7 +802,7 @@ where
 #[derive(Error, Debug, Display)]
 pub enum CheckError {
     /// error reading pack {id} : {err}
-    ErrorReadingPack { id: Id, err: RusticError },
+    ErrorReadingPack { id: Id, err: Box<RusticError> },
     /// cold file for hot file Type: {file_type:?}, Id: {id} does not exist
     NoColdFile { id: Id, file_type: FileType },
     /// Type: {file_type:?}, Id: {id}: hot size: {size_hot}, actual size: {size}
