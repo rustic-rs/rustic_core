@@ -213,7 +213,7 @@ impl ReadBackend for OpenDALBackend {
     fn read_full(&self, tpe: FileType, id: &Id) -> Result<Bytes> {
         trace!("reading tpe: {tpe:?}, id: {id}");
 
-        Ok(self.operator.read(&self.path(tpe, id))?.into())
+        Ok(self.operator.read(&self.path(tpe, id))?.to_bytes())
     }
 
     fn read_partial(
@@ -231,7 +231,7 @@ impl ReadBackend for OpenDALBackend {
             .read_with(&self.path(tpe, id))
             .range(range)
             .call()?
-            .into())
+            .to_bytes())
     }
 }
 
