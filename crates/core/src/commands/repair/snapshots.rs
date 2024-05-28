@@ -52,7 +52,7 @@ impl Default for RepairSnapshotsOptions {
         Self {
             delete: true,
             suffix: ".repaired".to_string(),
-            tag: vec![StringList(vec!["repaired".to_string()])],
+            tag: vec![StringList(BTreeSet::from(["repaired".to_string()]))],
         }
     }
 }
