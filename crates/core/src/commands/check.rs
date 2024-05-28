@@ -48,7 +48,7 @@ pub enum CheckErrorLevel {
 }
 
 #[derive(Debug)]
-/// CheckResults is a list of errors encountered during the check.
+/// `CheckResults` is a list of errors encountered during the check.
 pub struct CheckResults {
     /// The list of errors with severity level.
     pub errors: Vec<(CheckErrorLevel, CheckError)>,
@@ -56,6 +56,9 @@ pub struct CheckResults {
 
 impl CheckResults {
     /// Returns whether severe errors have been found.
+    ///
+    /// # Errors
+    /// `CheckFoundErrors` if there are severe errors.
     pub fn is_ok(&self) -> RusticResult<()> {
         if self
             .errors
