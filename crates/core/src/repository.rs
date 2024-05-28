@@ -51,7 +51,7 @@ use crate::{
         binarysorted::{IndexCollector, IndexType},
         GlobalIndex, IndexEntry, ReadGlobalIndex, ReadIndex,
     },
-    progress::{NoProgressBars, ProgressBars},
+    progress::{NoProgressBars, Progress, ProgressBars},
     repofile::{
         keyfile::find_key_in_backend,
         snapshotfile::{SnapshotGroup, SnapshotGroupCriterion},
@@ -910,6 +910,7 @@ impl<P: ProgressBars, S: Open> Repository<P, S> {
     ) -> RusticResult<SnapshotFile> {
         let p = self.pb.progress_counter("getting snapshot...");
         let snap = SnapshotFile::from_str(self.dbe(), id, filter, &p)?;
+        p.finish();
         Ok(snap)
     }
 
@@ -929,7 +930,9 @@ impl<P: ProgressBars, S: Open> Repository<P, S> {
     // TODO: Document errors
     pub fn get_snapshots<T: AsRef<str>>(&self, ids: &[T]) -> RusticResult<Vec<SnapshotFile>> {
         let p = self.pb.progress_counter("getting snapshots...");
-        SnapshotFile::from_ids(self.dbe(), ids, &p)
+        let result = SnapshotFile::from_ids(self.dbe(), ids, &p);
+        p.finish();
+        result
     }
 
     /// Get all snapshots from the repository
@@ -958,7 +961,9 @@ impl<P: ProgressBars, S: Open> Repository<P, S> {
         filter: impl FnMut(&SnapshotFile) -> bool,
     ) -> RusticResult<Vec<SnapshotFile>> {
         let p = self.pb.progress_counter("getting snapshots...");
-        SnapshotFile::all_from_backend(self.dbe(), filter, &p)
+        let result = SnapshotFile::all_from_backend(self.dbe(), filter, &p);
+        p.finish();
+        result
     }
 
     /// Get snapshots to forget depending on the given [`KeepOptions`]
