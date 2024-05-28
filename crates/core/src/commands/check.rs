@@ -21,7 +21,6 @@ use crate::{
     progress::{Progress, ProgressBars},
     repofile::{IndexFile, IndexPack, PackHeader, PackHeaderLength, PackHeaderRef, SnapshotFile},
     repository::{Open, Repository},
-    LogLevel,
 };
 
 #[cfg_attr(feature = "clap", derive(clap::Parser))]
@@ -38,17 +37,30 @@ pub struct CheckOptions {
     pub read_data: bool,
 }
 
+#[derive(Debug, PartialEq, Eq)]
+#[non_exhaustive]
+/// `CheckErrorLevel` describes severity levels of problems identified by check.
+pub enum CheckErrorLevel {
+    /// A warning: Something is strange and should be corrected, but repository integrity is not affected.
+    Warn,
+    /// An erro: Something in the repository is not as it should be.
+    Error,
+}
+
 #[derive(Debug)]
+/// CheckResults is a list of errors encountered during the check.
 pub struct CheckResults {
-    pub errors: Vec<(LogLevel, CheckError)>,
+    /// The list of errors with severity level.
+    pub errors: Vec<(CheckErrorLevel, CheckError)>,
 }
 
 impl CheckResults {
+    /// Returns whether severe errors have been found.
     pub fn is_ok(&self) -> RusticResult<()> {
         if self
             .errors
             .iter()
-            .any(|(level, _)| level == &LogLevel::Error)
+            .any(|(level, _)| level == &CheckErrorLevel::Error)
         {
             return Err(CommandErrorKind::CheckFoundErrors.into());
         }
@@ -59,7 +71,7 @@ impl CheckResults {
 #[derive(Default)]
 pub struct CheckResultsCollector {
     log: bool,
-    errors: Mutex<Vec<(LogLevel, CheckError)>>,
+    errors: Mutex<Vec<(CheckErrorLevel, CheckError)>>,
 }
 
 impl CheckResultsCollector {
@@ -178,14 +190,20 @@ impl CheckResultsCollector {
         if self.log {
             error!("{err}");
         }
-        self.errors.lock().unwrap().push((LogLevel::Error, err));
+        self.errors
+            .lock()
+            .unwrap()
+            .push((CheckErrorLevel::Error, err));
     }
 
     fn add_warn(&self, err: CheckError) {
         if self.log {
             warn!("{err}");
         }
-        self.errors.lock().unwrap().push((LogLevel::Warn, err));
+        self.errors
+            .lock()
+            .unwrap()
+            .push((CheckErrorLevel::Warn, err));
     }
 
     /// Checks if all files in the backend are also in the hot backend
