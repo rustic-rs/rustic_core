@@ -1007,7 +1007,7 @@ impl StringList {
     ///
     /// * `sl` - The [`StringList`] to add
     pub fn add_list(&mut self, mut sl: Self) {
-        self.0.append(&mut sl.0)
+        self.0.append(&mut sl.0);
     }
 
     /// Add all Strings from all given [`StringList`]s to this [`StringList`].
@@ -1202,6 +1202,7 @@ fn sanitize_dot(path: &Path) -> RusticResult<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use anyhow::Result;
 
     use rstest::rstest;
 
@@ -1212,10 +1213,34 @@ mod tests {
     #[case("test/", "test")]
     #[case("./test", "test")]
     #[case("./test/", "test")]
-    fn escape_cases(#[case] input: &str, #[case] expected: &str) {
+    fn sanitize_dot_cases(#[case] input: &str, #[case] expected: &str) {
         let path = Path::new(input);
         let expected = PathBuf::from(expected);
 
         assert_eq!(expected, sanitize_dot(path).unwrap());
+    }
+
+    #[rstest]
+    #[case("abc", vec!["abc".to_string()])]
+    #[case("abc,def", vec!["abc".to_string(), "def".to_string()])]
+    #[case("abc,abc", vec!["abc".to_string()])]
+    fn test_set_tags(#[case] tag: &str, #[case] expected: Vec<String>) -> Result<()> {
+        let mut snap = SnapshotFile::from_options(&SnapshotOptions::default())?;
+        let tags = StringList::from_str(tag)?;
+        let expected = StringList(expected.into_iter().collect());
+        assert!(snap.set_tags(vec![tags]));
+        assert_eq!(snap.tags, expected);
+        Ok(())
+    }
+
+    #[test]
+    fn test_add_tags() -> Result<()> {
+        let tag = vec![StringList::from_str("abc")?];
+        let mut snap = SnapshotFile::from_options(&SnapshotOptions::default().tag(tag))?;
+        let tags = StringList::from_str("def,abc")?;
+        assert!(snap.add_tags(vec![tags]));
+        let expected = StringList::from_str("abc,def")?;
+        assert_eq!(snap.tags, expected);
+        Ok(())
     }
 }
