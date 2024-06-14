@@ -35,8 +35,8 @@ use pretty_assertions::assert_eq;
 use rstest::{fixture, rstest};
 use rustic_core::{
     repofile::SnapshotFile, BackupOptions, CheckOptions, ConfigOptions, FindMatches, FindNode,
-    KeyOptions, LimitOption, LsOptions, NoProgressBars, OpenStatus, PathList, Repository,
-    RepositoryBackends, RepositoryOptions, RusticResult,
+    FullIndex, IndexedFull, IndexedStatus, KeyOptions, LimitOption, LsOptions, NoProgressBars,
+    OpenStatus, PathList, Repository, RepositoryBackends, RepositoryOptions, RusticResult,
 };
 use rustic_core::{
     repofile::{Metadata, Node},
@@ -461,6 +461,32 @@ fn test_prune(
         plan.do_prune(&repo, &prune_opts)?;
         repo.check(check_opts)?;
     }
+
+    Ok(())
+}
+
+/// Verifies that users can create wrappers around repositories
+/// without resorting to generics. The rationale is that such
+/// types can be used to dynamically open, store, and cache repos.
+///
+/// See issue #277 for more context.
+#[test]
+fn test_wrapping_in_new_type() -> Result<()> {
+    struct Wrapper(Repository<NoProgressBars, IndexedStatus<FullIndex, OpenStatus>>);
+
+    impl Wrapper {
+        fn new() -> Result<Self> {
+            Ok(Self(set_up_repo()?.to_indexed()?))
+        }
+    }
+
+    /// Fake function that "does something" with a fully indexed repo
+    /// (without actually relying on any functionality for the test)
+    fn use_repo(_: &impl IndexedFull) {}
+
+    let collection: Vec<Wrapper> = vec![Wrapper::new()?, Wrapper::new()?];
+
+    collection.iter().map(|r| &r.0).for_each(use_repo);
 
     Ok(())
 }
