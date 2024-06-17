@@ -148,5 +148,7 @@ pub use crate::{
     repofile::snapshotfile::{
         PathList, SnapshotGroup, SnapshotGroupCriterion, SnapshotOptions, StringList,
     },
-    repository::{IndexedFull, OpenStatus, Repository, RepositoryOptions},
+    repository::{
+        FullIndex, IndexedFull, IndexedStatus, OpenStatus, Repository, RepositoryOptions,
+    },
 };
