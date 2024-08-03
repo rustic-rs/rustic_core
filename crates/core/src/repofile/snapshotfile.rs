@@ -641,7 +641,7 @@ impl SnapshotFile {
         let mut result = Vec::new();
         for (group, snaps) in &snaps
             .into_iter()
-            .group_by(|sn| SnapshotGroup::from_snapshot(sn, crit))
+            .chunk_by(|sn| SnapshotGroup::from_snapshot(sn, crit))
         {
             result.push((group, snaps.collect()));
         }

@@ -55,7 +55,7 @@ log = "0.4.21"
 bytes = "1.5.0"
 derive_setters = "0.1.6"
 humantime = "2.1.0"
-itertools = "0.12.1"
+itertools = "0.13.0"
 strum = "0.26"
 strum_macros = "0.26"
 
@@ -75,7 +75,7 @@ walkdir = "2.5.0"
 
 # rest backend
 backoff = { version = "0.4.0", optional = true }
-reqwest = { version = "0.11.26", default-features = false, features = ["json", "rustls-tls-native-roots", "stream", "blocking"], optional = true }
+reqwest = { version = "0.12.5", default-features = false, features = ["json", "rustls-tls-native-roots", "stream", "blocking"], optional = true }
 
 # rclone backend
 rand = { version = "0.8.5", optional = true }
@@ -88,11 +88,11 @@ tokio = { version = "1.36.0", optional = true, default-features = false }
 
 [target.'cfg(not(windows))'.dependencies]
 # opendal backend - sftp is not supported on windows, see https://github.com/apache/incubator-opendal/issues/2963
-opendal = { version = "0.46", features = ["services-b2", "services-sftp", "services-swift", "services-azblob", "services-azdls", "services-cos", "services-fs", "services-gcs", "services-ghac", "services-http", "services-ipmfs", "services-memory", "services-obs", "services-oss", "services-s3", "services-webdav", "services-webhdfs", "services-azfile", "layers-blocking", "layers-throttle"], optional = true }
+opendal = { version = "0.48.0", features = ["services-b2", "services-sftp", "services-swift", "services-azblob", "services-azdls", "services-cos", "services-fs", "services-gcs", "services-ghac", "services-http", "services-ipmfs", "services-memory", "services-obs", "services-oss", "services-s3", "services-webdav", "services-webhdfs", "services-azfile", "layers-blocking", "layers-throttle"], optional = true }
 
 [target.'cfg(windows)'.dependencies]
 # opendal backend
-opendal = { version = "0.46", features = ["services-b2", "services-swift", "services-azblob", "services-azdls", "services-cos", "services-fs", "services-gcs", "services-ghac", "services-http", "services-ipmfs", "services-memory", "services-obs", "services-oss", "services-s3", "services-webdav", "services-webhdfs", "services-azfile", "layers-blocking", "layers-throttle"], optional = true }
+opendal = { version = "0.48.0", features = ["services-b2", "services-swift", "services-azblob", "services-azdls", "services-cos", "services-fs", "services-gcs", "services-ghac", "services-http", "services-ipmfs", "services-memory", "services-obs", "services-oss", "services-s3", "services-webdav", "services-webhdfs", "services-azfile", "layers-blocking", "layers-throttle"], optional = true }
 
 [dev-dependencies]
 rstest = { workspace = true }

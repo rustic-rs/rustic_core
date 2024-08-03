@@ -1288,9 +1288,9 @@ impl<P, S: IndexedTree> IndexedTree for Repository<P, S> {
 pub(crate) struct BytesWeighter;
 
 impl quick_cache::Weighter<Id, Bytes> for BytesWeighter {
-    fn weight(&self, _key: &Id, val: &Bytes) -> u32 {
+    fn weight(&self, _key: &Id, val: &Bytes) -> u64 {
         // Be cautions out about zero weights!
-        u32::try_from(val.len().clamp(1, u32::MAX as usize))
+        u64::try_from(val.len().clamp(1, u64::MAX as usize))
             .expect("weight overflow in cache should not happen")
     }
 }

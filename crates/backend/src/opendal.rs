@@ -91,7 +91,7 @@ impl OpenDALBackend {
             .transpose()?;
 
         let schema = Scheme::from_str(path.as_ref())?;
-        let mut operator = Operator::via_map(schema, options)?
+        let mut operator = Operator::via_iter(schema, options)?
             .layer(RetryLayer::new().with_max_times(max_retries).with_jitter());
 
         if let Some(Throttle { bandwidth, burst }) = throttle {

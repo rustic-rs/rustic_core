@@ -22,7 +22,7 @@ rustic_testing = { path = "crates/testing" }
 simplelog = "0.12.2"
 
 # dev-dependencies
-rstest = "0.18.2"
+rstest = "0.21.0"
 tempfile = "3.10.1"
 
 # see: https://nnethercote.github.io/perf-book/build-configuration.html
