@@ -22,7 +22,7 @@ use serde_derive::{Deserialize, Serialize};
 use serde_with::{
     base64::{Base64, Standard},
     formats::Padded,
-    serde_as, DeserializeAs, SerializeAs,
+    serde_as, DefaultOnNull, DeserializeAs, SerializeAs,
 };
 
 #[cfg(not(windows))]
@@ -82,7 +82,7 @@ pub enum NodeType {
         /// This contains the target only if it is a valid unicode target.
         /// Don't access this field directly, use the [`NodeType::to_link()`] method instead!
         linktarget: String,
-        #[serde_as(as = "Option<Base64>")]
+        #[serde_as(as = "DefaultOnNull<Option<Base64>>")]
         #[serde(default, skip_serializing_if = "Option::is_none")]
         /// The raw link target saved as bytes.
         ///
