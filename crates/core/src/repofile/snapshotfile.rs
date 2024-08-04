@@ -1056,6 +1056,7 @@ impl StringList {
         }
     }
 
+    #[allow(clippy::needless_pass_by_ref_mut)]
     #[deprecated(note = "StringLists are now automatically sorted")]
     /// Sort the Strings in the [`StringList`]
     pub fn sort(&mut self) {}
@@ -1149,10 +1150,11 @@ impl PathList {
             *path = sanitize_dot(path)?;
         }
         if self.0.iter().any(|p| p.is_absolute()) {
-            for path in &mut self.0 {
-                *path =
-                    canonicalize(&path).map_err(SnapshotFileErrorKind::CanonicalizingPathFailed)?;
-            }
+            self.0 = self
+                .0
+                .into_iter()
+                .map(|p| canonicalize(p).map_err(SnapshotFileErrorKind::CanonicalizingPathFailed))
+                .collect::<Result<_, _>>()?;
         }
         Ok(self.merge())
     }

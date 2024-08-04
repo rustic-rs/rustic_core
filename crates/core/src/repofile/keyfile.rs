@@ -14,7 +14,7 @@ use crate::{
 pub(super) mod constants {
     /// Returns the number of bits of the given type.
     pub(super) const fn num_bits<T>() -> usize {
-        std::mem::size_of::<T>() * 8
+        size_of::<T>() * 8
     }
 }
 
