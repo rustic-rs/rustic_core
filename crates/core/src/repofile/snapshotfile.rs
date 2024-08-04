@@ -1056,6 +1056,7 @@ impl StringList {
         }
     }
 
+    #[allow(clippy::needless_pass_by_ref_mut)]
     #[deprecated(note = "StringLists are now automatically sorted")]
     /// Sort the Strings in the [`StringList`]
     pub fn sort(&mut self) {}
