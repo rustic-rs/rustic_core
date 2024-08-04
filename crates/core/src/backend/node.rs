@@ -16,13 +16,12 @@ use crate::RusticResult;
 
 use chrono::{DateTime, Local};
 use derive_more::Constructor;
-use serde::Deserializer;
 use serde_aux::prelude::*;
 use serde_derive::{Deserialize, Serialize};
 use serde_with::{
     base64::{Base64, Standard},
     formats::Padded,
-    serde_as, DefaultOnNull, DeserializeAs, SerializeAs,
+    serde_as, DefaultOnNull,
 };
 
 #[cfg(not(windows))]
@@ -82,7 +81,7 @@ pub enum NodeType {
         /// This contains the target only if it is a valid unicode target.
         /// Don't access this field directly, use the [`NodeType::to_link()`] method instead!
         linktarget: String,
-        #[serde_as(as = "DefaultOnNull<Option<Base64>>")]
+        #[serde_as(as = "DefaultOnNull<Option<Base64::<Standard,Padded>>>")]
         #[serde(default, skip_serializing_if = "Option::is_none")]
         /// The raw link target saved as bytes.
         ///
@@ -223,41 +222,14 @@ pub struct Metadata {
     pub extended_attributes: Vec<ExtendedAttribute>,
 }
 
-// Deserialize a Base64-encoded value into Vec<u8>.
-//
-// # Arguments
-//
-// * `deserializer` - The deserializer to use.
-//
-// # Errors
-//
-// If the value is not a valid Base64-encoded value.
-//
-// # Returns
-//
-// The deserialized value.
-//
-// # Note
-//
-// Handles '"value" = null' by first deserializing into a Option.
-fn deserialize_value<'de, D>(deserializer: D) -> Result<Vec<u8>, D::Error>
-where
-    D: Deserializer<'de>,
-{
-    let value: Option<Vec<u8>> = Base64::<Standard, Padded>::deserialize_as(deserializer)?;
-    Ok(value.unwrap_or_default())
-}
-
 /// Extended attribute of a [`Node`]
+#[serde_as]
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, PartialOrd, Ord)]
 pub struct ExtendedAttribute {
     /// Name of the extended attribute
     pub name: String,
     /// Value of the extended attribute
-    #[serde(
-        serialize_with = "Base64::<Standard,Padded>::serialize_as",
-        deserialize_with = "deserialize_value"
-    )]
+    #[serde_as(as = "DefaultOnNull<Base64::<Standard,Padded>>")]
     pub value: Vec<u8>,
 }
 
