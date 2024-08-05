@@ -154,7 +154,7 @@ impl<P: Debug + Send + Sync + 'static, S: IndexedFull + Debug + Send + Sync + 's
             let entries = self.dir_entries_from_path(davpath)?;
             let entry_iter = entries.into_iter().map(|e| {
                 let entry: Box<dyn DavDirEntry> = Box::new(DavFsDirEntry(e));
-                entry
+                Ok(entry)
             });
             let strm: FsStream<Box<dyn DavDirEntry>> = Box::pin(futures::stream::iter(entry_iter));
             Ok(strm)
