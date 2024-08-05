@@ -472,7 +472,7 @@ fn get_group_by_gid(gid: u32) -> Option<String> {
     }
 }
 
-#[cfg(target_os = "openbsd")]
+#[cfg(all(not(windows), target_os = "openbsd"))]
 fn list_extended_attributes(path: &Path) -> RusticResult<Vec<ExtendedAttribute>> {
     Ok(vec![])
 }
@@ -486,7 +486,7 @@ fn list_extended_attributes(path: &Path) -> RusticResult<Vec<ExtendedAttribute>>
 /// # Errors
 ///
 /// * [`IgnoreErrorKind::ErrorXattr`] - if Xattr couldn't be listed or couldn't be read
-#[cfg(not(target_os = "openbsd"))]
+#[cfg(all(not(windows), not(target_os = "openbsd")))]
 fn list_extended_attributes(path: &Path) -> RusticResult<Vec<ExtendedAttribute>> {
     Ok(xattr::list(path)
         .map_err(|err| IgnoreErrorKind::ErrorXattr {
