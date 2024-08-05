@@ -472,6 +472,41 @@ fn get_group_by_gid(gid: u32) -> Option<String> {
     }
 }
 
+#[cfg(all(not(windows), target_os = "openbsd"))]
+fn list_extended_attributes(path: &Path) -> RusticResult<Vec<ExtendedAttribute>> {
+    Ok(vec![])
+}
+
+/// List [`ExtendedAttribute`] for a [`Node`] located at `path`
+///
+/// # Argument
+///
+/// * `path` to the [`Node`] for which to list attributes
+///
+/// # Errors
+///
+/// * [`IgnoreErrorKind::ErrorXattr`] - if Xattr couldn't be listed or couldn't be read
+#[cfg(all(not(windows), not(target_os = "openbsd")))]
+fn list_extended_attributes(path: &Path) -> RusticResult<Vec<ExtendedAttribute>> {
+    xattr::list(path)
+        .map_err(|err| IgnoreErrorKind::ErrorXattr {
+            path: path.to_path_buf(),
+            source: err,
+        })?
+        .map(|name| {
+            Ok(ExtendedAttribute {
+                name: name.to_string_lossy().to_string(),
+                value: xattr::get(path, name)
+                    .map_err(|err| IgnoreErrorKind::ErrorXattr {
+                        path: path.to_path_buf(),
+                        source: err,
+                    })?
+                    .unwrap(),
+            })
+        })
+        .collect::<RusticResult<Vec<ExtendedAttribute>>>()
+}
+
 /// Maps a [`DirEntry`] to a [`ReadSourceEntry`].
 ///
 /// # Arguments
@@ -531,29 +566,12 @@ fn map_entry(
     let device_id = if ignore_devid { 0 } else { m.dev() };
     let links = if m.is_dir() { 0 } else { m.nlink() };
 
-    #[cfg(target_os = "openbsd")]
-    let extended_attributes = vec![];
-
-    #[cfg(not(target_os = "openbsd"))]
-    let extended_attributes = {
-        let path = entry.path();
-        xattr::list(path)
-            .map_err(|err| IgnoreErrorKind::ErrorXattr {
-                path: path.to_path_buf(),
-                source: err,
-            })?
-            .map(|name| {
-                Ok(ExtendedAttribute {
-                    name: name.to_string_lossy().to_string(),
-                    value: xattr::get(path, name)
-                        .map_err(|err| IgnoreErrorKind::ErrorXattr {
-                            path: path.to_path_buf(),
-                            source: err,
-                        })?
-                        .unwrap(),
-                })
-            })
-            .collect::<RusticResult<_>>()?
+    let extended_attributes = match list_extended_attributes(entry.path()) {
+        Err(e) => {
+            warn!("ignoring error: {e}\n");
+            vec![]
+        }
+        Ok(xattr_list) => xattr_list,
     };
 
     let meta = Metadata {
