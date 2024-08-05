@@ -69,7 +69,7 @@ rand = "0.8.5"
 scrypt = { version = "0.11.0", default-features = false }
 
 # serialization / packing
-binrw = "0.13.3"
+binrw = "0.14.0"
 hex = { version = "0.4.3", features = ["serde"] }
 integer-sqrt = "0.1.5"
 serde = { version = "1.0.197" }
@@ -79,11 +79,11 @@ serde_json = "1.0.114"
 serde_with = { version = "3.7.0", features = ["base64"] }
 
 # local source/destination
-cached = { version = "0.49.2", default-features = false, features = ["proc_macro"] }
+cached = { version = "0.53.1", default-features = false, features = ["proc_macro"] }
 dunce = "1.0.4"
 filetime = "0.2.23"
 ignore = "0.4.22"
-nix = { version = "0.28", default-features = false, features = ["user", "fs"] }
+nix = { version = "0.29.0", default-features = false, features = ["user", "fs"] }
 path-dedot = "3.1.1"
 walkdir = "2.5.0"
 
@@ -96,8 +96,8 @@ clap = { version = "4.5.2", optional = true, features = ["derive", "env", "wrap_
 merge = { version = "0.1.0", optional = true }
 
 # vfs support
-dav-server = { version = "0.5.8", default-features = false, optional = true }
-futures = { version = "0.3", optional = true }
+dav-server = { version = "0.7.0", default-features = false, optional = true }
+futures = { version = "0.3.30", optional = true }
 runtime-format = "0.1.3"
 
 # other dependencies
@@ -110,18 +110,18 @@ enum-map-derive = "0.17.0"
 enumset = { version = "1.1.3", features = ["serde"] }
 gethostname = "0.4.3"
 humantime = "2.1.0"
-itertools = "0.12.1"
-quick_cache = "0.4.1"
+itertools = "0.13.0"
+quick_cache = "0.6.2"
 strum = { version = "0.26.2", features = ["derive"] }
 zstd = "0.13.0"
 
 [target.'cfg(not(windows))'.dependencies]
-sha2 = { version = "0.10", features = ["asm"] }
+sha2 = { version = "0.10.8", features = ["asm"] }
 
 [target.'cfg(windows)'.dependencies]
 # unfortunately, the asm extensions do not build on Windows, see https://github.com/RustCrypto/asm-hashes/issues/17
 # and https://github.com/RustCrypto/asm-hashes/pull/issues/78
-sha2 = "0.10"
+sha2 = "0.10.8"
 
 [target.'cfg(not(any(windows, target_os="openbsd")))'.dependencies]
 # for local source/destination
@@ -132,7 +132,7 @@ expect-test = "1.4.1"
 flate2 = "1.0.28"
 globset = "0.4.14"
 insta = { version = "1.36.1", features = ["redactions", "ron"] }
-mockall = "0.12.1"
+mockall = "0.13"
 pretty_assertions = "1.4.0"
 quickcheck = "1.0.3"
 quickcheck_macros = "1.0.0"
