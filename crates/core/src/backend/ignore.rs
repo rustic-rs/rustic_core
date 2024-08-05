@@ -16,7 +16,7 @@ use chrono::TimeZone;
 use chrono::{DateTime, Local, Utc};
 use derive_setters::Setters;
 use ignore::{overrides::OverrideBuilder, DirEntry, Walk, WalkBuilder};
-use log::{debug, warn};
+use log::warn;
 #[cfg(not(windows))]
 use nix::unistd::{Gid, Group, Uid, User};
 
@@ -488,7 +488,7 @@ fn list_extended_attributes(path: &Path) -> RusticResult<Vec<ExtendedAttribute>>
 /// * [`IgnoreErrorKind::ErrorXattr`] - if Xattr couldn't be listed or couldn't be read
 #[cfg(all(not(windows), not(target_os = "openbsd")))]
 fn list_extended_attributes(path: &Path) -> RusticResult<Vec<ExtendedAttribute>> {
-    Ok(xattr::list(path)
+    xattr::list(path)
         .map_err(|err| IgnoreErrorKind::ErrorXattr {
             path: path.to_path_buf(),
             source: err,
@@ -504,7 +504,7 @@ fn list_extended_attributes(path: &Path) -> RusticResult<Vec<ExtendedAttribute>>
                     .unwrap(),
             })
         })
-        .collect::<RusticResult<Vec<ExtendedAttribute>>>()?)
+        .collect::<RusticResult<Vec<ExtendedAttribute>>>()
 }
 
 /// Maps a [`DirEntry`] to a [`ReadSourceEntry`].
@@ -568,14 +568,7 @@ fn map_entry(
 
     let extended_attributes = match list_extended_attributes(entry.path()) {
         Err(e) => {
-            // TODO - discuss this log:
-            // Most probably that if Xattr read failure happens for one file,
-            // it will also happen for every file in the same subdirectory.
-            //
-            // The end result would be a real flood of errors.
-            // For this reason, I propose to have this log at "debug" level
-            // so it's not transparent, but doesn't impact a "lambda" use case of rustic.
-            debug!("ignoring error: {e}\n");
+            warn!("ignoring error: {e}\n");
             vec![]
         }
         Ok(xattr_list) => xattr_list,
