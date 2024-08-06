@@ -13,8 +13,8 @@ use derive_setters::Setters;
 use ignore::overrides::{Override, OverrideBuilder};
 use ignore::Match;
 
-use serde::{Deserialize, Deserializer};
-use serde_derive::Serialize;
+use serde::{Deserialize, Serialize};
+use serde_with::{serde_as, DefaultOnNull};
 
 use crate::{
     backend::{
@@ -37,24 +37,15 @@ pub(super) mod constants {
 pub(crate) type TreeStreamItem = RusticResult<(PathBuf, Tree)>;
 type NodeStreamItem = RusticResult<(PathBuf, Node)>;
 
+#[serde_as]
 #[derive(Default, Serialize, Deserialize, Clone, Debug)]
 /// A [`Tree`] is a list of [`Node`]s
 pub struct Tree {
-    #[serde(deserialize_with = "deserialize_null_default")]
+    #[serde_as(as = "DefaultOnNull")]
     /// The nodes contained in the tree.
     ///
     /// This is usually sorted by `Node.name()`, i.e. by the node name as `OsString`
     pub nodes: Vec<Node>,
-}
-
-/// Deserializes `Option<T>` as `T::default()` if the value is `null`
-pub(crate) fn deserialize_null_default<'de, D, T>(deserializer: D) -> Result<T, D::Error>
-where
-    T: Default + Deserialize<'de>,
-    D: Deserializer<'de>,
-{
-    let opt = Option::deserialize(deserializer)?;
-    Ok(opt.unwrap_or_default())
 }
 
 impl Tree {
