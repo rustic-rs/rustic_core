@@ -1,3 +1,7 @@
+// needed to ensuer Rust 1.76.0 works
+#[allow(unused_imports)]
+use std::mem::size_of;
+
 use chrono::{DateTime, Local};
 use rand::{thread_rng, RngCore};
 use scrypt::Params;
