@@ -397,13 +397,15 @@ impl KeepOptions {
             reason.push("tags");
         }
 
-        let keep_checks: [(
+        type MatchParameters<'a> = (
             CheckFunction,
-            &mut Option<i32>,
-            &str,
+            &'a mut Option<i32>,
+            &'a str,
             Option<humantime::Duration>,
-            &str,
-        ); 8] = [
+            &'a str,
+        );
+
+        let keep_checks: [MatchParameters<'_>; 8] = [
             (
                 always_false,
                 &mut self.keep_last,
