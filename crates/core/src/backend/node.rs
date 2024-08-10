@@ -229,8 +229,8 @@ pub struct ExtendedAttribute {
     /// Name of the extended attribute
     pub name: String,
     /// Value of the extended attribute
-    #[serde_as(as = "DefaultOnNull<Base64::<Standard,Padded>>")]
-    pub value: Vec<u8>,
+    #[serde_as(as = "DefaultOnNull<Option<Base64::<Standard,Padded>>>")]
+    pub value: Option<Vec<u8>>,
 }
 
 pub(crate) fn is_default<T: Default + PartialEq>(t: &T) -> bool {

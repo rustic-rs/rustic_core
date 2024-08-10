@@ -400,21 +400,20 @@ impl LocalDestination {
                 |(_, ExtendedAttribute { name, .. })| name == curr_name.to_string_lossy().as_ref(),
             ) {
                 Some((index, ExtendedAttribute { name, value })) => {
-                    let curr_value = xattr::get(&filename, name)
-                        .map_err(|err| LocalDestinationErrorKind::GettingXattrFailed {
+                    let curr_value = xattr::get(&filename, name).map_err(|err| {
+                        LocalDestinationErrorKind::GettingXattrFailed {
                             name: name.clone(),
                             filename: filename.clone(),
                             source: err,
-                        })?
-                        .unwrap();
+                        }
+                    })?;
                     if value != &curr_value {
-                        xattr::set(&filename, name, value).map_err(|err| {
-                            LocalDestinationErrorKind::SettingXattrFailed {
+                        xattr::set(&filename, name, value.as_ref().unwrap_or(&Vec::new()))
+                            .map_err(|err| LocalDestinationErrorKind::SettingXattrFailed {
                                 name: name.clone(),
                                 filename: filename.clone(),
                                 source: err,
-                            }
-                        })?;
+                            })?;
                     }
                     done[index] = true;
                 }
@@ -428,13 +427,13 @@ impl LocalDestination {
 
         for (index, ExtendedAttribute { name, value }) in extended_attributes.iter().enumerate() {
             if !done[index] {
-                xattr::set(&filename, name, value).map_err(|err| {
-                    LocalDestinationErrorKind::SettingXattrFailed {
+                xattr::set(&filename, name, value.as_ref().unwrap_or(&Vec::new())).map_err(
+                    |err| LocalDestinationErrorKind::SettingXattrFailed {
                         name: name.clone(),
                         filename: filename.clone(),
                         source: err,
-                    }
-                })?;
+                    },
+                )?;
             }
         }
 
