@@ -382,6 +382,14 @@ impl KeepOptions {
         has_next: bool,
         latest_time: DateTime<Local>,
     ) -> Vec<&str> {
+        type MatchParameters<'a> = (
+            CheckFunction,
+            &'a mut Option<i32>,
+            &'a str,
+            Option<humantime::Duration>,
+            &'a str,
+        );
+
         let mut reason = Vec::new();
 
         let snapshot_id_hex = sn.id.to_hex();
@@ -396,14 +404,6 @@ impl KeepOptions {
         if !self.keep_tags.is_empty() && sn.tags.matches(&self.keep_tags) {
             reason.push("tags");
         }
-
-        type MatchParameters<'a> = (
-            CheckFunction,
-            &'a mut Option<i32>,
-            &'a str,
-            Option<humantime::Duration>,
-            &'a str,
-        );
 
         let keep_checks: [MatchParameters<'_>; 8] = [
             (
