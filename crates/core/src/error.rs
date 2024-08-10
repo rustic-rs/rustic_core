@@ -218,6 +218,8 @@ pub enum CommandErrorKind {
     ConversionFromIntFailed(TryFromIntError),
     /// {0} is not allowed on an append-only repository
     NotAllowedWithAppendOnly(String),
+    /// Specify one of the keep-* options for forget! Please use keep-none to keep no snapshot.
+    NoKeepOption,
 }
 
 /// [`CryptoErrorKind`] describes the errors that can happen while dealing with Cryptographic functions

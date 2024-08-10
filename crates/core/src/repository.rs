@@ -976,7 +976,7 @@ impl<P: ProgressBars, S: Open> Repository<P, S> {
     ///
     /// # Errors
     ///
-    // TODO: Document errors
+    /// If keep options are not valid
     ///
     /// # Returns
     ///

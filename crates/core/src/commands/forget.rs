@@ -1,13 +1,12 @@
 //! `forget` subcommand
 
 use chrono::{DateTime, Datelike, Duration, Local, Timelike};
-use derivative::Derivative;
 use derive_setters::Setters;
 use serde_derive::{Deserialize, Serialize};
-use serde_with::{serde_as, DisplayFromStr, OneOrMany};
+use serde_with::{serde_as, skip_serializing_none, DisplayFromStr, OneOrMany};
 
 use crate::{
-    error::RusticResult,
+    error::{CommandErrorKind, RusticResult},
     id::Id,
     progress::ProgressBars,
     repofile::{
@@ -72,6 +71,10 @@ impl ForgetGroups {
 /// * `group_by` - The criterion to group snapshots by
 /// * `filter` - The filter to apply to the snapshots
 ///
+/// # Errors
+///
+/// If keep options are not valid
+///
 /// # Returns
 ///
 /// The list of snapshot groups with the corresponding snapshots and forget information
@@ -82,6 +85,9 @@ pub(crate) fn get_forget_snapshots<P: ProgressBars, S: Open>(
     filter: impl FnMut(&SnapshotFile) -> bool,
 ) -> RusticResult<ForgetGroups> {
     let now = Local::now();
+    if !keep.is_valid() {
+        return Err(CommandErrorKind::NoKeepOption.into());
+    }
 
     let groups = repo
         .get_snapshot_group(&[], group_by, filter)?
@@ -97,9 +103,9 @@ pub(crate) fn get_forget_snapshots<P: ProgressBars, S: Open>(
 
 #[cfg_attr(feature = "clap", derive(clap::Parser))]
 #[cfg_attr(feature = "merge", derive(merge::Merge))]
+#[skip_serializing_none]
 #[serde_as]
-#[derive(Clone, Debug, PartialEq, Eq, Derivative, Serialize, Deserialize, Setters)]
-#[derivative(Default)]
+#[derive(Clone, Debug, PartialEq, Eq, Default, Serialize, Deserialize, Setters)]
 #[serde(default, rename_all = "kebab-case", deny_unknown_fields)]
 #[setters(into)]
 #[non_exhaustive]
@@ -120,173 +126,103 @@ pub struct KeepOptions {
     /// Keep the last N snapshots (N == -1: keep all snapshots)
     #[cfg_attr(
         feature = "clap", 
-        clap(long, short = 'l', value_name = "N", default_value = "0", allow_hyphen_values = true, value_parser = clap::value_parser!(i32).range(-1..))
+        clap(long, short = 'l', value_name = "N",  allow_hyphen_values = true, value_parser = clap::value_parser!(i32).range(-1..))
     )]
-    #[cfg_attr(feature = "merge", merge(strategy=merge::num::overwrite_zero))]
-    pub keep_last: i32,
+    pub keep_last: Option<i32>,
 
     /// Keep the last N hourly snapshots (N == -1: keep all hourly snapshots)
     #[cfg_attr(
         feature = "clap", 
-        clap(long, short = 'H', value_name = "N", default_value = "0", allow_hyphen_values = true, value_parser = clap::value_parser!(i32).range(-1..))
+        clap(long, short = 'H', value_name = "N",  allow_hyphen_values = true, value_parser = clap::value_parser!(i32).range(-1..))
     )]
-    #[cfg_attr(feature = "merge", merge(strategy=merge::num::overwrite_zero))]
-    pub keep_hourly: i32,
+    pub keep_hourly: Option<i32>,
 
     /// Keep the last N daily snapshots (N == -1: keep all daily snapshots)
     #[cfg_attr(
         feature = "clap", 
-        clap(long, short = 'd', value_name = "N", default_value = "0", allow_hyphen_values = true, value_parser = clap::value_parser!(i32).range(-1..))
+        clap(long, short = 'd', value_name = "N",  allow_hyphen_values = true, value_parser = clap::value_parser!(i32).range(-1..))
     )]
-    #[cfg_attr(feature = "merge", merge(strategy=merge::num::overwrite_zero))]
-    pub keep_daily: i32,
+    pub keep_daily: Option<i32>,
 
     /// Keep the last N weekly snapshots (N == -1: keep all weekly snapshots)
     #[cfg_attr(
         feature = "clap",
-        clap(long, short = 'w', value_name = "N", default_value = "0", allow_hyphen_values = true, value_parser = clap::value_parser!(i32).range(-1..))
+        clap(long, short = 'w', value_name = "N",  allow_hyphen_values = true, value_parser = clap::value_parser!(i32).range(-1..))
     )]
-    #[cfg_attr(feature = "merge", merge(strategy=merge::num::overwrite_zero))]
-    pub keep_weekly: i32,
+    pub keep_weekly: Option<i32>,
 
     /// Keep the last N monthly snapshots (N == -1: keep all monthly snapshots)
     #[cfg_attr(
         feature = "clap", 
-        clap(long, short = 'm', value_name = "N", default_value = "0", allow_hyphen_values = true, value_parser = clap::value_parser!(i32).range(-1..))
+        clap(long, short = 'm', value_name = "N",  allow_hyphen_values = true, value_parser = clap::value_parser!(i32).range(-1..))
     )]
-    #[cfg_attr(feature = "merge", merge(strategy=merge::num::overwrite_zero))]
-    pub keep_monthly: i32,
+    pub keep_monthly: Option<i32>,
 
     /// Keep the last N quarter-yearly snapshots (N == -1: keep all quarter-yearly snapshots)
     #[cfg_attr(
         feature = "clap", 
-        clap(long, value_name = "N", default_value = "0", allow_hyphen_values = true, value_parser = clap::value_parser!(i32).range(-1..))
+        clap(long, value_name = "N",  allow_hyphen_values = true, value_parser = clap::value_parser!(i32).range(-1..))
     )]
-    #[cfg_attr(feature = "merge", merge(strategy=merge::num::overwrite_zero))]
-    pub keep_quarter_yearly: i32,
+    pub keep_quarter_yearly: Option<i32>,
 
     /// Keep the last N half-yearly snapshots (N == -1: keep all half-yearly snapshots)
     #[cfg_attr(
         feature = "clap", 
-        clap(long, value_name = "N", default_value = "0", allow_hyphen_values = true, value_parser = clap::value_parser!(i32).range(-1..))
+        clap(long, value_name = "N",  allow_hyphen_values = true, value_parser = clap::value_parser!(i32).range(-1..))
     )]
-    #[cfg_attr(feature = "merge", merge(strategy=merge::num::overwrite_zero))]
-    pub keep_half_yearly: i32,
+    pub keep_half_yearly: Option<i32>,
 
     /// Keep the last N yearly snapshots (N == -1: keep all yearly snapshots)
     #[cfg_attr(
         feature = "clap", 
-        clap(long, short = 'y', value_name = "N", default_value = "0", allow_hyphen_values = true, value_parser = clap::value_parser!(i32).range(-1..))
+        clap(long, short = 'y', value_name = "N",  allow_hyphen_values = true, value_parser = clap::value_parser!(i32).range(-1..))
     )]
-    #[cfg_attr(feature = "merge", merge(strategy=merge::num::overwrite_zero))]
-    pub keep_yearly: i32,
+    pub keep_yearly: Option<i32>,
 
     /// Keep snapshots newer than DURATION relative to latest snapshot
-    #[cfg_attr(
-        feature = "clap",
-        clap(long, value_name = "DURATION", default_value = "0h")
-    )]
-    #[derivative(Default(value = "std::time::Duration::ZERO.into()"))]
-    #[serde_as(as = "DisplayFromStr")]
-    #[cfg_attr(feature = "merge", merge(strategy=overwrite_zero_duration))]
-    pub keep_within: humantime::Duration,
+    #[cfg_attr(feature = "clap", clap(long, value_name = "DURATION"))]
+    #[serde_as(as = "Option<DisplayFromStr>")]
+    pub keep_within: Option<humantime::Duration>,
 
     /// Keep hourly snapshots newer than DURATION relative to latest snapshot
-    #[cfg_attr(
-        feature = "clap",
-        clap(long, value_name = "DURATION", default_value = "0h")
-    )]
-    #[derivative(Default(value = "std::time::Duration::ZERO.into()"))]
-    #[serde_as(as = "DisplayFromStr")]
-    #[cfg_attr(feature = "merge", merge(strategy=overwrite_zero_duration))]
-    pub keep_within_hourly: humantime::Duration,
+    #[cfg_attr(feature = "clap", clap(long, value_name = "DURATION"))]
+    #[serde_as(as = "Option<DisplayFromStr>")]
+    pub keep_within_hourly: Option<humantime::Duration>,
 
     /// Keep daily snapshots newer than DURATION relative to latest snapshot
-    #[cfg_attr(
-        feature = "clap",
-        clap(long, value_name = "DURATION", default_value = "0d")
-    )]
-    #[derivative(Default(value = "std::time::Duration::ZERO.into()"))]
-    #[serde_as(as = "DisplayFromStr")]
-    #[cfg_attr(feature = "merge", merge(strategy=overwrite_zero_duration))]
-    pub keep_within_daily: humantime::Duration,
+    #[cfg_attr(feature = "clap", clap(long, value_name = "DURATION"))]
+    #[serde_as(as = "Option<DisplayFromStr>")]
+    pub keep_within_daily: Option<humantime::Duration>,
 
     /// Keep weekly snapshots newer than DURATION relative to latest snapshot
-    #[cfg_attr(
-        feature = "clap",
-        clap(long, value_name = "DURATION", default_value = "0w")
-    )]
-    #[derivative(Default(value = "std::time::Duration::ZERO.into()"))]
-    #[serde_as(as = "DisplayFromStr")]
-    #[cfg_attr(feature = "merge", merge(strategy=overwrite_zero_duration))]
-    pub keep_within_weekly: humantime::Duration,
+    #[cfg_attr(feature = "clap", clap(long, value_name = "DURATION"))]
+    #[serde_as(as = "Option<DisplayFromStr>")]
+    pub keep_within_weekly: Option<humantime::Duration>,
 
     /// Keep monthly snapshots newer than DURATION relative to latest snapshot
-    #[cfg_attr(
-        feature = "clap",
-        clap(long, value_name = "DURATION", default_value = "0m")
-    )]
-    #[derivative(Default(value = "std::time::Duration::ZERO.into()"))]
-    #[serde_as(as = "DisplayFromStr")]
-    #[cfg_attr(feature = "merge", merge(strategy=overwrite_zero_duration))]
-    pub keep_within_monthly: humantime::Duration,
+    #[cfg_attr(feature = "clap", clap(long, value_name = "DURATION"))]
+    #[serde_as(as = "Option<DisplayFromStr>")]
+    pub keep_within_monthly: Option<humantime::Duration>,
 
     /// Keep quarter-yearly snapshots newer than DURATION relative to latest snapshot
-    #[cfg_attr(
-        feature = "clap",
-        clap(long, value_name = "DURATION", default_value = "0y")
-    )]
-    #[derivative(Default(value = "std::time::Duration::ZERO.into()"))]
-    #[serde_as(as = "DisplayFromStr")]
-    #[cfg_attr(feature = "merge", merge(strategy=overwrite_zero_duration))]
-    pub keep_within_quarter_yearly: humantime::Duration,
+    #[cfg_attr(feature = "clap", clap(long, value_name = "DURATION"))]
+    #[serde_as(as = "Option<DisplayFromStr>")]
+    pub keep_within_quarter_yearly: Option<humantime::Duration>,
 
     /// Keep half-yearly snapshots newer than DURATION relative to latest snapshot
-    #[cfg_attr(
-        feature = "clap",
-        clap(long, value_name = "DURATION", default_value = "0y")
-    )]
-    #[derivative(Default(value = "std::time::Duration::ZERO.into()"))]
-    #[serde_as(as = "DisplayFromStr")]
-    #[cfg_attr(feature = "merge", merge(strategy=overwrite_zero_duration))]
-    pub keep_within_half_yearly: humantime::Duration,
+    #[cfg_attr(feature = "clap", clap(long, value_name = "DURATION"))]
+    #[serde_as(as = "Option<DisplayFromStr>")]
+    pub keep_within_half_yearly: Option<humantime::Duration>,
 
     /// Keep yearly snapshots newer than DURATION relative to latest snapshot
-    #[cfg_attr(
-        feature = "clap",
-        clap(long, value_name = "DURATION", default_value = "0y")
-    )]
-    #[derivative(Default(value = "std::time::Duration::ZERO.into()"))]
-    #[serde_as(as = "DisplayFromStr")]
-    #[cfg_attr(feature = "merge", merge(strategy=overwrite_zero_duration))]
-    pub keep_within_yearly: humantime::Duration,
-}
+    #[cfg_attr(feature = "clap", clap(long, value_name = "DURATION"))]
+    #[serde_as(as = "Option<DisplayFromStr>")]
+    pub keep_within_yearly: Option<humantime::Duration>,
 
-/// Overwrite the value of `left` with `right` if `left` is zero.
-///
-/// This is used to overwrite the default values of `KeepOptions` with the values from the config file.
-///
-/// # Arguments
-///
-/// * `left` - The value to overwrite
-/// * `right` - The value to overwrite with
-///
-/// # Example
-///
-/// ```
-/// use rustic_core::commands::forget::overwrite_zero_duration;
-/// use humantime::Duration;
-///
-/// let mut left = "0s".parse::<humantime::Duration>().unwrap().into();
-/// let right = "60s".parse::<humantime::Duration>().unwrap().into();
-/// overwrite_zero_duration(&mut left, right);
-/// assert_eq!(left, "60s".parse::<humantime::Duration>().unwrap().into());
-/// ```
-#[cfg(feature = "merge")]
-pub fn overwrite_zero_duration(left: &mut humantime::Duration, right: humantime::Duration) {
-    if *left == std::time::Duration::ZERO.into() {
-        *left = right;
-    }
+    /// Allow to keep no snapshot
+    #[cfg_attr(feature = "clap", clap(long))]
+    #[cfg_attr(feature = "merge", merge(strategy=merge::bool::overwrite_false))]
+    pub keep_none: bool,
 }
 
 /// Always return false
@@ -405,6 +341,28 @@ fn equal_hour(sn1: &SnapshotFile, sn2: &SnapshotFile) -> bool {
 }
 
 impl KeepOptions {
+    /// Check if `KeepOptions` are valid, i.e. if at least one keep-* option is given.
+    fn is_valid(&self) -> bool {
+        !self.keep_tags.is_empty()
+            || !self.keep_ids.is_empty()
+            || self.keep_last.is_some()
+            || self.keep_hourly.is_some()
+            || self.keep_daily.is_some()
+            || self.keep_weekly.is_some()
+            || self.keep_monthly.is_some()
+            || self.keep_quarter_yearly.is_some()
+            || self.keep_half_yearly.is_some()
+            || self.keep_yearly.is_some()
+            || self.keep_within_hourly.is_some()
+            || self.keep_within_daily.is_some()
+            || self.keep_within_weekly.is_some()
+            || self.keep_within_monthly.is_some()
+            || self.keep_within_quarter_yearly.is_some()
+            || self.keep_within_half_yearly.is_some()
+            || self.keep_within_yearly.is_some()
+            || self.keep_none
+    }
+
     /// Check if the given snapshot matches the keep options.
     ///
     /// # Arguments
@@ -439,7 +397,13 @@ impl KeepOptions {
             reason.push("tags");
         }
 
-        let keep_checks: [(CheckFunction, &mut i32, &str, humantime::Duration, &str); 8] = [
+        let keep_checks: [(
+            CheckFunction,
+            &mut Option<i32>,
+            &str,
+            Option<humantime::Duration>,
+            &str,
+        ); 8] = [
             (
                 always_false,
                 &mut self.keep_last,
@@ -500,14 +464,18 @@ impl KeepOptions {
 
         for (check_fun, counter, reason1, within, reason2) in keep_checks {
             if !has_next || last.is_none() || !check_fun(sn, last.unwrap()) {
-                if *counter != 0 {
-                    reason.push(reason1);
-                    if *counter > 0 {
-                        *counter -= 1;
+                if let Some(counter) = counter {
+                    if *counter != 0 {
+                        reason.push(reason1);
+                        if *counter > 0 {
+                            *counter -= 1;
+                        }
                     }
                 }
-                if sn.time + Duration::from_std(*within).unwrap() > latest_time {
-                    reason.push(reason2);
+                if let Some(within) = within {
+                    if sn.time + Duration::from_std(*within).unwrap() > latest_time {
+                        reason.push(reason2);
+                    }
                 }
             }
         }
