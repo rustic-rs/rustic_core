@@ -12,9 +12,9 @@ resolver = "2"
 rust-version = "1.76.0"
 
 [workspace.dependencies]
-aho-corasick = "1.1.2"
-anyhow = "1.0.81"
-bytes = "1.5.0"
+aho-corasick = "1.1.3"
+anyhow = "1.0.86"
+bytes = "1.7.1"
 enum-map = "2.7.3"
 rustic_backend = { path = "crates/backend" }
 rustic_core = { path = "crates/core" }
@@ -23,7 +23,7 @@ simplelog = "0.12.2"
 
 # dev-dependencies
 rstest = "0.21.0"
-tempfile = "3.10.1"
+tempfile = "3.12.0"
 
 # see: https://nnethercote.github.io/perf-book/build-configuration.html
 [profile.dev]
