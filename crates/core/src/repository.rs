@@ -109,6 +109,8 @@ pub struct RepositoryOptions {
         global = true,
         env = "RUSTIC_PASSWORD_COMMAND",
         conflicts_with_all = &["password", "password_file"],
+        value_parser = clap::builder::ValueParser::new(shell_words::split),
+        action = clap::ArgAction::Set,
     ))]
     #[cfg_attr(feature = "merge", merge(strategy = merge::vec::overwrite_empty))]
     #[serde_as(as = "OneOrMany<_>")]
@@ -139,7 +141,13 @@ pub struct RepositoryOptions {
     /// Warm up needed data pack files by running the command with %id replaced by pack id
     #[cfg_attr(
         feature = "clap",
-        clap(long, global = true, conflicts_with = "warm_up")
+        clap(
+            long, 
+            global = true, 
+            conflicts_with = "warm_up", 
+            value_parser = clap::builder::ValueParser::new(shell_words::split),
+            action = clap::ArgAction::Set,
+        )
     )]
     #[cfg_attr(feature = "merge", merge(strategy = merge::vec::overwrite_empty))]
     #[serde_as(as = "OneOrMany<_>")]
