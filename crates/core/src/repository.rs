@@ -1,3 +1,6 @@
+// Note: we need a fully qualified Vec here for clap, see https://github.com/clap-rs/clap/issues/4481
+#![allow(unused_qualifications)]
+
 mod warm_up;
 
 use std::{
@@ -110,11 +113,11 @@ pub struct RepositoryOptions {
         env = "RUSTIC_PASSWORD_COMMAND",
         conflicts_with_all = &["password", "password_file"],
         value_parser = clap::builder::ValueParser::new(shell_words::split),
-        action = clap::ArgAction::Set,
+        default_value = "",
     ))]
     #[cfg_attr(feature = "merge", merge(strategy = merge::vec::overwrite_empty))]
     #[serde_as(as = "OneOrMany<_>")]
-    pub password_command: Vec<String>,
+    pub password_command: std::vec::Vec<String>,
 
     /// Don't use a cache.
     #[cfg_attr(feature = "clap", clap(long, global = true, env = "RUSTIC_NO_CACHE"))]
@@ -139,19 +142,17 @@ pub struct RepositoryOptions {
     pub warm_up: bool,
 
     /// Warm up needed data pack files by running the command with %id replaced by pack id
-    #[cfg_attr(
-        feature = "clap",
-        clap(
-            long, 
-            global = true, 
-            conflicts_with = "warm_up", 
-            value_parser = clap::builder::ValueParser::new(shell_words::split),
-            action = clap::ArgAction::Set,
-        )
-    )]
+    #[cfg_attr(feature = "clap", clap(
+        long,
+        global = true,
+        conflicts_with = "warm_up", 
+        value_parser = clap::builder::ValueParser::new(shell_words::split),
+        action = clap::ArgAction::Set,
+        default_value = "",
+    ))]
     #[cfg_attr(feature = "merge", merge(strategy = merge::vec::overwrite_empty))]
     #[serde_as(as = "OneOrMany<_>")]
-    pub warm_up_command: Vec<String>,
+    pub warm_up_command: std::vec::Vec<String>,
 
     /// Duration (e.g. 10m) to wait after warm up
     #[cfg_attr(feature = "clap", clap(long, global = true, value_name = "DURATION"))]
