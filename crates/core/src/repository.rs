@@ -117,6 +117,7 @@ pub struct RepositoryOptions {
     ))]
     #[cfg_attr(feature = "merge", merge(strategy = merge::vec::overwrite_empty))]
     #[serde_as(as = "OneOrMany<_>")]
+    // Note: we need a fully qualified Vec here for clap, see https://github.com/clap-rs/clap/issues/4481
     pub password_command: std::vec::Vec<String>,
 
     /// Don't use a cache.
@@ -152,6 +153,7 @@ pub struct RepositoryOptions {
     ))]
     #[cfg_attr(feature = "merge", merge(strategy = merge::vec::overwrite_empty))]
     #[serde_as(as = "OneOrMany<_>")]
+    // Note: we need a fully qualified Vec here for clap, see https://github.com/clap-rs/clap/issues/4481
     pub warm_up_command: std::vec::Vec<String>,
 
     /// Duration (e.g. 10m) to wait after warm up
