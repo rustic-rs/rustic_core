@@ -1,0 +1,502 @@
+---
+source: crates/core/src/commands/forget.rs
+expression: result
+---
+[
+  ForgetSnapshot(
+    snapshot: "[snapshot]",
+    keep: true,
+    reasons: [
+      "within yearly",
+    ],
+  ),
+  ForgetSnapshot(
+    snapshot: "[snapshot]",
+    keep: false,
+    reasons: [],
+  ),
+  ForgetSnapshot(
+    snapshot: "[snapshot]",
+    keep: false,
+    reasons: [],
+  ),
+  ForgetSnapshot(
+    snapshot: "[snapshot]",
+    keep: false,
+    reasons: [],
+  ),
+  ForgetSnapshot(
+    snapshot: "[snapshot]",
+    keep: false,
+    reasons: [],
+  ),
+  ForgetSnapshot(
+    snapshot: "[snapshot]",
+    keep: false,
+    reasons: [],
+  ),
+  ForgetSnapshot(
+    snapshot: "[snapshot]",
+    keep: false,
+    reasons: [],
+  ),
+  ForgetSnapshot(
+    snapshot: "[snapshot]",
+    keep: false,
+    reasons: [],
+  ),
+  ForgetSnapshot(
+    snapshot: "[snapshot]",
+    keep: false,
+    reasons: [],
+  ),
+  ForgetSnapshot(
+    snapshot: "[snapshot]",
+    keep: false,
+    reasons: [],
+  ),
+  ForgetSnapshot(
+    snapshot: "[snapshot]",
+    keep: false,
+    reasons: [],
+  ),
+  ForgetSnapshot(
+    snapshot: "[snapshot]",
+    keep: false,
+    reasons: [],
+  ),
+  ForgetSnapshot(
+    snapshot: "[snapshot]",
+    keep: false,
+    reasons: [],
+  ),
+  ForgetSnapshot(
+    snapshot: "[snapshot]",
+    keep: false,
+    reasons: [],
+  ),
+  ForgetSnapshot(
+    snapshot: "[snapshot]",
+    keep: false,
+    reasons: [],
+  ),
+  ForgetSnapshot(
+    snapshot: "[snapshot]",
+    keep: false,
+    reasons: [],
+  ),
+  ForgetSnapshot(
+    snapshot: "[snapshot]",
+    keep: false,
+    reasons: [],
+  ),
+  ForgetSnapshot(
+    snapshot: "[snapshot]",
+    keep: false,
+    reasons: [],
+  ),
+  ForgetSnapshot(
+    snapshot: "[snapshot]",
+    keep: false,
+    reasons: [],
+  ),
+  ForgetSnapshot(
+    snapshot: "[snapshot]",
+    keep: true,
+    reasons: [
+      "within yearly",
+    ],
+  ),
+  ForgetSnapshot(
+    snapshot: "[snapshot]",
+    keep: false,
+    reasons: [],
+  ),
+  ForgetSnapshot(
+    snapshot: "[snapshot]",
+    keep: false,
+    reasons: [],
+  ),
+  ForgetSnapshot(
+    snapshot: "[snapshot]",
+    keep: false,
+    reasons: [],
+  ),
+  ForgetSnapshot(
+    snapshot: "[snapshot]",
+    keep: false,
+    reasons: [],
+  ),
+  ForgetSnapshot(
+    snapshot: "[snapshot]",
+    keep: false,
+    reasons: [],
+  ),
+  ForgetSnapshot(
+    snapshot: "[snapshot]",
+    keep: false,
+    reasons: [],
+  ),
+  ForgetSnapshot(
+    snapshot: "[snapshot]",
+    keep: false,
+    reasons: [],
+  ),
+  ForgetSnapshot(
+    snapshot: "[snapshot]",
+    keep: false,
+    reasons: [],
+  ),
+  ForgetSnapshot(
+    snapshot: "[snapshot]",
+    keep: false,
+    reasons: [],
+  ),
+  ForgetSnapshot(
+    snapshot: "[snapshot]",
+    keep: false,
+    reasons: [],
+  ),
+  ForgetSnapshot(
+    snapshot: "[snapshot]",
+    keep: false,
+    reasons: [],
+  ),
+  ForgetSnapshot(
+    snapshot: "[snapshot]",
+    keep: false,
+    reasons: [],
+  ),
+  ForgetSnapshot(
+    snapshot: "[snapshot]",
+    keep: false,
+    reasons: [],
+  ),
+  ForgetSnapshot(
+    snapshot: "[snapshot]",
+    keep: false,
+    reasons: [],
+  ),
+  ForgetSnapshot(
+    snapshot: "[snapshot]",
+    keep: false,
+    reasons: [],
+  ),
+  ForgetSnapshot(
+    snapshot: "[snapshot]",
+    keep: false,
+    reasons: [],
+  ),
+  ForgetSnapshot(
+    snapshot: "[snapshot]",
+    keep: false,
+    reasons: [],
+  ),
+  ForgetSnapshot(
+    snapshot: "[snapshot]",
+    keep: false,
+    reasons: [],
+  ),
+  ForgetSnapshot(
+    snapshot: "[snapshot]",
+    keep: false,
+    reasons: [],
+  ),
+  ForgetSnapshot(
+    snapshot: "[snapshot]",
+    keep: false,
+    reasons: [],
+  ),
+  ForgetSnapshot(
+    snapshot: "[snapshot]",
+    keep: false,
+    reasons: [],
+  ),
+  ForgetSnapshot(
+    snapshot: "[snapshot]",
+    keep: false,
+    reasons: [],
+  ),
+  ForgetSnapshot(
+    snapshot: "[snapshot]",
+    keep: false,
+    reasons: [],
+  ),
+  ForgetSnapshot(
+    snapshot: "[snapshot]",
+    keep: false,
+    reasons: [],
+  ),
+  ForgetSnapshot(
+    snapshot: "[snapshot]",
+    keep: false,
+    reasons: [],
+  ),
+  ForgetSnapshot(
+    snapshot: "[snapshot]",
+    keep: false,
+    reasons: [],
+  ),
+  ForgetSnapshot(
+    snapshot: "[snapshot]",
+    keep: false,
+    reasons: [],
+  ),
+  ForgetSnapshot(
+    snapshot: "[snapshot]",
+    keep: false,
+    reasons: [],
+  ),
+  ForgetSnapshot(
+    snapshot: "[snapshot]",
+    keep: false,
+    reasons: [],
+  ),
+  ForgetSnapshot(
+    snapshot: "[snapshot]",
+    keep: false,
+    reasons: [],
+  ),
+  ForgetSnapshot(
+    snapshot: "[snapshot]",
+    keep: false,
+    reasons: [],
+  ),
+  ForgetSnapshot(
+    snapshot: "[snapshot]",
+    keep: false,
+    reasons: [],
+  ),
+  ForgetSnapshot(
+    snapshot: "[snapshot]",
+    keep: false,
+    reasons: [],
+  ),
+  ForgetSnapshot(
+    snapshot: "[snapshot]",
+    keep: false,
+    reasons: [],
+  ),
+  ForgetSnapshot(
+    snapshot: "[snapshot]",
+    keep: false,
+    reasons: [],
+  ),
+  ForgetSnapshot(
+    snapshot: "[snapshot]",
+    keep: false,
+    reasons: [],
+  ),
+  ForgetSnapshot(
+    snapshot: "[snapshot]",
+    keep: false,
+    reasons: [],
+  ),
+  ForgetSnapshot(
+    snapshot: "[snapshot]",
+    keep: false,
+    reasons: [],
+  ),
+  ForgetSnapshot(
+    snapshot: "[snapshot]",
+    keep: false,
+    reasons: [],
+  ),
+  ForgetSnapshot(
+    snapshot: "[snapshot]",
+    keep: false,
+    reasons: [],
+  ),
+  ForgetSnapshot(
+    snapshot: "[snapshot]",
+    keep: true,
+    reasons: [
+      "within yearly",
+    ],
+  ),
+  ForgetSnapshot(
+    snapshot: "[snapshot]",
+    keep: false,
+    reasons: [],
+  ),
+  ForgetSnapshot(
+    snapshot: "[snapshot]",
+    keep: false,
+    reasons: [],
+  ),
+  ForgetSnapshot(
+    snapshot: "[snapshot]",
+    keep: false,
+    reasons: [],
+  ),
+  ForgetSnapshot(
+    snapshot: "[snapshot]",
+    keep: false,
+    reasons: [],
+  ),
+  ForgetSnapshot(
+    snapshot: "[snapshot]",
+    keep: false,
+    reasons: [],
+  ),
+  ForgetSnapshot(
+    snapshot: "[snapshot]",
+    keep: false,
+    reasons: [],
+  ),
+  ForgetSnapshot(
+    snapshot: "[snapshot]",
+    keep: false,
+    reasons: [],
+  ),
+  ForgetSnapshot(
+    snapshot: "[snapshot]",
+    keep: false,
+    reasons: [],
+  ),
+  ForgetSnapshot(
+    snapshot: "[snapshot]",
+    keep: false,
+    reasons: [],
+  ),
+  ForgetSnapshot(
+    snapshot: "[snapshot]",
+    keep: false,
+    reasons: [],
+  ),
+  ForgetSnapshot(
+    snapshot: "[snapshot]",
+    keep: false,
+    reasons: [],
+  ),
+  ForgetSnapshot(
+    snapshot: "[snapshot]",
+    keep: false,
+    reasons: [],
+  ),
+  ForgetSnapshot(
+    snapshot: "[snapshot]",
+    keep: false,
+    reasons: [],
+  ),
+  ForgetSnapshot(
+    snapshot: "[snapshot]",
+    keep: false,
+    reasons: [],
+  ),
+  ForgetSnapshot(
+    snapshot: "[snapshot]",
+    keep: false,
+    reasons: [],
+  ),
+  ForgetSnapshot(
+    snapshot: "[snapshot]",
+    keep: false,
+    reasons: [],
+  ),
+  ForgetSnapshot(
+    snapshot: "[snapshot]",
+    keep: false,
+    reasons: [],
+  ),
+  ForgetSnapshot(
+    snapshot: "[snapshot]",
+    keep: false,
+    reasons: [],
+  ),
+  ForgetSnapshot(
+    snapshot: "[snapshot]",
+    keep: false,
+    reasons: [],
+  ),
+  ForgetSnapshot(
+    snapshot: "[snapshot]",
+    keep: false,
+    reasons: [],
+  ),
+  ForgetSnapshot(
+    snapshot: "[snapshot]",
+    keep: false,
+    reasons: [],
+  ),
+  ForgetSnapshot(
+    snapshot: "[snapshot]",
+    keep: false,
+    reasons: [],
+  ),
+  ForgetSnapshot(
+    snapshot: "[snapshot]",
+    keep: false,
+    reasons: [],
+  ),
+  ForgetSnapshot(
+    snapshot: "[snapshot]",
+    keep: false,
+    reasons: [],
+  ),
+  ForgetSnapshot(
+    snapshot: "[snapshot]",
+    keep: false,
+    reasons: [],
+  ),
+  ForgetSnapshot(
+    snapshot: "[snapshot]",
+    keep: false,
+    reasons: [],
+  ),
+  ForgetSnapshot(
+    snapshot: "[snapshot]",
+    keep: false,
+    reasons: [],
+  ),
+  ForgetSnapshot(
+    snapshot: "[snapshot]",
+    keep: false,
+    reasons: [],
+  ),
+  ForgetSnapshot(
+    snapshot: "[snapshot]",
+    keep: false,
+    reasons: [],
+  ),
+  ForgetSnapshot(
+    snapshot: "[snapshot]",
+    keep: false,
+    reasons: [],
+  ),
+  ForgetSnapshot(
+    snapshot: "[snapshot]",
+    keep: false,
+    reasons: [],
+  ),
+  ForgetSnapshot(
+    snapshot: "[snapshot]",
+    keep: false,
+    reasons: [],
+  ),
+  ForgetSnapshot(
+    snapshot: "[snapshot]",
+    keep: false,
+    reasons: [],
+  ),
+  ForgetSnapshot(
+    snapshot: "[snapshot]",
+    keep: false,
+    reasons: [],
+  ),
+  ForgetSnapshot(
+    snapshot: "[snapshot]",
+    keep: false,
+    reasons: [],
+  ),
+  ForgetSnapshot(
+    snapshot: "[snapshot]",
+    keep: false,
+    reasons: [],
+  ),
+  ForgetSnapshot(
+    snapshot: "[snapshot]",
+    keep: false,
+    reasons: [],
+  ),
+]

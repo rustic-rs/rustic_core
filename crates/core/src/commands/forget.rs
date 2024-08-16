@@ -85,18 +85,17 @@ pub(crate) fn get_forget_snapshots<P: ProgressBars, S: Open>(
     filter: impl FnMut(&SnapshotFile) -> bool,
 ) -> RusticResult<ForgetGroups> {
     let now = Local::now();
-    if !keep.is_valid() {
-        return Err(CommandErrorKind::NoKeepOption.into());
-    }
 
     let groups = repo
         .get_snapshot_group(&[], group_by, filter)?
         .into_iter()
-        .map(|(group, snapshots)| ForgetGroup {
-            group,
-            snapshots: keep.apply(snapshots, now),
+        .map(|(group, snapshots)| -> RusticResult<_> {
+            Ok(ForgetGroup {
+                group,
+                snapshots: keep.apply(snapshots, now)?,
+            })
         })
-        .collect();
+        .collect::<RusticResult<_>>()?;
 
     Ok(ForgetGroups(groups))
 }
@@ -113,14 +112,16 @@ pub(crate) fn get_forget_snapshots<P: ProgressBars, S: Open>(
 pub struct KeepOptions {
     /// Keep snapshots with this taglist (can be specified multiple times)
     #[cfg_attr(feature = "clap", clap(long, value_name = "TAG[,TAG,..]"))]
-    #[serde_as(as = "OneOrMany<DisplayFromStr>")]
     #[cfg_attr(feature = "merge", merge(strategy=merge::vec::overwrite_empty))]
+    #[serde_as(as = "OneOrMany<DisplayFromStr>")]
+    #[serde(skip_serializing_if = "Vec::is_empty")]
     pub keep_tags: Vec<StringList>,
 
     /// Keep snapshots ids that start with ID (can be specified multiple times)
     #[cfg_attr(feature = "clap", clap(long = "keep-id", value_name = "ID"))]
     #[cfg_attr(feature = "merge", merge(strategy=merge::vec::overwrite_empty))]
     #[serde_as(as = "OneOrMany<_>")]
+    #[serde(skip_serializing_if = "Vec::is_empty")]
     pub keep_ids: Vec<String>,
 
     /// Keep the last N snapshots (N == -1: keep all snapshots)
@@ -222,6 +223,7 @@ pub struct KeepOptions {
     /// Allow to keep no snapshot
     #[cfg_attr(feature = "clap", clap(long))]
     #[cfg_attr(feature = "merge", merge(strategy=merge::bool::overwrite_false))]
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub keep_none: bool,
 }
 
@@ -352,6 +354,7 @@ impl KeepOptions {
             || self.keep_monthly.is_some()
             || self.keep_quarter_yearly.is_some()
             || self.keep_half_yearly.is_some()
+            || self.keep_within.is_some()
             || self.keep_yearly.is_some()
             || self.keep_within_hourly.is_some()
             || self.keep_within_daily.is_some()
@@ -500,11 +503,15 @@ impl KeepOptions {
         &self,
         mut snapshots: Vec<SnapshotFile>,
         now: DateTime<Local>,
-    ) -> Vec<ForgetSnapshot> {
+    ) -> RusticResult<Vec<ForgetSnapshot>> {
+        if !self.is_valid() {
+            return Err(CommandErrorKind::NoKeepOption.into());
+        }
+
         let mut group_keep = self.clone();
         let mut snaps = Vec::new();
         if snapshots.is_empty() {
-            return snaps;
+            return Ok(snaps);
         }
 
         snapshots.sort_unstable_by(|sn1, sn2| sn1.cmp(sn2).reverse());
@@ -534,6 +541,217 @@ impl KeepOptions {
                 reasons: reasons.iter().map(ToString::to_string).collect(),
             });
         }
-        snaps
+        Ok(snaps)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::str::FromStr;
+
+    use super::*;
+    use anyhow::Result;
+    use chrono::{Local, NaiveDateTime, TimeZone};
+    use humantime::Duration;
+    use insta::{assert_ron_snapshot, Settings};
+    use rstest::{fixture, rstest};
+    use serde_json;
+
+    #[fixture]
+    fn test_snapshots() -> Result<Vec<SnapshotFile>> {
+        let snaps = [
+            ("2014-09-01 10:20:30", ""),
+            ("2014-09-02 10:20:30", ""),
+            ("2014-09-05 10:20:30", ""),
+            ("2014-09-06 10:20:30", ""),
+            ("2014-09-08 10:20:30", ""),
+            ("2014-09-09 10:20:30", ""),
+            ("2014-09-10 10:20:30", ""),
+            ("2014-09-11 10:20:30", ""),
+            ("2014-09-20 10:20:30", ""),
+            ("2014-09-22 10:20:30", ""),
+            ("2014-08-08 10:20:30", ""),
+            ("2014-08-10 10:20:30", ""),
+            ("2014-08-12 10:20:30", ""),
+            ("2014-08-13 10:20:30", ""),
+            ("2014-08-15 10:20:30", ""),
+            ("2014-08-18 10:20:30", ""),
+            ("2014-08-20 10:20:30", ""),
+            ("2014-08-21 10:20:30", ""),
+            ("2014-08-22 10:20:30", ""),
+            ("2014-10-01 10:20:30", "foo"),
+            ("2014-10-02 10:20:30", "foo"),
+            ("2014-10-05 10:20:30", "foo"),
+            ("2014-10-06 10:20:30", "foo"),
+            ("2014-10-08 10:20:30", "foo"),
+            ("2014-10-09 10:20:30", "foo"),
+            ("2014-10-10 10:20:30", "foo"),
+            ("2014-10-11 10:20:30", "foo"),
+            ("2014-10-20 10:20:30", "foo"),
+            ("2014-10-22 10:20:30", "foo"),
+            ("2014-11-08 10:20:30", "foo"),
+            ("2014-11-10 10:20:30", "foo"),
+            ("2014-11-12 10:20:30", "foo"),
+            ("2014-11-13 10:20:30", "foo"),
+            ("2014-11-15 10:20:30", "foo,bar"),
+            ("2014-11-18 10:20:30", ""),
+            ("2014-11-20 10:20:30", ""),
+            ("2014-11-21 10:20:30", ""),
+            ("2014-11-22 10:20:30", ""),
+            ("2015-09-01 10:20:30", ""),
+            ("2015-09-02 10:20:30", ""),
+            ("2015-09-05 10:20:30", ""),
+            ("2015-09-06 10:20:30", ""),
+            ("2015-09-08 10:20:30", ""),
+            ("2015-09-09 10:20:30", ""),
+            ("2015-09-10 10:20:30", ""),
+            ("2015-09-11 10:20:30", ""),
+            ("2015-09-20 10:20:30", ""),
+            ("2015-09-22 10:20:30", ""),
+            ("2015-08-08 10:20:30", ""),
+            ("2015-08-10 10:20:30", ""),
+            ("2015-08-12 10:20:30", ""),
+            ("2015-08-13 10:20:30", ""),
+            ("2015-08-15 10:20:30", ""),
+            ("2015-08-18 10:20:30", ""),
+            ("2015-08-20 10:20:30", ""),
+            ("2015-08-21 10:20:30", ""),
+            ("2015-08-22 10:20:30", ""),
+            ("2015-10-01 10:20:30", ""),
+            ("2015-10-02 10:20:30", ""),
+            ("2015-10-05 10:20:30", ""),
+            ("2015-10-06 10:20:30", ""),
+            ("2015-10-08 10:20:30", ""),
+            ("2015-10-09 10:20:30", ""),
+            ("2015-10-10 10:20:30", ""),
+            ("2015-10-11 10:20:30", ""),
+            ("2015-10-20 10:20:30", ""),
+            ("2015-10-22 10:20:30", ""),
+            ("2015-10-22 10:20:30", ""),
+            ("2015-10-22 10:20:30", "foo,bar"),
+            ("2015-10-22 10:20:30", "foo,bar"),
+            ("2015-11-08 10:20:30", ""),
+            ("2015-11-10 10:20:30", ""),
+            ("2015-11-12 10:20:30", ""),
+            ("2015-11-13 10:20:30", ""),
+            ("2015-11-15 10:20:30", ""),
+            ("2015-11-18 10:20:30", ""),
+            ("2015-11-20 10:20:30", ""),
+            ("2015-11-21 10:20:30", ""),
+            ("2015-11-22 10:20:30", ""),
+            ("2016-01-01 01:02:03", ""),
+            ("2016-01-01 01:03:03", ""),
+            ("2016-01-01 07:08:03", ""),
+            ("2016-01-03 07:02:03", ""),
+            ("2016-01-04 10:23:03", ""),
+            ("2016-01-04 11:23:03", ""),
+            ("2016-01-04 12:23:03", ""),
+            ("2016-01-04 12:24:03", ""),
+            ("2016-01-04 12:28:03", ""),
+            ("2016-01-04 12:30:03", ""),
+            ("2016-01-04 16:23:03", ""),
+            ("2016-01-05 09:02:03", ""),
+            ("2016-01-06 08:02:03", ""),
+            ("2016-01-07 10:02:03", ""),
+            ("2016-01-08 20:02:03", ""),
+            ("2016-01-09 21:02:03", ""),
+            ("2016-01-12 21:02:03", ""),
+            ("2016-01-12 21:08:03", ""),
+            ("2016-01-18 12:02:03", ""),
+        ];
+
+        let mut snaps: Vec<_> = snaps
+            .into_iter()
+            .map(|(time, tags)| -> Result<_> {
+                let time = NaiveDateTime::parse_from_str(time, "%Y-%m-%d %H:%M:%S")?;
+                let opts = &crate::SnapshotOptions::default()
+                    .time(Local::from_utc_datetime(&Local, &time))
+                    .tag(vec![StringList::from_str(tags)?]);
+                Ok(SnapshotFile::from_options(opts)?)
+            })
+            .collect::<Result<_>>()?;
+
+        snaps.sort_unstable_by(|sn1, sn2| sn1.cmp(sn2).reverse());
+        Ok(snaps)
+    }
+
+    #[fixture]
+    fn insta_forget_snapshots_redaction() -> Settings {
+        let mut settings = Settings::clone_current();
+        settings.add_redaction(".**.snapshot", "[snapshot]");
+        settings
+    }
+
+    #[rstest]
+    #[case(KeepOptions::default())]
+    fn test_apply_fails(
+        #[case] options: KeepOptions,
+        test_snapshots: Result<Vec<SnapshotFile>>,
+    ) -> Result<()> {
+        let now = Local::now();
+        let result = options.apply(test_snapshots?, now);
+        assert!(result.is_err());
+        Ok(())
+    }
+
+    #[rstest]
+    #[case(KeepOptions::default().keep_last(10))]
+    #[case(KeepOptions::default().keep_last(15))]
+    #[case(KeepOptions::default().keep_last(99))]
+    #[case(KeepOptions::default().keep_last(200))]
+    #[case(KeepOptions::default().keep_hourly(20))]
+    #[case(KeepOptions::default().keep_daily(3))]
+    #[case(KeepOptions::default().keep_daily(10))]
+    #[case(KeepOptions::default().keep_daily(30))]
+    #[case(KeepOptions::default().keep_last(5).keep_daily(5))]
+    #[case(KeepOptions::default().keep_last(2).keep_daily(10))]
+    #[case(KeepOptions::default().keep_weekly(2))]
+    #[case(KeepOptions::default().keep_weekly(4))]
+    #[case(KeepOptions::default().keep_daily(3).keep_weekly(4))]
+    #[case(KeepOptions::default().keep_monthly(6))]
+    #[case(KeepOptions::default().keep_daily(2).keep_weekly(2).keep_monthly(6))]
+    #[case(KeepOptions::default().keep_yearly(10))]
+    #[case(KeepOptions::default().keep_quarter_yearly(10))]
+    #[case(KeepOptions::default().keep_half_yearly(10))]
+    #[case(KeepOptions::default().keep_daily(7).keep_weekly(2).keep_monthly(3).keep_yearly(10))]
+    /*
+    #[case(KeepOptions::default().keep_tags("foo"))]
+    #[case(KeepOptions::default().keep_tags("foo,bar"))]
+    */
+    #[case(KeepOptions::default().keep_within(Duration::from_str("1d").unwrap()))]
+    #[case(KeepOptions::default().keep_within(Duration::from_str("2d").unwrap()))]
+    #[case(KeepOptions::default().keep_within(Duration::from_str("7d").unwrap()))]
+    #[case(KeepOptions::default().keep_within(Duration::from_str("1m").unwrap()))]
+    #[case(KeepOptions::default().keep_within(Duration::from_str("1M14d").unwrap()))]
+    #[case(KeepOptions::default().keep_within(Duration::from_str("1y1d1M").unwrap()))]
+    #[case(KeepOptions::default().keep_within(Duration::from_str("13d23h").unwrap()))]
+    #[case(KeepOptions::default().keep_within(Duration::from_str("2M2h").unwrap()))]
+    #[case(KeepOptions::default().keep_within(Duration::from_str("1y2M3d3h").unwrap()))]
+    #[case(KeepOptions::default().keep_within_hourly(Duration::from_str("1y2M3d3h").unwrap()))]
+    #[case(KeepOptions::default().keep_within_daily(Duration::from_str("1y2M3d3h").unwrap()))]
+    #[case(KeepOptions::default().keep_within_weekly(Duration::from_str("1y2M3d3h").unwrap()))]
+    #[case(KeepOptions::default().keep_within_monthly(Duration::from_str("1y2M3d3h").unwrap()))]
+    #[case(KeepOptions::default().keep_within_quarter_yearly(Duration::from_str("1y2M3d3h").unwrap()))]
+    #[case(KeepOptions::default().keep_within_half_yearly(Duration::from_str("1y2M3d3h").unwrap()))]
+    #[case(KeepOptions::default().keep_within_yearly(Duration::from_str("1y2M3d3h").unwrap()))]
+    #[case(KeepOptions::default().keep_within(Duration::from_str("1h").unwrap()).keep_within_hourly(Duration::from_str("1d").unwrap()).keep_within_daily(Duration::from_str("1w").unwrap()).keep_within_weekly(Duration::from_str("1M").unwrap()).keep_within_monthly(Duration::from_str("1y").unwrap()).keep_within_yearly(Duration::from_str("9999y").unwrap()))]
+    #[case(KeepOptions::default().keep_last(-1))]
+    #[case(KeepOptions::default().keep_last(-1).keep_hourly(-1))]
+    #[case(KeepOptions::default().keep_hourly(-1))]
+    #[case(KeepOptions::default().keep_daily(3).keep_weekly(2).keep_monthly(-1).keep_yearly(-1))]
+    #[case(KeepOptions::default().keep_none(true))]
+    fn test_apply(
+        #[case] options: KeepOptions,
+        test_snapshots: Result<Vec<SnapshotFile>>,
+        insta_forget_snapshots_redaction: Settings,
+    ) -> Result<()> {
+        let now = Local::now();
+        let result = options.apply(test_snapshots?, now)?;
+        let mut options = serde_json::to_string(&options)?;
+        options.retain(|c| !"{}\":".contains(c));
+        insta_forget_snapshots_redaction.bind(|| {
+            assert_ron_snapshot!(options, result);
+        });
+        Ok(())
     }
 }
