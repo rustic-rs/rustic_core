@@ -555,7 +555,7 @@ mod tests {
 
     use super::*;
     use anyhow::Result;
-    use chrono::{Local, NaiveDateTime, TimeZone};
+    use chrono::{Local, NaiveDateTime, TimeZone, Utc};
     use humantime::Duration;
     use insta::{assert_ron_snapshot, Settings};
     use rstest::{fixture, rstest};
@@ -563,7 +563,7 @@ mod tests {
 
     /// for more readable insta output
     #[derive(Serialize)]
-    struct ForgetResult(Vec<(DateTime<Local>, bool, Vec<String>)>);
+    struct ForgetResult(Vec<(DateTime<Utc>, bool, Vec<String>)>);
 
     #[fixture]
     fn test_snapshots() -> Result<Vec<SnapshotFile>> {
@@ -800,7 +800,7 @@ mod tests {
         let result = ForgetResult(
             result
                 .into_iter()
-                .map(|s| (s.snapshot.time, s.keep, s.reasons))
+                .map(|s| (s.snapshot.time.into(), s.keep, s.reasons))
                 .collect(),
         );
 
