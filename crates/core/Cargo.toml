@@ -38,7 +38,7 @@ edition = "2021"
 default = []
 cli = ["merge", "clap"]
 merge = ["dep:merge"]
-clap = ["dep:clap"]
+clap = ["dep:clap", "dep:shell-words"]
 webdav = ["dep:dav-server", "dep:futures"]
 
 [package.metadata.docs.rs]
@@ -94,6 +94,7 @@ dirs = "5.0.1"
 # cli support
 clap = { version = "4.5.15", optional = true, features = ["derive", "env", "wrap_help"] }
 merge = { version = "0.1.0", optional = true }
+shell-words = { version = "1.1.0", optional = true }
 
 # vfs support
 dav-server = { version = "0.7.0", default-features = false, optional = true }

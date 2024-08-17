@@ -48,6 +48,7 @@ pub struct Tree {
 }
 
 /// Deserializes `Option<T>` as `T::default()` if the value is `null`
+// TODO: Use serde_with::DefaultOnNull instead. But this has problems with RON which is used in our integration tests...
 pub(crate) fn deserialize_null_default<'de, D, T>(deserializer: D) -> Result<T, D::Error>
 where
     T: Default + Deserialize<'de>,

@@ -496,12 +496,10 @@ fn list_extended_attributes(path: &Path) -> RusticResult<Vec<ExtendedAttribute>>
         .map(|name| {
             Ok(ExtendedAttribute {
                 name: name.to_string_lossy().to_string(),
-                value: xattr::get(path, name)
-                    .map_err(|err| IgnoreErrorKind::ErrorXattr {
-                        path: path.to_path_buf(),
-                        source: err,
-                    })?
-                    .unwrap(),
+                value: xattr::get(path, name).map_err(|err| IgnoreErrorKind::ErrorXattr {
+                    path: path.to_path_buf(),
+                    source: err,
+                })?,
             })
         })
         .collect::<RusticResult<Vec<ExtendedAttribute>>>()

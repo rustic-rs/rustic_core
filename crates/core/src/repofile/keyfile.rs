@@ -1,7 +1,3 @@
-// needed to ensuer Rust 1.76.0 works
-#[allow(unused_imports)]
-use std::mem::size_of;
-
 use chrono::{DateTime, Local};
 use rand::{thread_rng, RngCore};
 use scrypt::Params;
@@ -18,7 +14,9 @@ use crate::{
 pub(super) mod constants {
     /// Returns the number of bits of the given type.
     pub(super) const fn num_bits<T>() -> usize {
-        size_of::<T>() * 8
+        // Needed for MSRV 1.76
+        #![allow(unused_qualifications)]
+        std::mem::size_of::<T>() * 8
     }
 }
 
