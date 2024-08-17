@@ -561,6 +561,10 @@ mod tests {
     use rstest::{fixture, rstest};
     use serde_json;
 
+    /// for more readable insta output
+    #[derive(Serialize)]
+    struct ForgetResult(Vec<(DateTime<Local>, bool, Vec<String>)>);
+
     #[fixture]
     fn test_snapshots() -> Result<Vec<SnapshotFile>> {
         let by_date = [
@@ -793,8 +797,6 @@ mod tests {
         let result = options.apply(test_snapshots?, now)?;
 
         // more readable output format
-        #[derive(Serialize)]
-        struct ForgetResult(Vec<(DateTime<Local>, bool, Vec<String>)>);
         let result = ForgetResult(
             result
                 .into_iter()
