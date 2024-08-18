@@ -52,7 +52,7 @@ thiserror = "1.0.63"
 
 # macros
 derivative = "2.2.0"
-derive_more = "0.99.18"
+derive_more = { version = "1.0.0", features = ["add", "constructor", "display"] }
 derive_setters = "0.1.6"
 
 # logging
@@ -72,10 +72,10 @@ scrypt = { version = "0.11.0", default-features = false }
 binrw = "0.14.0"
 hex = { version = "0.4.3", features = ["serde"] }
 integer-sqrt = "0.1.5"
-serde = { version = "1.0.205" }
+serde = { version = "1.0.208" }
 serde-aux = "4.5.0"
-serde_derive = "1.0.205"
-serde_json = "1.0.122"
+serde_derive = "1.0.208"
+serde_json = "1.0.125"
 serde_with = { version = "3.9.0", features = ["base64"] }
 
 # local source/destination
@@ -92,7 +92,7 @@ cachedir = "0.3.1"
 dirs = "5.0.1"
 
 # cli support
-clap = { version = "4.5.15", optional = true, features = ["derive", "env", "wrap_help"] }
+clap = { version = "4.5.16", optional = true, features = ["derive", "env", "wrap_help"] }
 merge = { version = "0.1.0", optional = true }
 shell-words = { version = "1.1.0", optional = true }
 
@@ -109,7 +109,7 @@ chrono = { version = "0.4.38", default-features = false, features = ["clock", "s
 enum-map = { workspace = true }
 enum-map-derive = "0.17.0"
 enumset = { version = "1.1.5", features = ["serde"] }
-gethostname = "0.4.3"
+gethostname = "0.5.0"
 humantime = "2.1.0"
 itertools = "0.13.0"
 quick_cache = "0.6.2"
@@ -138,7 +138,7 @@ pretty_assertions = "1.4.0"
 quickcheck = "1.0.3"
 quickcheck_macros = "1.0.0"
 rstest = { workspace = true }
-rustdoc-json = "0.8.9"
+rustdoc-json = "0.9.2"
 # We need to have rustic_backend here, because the doc-tests in lib.rs of rustic_core
 rustic_backend = { workspace = true }
 rustic_testing = { workspace = true }
