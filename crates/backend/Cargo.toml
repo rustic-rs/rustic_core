@@ -41,7 +41,7 @@ rclone = ["rest", "dep:rand", "dep:semver"]
 
 [dependencies]
 # core
-rustic_core = "0.3.0"
+rustic_core = { workspace = true }
 
 # errors
 anyhow = "1.0.86"
