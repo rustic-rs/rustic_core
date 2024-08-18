@@ -31,7 +31,7 @@ pub struct ForgetGroup {
     pub snapshots: Vec<ForgetSnapshot>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, PartialEq, Eq)]
 /// This struct enhances `[SnapshotFile]` with the attributes `keep` and `reasons` which indicates if the snapshot should be kept and why.
 pub struct ForgetSnapshot {
     /// The snapshot
@@ -553,6 +553,8 @@ impl KeepOptions {
 mod tests {
     use std::str::FromStr;
 
+    use crate::repofile::DeleteOption;
+
     use super::*;
     use anyhow::Result;
     use chrono::{Local, NaiveDateTime, TimeZone, Utc};
@@ -565,8 +567,14 @@ mod tests {
     #[derive(Serialize)]
     struct ForgetResult(Vec<(DateTime<Utc>, bool, Vec<String>)>);
 
+    // helper for parsing times
+    fn parse_time(time: &str) -> Result<DateTime<Local>> {
+        let time = NaiveDateTime::parse_from_str(time, "%Y-%m-%d %H:%M:%S")?;
+        Ok(Local::from_utc_datetime(&Local, &time))
+    }
+
     #[fixture]
-    fn test_snapshots() -> Result<Vec<SnapshotFile>> {
+    fn test_snapshots() -> Vec<SnapshotFile> {
         let by_date = [
             "2014-09-01 10:20:30",
             "2014-09-02 10:20:30",
@@ -683,18 +691,21 @@ mod tests {
             ("2015-10-22 10:20:30", "foo,bar"),
         ];
 
+        let delete_never = ["2014-09-01 10:25:37"];
+
+        let delete_at = [
+            ("2014-09-01 10:28:37", "2014-09-01 10:28:37"),
+            ("2014-09-01 10:29:37", "2025-09-01 10:29:37"),
+        ];
+
         let snaps: Vec<_> = by_date
             .into_iter()
             .map(|time| -> Result<_> {
-                let time = NaiveDateTime::parse_from_str(time, "%Y-%m-%d %H:%M:%S")?;
-                let opts = &crate::SnapshotOptions::default()
-                    .time(Local::from_utc_datetime(&Local, &time));
+                let opts = &crate::SnapshotOptions::default().time(parse_time(time)?);
                 Ok(SnapshotFile::from_options(opts)?)
             })
             .chain(by_date_and_id.into_iter().map(|(time, id)| -> Result<_> {
-                let time = NaiveDateTime::parse_from_str(time, "%Y-%m-%d %H:%M:%S")?;
-                let opts = &crate::SnapshotOptions::default()
-                    .time(Local::from_utc_datetime(&Local, &time));
+                let opts = &crate::SnapshotOptions::default().time(parse_time(time)?);
                 let mut snap = SnapshotFile::from_options(opts)?;
                 snap.id = Id::from_hex(id)?;
                 Ok(snap)
@@ -703,16 +714,29 @@ mod tests {
                 by_date_and_tag
                     .into_iter()
                     .map(|(time, tags)| -> Result<_> {
-                        let time = NaiveDateTime::parse_from_str(time, "%Y-%m-%d %H:%M:%S")?;
                         let opts = &crate::SnapshotOptions::default()
-                            .time(Local::from_utc_datetime(&Local, &time))
+                            .time(parse_time(time)?)
                             .tag(vec![StringList::from_str(tags)?]);
                         Ok(SnapshotFile::from_options(opts)?)
                     }),
             )
-            .collect::<Result<_>>()?;
+            .chain(delete_never.into_iter().map(|time| -> Result<_> {
+                let opts = &crate::SnapshotOptions::default().time(parse_time(time)?);
+                let mut snap = SnapshotFile::from_options(opts)?;
+                snap.delete = DeleteOption::Never;
+                Ok(snap)
+            }))
+            .chain(delete_at.into_iter().map(|(time, delete)| -> Result<_> {
+                let opts = &crate::SnapshotOptions::default().time(parse_time(time)?);
+                let mut snap = SnapshotFile::from_options(opts)?;
+                let delete = parse_time(delete)?;
+                snap.delete = DeleteOption::After(delete);
+                Ok(snap)
+            }))
+            .collect::<Result<_>>()
+            .unwrap();
 
-        Ok(snaps)
+        snaps
     }
 
     #[fixture]
@@ -733,14 +757,10 @@ mod tests {
 
     #[rstest]
     #[case(KeepOptions::default())]
-    fn test_apply_fails(
-        #[case] options: KeepOptions,
-        test_snapshots: Result<Vec<SnapshotFile>>,
-    ) -> Result<()> {
+    fn test_apply_fails(#[case] options: KeepOptions, test_snapshots: Vec<SnapshotFile>) {
         let now = Local::now();
-        let result = options.apply(test_snapshots?, now);
+        let result = options.apply(test_snapshots, now);
         assert!(result.is_err());
-        Ok(())
     }
 
     #[rstest]
@@ -790,11 +810,16 @@ mod tests {
     #[case(KeepOptions::default().keep_none(true))]
     fn test_apply(
         #[case] options: KeepOptions,
-        test_snapshots: Result<Vec<SnapshotFile>>,
+        test_snapshots: Vec<SnapshotFile>,
         insta_forget_snapshots_redaction: Settings,
     ) -> Result<()> {
-        let now = Local::now();
-        let result = options.apply(test_snapshots?, now)?;
+        let now = parse_time("2016-01-18 12:02:03")?;
+        let result = options.apply(test_snapshots.clone(), now)?;
+
+        // check that a changed current time doesn't change the forget result (note that DeleteOptions are set accordingly)
+        let now = parse_time("2020-01-18 12:02:03")?;
+        let result2 = options.apply(test_snapshots, now)?;
+        assert_eq!(result, result2);
 
         // more readable output format
         let result = ForgetResult(
