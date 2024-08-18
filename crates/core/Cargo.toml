@@ -2,13 +2,7 @@
 name = "rustic_core"
 version = "0.3.0"
 authors = ["the rustic-rs team"]
-categories = [
-  "Algorithms",
-  "Compression",
-  "Cryptography",
-  "Data structures",
-  "Filesystem",
-]
+categories = ["data-structures", "encoding", "filesystem"]
 documentation = "https://docs.rs/rustic_core"
 edition = "2021"
 homepage = "https://rustic.cli.rs/"
