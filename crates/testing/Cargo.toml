@@ -2,8 +2,8 @@
 name = "rustic_testing"
 version = "0.2.0"
 edition = "2021"
-publish = true
 license = "Apache-2.0 OR MIT"
+publish = true
 rust-version = { workspace = true }
 description = """
 rustic_testuing - library for test support in rustic-rs
