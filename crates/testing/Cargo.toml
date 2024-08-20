@@ -1,8 +1,13 @@
 [package]
 name = "rustic_testing"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
-publish = false
+publish = true
+license = "Apache-2.0 OR MIT"
+rust-version = { workspace = true }
+description = """
+rustic_testuing - library for test support in rustic-rs
+"""
 
 [dependencies]
 aho-corasick = { workspace = true }
@@ -10,7 +15,7 @@ anyhow = { workspace = true }
 bytes = { workspace = true }
 enum-map = { workspace = true }
 once_cell = "1.19.0"
-rustic_core = { workspace = true }
+rustic_core = "0.3.0"
 tempfile = { workspace = true }
 
 [lints]
