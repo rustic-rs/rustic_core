@@ -31,7 +31,7 @@ pub type RusticResult<T> = Result<T, RusticError>;
 #[derive(Error, Debug)]
 #[error(transparent)]
 /// Errors that can result from rustic.
-pub struct RusticError(#[from] RusticErrorKind);
+pub struct RusticError(#[from] pub(crate) RusticErrorKind);
 
 // Accessors for anything we do want to expose publicly.
 impl RusticError {

@@ -7,8 +7,9 @@ use serde_with::{base64::Base64, serde_as};
 use crate::{
     backend::{FileType, ReadBackend},
     crypto::{aespoly1305::Key, CryptoKey},
-    error::{KeyFileErrorKind, RusticErrorKind, RusticResult},
+    error::{CryptoErrorKind, KeyFileErrorKind, RusticErrorKind, RusticResult},
     id::Id,
+    RusticError,
 };
 
 pub(super) mod constants {
@@ -333,8 +334,12 @@ pub(crate) fn find_key_in_backend<B: ReadBackend>(
         key_from_backend(be, id, passwd)
     } else {
         for id in be.list(FileType::Key).map_err(RusticErrorKind::Backend)? {
-            if let Ok(key) = key_from_backend(be, &id, passwd) {
-                return Ok(key);
+            match key_from_backend(be, &id, passwd) {
+                Ok(key) => return Ok(key),
+                Err(RusticError(RusticErrorKind::Crypto(
+                    CryptoErrorKind::DataDecryptionFailed(_),
+                ))) => continue,
+                err => return err,
             }
         }
         Err(KeyFileErrorKind::NoSuitableKeyFound.into())
