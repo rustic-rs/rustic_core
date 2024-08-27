@@ -1,5 +1,7 @@
 //! Error types and Result module.
 
+// FIXME: Remove when 'displaydoc' has fixed/recommended further treatment upstream: https://github.com/yaahc/displaydoc/issues/48
+#![allow(clippy::doc_markdown)]
 // use std::error::Error as StdError;
 // use std::fmt;
 
@@ -216,6 +218,8 @@ pub enum CommandErrorKind {
     ConversionFromIntFailed(TryFromIntError),
     /// {0} is not allowed on an append-only repository
     NotAllowedWithAppendOnly(String),
+    /// Specify one of the keep-* options for forget! Please use keep-none to keep no snapshot.
+    NoKeepOption,
 }
 
 /// [`CryptoErrorKind`] describes the errors that can happen while dealing with Cryptographic functions
@@ -289,8 +293,6 @@ pub enum RepositoryErrorKind {
     ListingHotRepositoryKeysFailed,
     /// error accessing config file
     AccessToConfigFileFailed,
-    /// {0:?}
-    FromSplitError(#[from] shell_words::ParseError),
     /// {0:?}
     FromThreadPoolbilderError(rayon::ThreadPoolBuildError),
     /// reading Password failed: `{0:?}`
@@ -437,8 +439,6 @@ pub enum SnapshotFileErrorKind {
     UnpackingSnapshotFileResultFailed,
     /// collecting IDs failed: {0:?}
     FindingIdsFailed(Vec<String>),
-    /// {0:?}
-    FromSplitError(#[from] shell_words::ParseError),
     /// removing dots from paths failed: `{0:?}`
     RemovingDotsFromPathFailed(std::io::Error),
     /// canonicalizing path failed: `{0:?}`
@@ -582,16 +582,33 @@ pub enum CryptBackendErrorKind {
 pub enum IgnoreErrorKind {
     /// generic Ignore error: `{0:?}`
     GenericError(#[from] ignore::Error),
-    /// Unable to open file: {0:?}
-    UnableToOpenFile(std::io::Error),
-    /// `{0:?}`
-    #[error(transparent)]
-    FromIoError(#[from] std::io::Error),
+    /// Error reading glob file {file:?}: {source:?}
+    ErrorGlob {
+        file: PathBuf,
+        #[source]
+        source: std::io::Error,
+    },
+    /// Unable to open file {file:?}: {source:?}
+    UnableToOpenFile {
+        file: PathBuf,
+        #[source]
+        source: std::io::Error,
+    },
+    /// Error getting xattrs for {path:?}: {source:?}
+    ErrorXattr {
+        path: PathBuf,
+        #[source]
+        source: std::io::Error,
+    },
+    /// Error reading link target for {path:?}: {source:?}
+    ErrorLink {
+        path: PathBuf,
+        #[source]
+        source: std::io::Error,
+    },
     /// `{0:?}`
     #[error(transparent)]
     FromTryFromIntError(#[from] TryFromIntError),
-    /// no unicode link target. File: {file:?}, target: {target:?}
-    TargetIsNotValidUnicode { file: PathBuf, target: PathBuf },
 }
 
 /// [`LocalDestinationErrorKind`] describes the errors that can be returned by an action on the filesystem in Backends
@@ -614,9 +631,13 @@ pub enum LocalDestinationErrorKind {
     #[error(transparent)]
     #[cfg(not(windows))]
     FromErrnoError(#[from] Errno),
-    /// listing xattrs on {1:?}: {0}
+    /// listing xattrs on {path:?}: {source:?}
     #[cfg(not(any(windows, target_os = "openbsd")))]
-    ListingXattrsFailed(std::io::Error, PathBuf),
+    ListingXattrsFailed {
+        path: PathBuf,
+        #[source]
+        source: std::io::Error,
+    },
     /// setting xattr {name} on {filename:?} with {source:?}
     #[cfg(not(any(windows, target_os = "openbsd")))]
     SettingXattrFailed {

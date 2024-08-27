@@ -1,3 +1,6 @@
+// Note: we need a fully qualified Vec here for clap, see https://github.com/clap-rs/clap/issues/4481
+#![allow(unused_qualifications)]
+
 mod warm_up;
 
 use std::{
@@ -12,8 +15,7 @@ use std::{
 use bytes::Bytes;
 use derive_setters::Setters;
 use log::{debug, error, info};
-use serde_with::{serde_as, DisplayFromStr};
-use shell_words::split;
+use serde_with::{serde_as, DisplayFromStr, OneOrMany};
 
 use crate::{
     backend::{
@@ -26,7 +28,7 @@ use crate::{
         FileType, ReadBackend, WriteBackend,
     },
     blob::{
-        tree::{NodeStreamer, TreeStreamerOptions as LsOptions},
+        tree::{FindMatches, FindNode, NodeStreamer, TreeStreamerOptions as LsOptions},
         BlobType,
     },
     commands::{
@@ -52,7 +54,7 @@ use crate::{
         binarysorted::{IndexCollector, IndexType},
         GlobalIndex, IndexEntry, ReadGlobalIndex, ReadIndex,
     },
-    progress::{NoProgressBars, ProgressBars},
+    progress::{NoProgressBars, Progress, ProgressBars},
     repofile::{
         keyfile::find_key_in_backend,
         snapshotfile::{SnapshotGroup, SnapshotGroupCriterion},
@@ -110,8 +112,13 @@ pub struct RepositoryOptions {
         global = true,
         env = "RUSTIC_PASSWORD_COMMAND",
         conflicts_with_all = &["password", "password_file"],
+        value_parser = clap::builder::ValueParser::new(shell_words::split),
+        default_value = "",
     ))]
-    pub password_command: Option<String>,
+    #[cfg_attr(feature = "merge", merge(strategy = merge::vec::overwrite_empty))]
+    #[serde_as(as = "OneOrMany<_>")]
+    // Note: we need a fully qualified Vec here for clap, see https://github.com/clap-rs/clap/issues/4481
+    pub password_command: std::vec::Vec<String>,
 
     /// Don't use a cache.
     #[cfg_attr(feature = "clap", clap(long, global = true, env = "RUSTIC_NO_CACHE"))]
@@ -136,11 +143,18 @@ pub struct RepositoryOptions {
     pub warm_up: bool,
 
     /// Warm up needed data pack files by running the command with %id replaced by pack id
-    #[cfg_attr(
-        feature = "clap",
-        clap(long, global = true, conflicts_with = "warm_up")
-    )]
-    pub warm_up_command: Option<String>,
+    #[cfg_attr(feature = "clap", clap(
+        long,
+        global = true,
+        conflicts_with = "warm_up", 
+        value_parser = clap::builder::ValueParser::new(shell_words::split),
+        action = clap::ArgAction::Set,
+        default_value = "",
+    ))]
+    #[cfg_attr(feature = "merge", merge(strategy = merge::vec::overwrite_empty))]
+    #[serde_as(as = "OneOrMany<_>")]
+    // Note: we need a fully qualified Vec here for clap, see https://github.com/clap-rs/clap/issues/4481
+    pub warm_up_command: std::vec::Vec<String>,
 
     /// Duration (e.g. 10m) to wait after warm up
     #[cfg_attr(feature = "clap", clap(long, global = true, value_name = "DURATION"))]
@@ -177,11 +191,10 @@ impl RepositoryOptions {
                 );
                 Ok(Some(read_password_from_reader(&mut file)?))
             }
-            (_, _, Some(command)) => {
-                let commands = split(command).map_err(RepositoryErrorKind::FromSplitError)?;
-                debug!("commands: {commands:?}");
-                let command = Command::new(&commands[0])
-                    .args(&commands[1..])
+            (_, _, command) if !command.is_empty() => {
+                debug!("commands: {command:?}");
+                let command = Command::new(&command[0])
+                    .args(&command[1..])
                     .stdout(Stdio::piped())
                     .spawn()?;
                 let Ok(output) = command.wait_with_output() else {
@@ -205,7 +218,7 @@ impl RepositoryOptions {
                     }
                 }))
             }
-            (None, None, None) => Ok(None),
+            (None, None, _) => Ok(None),
         }
     }
 }
@@ -255,7 +268,7 @@ pub struct Repository<P, S> {
     /// The name of the repository
     pub name: String,
 
-    /// The HotColdBackend to use for this repository
+    /// The `HotColdBackend` to use for this repository
     pub(crate) be: Arc<dyn WriteBackend>,
 
     /// The Backend to use for hot files
@@ -321,11 +334,11 @@ impl<P> Repository<P, ()> {
         let mut be = backends.repository();
         let be_hot = backends.repo_hot();
 
-        if let Some(command) = &opts.warm_up_command {
-            if !command.contains("%id") {
+        if !opts.warm_up_command.is_empty() {
+            if opts.warm_up_command.iter().all(|c| !c.contains("%id")) {
                 return Err(RepositoryErrorKind::NoIDSpecified.into());
             }
-            info!("using warm-up command {command}");
+            info!("using warm-up command {:?}", opts.warm_up_command);
         }
 
         if opts.warm_up {
@@ -908,6 +921,7 @@ impl<P: ProgressBars, S: Open> Repository<P, S> {
     ) -> RusticResult<SnapshotFile> {
         let p = self.pb.progress_counter("getting snapshot...");
         let snap = SnapshotFile::from_str(self.dbe(), id, filter, &p)?;
+        p.finish();
         Ok(snap)
     }
 
@@ -927,7 +941,9 @@ impl<P: ProgressBars, S: Open> Repository<P, S> {
     // TODO: Document errors
     pub fn get_snapshots<T: AsRef<str>>(&self, ids: &[T]) -> RusticResult<Vec<SnapshotFile>> {
         let p = self.pb.progress_counter("getting snapshots...");
-        SnapshotFile::from_ids(self.dbe(), ids, &p)
+        let result = SnapshotFile::from_ids(self.dbe(), ids, &p);
+        p.finish();
+        result
     }
 
     /// Get all snapshots from the repository
@@ -947,13 +963,18 @@ impl<P: ProgressBars, S: Open> Repository<P, S> {
     ///
     /// # Errors
     ///
+    /// # Note
+    ///  The result is not sorted and may come in random order!
+    ///
     // TODO: Document errors
     pub fn get_matching_snapshots(
         &self,
         filter: impl FnMut(&SnapshotFile) -> bool,
     ) -> RusticResult<Vec<SnapshotFile>> {
         let p = self.pb.progress_counter("getting snapshots...");
-        SnapshotFile::all_from_backend(self.dbe(), filter, &p)
+        let result = SnapshotFile::all_from_backend(self.dbe(), filter, &p);
+        p.finish();
+        result
     }
 
     /// Get snapshots to forget depending on the given [`KeepOptions`]
@@ -966,7 +987,7 @@ impl<P: ProgressBars, S: Open> Repository<P, S> {
     ///
     /// # Errors
     ///
-    // TODO: Document errors
+    /// If keep options are not valid
     ///
     /// # Returns
     ///
@@ -1223,6 +1244,9 @@ impl<P: ProgressBars, S: Open> Repository<P, S> {
     ///
     /// # Returns
     ///
+    /// # Note
+    ///  The result is not sorted and may come in random order!
+    ///
     /// An iterator over all files of the given type
     pub fn stream_files<F: RepoFile>(
         &self,
@@ -1275,10 +1299,11 @@ impl<P, S: IndexedTree> IndexedTree for Repository<P, S> {
 pub(crate) struct BytesWeighter;
 
 impl quick_cache::Weighter<Id, Bytes> for BytesWeighter {
-    fn weight(&self, _key: &Id, val: &Bytes) -> u32 {
-        // Be cautions out about zero weights!
-        u32::try_from(val.len().clamp(1, u32::MAX as usize))
+    fn weight(&self, _key: &Id, val: &Bytes) -> u64 {
+        u64::try_from(val.len())
             .expect("weight overflow in cache should not happen")
+            // Be cautions out about zero weights!
+            .max(1)
     }
 }
 
@@ -1490,6 +1515,40 @@ impl<P, S: IndexedTree> Repository<P, S> {
     /// [`TreeErrorKind::PathIsNotUtf8Conform`]: crate::error::TreeErrorKind::PathIsNotUtf8Conform
     pub fn node_from_path(&self, root_tree: Id, path: &Path) -> RusticResult<Node> {
         Tree::node_from_path(self.dbe(), self.index(), root_tree, Path::new(path))
+    }
+
+    /// Get all [`Node`]s from given root trees and a path
+    ///
+    /// # Arguments
+    ///
+    /// * `ids` - The tree ids to search in
+    /// * `path` - The path
+    ///
+    /// # Errors
+    /// if loading trees from the backend fails
+    pub fn find_nodes_from_path(
+        &self,
+        ids: impl IntoIterator<Item = Id>,
+        path: &Path,
+    ) -> RusticResult<FindNode> {
+        Tree::find_nodes_from_path(self.dbe(), self.index(), ids, path)
+    }
+
+    /// Get all [`Node`]s/[`Path`]s from given root trees and a matching criterion
+    ///
+    /// # Arguments
+    ///
+    /// * `ids` - The tree ids to search in
+    /// * `matches` - The matching criterion
+    ///
+    /// # Errors
+    /// if loading trees from the backend fails
+    pub fn find_matching_nodes(
+        &self,
+        ids: impl IntoIterator<Item = Id>,
+        matches: &impl Fn(&Path, &Node) -> bool,
+    ) -> RusticResult<FindMatches> {
+        Tree::find_matching_nodes(self.dbe(), self.index(), ids, matches)
     }
 }
 

@@ -330,7 +330,7 @@ impl LocalDestination {
 
         if let Some(mode) = node.meta.mode {
             let mode = map_mode_from_go(mode);
-            std::fs::set_permissions(filename, fs::Permissions::from_mode(mode))
+            fs::set_permissions(filename, fs::Permissions::from_mode(mode))
                 .map_err(LocalDestinationErrorKind::SettingFilePermissionsFailed)?;
         }
         Ok(())
@@ -390,28 +390,30 @@ impl LocalDestination {
         let filename = self.path(item);
         let mut done = vec![false; extended_attributes.len()];
 
-        for curr_name in xattr::list(&filename)
-            .map_err(|err| LocalDestinationErrorKind::ListingXattrsFailed(err, filename.clone()))?
-        {
+        for curr_name in xattr::list(&filename).map_err(|err| {
+            LocalDestinationErrorKind::ListingXattrsFailed {
+                source: err,
+                path: filename.clone(),
+            }
+        })? {
             match extended_attributes.iter().enumerate().find(
                 |(_, ExtendedAttribute { name, .. })| name == curr_name.to_string_lossy().as_ref(),
             ) {
                 Some((index, ExtendedAttribute { name, value })) => {
-                    let curr_value = xattr::get(&filename, name)
-                        .map_err(|err| LocalDestinationErrorKind::GettingXattrFailed {
+                    let curr_value = xattr::get(&filename, name).map_err(|err| {
+                        LocalDestinationErrorKind::GettingXattrFailed {
                             name: name.clone(),
                             filename: filename.clone(),
                             source: err,
-                        })?
-                        .unwrap();
+                        }
+                    })?;
                     if value != &curr_value {
-                        xattr::set(&filename, name, value).map_err(|err| {
-                            LocalDestinationErrorKind::SettingXattrFailed {
+                        xattr::set(&filename, name, value.as_ref().unwrap_or(&Vec::new()))
+                            .map_err(|err| LocalDestinationErrorKind::SettingXattrFailed {
                                 name: name.clone(),
                                 filename: filename.clone(),
                                 source: err,
-                            }
-                        })?;
+                            })?;
                     }
                     done[index] = true;
                 }
@@ -425,13 +427,13 @@ impl LocalDestination {
 
         for (index, ExtendedAttribute { name, value }) in extended_attributes.iter().enumerate() {
             if !done[index] {
-                xattr::set(&filename, name, value).map_err(|err| {
-                    LocalDestinationErrorKind::SettingXattrFailed {
+                xattr::set(&filename, name, value.as_ref().unwrap_or(&Vec::new())).map_err(
+                    |err| LocalDestinationErrorKind::SettingXattrFailed {
                         name: name.clone(),
                         filename: filename.clone(),
                         source: err,
-                    }
-                })?;
+                    },
+                )?;
             }
         }
 
@@ -470,6 +472,7 @@ impl LocalDestination {
 
         OpenOptions::new()
             .create(true)
+            .truncate(false)
             .write(true)
             .open(filename)
             .map_err(LocalDestinationErrorKind::OpeningFileFailed)?
@@ -659,8 +662,9 @@ impl LocalDestination {
     /// [`LocalDestinationErrorKind::CouldNotWriteToBuffer`]: crate::error::LocalDestinationErrorKind::CouldNotWriteToBuffer
     pub fn write_at(&self, item: impl AsRef<Path>, offset: u64, data: &[u8]) -> RusticResult<()> {
         let filename = self.path(item);
-        let mut file = fs::OpenOptions::new()
+        let mut file = OpenOptions::new()
             .create(true)
+            .truncate(false)
             .write(true)
             .open(filename)
             .map_err(LocalDestinationErrorKind::OpeningFileFailed)?;

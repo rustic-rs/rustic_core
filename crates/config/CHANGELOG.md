@@ -4,6 +4,17 @@ All notable changes to this project will be documented in this file.
 
 ## [unreleased]
 
+## [0.2.0](https://github.com/rustic-rs/rustic_core/compare/rustic_config-v0.1.0...rustic_config-v0.2.0) - 2024-08-18
+
+### Added
+- [**breaking**] move clippy lints to cargo manifest and fix upcoming issues all over the workspace ([#176](https://github.com/rustic-rs/rustic_core/pull/176))
+
+### Other
+- Update MSRV to 1.76.0
+- Update MSRV (needed by opendal)
+- Update MSRV to 1.73.0
+- add changelog for rustic_config
+
 ## [rustic_backend-v0.1.0] - 2024-02-04
 
 - Reserving name on crates.io

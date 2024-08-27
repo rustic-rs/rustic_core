@@ -6,7 +6,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use serde_with::{serde_as, DisplayFromStr};
+use serde_with::{serde_as, DisplayFromStr, OneOrMany};
 
 use bytesize::ByteSize;
 #[cfg(not(windows))]
@@ -70,21 +70,25 @@ pub struct LocalSourceFilterOptions {
     /// Glob pattern to exclude/include (can be specified multiple times)
     #[cfg_attr(feature = "clap", clap(long))]
     #[cfg_attr(feature = "merge", merge(strategy = merge::vec::overwrite_empty))]
+    #[serde_as(as = "OneOrMany<_>")]
     pub glob: Vec<String>,
 
     /// Same as --glob pattern but ignores the casing of filenames
     #[cfg_attr(feature = "clap", clap(long, value_name = "GLOB"))]
     #[cfg_attr(feature = "merge", merge(strategy = merge::vec::overwrite_empty))]
+    #[serde_as(as = "OneOrMany<_>")]
     pub iglob: Vec<String>,
 
     /// Read glob patterns to exclude/include from this file (can be specified multiple times)
     #[cfg_attr(feature = "clap", clap(long, value_name = "FILE"))]
     #[cfg_attr(feature = "merge", merge(strategy = merge::vec::overwrite_empty))]
+    #[serde_as(as = "OneOrMany<_>")]
     pub glob_file: Vec<String>,
 
     /// Same as --glob-file ignores the casing of filenames in patterns
     #[cfg_attr(feature = "clap", clap(long, value_name = "FILE"))]
     #[cfg_attr(feature = "merge", merge(strategy = merge::vec::overwrite_empty))]
+    #[serde_as(as = "OneOrMany<_>")]
     pub iglob_file: Vec<String>,
 
     /// Ignore files based on .gitignore files
@@ -100,11 +104,13 @@ pub struct LocalSourceFilterOptions {
     /// Treat the provided filename like a .gitignore file (can be specified multiple times)
     #[cfg_attr(feature = "clap", clap(long, value_name = "FILE"))]
     #[cfg_attr(feature = "merge", merge(strategy = merge::vec::overwrite_empty))]
+    #[serde_as(as = "OneOrMany<_>")]
     pub custom_ignorefile: Vec<String>,
 
     /// Exclude contents of directories containing this filename (can be specified multiple times)
     #[cfg_attr(feature = "clap", clap(long, value_name = "FILE"))]
     #[cfg_attr(feature = "merge", merge(strategy = merge::vec::overwrite_empty))]
+    #[serde_as(as = "OneOrMany<_>")]
     pub exclude_if_present: Vec<String>,
 
     /// Exclude other file systems, don't cross filesystem boundaries and subvolumes
@@ -159,7 +165,10 @@ impl LocalSource {
 
         for file in &filter_opts.glob_file {
             for line in std::fs::read_to_string(file)
-                .map_err(IgnoreErrorKind::FromIoError)?
+                .map_err(|err| IgnoreErrorKind::ErrorGlob {
+                    file: file.into(),
+                    source: err,
+                })?
                 .lines()
             {
                 _ = override_builder
@@ -179,7 +188,10 @@ impl LocalSource {
 
         for file in &filter_opts.iglob_file {
             for line in std::fs::read_to_string(file)
-                .map_err(IgnoreErrorKind::FromIoError)?
+                .map_err(|err| IgnoreErrorKind::ErrorGlob {
+                    file: file.into(),
+                    source: err,
+                })?
                 .lines()
             {
                 _ = override_builder
@@ -248,7 +260,13 @@ impl ReadSourceOpen for OpenFile {
     /// [`IgnoreErrorKind::UnableToOpenFile`]: crate::error::IgnoreErrorKind::UnableToOpenFile
     fn open(self) -> RusticResult<Self::Reader> {
         let path = self.0;
-        File::open(path).map_err(|err| IgnoreErrorKind::UnableToOpenFile(err).into())
+        File::open(&path).map_err(|err| {
+            IgnoreErrorKind::UnableToOpenFile {
+                file: path,
+                source: err,
+            }
+            .into()
+        })
     }
 }
 
@@ -316,7 +334,7 @@ impl Iterator for LocalSourceWalker {
                 self.save_opts.with_atime,
                 self.save_opts.ignore_devid,
             )
-            .map_err(std::convert::Into::into)
+            .map_err(Into::into)
         })
     }
 }
@@ -394,7 +412,11 @@ fn map_entry(
     let node = if m.is_dir() {
         Node::new_node(name, NodeType::Dir, meta)
     } else if m.is_symlink() {
-        let target = read_link(entry.path()).map_err(IgnoreErrorKind::FromIoError)?;
+        let path = entry.path();
+        let target = read_link(path).map_err(|err| IgnoreErrorKind::ErrorLink {
+            path: path.to_path_buf(),
+            source: err,
+        })?;
         let node_type = NodeType::from_link(&target);
         Node::new_node(name, node_type, meta)
     } else {
@@ -448,6 +470,39 @@ fn get_group_by_gid(gid: u32) -> Option<String> {
             None
         }
     }
+}
+
+#[cfg(all(not(windows), target_os = "openbsd"))]
+fn list_extended_attributes(path: &Path) -> RusticResult<Vec<ExtendedAttribute>> {
+    Ok(vec![])
+}
+
+/// List [`ExtendedAttribute`] for a [`Node`] located at `path`
+///
+/// # Argument
+///
+/// * `path` to the [`Node`] for which to list attributes
+///
+/// # Errors
+///
+/// * [`IgnoreErrorKind::ErrorXattr`] - if Xattr couldn't be listed or couldn't be read
+#[cfg(all(not(windows), not(target_os = "openbsd")))]
+fn list_extended_attributes(path: &Path) -> RusticResult<Vec<ExtendedAttribute>> {
+    xattr::list(path)
+        .map_err(|err| IgnoreErrorKind::ErrorXattr {
+            path: path.to_path_buf(),
+            source: err,
+        })?
+        .map(|name| {
+            Ok(ExtendedAttribute {
+                name: name.to_string_lossy().to_string(),
+                value: xattr::get(path, name).map_err(|err| IgnoreErrorKind::ErrorXattr {
+                    path: path.to_path_buf(),
+                    source: err,
+                })?,
+            })
+        })
+        .collect::<RusticResult<Vec<ExtendedAttribute>>>()
 }
 
 /// Maps a [`DirEntry`] to a [`ReadSourceEntry`].
@@ -509,23 +564,12 @@ fn map_entry(
     let device_id = if ignore_devid { 0 } else { m.dev() };
     let links = if m.is_dir() { 0 } else { m.nlink() };
 
-    #[cfg(target_os = "openbsd")]
-    let extended_attributes = vec![];
-
-    #[cfg(not(target_os = "openbsd"))]
-    let extended_attributes = {
-        let path = entry.path();
-        xattr::list(path)
-            .map_err(IgnoreErrorKind::FromIoError)?
-            .map(|name| {
-                Ok(ExtendedAttribute {
-                    name: name.to_string_lossy().to_string(),
-                    value: xattr::get(path, name)
-                        .map_err(IgnoreErrorKind::FromIoError)?
-                        .unwrap(),
-                })
-            })
-            .collect::<RusticResult<_>>()?
+    let extended_attributes = match list_extended_attributes(entry.path()) {
+        Err(e) => {
+            warn!("ignoring error: {e}\n");
+            vec![]
+        }
+        Ok(xattr_list) => xattr_list,
     };
 
     let meta = Metadata {
@@ -548,7 +592,11 @@ fn map_entry(
     let node = if m.is_dir() {
         Node::new_node(name, NodeType::Dir, meta)
     } else if m.is_symlink() {
-        let target = read_link(entry.path()).map_err(IgnoreErrorKind::FromIoError)?;
+        let path = entry.path();
+        let target = read_link(path).map_err(|err| IgnoreErrorKind::ErrorLink {
+            path: path.to_path_buf(),
+            source: err,
+        })?;
         let node_type = NodeType::from_link(&target);
         Node::new_node(name, node_type, meta)
     } else if filetype.is_block_device() {

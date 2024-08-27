@@ -133,6 +133,8 @@ pub trait DecryptReadBackend: ReadBackend + Clone + 'static {
 
     /// Streams all files.
     ///
+    /// Note: The result comes in arbitrary order!
+    ///
     /// # Arguments
     ///
     /// * `p` - The progress bar.
@@ -145,10 +147,12 @@ pub trait DecryptReadBackend: ReadBackend + Clone + 'static {
         p: &impl Progress,
     ) -> RusticResult<Receiver<RusticResult<(Id, F)>>> {
         let list = self.list(F::TYPE).map_err(RusticErrorKind::Backend)?;
-        self.stream_list(list, p)
+        self.stream_list(&list, p)
     }
 
     /// Streams a list of files.
+    ///
+    /// Note: The result comes in arbitrary order!
     ///
     /// # Arguments
     ///
@@ -160,7 +164,7 @@ pub trait DecryptReadBackend: ReadBackend + Clone + 'static {
     /// If the files could not be read.
     fn stream_list<F: RepoFile>(
         &self,
-        list: Vec<Id>,
+        list: &[Id],
         p: &impl Progress,
     ) -> RusticResult<Receiver<RusticResult<(Id, F)>>> {
         p.set_length(list.len() as u64);
@@ -168,7 +172,7 @@ pub trait DecryptReadBackend: ReadBackend + Clone + 'static {
 
         list.into_par_iter()
             .for_each_with((self, p, tx), |(be, p, tx), id| {
-                let file = be.get_file::<F>(&id).map(|file| (id, file));
+                let file = be.get_file::<F>(id).map(|file| (*id, file));
                 p.inc(1);
                 tx.send(file).unwrap();
             });

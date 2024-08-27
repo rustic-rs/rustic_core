@@ -68,7 +68,9 @@ impl ReadBackend for CachedBackend {
         let list = self.be.list_with_size(tpe)?;
 
         if tpe.is_cacheable() {
-            self.cache.remove_not_in_list(tpe, &list)?;
+            if let Err(err) = self.cache.remove_not_in_list(tpe, &list) {
+                warn!("Error in cache backend removing files {tpe:?}: {err}");
+            }
         }
 
         Ok(list)
@@ -95,11 +97,13 @@ impl ReadBackend for CachedBackend {
             match self.cache.read_full(tpe, id) {
                 Ok(Some(data)) => return Ok(data),
                 Ok(None) => {}
-                Err(err) => warn!("Error in cache backend: {err}"),
+                Err(err) => warn!("Error in cache backend reading {tpe:?},{id}: {err}"),
             }
             let res = self.be.read_full(tpe, id);
             if let Ok(data) = &res {
-                _ = self.cache.write_bytes(tpe, id, data);
+                if let Err(err) = self.cache.write_bytes(tpe, id, data) {
+                    warn!("Error in cache backend writing {tpe:?},{id}: {err}");
+                }
             }
             res
         } else {
@@ -138,13 +142,15 @@ impl ReadBackend for CachedBackend {
             match self.cache.read_partial(tpe, id, offset, length) {
                 Ok(Some(data)) => return Ok(data),
                 Ok(None) => {}
-                Err(err) => warn!("Error in cache backend: {err}"),
+                Err(err) => warn!("Error in cache backend reading {tpe:?},{id}: {err}"),
             };
             // read full file, save to cache and return partial content
             match self.be.read_full(tpe, id) {
                 Ok(data) => {
                     let range = offset as usize..(offset + length) as usize;
-                    _ = self.cache.write_bytes(tpe, id, &data);
+                    if let Err(err) = self.cache.write_bytes(tpe, id, &data) {
+                        warn!("Error in cache backend writing {tpe:?},{id}: {err}");
+                    }
                     Ok(Bytes::copy_from_slice(&data.slice(range)))
                 }
                 error => error,
@@ -180,7 +186,9 @@ impl WriteBackend for CachedBackend {
     /// * `buf` - The data to write.
     fn write_bytes(&self, tpe: FileType, id: &Id, cacheable: bool, buf: Bytes) -> Result<()> {
         if cacheable || tpe.is_cacheable() {
-            _ = self.cache.write_bytes(tpe, id, &buf);
+            if let Err(err) = self.cache.write_bytes(tpe, id, &buf) {
+                warn!("Error in cache backend writing {tpe:?},{id}: {err}");
+            }
         }
         self.be.write_bytes(tpe, id, cacheable, buf)
     }
@@ -195,7 +203,9 @@ impl WriteBackend for CachedBackend {
     /// * `id` - The id of the file.
     fn remove(&self, tpe: FileType, id: &Id, cacheable: bool) -> Result<()> {
         if cacheable || tpe.is_cacheable() {
-            _ = self.cache.remove(tpe, id);
+            if let Err(err) = self.cache.remove(tpe, id) {
+                warn!("Error in cache backend removing {tpe:?},{id}: {err}");
+            }
         }
         self.be.remove(tpe, id, cacheable)
     }
@@ -432,6 +442,7 @@ impl Cache {
         let filename = self.path(tpe, id);
         let mut file = fs::OpenOptions::new()
             .create(true)
+            .truncate(true)
             .write(true)
             .open(filename)
             .map_err(CacheBackendErrorKind::FromIoError)?;

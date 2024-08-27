@@ -35,7 +35,7 @@ pub(super) mod constants {
     BinRead,
     Display,
 )]
-#[display(fmt = "{}", "&self.to_hex()[0..8]")]
+#[display("{}", &self.to_hex()[0..8])]
 pub struct Id(
     /// The actual hash
     #[serde(serialize_with = "hex::serde::serialize")]

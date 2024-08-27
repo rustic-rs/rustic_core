@@ -160,7 +160,7 @@ impl PackSizer {
 #[allow(clippy::struct_field_names)]
 #[derive(Clone)]
 pub struct Packer<BE: DecryptWriteBackend> {
-    /// The raw packer wrapped in an Arc and RwLock.
+    /// The raw packer wrapped in an `Arc` and `RwLock`.
     // This is a hack: raw_packer and indexer are only used in the add_raw() method.
     // TODO: Refactor as actor, like the other add() methods
     raw_packer: Arc<RwLock<RawPacker<BE>>>,

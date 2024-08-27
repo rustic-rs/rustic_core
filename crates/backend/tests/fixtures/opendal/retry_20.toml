@@ -1,0 +1,5 @@
+path = "s3"
+[options]
+region = "test_region"
+bucket = "bucket_name"
+retry = "20"

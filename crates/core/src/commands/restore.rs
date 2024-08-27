@@ -508,7 +508,7 @@ fn restore_contents<P: ProgressBars, S: Open>(
                     };
 
                     // save into needed files in parallel
-                    for (bl, group) in &name_dests.into_iter().group_by(|item| item.0.clone()) {
+                    for (bl, group) in &name_dests.into_iter().chunk_by(|item| item.0.clone()) {
                         let size = bl.data_length();
                         let data = if from_file.is_some() {
                             read_data.clone()
@@ -595,7 +595,7 @@ impl BlobLocation {
         self.uncompressed_length
             .map_or(
                 self.length - 32, // crypto overhead
-                std::num::NonZeroU32::get,
+                NonZeroU32::get,
             )
             .into()
     }

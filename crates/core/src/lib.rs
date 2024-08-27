@@ -129,7 +129,7 @@ pub use crate::{
         FileType, ReadBackend, ReadSource, ReadSourceEntry, ReadSourceOpen, RepositoryBackends,
         WriteBackend, ALL_FILE_TYPES,
     },
-    blob::tree::TreeStreamerOptions as LsOptions,
+    blob::tree::{FindMatches, FindNode, TreeStreamerOptions as LsOptions},
     commands::{
         backup::{BackupOptions, ParentOptions},
         check::CheckOptions,
@@ -137,7 +137,7 @@ pub use crate::{
         copy::CopySnapshot,
         forget::{ForgetGroup, ForgetGroups, ForgetSnapshot, KeepOptions},
         key::KeyOptions,
-        prune::{PruneOptions, PrunePlan, PruneStats},
+        prune::{LimitOption, PruneOptions, PrunePlan, PruneStats},
         repair::{index::RepairIndexOptions, snapshots::RepairSnapshotsOptions},
         repoinfo::{BlobInfo, IndexInfos, PackInfo, RepoFileInfo, RepoFileInfos},
         restore::{FileDirStats, RestoreOptions, RestorePlan, RestoreStats},
@@ -148,5 +148,7 @@ pub use crate::{
     repofile::snapshotfile::{
         PathList, SnapshotGroup, SnapshotGroupCriterion, SnapshotOptions, StringList,
     },
-    repository::{IndexedFull, OpenStatus, Repository, RepositoryOptions},
+    repository::{
+        FullIndex, IndexedFull, IndexedStatus, OpenStatus, Repository, RepositoryOptions,
+    },
 };

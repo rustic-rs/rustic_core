@@ -16,13 +16,12 @@ use crate::RusticResult;
 
 use chrono::{DateTime, Local};
 use derive_more::Constructor;
-use serde::Deserializer;
 use serde_aux::prelude::*;
 use serde_derive::{Deserialize, Serialize};
 use serde_with::{
     base64::{Base64, Standard},
     formats::Padded,
-    serde_as, DeserializeAs, SerializeAs,
+    serde_as, DefaultOnNull,
 };
 
 #[cfg(not(windows))]
@@ -30,7 +29,9 @@ use crate::error::NodeErrorKind;
 
 use crate::id::Id;
 
-#[derive(Default, Serialize, Deserialize, Clone, Debug, PartialEq, Eq, Constructor)]
+#[derive(
+    Default, Serialize, Deserialize, Clone, Debug, PartialEq, Eq, Constructor, PartialOrd, Ord,
+)]
 /// A node within the tree hierarchy
 pub struct Node {
     /// Name of the node: filename or dirname.
@@ -63,7 +64,7 @@ pub struct Node {
 }
 
 #[serde_as]
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 #[serde(tag = "type", rename_all = "lowercase")]
 /// Types a [`Node`] can have with type-specific additional information
 pub enum NodeType {
@@ -80,7 +81,7 @@ pub enum NodeType {
         /// This contains the target only if it is a valid unicode target.
         /// Don't access this field directly, use the [`NodeType::to_link()`] method instead!
         linktarget: String,
-        #[serde_as(as = "Option<Base64>")]
+        #[serde_as(as = "DefaultOnNull<Option<Base64::<Standard,Padded>>>")]
         #[serde(default, skip_serializing_if = "Option::is_none")]
         /// The raw link target saved as bytes.
         ///
@@ -190,7 +191,7 @@ impl Default for NodeType {
     Option => #[serde(default, skip_serializing_if = "Option::is_none")],
     u64 => #[serde(default, skip_serializing_if = "is_default")],
 )]
-#[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Metadata {
     /// Unix file mode
     pub mode: Option<u32>,
@@ -221,42 +222,15 @@ pub struct Metadata {
     pub extended_attributes: Vec<ExtendedAttribute>,
 }
 
-// Deserialize a Base64-encoded value into Vec<u8>.
-//
-// # Arguments
-//
-// * `deserializer` - The deserializer to use.
-//
-// # Errors
-//
-// If the value is not a valid Base64-encoded value.
-//
-// # Returns
-//
-// The deserialized value.
-//
-// # Note
-//
-// Handles '"value" = null' by first deserializing into a Option.
-fn deserialize_value<'de, D>(deserializer: D) -> Result<Vec<u8>, D::Error>
-where
-    D: Deserializer<'de>,
-{
-    let value: Option<Vec<u8>> = Base64::<Standard, Padded>::deserialize_as(deserializer)?;
-    Ok(value.unwrap_or_default())
-}
-
 /// Extended attribute of a [`Node`]
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde_as]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, PartialOrd, Ord)]
 pub struct ExtendedAttribute {
     /// Name of the extended attribute
     pub name: String,
     /// Value of the extended attribute
-    #[serde(
-        serialize_with = "Base64::<Standard,Padded>::serialize_as",
-        deserialize_with = "deserialize_value"
-    )]
-    pub value: Vec<u8>,
+    #[serde_as(as = "DefaultOnNull<Option<Base64::<Standard,Padded>>>")]
+    pub value: Option<Vec<u8>>,
 }
 
 pub(crate) fn is_default<T: Default + PartialEq>(t: &T) -> bool {

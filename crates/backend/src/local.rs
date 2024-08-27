@@ -44,7 +44,6 @@ impl LocalBackend {
         options: impl IntoIterator<Item = (String, String)>,
     ) -> Result<Self> {
         let path = path.as_ref().into();
-        fs::create_dir_all(&path).map_err(LocalBackendErrorKind::DirectoryCreationFailed)?;
         let mut post_create_command = None;
         let mut post_delete_command = None;
         for (option, value) in options {
@@ -307,6 +306,7 @@ impl WriteBackend for LocalBackend {
     /// [`LocalBackendErrorKind::DirectoryCreationFailed`]: LocalBackendErrorKind::DirectoryCreationFailed
     fn create(&self) -> Result<()> {
         trace!("creating repo at {:?}", self.path);
+        fs::create_dir_all(&self.path).map_err(LocalBackendErrorKind::DirectoryCreationFailed)?;
 
         for tpe in ALL_FILE_TYPES {
             fs::create_dir_all(self.path.join(tpe.dirname()))
@@ -346,6 +346,7 @@ impl WriteBackend for LocalBackend {
         let filename = self.path(tpe, id);
         let mut file = fs::OpenOptions::new()
             .create(true)
+            .truncate(true)
             .write(true)
             .open(&filename)
             .map_err(LocalBackendErrorKind::OpeningFileFailed)?;

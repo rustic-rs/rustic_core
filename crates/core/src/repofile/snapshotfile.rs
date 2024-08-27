@@ -1,5 +1,6 @@
 use std::{
     cmp::Ordering,
+    collections::{BTreeMap, BTreeSet},
     fmt::{self, Display},
     path::{Path, PathBuf},
     str::FromStr,
@@ -14,8 +15,7 @@ use itertools::Itertools;
 use log::info;
 use path_dedot::ParseDot;
 use serde_derive::{Deserialize, Serialize};
-use serde_with::{serde_as, DisplayFromStr};
-use shell_words::split;
+use serde_with::{serde_as, DisplayFromStr, OneOrMany};
 
 use crate::{
     backend::{decrypt::DecryptReadBackend, FileType, FindInBackend},
@@ -51,7 +51,7 @@ pub struct SnapshotOptions {
 
     /// Tags to add to snapshot (can be specified multiple times)
     #[cfg_attr(feature = "clap", clap(long, value_name = "TAG[,TAG,..]"))]
-    #[serde_as(as = "Vec<DisplayFromStr>")]
+    #[serde_as(as = "OneOrMany<DisplayFromStr>")]
     #[cfg_attr(feature = "merge", merge(strategy = merge::vec::overwrite_empty))]
     pub tag: Vec<StringList>,
 
@@ -385,7 +385,7 @@ impl SnapshotFile {
                     .collect::<Vec<_>>()
                     .join(" ")
             },
-            std::clone::Clone::clone,
+            Clone::clone,
         );
 
         let mut snap = Self {
@@ -550,10 +550,14 @@ impl SnapshotFile {
         p: &impl Progress,
     ) -> RusticResult<Vec<Self>> {
         let ids = be.find_ids(FileType::Snapshot, ids)?;
-        be.stream_list::<Self>(ids, p)?
+        let mut list: BTreeMap<_, _> =
+            be.stream_list::<Self>(&ids, p)?.into_iter().try_collect()?;
+        // sort back to original order
+        Ok(ids
             .into_iter()
-            .map_ok(Self::set_id)
-            .try_collect()
+            .filter_map(|id| list.remove_entry(&id))
+            .map(Self::set_id)
+            .collect())
     }
 
     /// Compare two [`SnapshotFile`]s by criteria from [`SnapshotGroupCriterion`].
@@ -566,7 +570,8 @@ impl SnapshotFile {
     /// # Returns
     ///
     /// The ordering of the two [`SnapshotFile`]s
-    fn cmp_group(&self, crit: SnapshotGroupCriterion, other: &Self) -> Ordering {
+    #[must_use]
+    pub fn cmp_group(&self, crit: SnapshotGroupCriterion, other: &Self) -> Ordering {
         if crit.hostname {
             self.hostname.cmp(&other.hostname)
         } else {
@@ -636,7 +641,7 @@ impl SnapshotFile {
         let mut result = Vec::new();
         for (group, snaps) in &snaps
             .into_iter()
-            .group_by(|sn| SnapshotGroup::from_snapshot(sn, crit))
+            .chunk_by(|sn| SnapshotGroup::from_snapshot(sn, crit))
         {
             result.push((group, snaps.collect()));
         }
@@ -673,7 +678,6 @@ impl SnapshotFile {
     pub fn add_tags(&mut self, tag_lists: Vec<StringList>) -> bool {
         let old_tags = self.tags.clone();
         self.tags.add_all(tag_lists);
-        self.tags.sort();
 
         old_tags != self.tags
     }
@@ -690,7 +694,6 @@ impl SnapshotFile {
     pub fn set_tags(&mut self, tag_lists: Vec<StringList>) -> bool {
         let old_tags = std::mem::take(&mut self.tags);
         self.tags.add_all(tag_lists);
-        self.tags.sort();
 
         old_tags != self.tags
     }
@@ -941,20 +944,18 @@ impl SnapshotGroup {
 
 /// `StringList` is a rustic-internal list of Strings. It is used within [`SnapshotFile`]
 #[derive(Serialize, Deserialize, Default, Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
-pub struct StringList(pub(crate) Vec<String>);
+pub struct StringList(pub(crate) BTreeSet<String>);
 
 impl FromStr for StringList {
     type Err = RusticError;
     fn from_str(s: &str) -> RusticResult<Self> {
-        Ok(Self(
-            s.split(',').map(std::string::ToString::to_string).collect(),
-        ))
+        Ok(Self(s.split(',').map(ToString::to_string).collect()))
     }
 }
 
 impl Display for StringList {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.0.join(","))?;
+        write!(f, "{}", self.0.iter().join(","))?;
         Ok(())
     }
 }
@@ -967,7 +968,7 @@ impl StringList {
     /// * `s` - The String to check
     #[must_use]
     pub fn contains(&self, s: &str) -> bool {
-        self.0.iter().any(|m| m == s)
+        self.0.contains(s)
     }
 
     /// Returns whether a [`StringList`] contains all Strings of another [`StringList`].
@@ -977,7 +978,7 @@ impl StringList {
     /// * `sl` - The [`StringList`] to check
     #[must_use]
     pub fn contains_all(&self, sl: &Self) -> bool {
-        sl.0.iter().all(|s| self.contains(s))
+        self.0.is_subset(&sl.0)
     }
 
     /// Returns whether a [`StringList`] matches a list of [`StringList`]s,
@@ -997,9 +998,7 @@ impl StringList {
     ///
     /// * `s` - The String to add
     pub fn add(&mut self, s: String) {
-        if !self.contains(&s) {
-            self.0.push(s);
-        }
+        _ = self.0.insert(s);
     }
 
     /// Add all Strings from another [`StringList`] to this [`StringList`].
@@ -1007,10 +1006,8 @@ impl StringList {
     /// # Arguments
     ///
     /// * `sl` - The [`StringList`] to add
-    pub fn add_list(&mut self, sl: Self) {
-        for s in sl.0 {
-            self.add(s);
-        }
+    pub fn add_list(&mut self, mut sl: Self) {
+        self.0.append(&mut sl.0);
     }
 
     /// Add all Strings from all given [`StringList`]s to this [`StringList`].
@@ -1044,7 +1041,7 @@ impl StringList {
                     .ok_or_else(|| SnapshotFileErrorKind::NonUnicodePath(p.as_ref().to_path_buf()))?
                     .to_string())
             })
-            .collect::<RusticResult<Vec<_>>>()?;
+            .collect::<RusticResult<BTreeSet<_>>>()?;
         Ok(())
     }
 
@@ -1054,33 +1051,34 @@ impl StringList {
     ///
     /// * `string_lists` - The [`StringList`]s to remove
     pub fn remove_all(&mut self, string_lists: &[Self]) {
-        self.0
-            .retain(|s| !string_lists.iter().any(|sl| sl.contains(s)));
+        for sl in string_lists {
+            self.0 = &self.0 - &sl.0;
+        }
     }
 
+    #[allow(clippy::needless_pass_by_ref_mut)]
+    #[deprecated(note = "StringLists are now automatically sorted")]
     /// Sort the Strings in the [`StringList`]
-    pub fn sort(&mut self) {
-        self.0.sort_unstable();
-    }
+    pub fn sort(&mut self) {}
 
     /// Format this [`StringList`] using newlines
     #[must_use]
     pub fn formatln(&self) -> String {
-        self.0.join("\n")
+        self.0.iter().join("\n")
     }
 
     /// Turn this [`StringList`] into an Iterator
-    pub fn iter(&self) -> std::slice::Iter<'_, String> {
+    pub fn iter(&self) -> impl Iterator<Item = &String> {
         self.0.iter()
     }
 }
 
 impl<'str> IntoIterator for &'str StringList {
     type Item = &'str String;
-    type IntoIter = std::slice::Iter<'str, String>;
+    type IntoIter = std::collections::btree_set::Iter<'str, String>;
 
     fn into_iter(self) -> Self::IntoIter {
-        self.iter()
+        self.0.iter()
     }
 }
 
@@ -1100,45 +1098,24 @@ impl Display for PathList {
     }
 }
 
-impl FromIterator<PathBuf> for PathList {
-    fn from_iter<I: IntoIterator<Item = PathBuf>>(iter: I) -> Self {
-        Self(iter.into_iter().collect())
-    }
-}
-
-impl<'a> FromIterator<&'a String> for PathList {
-    fn from_iter<I: IntoIterator<Item = &'a String>>(iter: I) -> Self {
-        Self(iter.into_iter().map(PathBuf::from).collect())
-    }
-}
-
-impl FromIterator<String> for PathList {
-    fn from_iter<I: IntoIterator<Item = String>>(iter: I) -> Self {
-        Self(iter.into_iter().map(PathBuf::from).collect())
-    }
-}
-
-impl<'a> FromIterator<&'a str> for PathList {
-    fn from_iter<I: IntoIterator<Item = &'a str>>(iter: I) -> Self {
-        Self(iter.into_iter().map(PathBuf::from).collect())
+impl<T: Into<PathBuf>> FromIterator<T> for PathList {
+    fn from_iter<I: IntoIterator<Item = T>>(iter: I) -> Self {
+        Self(iter.into_iter().map(T::into).collect())
     }
 }
 
 impl PathList {
-    /// Create a `PathList` by parsing a Strings containing paths separated by whitspaces.
+    /// Create a `PathList` from a String containing a single path
+    /// Note: for multiple paths, use `PathList::from_iter`.
     ///
     /// # Arguments
     ///
-    /// * `sources` - The String to parse
+    /// * `source` - The String to parse
     ///
     /// # Errors
-    ///
-    /// * [`SnapshotFileErrorKind::FromSplitError`] - If the parsing failed
-    ///
-    /// [`SnapshotFileErrorKind::FromSplitError`]: crate::error::SnapshotFileErrorKind::FromSplitError
-    pub fn from_string(sources: &str) -> RusticResult<Self> {
-        let sources = split(sources).map_err(SnapshotFileErrorKind::FromSplitError)?;
-        Ok(Self::from_iter(sources))
+    /// no errors can occur here
+    pub fn from_string(source: &str) -> RusticResult<Self> {
+        Ok(Self(vec![source.into()]))
     }
 
     /// Number of paths in the `PathList`.
@@ -1170,16 +1147,14 @@ impl PathList {
     /// [`SnapshotFileErrorKind::CanonicalizingPathFailed`]: crate::error::SnapshotFileErrorKind::CanonicalizingPathFailed
     pub fn sanitize(mut self) -> RusticResult<Self> {
         for path in &mut self.0 {
-            *path = path
-                .parse_dot()
-                .map_err(SnapshotFileErrorKind::RemovingDotsFromPathFailed)?
-                .to_path_buf();
+            *path = sanitize_dot(path)?;
         }
         if self.0.iter().any(|p| p.is_absolute()) {
-            for path in &mut self.0 {
-                *path =
-                    canonicalize(&path).map_err(SnapshotFileErrorKind::CanonicalizingPathFailed)?;
-            }
+            self.0 = self
+                .0
+                .into_iter()
+                .map(|p| canonicalize(p).map_err(SnapshotFileErrorKind::CanonicalizingPathFailed))
+                .collect::<Result<_, _>>()?;
         }
         Ok(self.merge())
     }
@@ -1203,5 +1178,71 @@ impl PathList {
         });
 
         Self(paths)
+    }
+}
+
+// helper function to sanitize paths containing dots
+fn sanitize_dot(path: &Path) -> RusticResult<PathBuf> {
+    if path == Path::new(".") || path == Path::new("./") {
+        return Ok(PathBuf::from("."));
+    }
+
+    let path = if path.starts_with("./") {
+        path.strip_prefix("./").unwrap()
+    } else {
+        path
+    };
+
+    let path = path
+        .parse_dot()
+        .map_err(SnapshotFileErrorKind::RemovingDotsFromPathFailed)?
+        .to_path_buf();
+
+    Ok(path)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use anyhow::Result;
+
+    use rstest::rstest;
+
+    #[rstest]
+    #[case(".", ".")]
+    #[case("./", ".")]
+    #[case("test", "test")]
+    #[case("test/", "test")]
+    #[case("./test", "test")]
+    #[case("./test/", "test")]
+    fn sanitize_dot_cases(#[case] input: &str, #[case] expected: &str) {
+        let path = Path::new(input);
+        let expected = PathBuf::from(expected);
+
+        assert_eq!(expected, sanitize_dot(path).unwrap());
+    }
+
+    #[rstest]
+    #[case("abc", vec!["abc".to_string()])]
+    #[case("abc,def", vec!["abc".to_string(), "def".to_string()])]
+    #[case("abc,abc", vec!["abc".to_string()])]
+    fn test_set_tags(#[case] tag: &str, #[case] expected: Vec<String>) -> Result<()> {
+        let mut snap = SnapshotFile::from_options(&SnapshotOptions::default())?;
+        let tags = StringList::from_str(tag)?;
+        let expected = StringList(expected.into_iter().collect());
+        assert!(snap.set_tags(vec![tags]));
+        assert_eq!(snap.tags, expected);
+        Ok(())
+    }
+
+    #[test]
+    fn test_add_tags() -> Result<()> {
+        let tag = vec![StringList::from_str("abc")?];
+        let mut snap = SnapshotFile::from_options(&SnapshotOptions::default().tag(tag))?;
+        let tags = StringList::from_str("def,abc")?;
+        assert!(snap.add_tags(vec![tags]));
+        let expected = StringList::from_str("abc,def")?;
+        assert_eq!(snap.tags, expected);
+        Ok(())
     }
 }

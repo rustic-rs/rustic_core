@@ -86,7 +86,10 @@ impl CheckOptions {
 
         if let Some(cache) = &cache {
             let p = pb.progress_spinner("cleaning up packs from cache...");
-            cache.remove_not_in_list(FileType::Pack, index_collector.tree_packs())?;
+            if let Err(err) = cache.remove_not_in_list(FileType::Pack, index_collector.tree_packs())
+            {
+                warn!("Error in cache backend removing pack files: {err}");
+            }
             p.finish();
 
             if !self.trust_cache {
