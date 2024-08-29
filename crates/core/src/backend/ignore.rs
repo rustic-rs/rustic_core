@@ -20,7 +20,7 @@ use log::warn;
 #[cfg(not(windows))]
 use nix::unistd::{Gid, Group, Uid, User};
 
-#[cfg(not(any(windows, target_os = "openbsd")))]
+#[cfg(not(windows))]
 use crate::backend::node::ExtendedAttribute;
 
 use crate::{

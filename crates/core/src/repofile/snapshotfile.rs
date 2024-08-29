@@ -978,7 +978,7 @@ impl StringList {
     /// * `sl` - The [`StringList`] to check
     #[must_use]
     pub fn contains_all(&self, sl: &Self) -> bool {
-        self.0.is_subset(&sl.0)
+        sl.0.is_subset(&self.0)
     }
 
     /// Returns whether a [`StringList`] matches a list of [`StringList`]s,
