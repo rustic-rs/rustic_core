@@ -25,6 +25,9 @@ use crate::{
     repofile::RepoFile,
 };
 
+#[cfg(feature = "clap")]
+use clap::ValueHint;
+
 /// Options for creating a new [`SnapshotFile`] structure for a new backup snapshot.
 ///
 /// This struct derives [`serde::Deserialize`] allowing to use it in config files.
@@ -62,7 +65,7 @@ pub struct SnapshotOptions {
     /// Add description to snapshot from file
     #[cfg_attr(
         feature = "clap",
-        clap(long, value_name = "FILE", conflicts_with = "description")
+        clap(long, value_name = "FILE", conflicts_with = "description", value_hint = ValueHint::FilePath)
     )]
     pub description_from: Option<PathBuf>,
 

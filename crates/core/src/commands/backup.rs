@@ -25,6 +25,9 @@ use crate::{
     repository::{IndexedIds, IndexedTree, Repository},
 };
 
+#[cfg(feature = "clap")]
+use clap::ValueHint;
+
 /// `backup` subcommand
 #[serde_as]
 #[cfg_attr(feature = "clap", derive(clap::Parser))]
@@ -133,13 +136,13 @@ pub struct BackupOptions {
     /// Set filename to be used when backing up from stdin
     #[cfg_attr(
         feature = "clap",
-        clap(long, value_name = "FILENAME", default_value = "stdin")
+        clap(long, value_name = "FILENAME", default_value = "stdin", value_hint = ValueHint::FilePath)
     )]
     #[cfg_attr(feature = "merge", merge(skip))]
     pub stdin_filename: String,
 
     /// Manually set backup path in snapshot
-    #[cfg_attr(feature = "clap", clap(long, value_name = "PATH"))]
+    #[cfg_attr(feature = "clap", clap(long, value_name = "PATH", value_hint = ValueHint::DirPath))]
     pub as_path: Option<PathBuf>,
 
     /// Don't scan the backup source for its size - this disables ETA estimation for backup.

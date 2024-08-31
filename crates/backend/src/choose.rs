@@ -22,6 +22,9 @@ use crate::rclone::RcloneBackend;
 #[cfg(feature = "rest")]
 use crate::rest::RestBackend;
 
+#[cfg(feature = "clap")]
+use clap::ValueHint;
+
 /// Options for a backend.
 #[cfg_attr(feature = "clap", derive(clap::Parser))]
 #[cfg_attr(feature = "merge", derive(merge::Merge))]
@@ -32,7 +35,7 @@ pub struct BackendOptions {
     /// Repository to use
     #[cfg_attr(
         feature = "clap",
-        clap(short, long, global = true, alias = "repo", env = "RUSTIC_REPOSITORY")
+        clap(short, long, global = true, alias = "repo", env = "RUSTIC_REPOSITORY", value_hint = ValueHint::DirPath)
     )]
     pub repository: Option<String>,
 

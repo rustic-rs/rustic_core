@@ -65,6 +65,9 @@ use crate::{
     RepositoryBackends, RusticResult,
 };
 
+#[cfg(feature = "clap")]
+use clap::ValueHint;
+
 mod constants {
     /// Estimated item capacity used for cache in [`FullIndex`](super::FullIndex)
     pub(super) const ESTIMATED_ITEM_CAPACITY: usize = 32;
@@ -101,7 +104,8 @@ pub struct RepositoryOptions {
             long,
             global = true,
             env = "RUSTIC_PASSWORD_FILE",
-            conflicts_with = "password"
+            conflicts_with = "password",
+            value_hint = ValueHint::FilePath,
         )
     )]
     pub password_file: Option<PathBuf>,
@@ -132,7 +136,8 @@ pub struct RepositoryOptions {
             long,
             global = true,
             conflicts_with = "no_cache",
-            env = "RUSTIC_CACHE_DIR"
+            env = "RUSTIC_CACHE_DIR",
+            value_hint = ValueHint::DirPath,
         )
     )]
     pub cache_dir: Option<PathBuf>,
