@@ -3,11 +3,14 @@ use bytesize::ByteSize;
 use derive_setters::Setters;
 
 use crate::{
-    backend::decrypt::{DecryptBackend, DecryptWriteBackend},
+    backend::decrypt::{
+        AsyncDecryptBackend, AsyncDecryptWriteBackend, DecryptBackend, DecryptWriteBackend,
+    },
     crypto::CryptoKey,
     error::{CommandErrorKind, RusticResult},
     repofile::ConfigFile,
     repository::{Open, Repository},
+    AsyncRepository,
 };
 
 /// Apply the [`ConfigOptions`] to a given [`ConfigFile`]
@@ -95,6 +98,25 @@ pub(crate) fn save_config<P, S>(
         let dbe = DecryptBackend::new(hot_be, key);
         new_config.is_hot = Some(true);
         _ = dbe.save_file_uncompressed(&new_config)?;
+    }
+    Ok(())
+}
+
+pub(crate) async fn save_config_async<P, S>(
+    repo: &AsyncRepository<P, S>,
+    mut new_config: ConfigFile,
+    key: impl CryptoKey,
+) -> RusticResult<()> {
+    new_config.is_hot = None;
+    let dbe = AsyncDecryptBackend::new(repo.be.clone(), key);
+    // for hot/cold backend, this only saves the config to the cold repo.
+    _ = dbe.save_file_uncompressed(&new_config).await?;
+
+    if let Some(hot_be) = repo.be_hot.clone() {
+        // save config to hot repo
+        let dbe = AsyncDecryptBackend::new(hot_be, key);
+        new_config.is_hot = Some(true);
+        _ = dbe.save_file_uncompressed(&new_config).await?;
     }
     Ok(())
 }

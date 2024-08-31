@@ -18,7 +18,10 @@ use serde_derive::{Deserialize, Serialize};
 use serde_with::{serde_as, DisplayFromStr, OneOrMany};
 
 use crate::{
-    backend::{decrypt::DecryptReadBackend, FileType, FindInBackend},
+    backend::{
+        decrypt::{AsyncDecryptReadBackend, DecryptReadBackend},
+        AsyncFindInBackend, FileType, FindInBackend,
+    },
     error::{RusticError, RusticResult, SnapshotFileErrorKind},
     id::Id,
     progress::Progress,
@@ -436,6 +439,10 @@ impl SnapshotFile {
         Ok(Self::set_id((*id, be.get_file(id)?)))
     }
 
+    async fn from_backend_async<B: AsyncDecryptReadBackend>(be: &B, id: &Id) -> RusticResult<Self> {
+        Ok(Self::set_id((*id, be.get_file(id).await?)))
+    }
+
     /// Get a [`SnapshotFile`] from the backend by (part of the) Id
     ///
     /// # Arguments
@@ -463,6 +470,18 @@ impl SnapshotFile {
         match string {
             "latest" => Self::latest(be, predicate, p),
             _ => Self::from_id(be, string),
+        }
+    }
+
+    pub(crate) async fn from_str_async<B: AsyncDecryptReadBackend>(
+        be: &B,
+        string: &str,
+        predicate: impl FnMut(&Self) -> bool + Send + Sync,
+        p: &impl Progress,
+    ) -> RusticResult<Self> {
+        match string {
+            "latest" => Self::latest_async(be, predicate, p).await,
+            _ => Self::from_id_async(be, string).await,
         }
     }
 
@@ -506,6 +525,33 @@ impl SnapshotFile {
         latest.ok_or_else(|| SnapshotFileErrorKind::NoSnapshotsFound.into())
     }
 
+    pub(crate) async fn latest_async<B: AsyncDecryptReadBackend>(
+        be: &B,
+        predicate: impl FnMut(&Self) -> bool + Send + Sync,
+        p: &impl Progress,
+    ) -> RusticResult<Self> {
+        p.set_title("getting latest snapshot...");
+        let mut latest: Option<Self> = None;
+        let mut pred = predicate;
+
+        for snap in be.stream_all::<Self>(p).await? {
+            let (id, mut snap) = snap?;
+            if !pred(&snap) {
+                continue;
+            }
+
+            snap.id = id;
+            match &latest {
+                Some(l) if l.time > snap.time => {}
+                _ => {
+                    latest = Some(snap);
+                }
+            }
+        }
+        p.finish();
+        latest.ok_or_else(|| SnapshotFileErrorKind::NoSnapshotsFound.into())
+    }
+
     /// Get a [`SnapshotFile`] from the backend by (part of the) id
     ///
     /// # Arguments
@@ -525,6 +571,15 @@ impl SnapshotFile {
         info!("getting snapshot...");
         let id = be.find_id(FileType::Snapshot, id)?;
         Self::from_backend(be, &id)
+    }
+
+    pub(crate) async fn from_id_async<B: AsyncDecryptReadBackend>(
+        be: &B,
+        id: &str,
+    ) -> RusticResult<Self> {
+        info!("getting snapshot...");
+        let id = be.find_id(FileType::Snapshot, id).await?;
+        Self::from_backend_async(be, &id).await
     }
 
     /// Get a list of [`SnapshotFile`]s from the backend by supplying a list of/parts of their Ids
@@ -552,6 +607,25 @@ impl SnapshotFile {
         let ids = be.find_ids(FileType::Snapshot, ids)?;
         let mut list: BTreeMap<_, _> =
             be.stream_list::<Self>(&ids, p)?.into_iter().try_collect()?;
+        // sort back to original order
+        Ok(ids
+            .into_iter()
+            .filter_map(|id| list.remove_entry(&id))
+            .map(Self::set_id)
+            .collect())
+    }
+
+    pub(crate) async fn from_ids_async<B: AsyncDecryptReadBackend, T: AsRef<str> + Send + Sync>(
+        be: &B,
+        ids: &[T],
+        p: &impl Progress,
+    ) -> RusticResult<Vec<Self>> {
+        let ids = be.find_ids(FileType::Snapshot, ids).await?;
+        let mut list: BTreeMap<_, _> = be
+            .stream_list::<Self>(&ids, p)
+            .await?
+            .into_iter()
+            .try_collect()?;
         // sort back to original order
         Ok(ids
             .into_iter()
@@ -649,6 +723,30 @@ impl SnapshotFile {
         Ok(result)
     }
 
+    pub(crate) async fn group_from_backend_async<B, F>(
+        be: &B,
+        filter: F,
+        crit: SnapshotGroupCriterion,
+        p: &impl Progress,
+    ) -> RusticResult<Vec<(SnapshotGroup, Vec<Self>)>>
+    where
+        B: AsyncDecryptReadBackend,
+        F: FnMut(&Self) -> bool,
+    {
+        let mut snaps = Self::all_from_backend_async(be, filter, p).await?;
+        snaps.sort_unstable_by(|sn1, sn2| sn1.cmp_group(crit, sn2));
+
+        let mut result = Vec::new();
+        for (group, snaps) in &snaps
+            .into_iter()
+            .chunk_by(|sn| SnapshotGroup::from_snapshot(sn, crit))
+        {
+            result.push((group, snaps.collect()));
+        }
+
+        Ok(result)
+    }
+
     // TODO: add documentation!
     pub(crate) fn all_from_backend<B, F>(
         be: &B,
@@ -660,6 +758,23 @@ impl SnapshotFile {
         F: FnMut(&Self) -> bool,
     {
         be.stream_all::<Self>(p)?
+            .into_iter()
+            .map_ok(Self::set_id)
+            .filter_ok(filter)
+            .try_collect()
+    }
+
+    pub(crate) async fn all_from_backend_async<B, F>(
+        be: &B,
+        filter: F,
+        p: &impl Progress,
+    ) -> RusticResult<Vec<Self>>
+    where
+        B: AsyncDecryptReadBackend,
+        F: FnMut(&Self) -> bool,
+    {
+        be.stream_all::<Self>(p)
+            .await?
             .into_iter()
             .map_ok(Self::set_id)
             .filter_ok(filter)

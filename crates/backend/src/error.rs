@@ -7,6 +7,8 @@ use thiserror::Error;
 /// [`BackendAccessErrorKind`] describes the errors that can be returned by the various Backends
 #[derive(Error, Debug, Display)]
 pub enum BackendAccessErrorKind {
+    /// no async variant implemented for backend {0:1}
+    BackendNoAsync(String),
     /// backend {0:?} is not supported!
     BackendNotSupported(String),
     /// backend {0} cannot be loaded: {1:?}

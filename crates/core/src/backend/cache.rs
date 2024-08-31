@@ -7,6 +7,7 @@ use std::{
 };
 
 use anyhow::Result;
+use async_trait::async_trait;
 use bytes::Bytes;
 use dirs::cache_dir;
 use log::{trace, warn};
@@ -17,6 +18,8 @@ use crate::{
     error::{CacheBackendErrorKind, RusticResult},
     id::Id,
 };
+
+use super::{AsyncReadBackend, AsyncWriteBackend};
 
 /// Backend that caches data.
 ///
@@ -34,6 +37,14 @@ pub struct CachedBackend {
     cache: Cache,
 }
 
+pub struct AsyncCachedBackend {
+    /// The backend to cache.
+    be: Arc<dyn AsyncWriteBackend>,
+    // TODO - AsyncCache
+    /// The cache.
+    cache: Cache,
+}
+
 impl CachedBackend {
     /// Create a new [`CachedBackend`] from a given backend.
     ///
@@ -41,6 +52,17 @@ impl CachedBackend {
     ///
     /// * `BE` - The backend to cache.
     pub fn new_cache(be: Arc<dyn WriteBackend>, cache: Cache) -> Arc<dyn WriteBackend> {
+        Arc::new(Self { be, cache })
+    }
+}
+
+impl AsyncCachedBackend {
+    /// Create a new [`CachedBackend`] from a given backend.
+    ///
+    /// # Type Parameters
+    ///
+    /// * `BE` - The backend to cache.
+    pub fn new_cache(be: Arc<dyn AsyncWriteBackend>, cache: Cache) -> Arc<dyn AsyncWriteBackend> {
         Arc::new(Self { be, cache })
     }
 }
@@ -168,6 +190,132 @@ impl ReadBackend for CachedBackend {
     }
 }
 
+#[async_trait]
+impl AsyncReadBackend for AsyncCachedBackend {
+    /// Returns the location of the backend as a String.
+    fn location(&self) -> String {
+        self.be.location()
+    }
+
+    /// Lists all files with their size of the given type.
+    ///
+    /// # Arguments
+    ///
+    /// * `tpe` - The type of the files to list.
+    ///
+    /// # Errors
+    ///
+    /// If the backend does not support listing files.
+    ///
+    /// # Returns
+    ///
+    /// A vector of tuples containing the id and size of the files.
+    async fn list_with_size(&self, tpe: FileType) -> Result<Vec<(Id, u32)>> {
+        let list = self.be.list_with_size(tpe).await?;
+
+        if tpe.is_cacheable() {
+            if let Err(err) = self.cache.remove_not_in_list(tpe, &list) {
+                warn!("Error in cache backend removing files {tpe:?}: {err}");
+            }
+        }
+
+        Ok(list)
+    }
+
+    /// Reads full data of the given file.
+    ///
+    /// # Arguments
+    ///
+    /// * `tpe` - The type of the file.
+    /// * `id` - The id of the file.
+    ///
+    /// # Errors
+    ///
+    /// * [`CacheBackendErrorKind::FromIoError`] - If the file could not be read.
+    ///
+    /// # Returns
+    ///
+    /// The data read.
+    ///
+    /// [`CacheBackendErrorKind::FromIoError`]: crate::error::CacheBackendErrorKind::FromIoError
+    async fn read_full(&self, tpe: FileType, id: &Id) -> Result<Bytes> {
+        if tpe.is_cacheable() {
+            match self.cache.read_full(tpe, id) {
+                Ok(Some(data)) => return Ok(data),
+                Ok(None) => {}
+                Err(err) => warn!("Error in cache backend reading {tpe:?},{id}: {err}"),
+            }
+            let res = self.be.read_full(tpe, id).await;
+            if let Ok(data) = &res {
+                if let Err(err) = self.cache.write_bytes(tpe, id, data) {
+                    warn!("Error in cache backend writing {tpe:?},{id}: {err}");
+                }
+            }
+            res
+        } else {
+            self.be.read_full(tpe, id).await
+        }
+    }
+
+    /// Reads partial data of the given file.
+    ///
+    /// # Arguments
+    ///
+    /// * `tpe` - The type of the file.
+    /// * `id` - The id of the file.
+    /// * `cacheable` - Whether the file is cacheable.
+    /// * `offset` - The offset to read from.
+    /// * `length` - The length to read.
+    ///
+    /// # Errors
+    ///
+    /// * [`CacheBackendErrorKind::FromIoError`] - If the file could not be read.
+    ///
+    /// # Returns
+    ///
+    /// The data read.
+    ///
+    /// [`CacheBackendErrorKind::FromIoError`]: crate::error::CacheBackendErrorKind::FromIoError
+    async fn read_partial(
+        &self,
+        tpe: FileType,
+        id: &Id,
+        cacheable: bool,
+        offset: u32,
+        length: u32,
+    ) -> Result<Bytes> {
+        if cacheable || tpe.is_cacheable() {
+            match self.cache.read_partial(tpe, id, offset, length) {
+                Ok(Some(data)) => return Ok(data),
+                Ok(None) => {}
+                Err(err) => warn!("Error in cache backend reading {tpe:?},{id}: {err}"),
+            };
+            // read full file, save to cache and return partial content
+            match self.be.read_full(tpe, id).await {
+                Ok(data) => {
+                    let range = offset as usize..(offset + length) as usize;
+                    if let Err(err) = self.cache.write_bytes(tpe, id, &data) {
+                        warn!("Error in cache backend writing {tpe:?},{id}: {err}");
+                    }
+                    Ok(Bytes::copy_from_slice(&data.slice(range)))
+                }
+                error => error,
+            }
+        } else {
+            self.be
+                .read_partial(tpe, id, cacheable, offset, length)
+                .await
+        }
+    }
+    async fn needs_warm_up(&self) -> bool {
+        self.be.needs_warm_up().await
+    }
+
+    async fn warm_up(&self, tpe: FileType, id: &Id) -> Result<()> {
+        self.be.warm_up(tpe, id).await
+    }
+}
+
 impl WriteBackend for CachedBackend {
     /// Creates the backend.
     fn create(&self) -> Result<()> {
@@ -208,6 +356,50 @@ impl WriteBackend for CachedBackend {
             }
         }
         self.be.remove(tpe, id, cacheable)
+    }
+}
+
+#[async_trait]
+impl AsyncWriteBackend for AsyncCachedBackend {
+    /// Creates the backend.
+    async fn create(&self) -> Result<()> {
+        self.be.create().await
+    }
+
+    /// Writes the given data to the given file.
+    ///
+    /// If the file is cacheable, it will also be written to the cache.
+    ///
+    /// # Arguments
+    ///
+    /// * `tpe` - The type of the file.
+    /// * `id` - The id of the file.
+    /// * `cacheable` - Whether the file is cacheable.
+    /// * `buf` - The data to write.
+    async fn write_bytes(&self, tpe: FileType, id: &Id, cacheable: bool, buf: Bytes) -> Result<()> {
+        if cacheable || tpe.is_cacheable() {
+            if let Err(err) = self.cache.write_bytes(tpe, id, &buf) {
+                warn!("Error in cache backend writing {tpe:?},{id}: {err}");
+            }
+        }
+        self.be.write_bytes(tpe, id, cacheable, buf).await
+    }
+
+    /// Removes the given file.
+    ///
+    /// If the file is cacheable, it will also be removed from the cache.
+    ///
+    /// # Arguments
+    ///
+    /// * `tpe` - The type of the file.
+    /// * `id` - The id of the file.
+    async fn remove(&self, tpe: FileType, id: &Id, cacheable: bool) -> Result<()> {
+        if cacheable || tpe.is_cacheable() {
+            if let Err(err) = self.cache.remove(tpe, id) {
+                warn!("Error in cache backend removing {tpe:?},{id}: {err}");
+            }
+        }
+        self.be.remove(tpe, id, cacheable).await
     }
 }
 
