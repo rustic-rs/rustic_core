@@ -8,6 +8,7 @@ use crate::{
     id::Id,
     repofile::KeyFile,
     repository::{Open, Repository},
+    AsyncRepository,
 };
 
 #[cfg_attr(feature = "clap", derive(clap::Parser))]
@@ -84,6 +85,16 @@ impl KeyOptions {
         Ok((key, self.add(repo, pass, key)?))
     }
 
+    pub(crate) async fn init_key_async<P, S>(
+        &self,
+        repo: &AsyncRepository<P, S>,
+        pass: &str,
+    ) -> RusticResult<(Key, Id)> {
+        // generate key
+        let key = Key::new();
+        Ok((key, self.add_async(repo, pass, key).await?))
+    }
+
     /// Add a key to the repository.
     ///
     /// # Arguments
@@ -109,6 +120,24 @@ impl KeyOptions {
         let id = hash(&data);
         repo.be
             .write_bytes(FileType::Key, &id, false, data.into())
+            .map_err(RusticErrorKind::Backend)?;
+        Ok(id)
+    }
+
+    async fn add_async<P, S>(
+        &self,
+        repo: &AsyncRepository<P, S>,
+        pass: &str,
+        key: Key,
+    ) -> RusticResult<Id> {
+        let ko = self.clone();
+        let keyfile = KeyFile::generate(key, &pass, ko.hostname, ko.username, ko.with_created)?;
+
+        let data = serde_json::to_vec(&keyfile).map_err(CommandErrorKind::FromJsonError)?;
+        let id = hash(&data);
+        repo.be
+            .write_bytes(FileType::Key, &id, false, data.into())
+            .await
             .map_err(RusticErrorKind::Backend)?;
         Ok(id)
     }

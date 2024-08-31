@@ -19,12 +19,15 @@ use serde_with::{serde_as, DisplayFromStr, OneOrMany};
 
 use crate::{
     backend::{
-        cache::{Cache, CachedBackend},
-        decrypt::{DecryptBackend, DecryptReadBackend, DecryptWriteBackend},
-        hotcold::HotColdBackend,
+        cache::{AsyncCachedBackend, Cache, CachedBackend},
+        decrypt::{
+            AsyncDecryptBackend, AsyncDecryptReadBackend, AsyncDecryptWriteBackend, DecryptBackend,
+            DecryptReadBackend, DecryptWriteBackend,
+        },
+        hotcold::{AsyncHotColdBackend, HotColdBackend},
         local_destination::LocalDestination,
         node::Node,
-        warm_up::WarmUpAccessBackend,
+        warm_up::{AsyncWarmUpAccessBackend, WarmUpAccessBackend},
         FileType, ReadBackend, WriteBackend,
     },
     blob::{
@@ -56,13 +59,13 @@ use crate::{
     },
     progress::{NoProgressBars, Progress, ProgressBars},
     repofile::{
-        keyfile::find_key_in_backend,
+        keyfile::{find_key_in_async_backend, find_key_in_backend},
         snapshotfile::{SnapshotGroup, SnapshotGroupCriterion},
         ConfigFile, PathList, RepoFile, SnapshotFile, SnapshotSummary, Tree,
     },
-    repository::{warm_up::warm_up, warm_up::warm_up_wait},
+    repository::warm_up::{warm_up, warm_up_wait},
     vfs::OpenFile,
-    RepositoryBackends, RusticResult,
+    AsyncRepositoryBackends, AsyncWriteBackend, RepositoryBackends, RusticResult,
 };
 
 mod constants {
@@ -284,6 +287,27 @@ pub struct Repository<P, S> {
     status: S,
 }
 
+#[derive(Debug, Clone)]
+pub struct AsyncRepository<P, S> {
+    /// The name of the repository
+    pub name: String,
+
+    /// The `HotColdBackend` to use for this repository
+    pub(crate) be: Arc<dyn AsyncWriteBackend>,
+
+    /// The Backend to use for hot files
+    pub(crate) be_hot: Option<Arc<dyn AsyncWriteBackend>>,
+
+    /// The options used for this repository
+    opts: RepositoryOptions,
+
+    /// The progress bar to use
+    pub(crate) pb: P,
+
+    /// The status
+    status: S,
+}
+
 impl Repository<NoProgressBars, ()> {
     /// Create a new repository from the given [`RepositoryOptions`] (without progress bars)
     ///
@@ -300,6 +324,12 @@ impl Repository<NoProgressBars, ()> {
     ///
     /// [`BackendAccessErrorKind::BackendLoadError`]: crate::error::BackendAccessErrorKind::BackendLoadError
     pub fn new(opts: &RepositoryOptions, backends: &RepositoryBackends) -> RusticResult<Self> {
+        Self::new_with_progress(opts, backends, NoProgressBars {})
+    }
+}
+
+impl AsyncRepository<NoProgressBars, ()> {
+    pub fn new(opts: &RepositoryOptions, backends: &AsyncRepositoryBackends) -> RusticResult<Self> {
         Self::new_with_progress(opts, backends, NoProgressBars {})
     }
 }
@@ -348,6 +378,44 @@ impl<P> Repository<P, ()> {
         let mut name = be.location();
         if let Some(be_hot) = &be_hot {
             be = Arc::new(HotColdBackend::new(be, be_hot.clone()));
+            name.push('#');
+            name.push_str(&be_hot.location());
+        }
+
+        Ok(Self {
+            name,
+            be,
+            be_hot,
+            opts: opts.clone(),
+            pb,
+            status: (),
+        })
+    }
+}
+
+impl<P> AsyncRepository<P, ()> {
+    pub fn new_with_progress(
+        opts: &RepositoryOptions,
+        backends: &AsyncRepositoryBackends,
+        pb: P,
+    ) -> RusticResult<Self> {
+        let mut be = backends.repository();
+        let be_hot = backends.repo_hot();
+
+        if !opts.warm_up_command.is_empty() {
+            if opts.warm_up_command.iter().all(|c| !c.contains("%id")) {
+                return Err(RepositoryErrorKind::NoIDSpecified.into());
+            }
+            info!("using warm-up command {:?}", opts.warm_up_command);
+        }
+
+        if opts.warm_up {
+            be = AsyncWarmUpAccessBackend::new_warm_up(be);
+        }
+
+        let mut name = be.location();
+        if let Some(be_hot) = &be_hot {
+            be = Arc::new(AsyncHotColdBackend::new(be, be_hot.clone()));
             name.push('#');
             name.push_str(&be_hot.location());
         }
@@ -687,6 +755,325 @@ impl<P, S> Repository<P, S> {
     }
 }
 
+impl<P, S> AsyncRepository<P, S> {
+    pub fn password(&self) -> RusticResult<Option<String>> {
+        self.opts.evaluate_password()
+    }
+
+    /// Returns the Id of the config file
+    ///
+    /// # Errors
+    ///
+    /// * [`RepositoryErrorKind::ListingRepositoryConfigFileFailed`] - If listing the repository config file failed
+    /// * [`RepositoryErrorKind::MoreThanOneRepositoryConfig`] - If there is more than one repository config file
+    ///
+    /// # Returns
+    ///
+    /// The id of the config file or `None` if no config file is found
+    ///
+    /// [`RepositoryErrorKind::ListingRepositoryConfigFileFailed`]: crate::error::RepositoryErrorKind::ListingRepositoryConfigFileFailed
+    /// [`RepositoryErrorKind::MoreThanOneRepositoryConfig`]: crate::error::RepositoryErrorKind::MoreThanOneRepositoryConfig
+    pub async fn config_id(&self) -> RusticResult<Option<Id>> {
+        let config_ids = self
+            .be
+            .list(FileType::Config)
+            .await
+            .map_err(|_| RepositoryErrorKind::ListingRepositoryConfigFileFailed)?;
+
+        match config_ids.len() {
+            1 => Ok(Some(config_ids[0])),
+            0 => Ok(None),
+            _ => Err(RepositoryErrorKind::MoreThanOneRepositoryConfig(self.name.clone()).into()),
+        }
+    }
+
+    /// Open the repository.
+    ///
+    /// This gets the decryption key and reads the config file
+    ///
+    /// # Errors
+    ///
+    /// * [`RepositoryErrorKind::NoPasswordGiven`] - If no password is given
+    /// * [`RepositoryErrorKind::ReadingPasswordFromReaderFailed`] - If reading the password failed
+    /// * [`RepositoryErrorKind::OpeningPasswordFileFailed`] - If opening the password file failed
+    /// * [`RepositoryErrorKind::PasswordCommandParsingFailed`] - If parsing the password command failed
+    /// * [`RepositoryErrorKind::ReadingPasswordFromCommandFailed`] - If reading the password from the command failed
+    /// * [`RepositoryErrorKind::FromSplitError`] - If splitting the password command failed
+    /// * [`RepositoryErrorKind::NoRepositoryConfigFound`] - If no repository config file is found
+    /// * [`RepositoryErrorKind::KeysDontMatchForRepositories`] - If the keys of the hot and cold backend don't match
+    /// * [`RepositoryErrorKind::IncorrectPassword`] - If the password is incorrect
+    /// * [`KeyFileErrorKind::NoSuitableKeyFound`] - If no suitable key is found
+    /// * [`RepositoryErrorKind::ListingRepositoryConfigFileFailed`] - If listing the repository config file failed
+    /// * [`RepositoryErrorKind::MoreThanOneRepositoryConfig`] - If there is more than one repository config file
+    ///
+    /// # Returns
+    ///
+    /// The open repository
+    ///
+    /// [`RepositoryErrorKind::NoPasswordGiven`]: crate::error::RepositoryErrorKind::NoPasswordGiven
+    /// [`RepositoryErrorKind::ReadingPasswordFromReaderFailed`]: crate::error::RepositoryErrorKind::ReadingPasswordFromReaderFailed
+    /// [`RepositoryErrorKind::OpeningPasswordFileFailed`]: crate::error::RepositoryErrorKind::OpeningPasswordFileFailed
+    /// [`RepositoryErrorKind::PasswordCommandParsingFailed`]: crate::error::RepositoryErrorKind::PasswordCommandParsingFailed
+    /// [`RepositoryErrorKind::ReadingPasswordFromCommandFailed`]: crate::error::RepositoryErrorKind::ReadingPasswordFromCommandFailed
+    /// [`RepositoryErrorKind::FromSplitError`]: crate::error::RepositoryErrorKind::FromSplitError
+    /// [`RepositoryErrorKind::NoRepositoryConfigFound`]: crate::error::RepositoryErrorKind::NoRepositoryConfigFound
+    /// [`RepositoryErrorKind::KeysDontMatchForRepositories`]: crate::error::RepositoryErrorKind::KeysDontMatchForRepositories
+    /// [`RepositoryErrorKind::IncorrectPassword`]: crate::error::RepositoryErrorKind::IncorrectPassword
+    /// [`KeyFileErrorKind::NoSuitableKeyFound`]: crate::error::KeyFileErrorKind::NoSuitableKeyFound
+    /// [`RepositoryErrorKind::ListingRepositoryConfigFileFailed`]: crate::error::RepositoryErrorKind::ListingRepositoryConfigFileFailed
+    /// [`RepositoryErrorKind::MoreThanOneRepositoryConfig`]: crate::error::RepositoryErrorKind::MoreThanOneRepositoryConfig
+    pub async fn open(self) -> RusticResult<AsyncRepository<P, AsyncOpenStatus>> {
+        let password = self
+            .password()?
+            .ok_or(RepositoryErrorKind::NoPasswordGiven)?;
+        self.open_with_password(&password).await
+    }
+
+    /// Open the repository with a given password.
+    ///
+    /// This gets the decryption key and reads the config file
+    ///
+    /// # Arguments
+    ///
+    /// * `password` - The password to use
+    ///
+    /// # Errors
+    ///
+    /// * [`RepositoryErrorKind::NoRepositoryConfigFound`] - If no repository config file is found
+    /// * [`RepositoryErrorKind::KeysDontMatchForRepositories`] - If the keys of the hot and cold backend don't match
+    /// * [`RepositoryErrorKind::IncorrectPassword`] - If the password is incorrect
+    /// * [`KeyFileErrorKind::NoSuitableKeyFound`] - If no suitable key is found
+    /// * [`RepositoryErrorKind::ListingRepositoryConfigFileFailed`] - If listing the repository config file failed
+    /// * [`RepositoryErrorKind::MoreThanOneRepositoryConfig`] - If there is more than one repository config file
+    ///
+    /// [`RepositoryErrorKind::NoRepositoryConfigFound`]: crate::error::RepositoryErrorKind::NoRepositoryConfigFound
+    /// [`RepositoryErrorKind::KeysDontMatchForRepositories`]: crate::error::RepositoryErrorKind::KeysDontMatchForRepositories
+    /// [`RepositoryErrorKind::IncorrectPassword`]: crate::error::RepositoryErrorKind::IncorrectPassword
+    /// [`KeyFileErrorKind::NoSuitableKeyFound`]: crate::error::KeyFileErrorKind::NoSuitableKeyFound
+    /// [`RepositoryErrorKind::ListingRepositoryConfigFileFailed`]: crate::error::RepositoryErrorKind::ListingRepositoryConfigFileFailed
+    /// [`RepositoryErrorKind::MoreThanOneRepositoryConfig`]: crate::error::RepositoryErrorKind::MoreThanOneRepositoryConfig
+    pub async fn open_with_password(
+        self,
+        password: &str,
+    ) -> RusticResult<AsyncRepository<P, AsyncOpenStatus>> {
+        let config_id =
+            self.config_id()
+                .await?
+                .ok_or(RepositoryErrorKind::NoRepositoryConfigFound(
+                    self.name.clone(),
+                ))?;
+
+        if let Some(be_hot) = &self.be_hot {
+            let mut keys = self
+                .be
+                .list_with_size(FileType::Key)
+                .await
+                .map_err(RusticErrorKind::Backend)?;
+            keys.sort_unstable_by_key(|key| key.0);
+            let mut hot_keys = be_hot
+                .list_with_size(FileType::Key)
+                .await
+                .map_err(RusticErrorKind::Backend)?;
+            hot_keys.sort_unstable_by_key(|key| key.0);
+            if keys != hot_keys {
+                return Err(RepositoryErrorKind::KeysDontMatchForRepositories(self.name).into());
+            }
+        }
+
+        let key = find_key_in_async_backend(&self.be, &password, None)
+            .await
+            .map_err(|err| match err.into_inner() {
+                RusticErrorKind::KeyFile(KeyFileErrorKind::NoSuitableKeyFound) => {
+                    RepositoryErrorKind::IncorrectPassword.into()
+                }
+                err => err,
+            })?;
+        info!("repository {}: password is correct.", self.name);
+        let dbe = AsyncDecryptBackend::new(self.be.clone(), key);
+        let config: ConfigFile = dbe.get_file(&config_id).await?;
+        self.open_raw(key, config)
+    }
+
+    /// Initialize a new repository with given options using the password defined in `RepositoryOptions`
+    ///
+    /// This returns an open repository which can be directly used.
+    ///
+    /// # Type Parameters
+    ///
+    /// * `P` - The type of the progress bar
+    ///
+    /// # Arguments
+    ///
+    /// * `key_opts` - The options to use for the key
+    /// * `config_opts` - The options to use for the config
+    ///
+    /// # Errors
+    ///
+    /// * [`RepositoryErrorKind::NoPasswordGiven`] - If no password is given
+    /// * [`RepositoryErrorKind::ReadingPasswordFromReaderFailed`] - If reading the password failed
+    /// * [`RepositoryErrorKind::OpeningPasswordFileFailed`] - If opening the password file failed
+    /// * [`RepositoryErrorKind::PasswordCommandParsingFailed`] - If parsing the password command failed
+    /// * [`RepositoryErrorKind::ReadingPasswordFromCommandFailed`] - If reading the password from the command failed
+    /// * [`RepositoryErrorKind::FromSplitError`] - If splitting the password command failed
+    ///
+    /// [`RepositoryErrorKind::NoPasswordGiven`]: crate::error::RepositoryErrorKind::NoPasswordGiven
+    /// [`RepositoryErrorKind::ReadingPasswordFromReaderFailed`]: crate::error::RepositoryErrorKind::ReadingPasswordFromReaderFailed
+    /// [`RepositoryErrorKind::OpeningPasswordFileFailed`]: crate::error::RepositoryErrorKind::OpeningPasswordFileFailed
+    /// [`RepositoryErrorKind::PasswordCommandParsingFailed`]: crate::error::RepositoryErrorKind::PasswordCommandParsingFailed
+    /// [`RepositoryErrorKind::ReadingPasswordFromCommandFailed`]: crate::error::RepositoryErrorKind::ReadingPasswordFromCommandFailed
+    /// [`RepositoryErrorKind::FromSplitError`]: crate::error::RepositoryErrorKind::FromSplitError
+    pub async fn init(
+        self,
+        key_opts: &KeyOptions,
+        config_opts: &ConfigOptions,
+    ) -> RusticResult<AsyncRepository<P, AsyncOpenStatus>> {
+        let password = self
+            .password()?
+            .ok_or(RepositoryErrorKind::NoPasswordGiven)?;
+        self.init_with_password(&password, key_opts, config_opts)
+            .await
+    }
+
+    /// Initialize a new repository with given password and options.
+    ///
+    /// This returns an open repository which can be directly used.
+    ///
+    /// # Type Parameters
+    ///
+    /// * `P` - The type of the progress bar
+    ///
+    /// # Arguments
+    ///
+    /// * `pass` - The password to use
+    /// * `key_opts` - The options to use for the key
+    /// * `config_opts` - The options to use for the config
+    ///
+    /// # Errors
+    ///
+    /// * [`RepositoryErrorKind::ConfigFileExists`] - If a config file already exists
+    /// * [`RepositoryErrorKind::ListingRepositoryConfigFileFailed`] - If listing the repository config file failed
+    /// * [`RepositoryErrorKind::MoreThanOneRepositoryConfig`] - If there is more than one repository config file
+    ///
+    /// [`RepositoryErrorKind::ConfigFileExists`]: crate::error::RepositoryErrorKind::ConfigFileExists
+    /// [`RepositoryErrorKind::ListingRepositoryConfigFileFailed`]: crate::error::RepositoryErrorKind::ListingRepositoryConfigFileFailed
+    /// [`RepositoryErrorKind::MoreThanOneRepositoryConfig`]: crate::error::RepositoryErrorKind::MoreThanOneRepositoryConfig
+    pub async fn init_with_password(
+        self,
+        pass: &str,
+        key_opts: &KeyOptions,
+        config_opts: &ConfigOptions,
+    ) -> RusticResult<AsyncRepository<P, AsyncOpenStatus>> {
+        if self.config_id().await?.is_some() {
+            return Err(RepositoryErrorKind::ConfigFileExists.into());
+        }
+        let (key, config) = commands::init::init_async(&self, pass, key_opts, config_opts).await?;
+        self.open_raw(key, config)
+    }
+
+    /// Initialize a new repository with given password and a ready [`ConfigFile`].
+    ///
+    /// This returns an open repository which can be directly used.
+    ///
+    /// # Type Parameters
+    ///
+    /// * `P` - The type of the progress bar
+    ///
+    /// # Arguments
+    ///
+    /// * `password` - The password to use
+    /// * `key_opts` - The options to use for the key
+    /// * `config` - The config file to use
+    ///
+    /// # Errors
+    ///
+    // TODO: Document errors
+    pub async fn init_with_config(
+        self,
+        password: &str,
+        key_opts: &KeyOptions,
+        config: ConfigFile,
+    ) -> RusticResult<AsyncRepository<P, AsyncOpenStatus>> {
+        let key =
+            commands::init::init_with_config_async(&self, password, key_opts, &config).await?;
+        info!("repository {} successfully created.", config.id);
+        self.open_raw(key, config)
+    }
+
+    /// Open the repository with given [`Key`] and [`ConfigFile`].
+    ///
+    /// # Type Parameters
+    ///
+    /// * `P` - The type of the progress bar
+    ///
+    /// # Arguments
+    ///
+    /// * `key` - The key to use
+    /// * `config` - The config file to use
+    ///
+    /// # Errors
+    ///
+    /// * [`RepositoryErrorKind::HotRepositoryFlagMissing`] - If the config file has `is_hot` set to `true` but the repository is not hot
+    /// * [`RepositoryErrorKind::IsNotHotRepository`] - If the config file has `is_hot` set to `false` but the repository is hot
+    ///
+    /// [`RepositoryErrorKind::HotRepositoryFlagMissing`]: crate::error::RepositoryErrorKind::HotRepositoryFlagMissing
+    /// [`RepositoryErrorKind::IsNotHotRepository`]: crate::error::RepositoryErrorKind::IsNotHotRepository
+    fn open_raw(
+        mut self,
+        key: Key,
+        config: ConfigFile,
+    ) -> RusticResult<AsyncRepository<P, AsyncOpenStatus>> {
+        match (config.is_hot == Some(true), self.be_hot.is_some()) {
+            (true, false) => return Err(RepositoryErrorKind::HotRepositoryFlagMissing.into()),
+            (false, true) => return Err(RepositoryErrorKind::IsNotHotRepository.into()),
+            _ => {}
+        }
+
+        let cache = (!self.opts.no_cache)
+            .then(|| Cache::new(config.id, self.opts.cache_dir.clone()).ok())
+            .flatten();
+
+        if let Some(cache) = &cache {
+            self.be = AsyncCachedBackend::new_cache(self.be.clone(), cache.clone());
+            info!("using cache at {}", cache.location());
+        } else {
+            info!("using no cache");
+        }
+
+        let mut dbe = AsyncDecryptBackend::new(self.be.clone(), key);
+        dbe.set_zstd(config.zstd()?);
+        dbe.set_extra_verify(config.extra_verify());
+
+        let open = AsyncOpenStatus { cache, dbe, config };
+
+        Ok(AsyncRepository {
+            name: self.name,
+            be: self.be,
+            be_hot: self.be_hot,
+            opts: self.opts,
+            pb: self.pb,
+            status: open,
+        })
+    }
+
+    /// List all file [`Id`]s of the given [`FileType`] which are present in the repository
+    ///
+    /// # Arguments
+    ///
+    /// * `tpe` - The type of the files to list
+    ///
+    /// # Errors
+    ///
+    // TODO: Document errors
+    pub async fn list(&self, tpe: FileType) -> RusticResult<impl Iterator<Item = Id>> {
+        Ok(self
+            .be
+            .list(tpe)
+            .await
+            .map_err(RusticErrorKind::Backend)?
+            .into_iter())
+    }
+}
+
 impl<P: ProgressBars, S> Repository<P, S> {
     /// Collect information about repository files
     ///
@@ -762,6 +1149,31 @@ impl<P, S: Open> Open for Repository<P, S> {
     }
 }
 
+pub trait AsyncOpen {
+    /// Get the cache
+    fn cache(&self) -> Option<&Cache>;
+
+    /// Get the [`DecryptBackend`]
+    fn dbe(&self) -> &AsyncDecryptBackend<Key>;
+
+    /// Get the [`ConfigFile`]
+    fn config(&self) -> &ConfigFile;
+}
+
+impl<P, S: AsyncOpen> AsyncOpen for AsyncRepository<P, S> {
+    fn cache(&self) -> Option<&Cache> {
+        self.status.cache()
+    }
+
+    fn dbe(&self) -> &AsyncDecryptBackend<Key> {
+        self.status.dbe()
+    }
+
+    fn config(&self) -> &ConfigFile {
+        self.status.config()
+    }
+}
+
 /// Open Status: This repository is open, i.e. the password has been checked and the decryption key is available.
 #[derive(Debug)]
 pub struct OpenStatus {
@@ -785,6 +1197,30 @@ impl Open for OpenStatus {
     }
 
     /// Get the [`ConfigFile`]
+    fn config(&self) -> &ConfigFile {
+        &self.config
+    }
+}
+
+#[derive(Debug)]
+pub struct AsyncOpenStatus {
+    /// The cache
+    cache: Option<Cache>,
+    /// The [`DecryptBackend`]
+    dbe: AsyncDecryptBackend<Key>,
+    /// The [`ConfigFile`]
+    config: ConfigFile,
+}
+
+impl AsyncOpen for AsyncOpenStatus {
+    fn cache(&self) -> Option<&Cache> {
+        self.cache.as_ref()
+    }
+
+    fn dbe(&self) -> &AsyncDecryptBackend<Key> {
+        &self.dbe
+    }
+
     fn config(&self) -> &ConfigFile {
         &self.config
     }
@@ -1111,6 +1547,391 @@ impl<P: ProgressBars, S: Open> Repository<P, S> {
     ///
     /// This saves the full index in memory which can be quite memory-consuming!
     pub fn to_indexed(self) -> RusticResult<Repository<P, IndexedStatus<FullIndex, S>>> {
+        let index = GlobalIndex::new(self.dbe(), &self.pb.progress_counter(""))?;
+        Ok(self.into_indexed_with_index(index))
+    }
+
+    /// Turn the repository into the `IndexedFull` state by reading and storing the index
+    ///
+    /// This is similar to `to_indexed()`, but also lists the pack files and reads pack headers
+    /// for packs is missing in the index.
+    ///
+    /// # Errors
+    ///
+    // TODO: Document errors
+    ///
+    /// # Note
+    ///
+    /// This saves the full index in memory which can be quite memory-consuming!
+    pub fn to_indexed_checked(self) -> RusticResult<Repository<P, IndexedStatus<FullIndex, S>>> {
+        let collector = IndexCollector::new(IndexType::Full);
+        let index = index_checked_from_collector(&self, collector)?;
+        Ok(self.into_indexed_with_index(index))
+    }
+
+    // helper function to deduplicate code
+    fn into_indexed_with_index(
+        self,
+        index: GlobalIndex,
+    ) -> Repository<P, IndexedStatus<FullIndex, S>> {
+        let status = IndexedStatus {
+            open: self.status,
+            index,
+            index_data: FullIndex {
+                // TODO: Make cache size (32MB currently) customizable!
+                cache: quick_cache::sync::Cache::with_weighter(
+                    constants::ESTIMATED_ITEM_CAPACITY,
+                    constants::WEIGHT_CAPACITY,
+                    BytesWeighter {},
+                ),
+            },
+        };
+        Repository {
+            name: self.name,
+            be: self.be,
+            be_hot: self.be_hot,
+            opts: self.opts,
+            pb: self.pb,
+            status,
+        }
+    }
+
+    /// Turn the repository into the `IndexedIds` state by reading and storing a size-optimized index
+    ///
+    /// # Errors
+    ///
+    // TODO: Document errors
+    ///
+    /// # Returns
+    ///
+    /// The repository in the `IndexedIds` state
+    ///
+    /// # Note
+    ///
+    /// This saves only the `Id`s for data blobs. Therefore, not all operations are possible on the repository.
+    /// However, operations which add data are fully functional.
+    pub fn to_indexed_ids(self) -> RusticResult<Repository<P, IndexedStatus<IdIndex, S>>> {
+        let index = GlobalIndex::only_full_trees(self.dbe(), &self.pb.progress_counter(""))?;
+        Ok(self.into_indexed_ids_with_index(index))
+    }
+
+    /// Turn the repository into the `IndexedIds` state by reading and storing a size-optimized index
+    ///
+    /// This is similar to `to_indexed_ids()`, but also lists the pack files and reads pack headers
+    /// for packs is missing in the index.
+    ///
+    /// # Errors
+    ///
+    // TODO: Document errors
+    ///
+    /// # Returns
+    ///
+    /// The repository in the `IndexedIds` state
+    ///
+    /// # Note
+    ///
+    /// This saves only the `Id`s for data blobs. Therefore, not all operations are possible on the repository.
+    /// However, operations which add data are fully functional.
+    pub fn to_indexed_ids_checked(self) -> RusticResult<Repository<P, IndexedStatus<IdIndex, S>>> {
+        let collector = IndexCollector::new(IndexType::DataIds);
+        let index = index_checked_from_collector(&self, collector)?;
+        Ok(self.into_indexed_ids_with_index(index))
+    }
+
+    // helper function to deduplicate code
+    fn into_indexed_ids_with_index(
+        self,
+        index: GlobalIndex,
+    ) -> Repository<P, IndexedStatus<IdIndex, S>> {
+        let status = IndexedStatus {
+            open: self.status,
+            index,
+            index_data: IdIndex {},
+        };
+        Repository {
+            name: self.name,
+            be: self.be,
+            be_hot: self.be_hot,
+            opts: self.opts,
+            pb: self.pb,
+            status,
+        }
+    }
+
+    /// Get statistical information from the index. This method reads all index files,
+    /// even if an index is already available in memory.
+    ///
+    /// # Errors
+    ///
+    /// If the index could not be read.
+    ///
+    /// # Returns
+    ///
+    /// The statistical information from the index.
+    pub fn infos_index(&self) -> RusticResult<IndexInfos> {
+        commands::repoinfo::collect_index_infos(self)
+    }
+
+    /// Read all files of a given [`RepoFile`]
+    ///
+    /// # Errors
+    ///
+    // TODO: Document errors
+    ///
+    /// # Returns
+    ///
+    /// # Note
+    ///  The result is not sorted and may come in random order!
+    ///
+    /// An iterator over all files of the given type
+    pub fn stream_files<F: RepoFile>(
+        &self,
+    ) -> RusticResult<impl Iterator<Item = RusticResult<(Id, F)>>> {
+        Ok(self
+            .dbe()
+            .stream_all::<F>(&self.pb.progress_hidden())?
+            .into_iter())
+    }
+
+    /// Repair the index
+    ///
+    /// This compares the index with existing pack files and reads packfile headers to ensure the index
+    /// correctly represents the pack files.
+    ///
+    /// # Arguments
+    ///
+    /// * `opts` - The options to use
+    /// * `dry_run` - If true, only print what would be done
+    ///
+    /// # Errors
+    ///
+    // TODO: Document errors
+    pub fn repair_index(&self, opts: &RepairIndexOptions, dry_run: bool) -> RusticResult<()> {
+        opts.repair(self, dry_run)
+    }
+}
+
+impl<P: ProgressBars, S: AsyncOpen> AsyncRepository<P, S> {
+    pub async fn get_snapshot_group(
+        &self,
+        ids: &[String],
+        group_by: SnapshotGroupCriterion,
+        filter: impl FnMut(&SnapshotFile) -> bool,
+    ) -> RusticResult<Vec<(SnapshotGroup, Vec<SnapshotFile>)>> {
+        commands::snapshots::get_snapshot_group_async(self, ids, group_by, filter).await
+    }
+
+    /// Get a single snapshot
+    ///
+    /// # Arguments
+    ///
+    /// * `id` - The id of the snapshot to get
+    /// * `filter` - The filter to use
+    ///
+    /// # Errors
+    ///
+    /// * [`IdErrorKind::HexError`] - If the string is not a valid hexadecimal string
+    /// * [`BackendAccessErrorKind::NoSuitableIdFound`] - If no id could be found.
+    /// * [`BackendAccessErrorKind::IdNotUnique`] - If the id is not unique.
+    ///
+    /// # Returns
+    ///
+    /// If `id` is (part of) an `Id`, return this snapshot.
+    /// If `id` is "latest", return the latest snapshot respecting the giving filter.
+    ///
+    /// [`IdErrorKind::HexError`]: crate::error::IdErrorKind::HexError
+    /// [`BackendAccessErrorKind::NoSuitableIdFound`]: crate::error::BackendAccessErrorKind::NoSuitableIdFound
+    /// [`BackendAccessErrorKind::IdNotUnique`]: crate::error::BackendAccessErrorKind::IdNotUnique
+    pub async fn get_snapshot_from_str(
+        &self,
+        id: &str,
+        filter: impl FnMut(&SnapshotFile) -> bool + Send + Sync,
+    ) -> RusticResult<SnapshotFile> {
+        let p = self.pb.progress_counter("getting snapshot...");
+        let snap = SnapshotFile::from_str_async(self.dbe(), id, filter, &p).await?;
+        p.finish();
+        Ok(snap)
+    }
+
+    /// Get the given snapshots.
+    ///
+    /// # Arguments
+    ///
+    /// * `ids` - The ids of the snapshots to get
+    ///
+    /// # Notes
+    ///
+    /// `ids` may contain part of snapshots id which will be resolved.
+    /// However, "latest" is not supported in this function.
+    ///
+    /// # Errors
+    ///
+    // TODO: Document errors
+    pub async fn get_snapshots<T: AsRef<str> + Send + Sync>(
+        &self,
+        ids: &[T],
+    ) -> RusticResult<Vec<SnapshotFile>> {
+        let p = self.pb.progress_counter("getting snapshots...");
+        let result = SnapshotFile::from_ids_async(self.dbe(), ids, &p).await;
+        p.finish();
+        result
+    }
+
+    /// Get all snapshots from the repository
+    ///
+    /// # Errors
+    ///
+    // TODO: Document errors
+    pub async fn get_all_snapshots(&self) -> RusticResult<Vec<SnapshotFile>> {
+        self.get_matching_snapshots(|_| true).await
+    }
+
+    /// Get all snapshots from the repository respecting the given `filter`
+    ///
+    /// # Arguments
+    ///
+    /// * `filter` - The filter to use
+    ///
+    /// # Errors
+    ///
+    /// # Note
+    ///  The result is not sorted and may come in random order!
+    ///
+    // TODO: Document errors
+    pub async fn get_matching_snapshots(
+        &self,
+        filter: impl FnMut(&SnapshotFile) -> bool,
+    ) -> RusticResult<Vec<SnapshotFile>> {
+        let p = self.pb.progress_counter("getting snapshots...");
+        let result = SnapshotFile::all_from_backend_async(self.dbe(), filter, &p).await;
+        p.finish();
+        result
+    }
+
+    /// Get snapshots to forget depending on the given [`KeepOptions`]
+    ///
+    /// # Arguments
+    ///
+    /// * `keep` - The keep options to use
+    /// * `group_by` - The criterion to group by
+    /// * `filter` - The filter to use
+    ///
+    /// # Errors
+    ///
+    /// If keep options are not valid
+    ///
+    /// # Returns
+    ///
+    /// The groups of snapshots to forget
+    pub async fn get_forget_snapshots(
+        &self,
+        keep: &KeepOptions,
+        group_by: SnapshotGroupCriterion,
+        filter: impl FnMut(&SnapshotFile) -> bool,
+    ) -> RusticResult<ForgetGroups> {
+        commands::forget::get_forget_snapshots_async(self, keep, group_by, filter).await
+    }
+
+    /// Get snapshots which are not already present and should be present.
+    ///
+    /// # Arguments
+    ///
+    /// * `filter` - The filter to use
+    /// * `snaps` - The snapshots to check
+    ///
+    /// # Errors
+    ///
+    // TODO: Document errors
+    ///
+    /// # Note
+    ///
+    /// This method should be called on the *destination repository*
+    pub async fn relevant_copy_snapshots(
+        &self,
+        filter: impl FnMut(&SnapshotFile) -> bool,
+        snaps: &[SnapshotFile],
+    ) -> RusticResult<Vec<CopySnapshot>> {
+        commands::copy::relevant_snapshots_async(snaps, self, filter).await
+    }
+
+    pub async fn delete_snapshots(&self, ids: &[Id]) -> RusticResult<()> {
+        if self.config().append_only == Some(true) {
+            return Err(CommandErrorKind::NotAllowedWithAppendOnly(
+                "snapshots removal".to_string(),
+            )
+            .into());
+        }
+        let p = self.pb.progress_counter("removing snapshots...");
+        self.dbe()
+            .delete_list(FileType::Snapshot, true, ids.iter(), p)
+            .await?;
+        Ok(())
+    }
+
+    /// Save the given snapshots to the repository.
+    ///
+    /// # Arguments
+    ///
+    /// * `snaps` - The snapshots to save
+    ///
+    /// # Errors
+    ///
+    /// * [`CryptBackendErrorKind::SerializingToJsonByteVectorFailed`] - If the file could not be serialized to json.
+    ///
+    /// [`CryptBackendErrorKind::SerializingToJsonByteVectorFailed`]: crate::error::CryptBackendErrorKind::SerializingToJsonByteVectorFailed
+    pub async fn save_snapshots(&self, mut snaps: Vec<SnapshotFile>) -> RusticResult<()> {
+        for snap in &mut snaps {
+            snap.id = Id::default();
+        }
+        let p = self.pb.progress_counter("saving snapshots...");
+        self.dbe().save_list(snaps.iter(), p).await?;
+        Ok(())
+    }
+
+    /// Check the repository for errors or inconsistencies
+    ///
+    /// # Arguments
+    ///
+    /// * `opts` - The options to use
+    ///
+    /// # Errors
+    ///
+    // TODO: Document errors
+    pub fn check(&self, opts: CheckOptions) -> RusticResult<()> {
+        // TODO
+        todo!("impl check for AsyncRepository");
+        // opts.run(self)
+    }
+
+    /// Get the plan about what should be pruned and/or repacked.
+    ///
+    /// # Arguments
+    ///
+    /// * `opts` - The options to use
+    ///
+    /// # Errors
+    ///
+    // TODO: Document errors
+    ///
+    /// # Returns
+    ///
+    /// The plan about what should be pruned and/or repacked.
+    pub fn prune_plan(&self, opts: &PruneOptions) -> RusticResult<PrunePlan> {
+        // TODO
+        todo!("impl prune for AsyncRepository");
+        // opts.get_plan(self)
+    }
+
+    /// Turn the repository into the `IndexedFull` state by reading and storing the index
+    ///
+    /// # Errors
+    ///
+    // TODO: Document errors
+    ///
+    /// # Note
+    ///
+    /// This saves the full index in memory which can be quite memory-consuming!
+    pub fn to_indexed(self) -> RusticResult<AsyncRepository<P, IndexedStatus<FullIndex, S>>> {
         let index = GlobalIndex::new(self.dbe(), &self.pb.progress_counter(""))?;
         Ok(self.into_indexed_with_index(index))
     }

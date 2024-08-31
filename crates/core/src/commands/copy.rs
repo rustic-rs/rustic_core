@@ -10,7 +10,8 @@ use crate::{
     index::{indexer::Indexer, ReadIndex},
     progress::{Progress, ProgressBars},
     repofile::SnapshotFile,
-    repository::{IndexedFull, IndexedIds, IndexedTree, Open, Repository},
+    repository::{AsyncOpen, IndexedFull, IndexedIds, IndexedTree, Open, Repository},
+    AsyncRepository,
 };
 
 /// This struct enhances `[SnapshotFile]` with the attribute `relevant`
@@ -171,6 +172,36 @@ where
     let snapshots_dest: BTreeSet<_> = SnapshotFile::all_from_backend(dest_repo.dbe(), filter, &p)?
         .into_iter()
         .collect();
+
+    let relevant = snaps
+        .iter()
+        .cloned()
+        .map(|sn| CopySnapshot {
+            relevant: !snapshots_dest.contains(&sn),
+            sn,
+        })
+        .collect();
+
+    Ok(relevant)
+}
+
+pub(crate) async fn relevant_snapshots_async<F, P: ProgressBars, S: AsyncOpen>(
+    snaps: &[SnapshotFile],
+    dest_repo: &AsyncRepository<P, S>,
+    filter: F,
+) -> RusticResult<Vec<CopySnapshot>>
+where
+    F: FnMut(&SnapshotFile) -> bool,
+{
+    let p = dest_repo
+        .pb
+        .progress_counter("finding relevant snapshots...");
+    // save snapshots in destination in BTreeSet, as we want to efficiently search within to filter out already existing snapshots before copying.
+    let snapshots_dest: BTreeSet<_> =
+        SnapshotFile::all_from_backend_async(dest_repo.dbe(), filter, &p)
+            .await?
+            .into_iter()
+            .collect();
 
     let relevant = snaps
         .iter()

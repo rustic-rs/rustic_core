@@ -12,6 +12,7 @@ pub(crate) mod warm_up;
 use std::{io::Read, ops::Deref, path::PathBuf, sync::Arc};
 
 use anyhow::Result;
+use async_trait::async_trait;
 use bytes::Bytes;
 use enum_map::Enum;
 use log::trace;
@@ -167,6 +168,101 @@ pub trait ReadBackend: Send + Sync + 'static {
     }
 }
 
+// impl<T> ReadBackend for T where T: AsyncReadBackend {
+//     fn list(&self, tpe: FileType) -> Result<Vec<Id>> {
+
+//     }
+// }
+
+/// TODO
+#[async_trait]
+pub trait AsyncReadBackend: Send + Sync + 'static {
+    /// Returns the location of the backend.
+    fn location(&self) -> String;
+
+    /// Lists all files with their size of the given type.
+    ///
+    /// # Arguments
+    ///
+    /// * `tpe` - The type of the files to list.
+    ///
+    /// # Errors
+    ///
+    /// If the files could not be listed.
+    async fn list_with_size(&self, tpe: FileType) -> Result<Vec<(Id, u32)>>;
+
+    /// Lists all files of the given type.
+    ///
+    /// # Arguments
+    ///
+    /// * `tpe` - The type of the files to list.
+    ///
+    /// # Errors
+    ///
+    /// If the files could not be listed.
+    async fn list(&self, tpe: FileType) -> Result<Vec<Id>> {
+        Ok(self
+            .list_with_size(tpe)
+            .await?
+            .into_iter()
+            .map(|(id, _)| id)
+            .collect())
+    }
+
+    /// Reads full data of the given file.
+    ///
+    /// # Arguments
+    ///
+    /// * `tpe` - The type of the file.
+    /// * `id` - The id of the file.
+    ///
+    /// # Errors
+    ///
+    /// If the file could not be read.
+    async fn read_full(&self, tpe: FileType, id: &Id) -> Result<Bytes>;
+
+    /// Reads partial data of the given file.
+    ///
+    /// # Arguments
+    ///
+    /// * `tpe` - The type of the file.
+    /// * `id` - The id of the file.
+    /// * `cacheable` - Whether the file should be cached.
+    /// * `offset` - The offset to read from.
+    /// * `length` - The length to read.
+    ///
+    /// # Errors
+    ///
+    /// If the file could not be read.
+    async fn read_partial(
+        &self,
+        tpe: FileType,
+        id: &Id,
+        cacheable: bool,
+        offset: u32,
+        length: u32,
+    ) -> Result<Bytes>;
+
+    /// Specify if the backend needs a warming-up of files before accessing them.
+    async fn needs_warm_up(&self) -> bool {
+        false
+    }
+
+    /// Warm-up the given file.
+    ///
+    /// # Arguments
+    ///
+    /// * `tpe` - The type of the file.
+    /// * `id` - The id of the file.
+    ///
+    /// # Errors
+    ///
+    /// If the file could not be read.
+    async fn warm_up(&self, _tpe: FileType, _id: &Id) -> Result<()> {
+        Ok(())
+    }
+}
+
 /// Trait for Searching in a backend.
 ///
 /// This trait is implemented by all backends that can be searched in.
@@ -286,6 +382,131 @@ pub trait FindInBackend: ReadBackend {
 
 impl<T: ReadBackend> FindInBackend for T {}
 
+impl<T: AsyncReadBackend> AsyncFindInBackend for T {}
+
+#[async_trait]
+pub trait AsyncFindInBackend: AsyncReadBackend {
+    /// Finds the id of the file starting with the given string.
+    ///
+    /// # Type Parameters
+    ///
+    /// * `T` - The type of the strings.
+    ///
+    /// # Arguments
+    ///
+    /// * `tpe` - The type of the file.
+    /// * `vec` - The strings to search for.
+    ///
+    /// # Errors
+    ///
+    /// * [`BackendAccessErrorKind::NoSuitableIdFound`] - If no id could be found.
+    /// * [`BackendAccessErrorKind::IdNotUnique`] - If the id is not unique.
+    ///
+    /// # Note
+    ///
+    /// This function is used to find the id of a snapshot.
+    ///
+    /// [`BackendAccessErrorKind::NoSuitableIdFound`]: crate::error::BackendAccessErrorKind::NoSuitableIdFound
+    /// [`BackendAccessErrorKind::IdNotUnique`]: crate::error::BackendAccessErrorKind::IdNotUnique
+    async fn find_starts_with<T: AsRef<str> + Send + Sync>(
+        &self,
+        tpe: FileType,
+        vec: &[T],
+    ) -> RusticResult<Vec<Id>> {
+        #[derive(Clone, Copy, PartialEq, Eq)]
+        enum MapResult<T> {
+            None,
+            Some(T),
+            NonUnique,
+        }
+        let mut results = vec![MapResult::None; vec.len()];
+        for id in self.list(tpe).await.map_err(RusticErrorKind::Backend)? {
+            let id_hex = id.to_hex();
+            for (i, v) in vec.iter().enumerate() {
+                if id_hex.starts_with(v.as_ref()) {
+                    if results[i] == MapResult::None {
+                        results[i] = MapResult::Some(id);
+                    } else {
+                        results[i] = MapResult::NonUnique;
+                    }
+                }
+            }
+        }
+
+        results
+            .into_iter()
+            .enumerate()
+            .map(|(i, id)| match id {
+                MapResult::Some(id) => Ok(id),
+                MapResult::None => Err(BackendAccessErrorKind::NoSuitableIdFound(
+                    (vec[i]).as_ref().to_string(),
+                )
+                .into()),
+                MapResult::NonUnique => {
+                    Err(BackendAccessErrorKind::IdNotUnique((vec[i]).as_ref().to_string()).into())
+                }
+            })
+            .collect()
+    }
+
+    /// Finds the id of the file starting with the given string.
+    ///
+    /// # Arguments
+    ///
+    /// * `tpe` - The type of the file.
+    /// * `id` - The string to search for.
+    ///
+    /// # Errors
+    ///
+    /// * [`IdErrorKind::HexError`] - If the string is not a valid hexadecimal string
+    /// * [`BackendAccessErrorKind::NoSuitableIdFound`] - If no id could be found.
+    /// * [`BackendAccessErrorKind::IdNotUnique`] - If the id is not unique.
+    ///
+    /// [`IdErrorKind::HexError`]: crate::error::IdErrorKind::HexError
+    /// [`BackendAccessErrorKind::NoSuitableIdFound`]: crate::error::BackendAccessErrorKind::NoSuitableIdFound
+    /// [`BackendAccessErrorKind::IdNotUnique`]: crate::error::BackendAccessErrorKind::IdNotUnique
+    async fn find_id(&self, tpe: FileType, id: &str) -> RusticResult<Id> {
+        Ok(self.find_ids(tpe, &[id.to_string()]).await?.remove(0))
+    }
+
+    /// Finds the ids of the files starting with the given strings.
+    ///
+    /// # Type Parameters
+    ///
+    /// * `T` - The type of the strings.
+    ///
+    /// # Arguments
+    ///
+    /// * `tpe` - The type of the file.
+    /// * `ids` - The strings to search for.
+    ///
+    /// # Errors
+    ///
+    /// * [`IdErrorKind::HexError`] - If the string is not a valid hexadecimal string
+    /// * [`BackendAccessErrorKind::NoSuitableIdFound`] - If no id could be found.
+    /// * [`BackendAccessErrorKind::IdNotUnique`] - If the id is not unique.
+    ///
+    /// [`IdErrorKind::HexError`]: crate::error::IdErrorKind::HexError
+    /// [`BackendAccessErrorKind::NoSuitableIdFound`]: crate::error::BackendAccessErrorKind::NoSuitableIdFound
+    /// [`BackendAccessErrorKind::IdNotUnique`]: crate::error::BackendAccessErrorKind::IdNotUnique
+    async fn find_ids<T: AsRef<str> + Send + Sync>(
+        &self,
+        tpe: FileType,
+        ids: &[T],
+    ) -> RusticResult<Vec<Id>> {
+        match ids
+            .iter()
+            .map(|id| Id::from_hex(id.as_ref()))
+            .collect::<RusticResult<Vec<_>>>()
+        {
+            Ok(id_vec) => Ok(id_vec),
+            Err(err) => {
+                trace!("no valid IDs given: {err}, searching for ID starting with given strings instead");
+                self.find_starts_with(tpe, ids).await
+            }
+        }
+    }
+}
 /// Trait for backends that can write.
 /// This trait is implemented by all backends that can write data.
 pub trait WriteBackend: ReadBackend {
@@ -336,6 +557,57 @@ pub trait WriteBackend: ReadBackend {
     ///
     /// The result of the removal.
     fn remove(&self, tpe: FileType, id: &Id, cacheable: bool) -> Result<()>;
+}
+
+#[async_trait]
+pub trait AsyncWriteBackend: AsyncReadBackend {
+    // Creates a new backend.
+    ///
+    /// # Errors
+    ///
+    /// If the backend could not be created.
+    ///
+    /// # Returns
+    ///
+    /// The result of the creation.
+    async fn create(&self) -> Result<()> {
+        Ok(())
+    }
+
+    /// Writes bytes to the given file.
+    ///
+    /// # Arguments
+    ///
+    /// * `tpe` - The type of the file.
+    /// * `id` - The id of the file.
+    /// * `cacheable` - Whether the data can be cached.
+    /// * `buf` - The data to write.
+    ///
+    /// # Errors
+    ///
+    /// If the data could not be written.
+    ///
+    /// # Returns
+    ///
+    /// The result of the write.
+    async fn write_bytes(&self, tpe: FileType, id: &Id, cacheable: bool, buf: Bytes) -> Result<()>;
+
+    /// Removes the given file.
+    ///
+    /// # Arguments
+    ///
+    /// * `tpe` - The type of the file.
+    /// * `id` - The id of the file.
+    /// * `cacheable` - Whether the file is cacheable.
+    ///
+    /// # Errors
+    ///
+    /// If the file could not be removed.
+    ///
+    /// # Returns
+    ///
+    /// The result of the removal.
+    async fn remove(&self, tpe: FileType, id: &Id, cacheable: bool) -> Result<()>;
 }
 
 #[cfg(test)]
@@ -398,6 +670,66 @@ impl ReadBackend for Arc<dyn WriteBackend> {
     ) -> Result<Bytes> {
         self.deref()
             .read_partial(tpe, id, cacheable, offset, length)
+    }
+}
+
+#[async_trait]
+impl AsyncReadBackend for Arc<dyn AsyncWriteBackend> {
+    fn location(&self) -> String {
+        self.deref().location()
+    }
+    async fn list(&self, tpe: FileType) -> Result<Vec<Id>> {
+        self.deref().list(tpe).await
+    }
+
+    async fn list_with_size(&self, tpe: FileType) -> Result<Vec<(Id, u32)>> {
+        self.deref().list_with_size(tpe).await
+    }
+
+    async fn read_full(&self, tpe: FileType, id: &Id) -> Result<Bytes> {
+        self.deref().read_full(tpe, id).await
+    }
+
+    async fn read_partial(
+        &self,
+        tpe: FileType,
+        id: &Id,
+        cacheable: bool,
+        offset: u32,
+        length: u32,
+    ) -> Result<Bytes> {
+        self.deref()
+            .read_partial(tpe, id, cacheable, offset, length)
+            .await
+    }
+
+    async fn needs_warm_up(&self) -> bool {
+        self.deref().needs_warm_up().await
+    }
+
+    async fn warm_up(&self, tpe: FileType, id: &Id) -> Result<()> {
+        self.deref().warm_up(tpe, id).await
+    }
+}
+
+#[async_trait]
+impl AsyncWriteBackend for Arc<dyn AsyncWriteBackend> {
+    async fn create(&self) -> Result<()> {
+        self.deref().create().await
+    }
+
+    async fn remove(&self, tpe: FileType, id: &Id, cacheable: bool) -> Result<()> {
+        self.deref().remove(tpe, id, cacheable).await
+    }
+
+    async fn write_bytes(&self, tpe: FileType, id: &Id, cacheable: bool, buf: Bytes) -> Result<()> {
+        self.deref().write_bytes(tpe, id, cacheable, buf).await
+    }
+}
+
+impl std::fmt::Debug for dyn AsyncWriteBackend {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "WriteBackend{{{}}}", self.location())
     }
 }
 
@@ -524,6 +856,12 @@ pub struct RepositoryBackends {
     repo_hot: Option<Arc<dyn WriteBackend>>,
 }
 
+#[derive(Debug, Clone)]
+pub struct AsyncRepositoryBackends {
+    repository: Arc<dyn AsyncWriteBackend>,
+    repo_hot: Option<Arc<dyn AsyncWriteBackend>>,
+}
+
 impl RepositoryBackends {
     /// Creates a new [`RepositoryBackends`].
     ///
@@ -547,6 +885,30 @@ impl RepositoryBackends {
     /// Returns the hot repository of this [`RepositoryBackends`].
     #[must_use]
     pub fn repo_hot(&self) -> Option<Arc<dyn WriteBackend>> {
+        self.repo_hot.clone()
+    }
+}
+
+impl AsyncRepositoryBackends {
+    pub fn new(
+        repository: Arc<dyn AsyncWriteBackend>,
+        repo_hot: Option<Arc<dyn AsyncWriteBackend>>,
+    ) -> Self {
+        Self {
+            repository,
+            repo_hot,
+        }
+    }
+
+    /// Returns the repository of this [`RepositoryBackends`].
+    #[must_use]
+    pub fn repository(&self) -> Arc<dyn AsyncWriteBackend> {
+        self.repository.clone()
+    }
+
+    /// Returns the hot repository of this [`RepositoryBackends`].
+    #[must_use]
+    pub fn repo_hot(&self) -> Option<Arc<dyn AsyncWriteBackend>> {
         self.repo_hot.clone()
     }
 }

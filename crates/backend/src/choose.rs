@@ -1,6 +1,7 @@
 //! This module contains [`BackendOptions`] and helpers to choose a backend from a given url.
 use anyhow::{anyhow, Result};
 use derive_setters::Setters;
+use rustic_core::{AsyncRepositoryBackends, AsyncWriteBackend};
 use std::{collections::HashMap, sync::Arc};
 use strum_macros::{Display, EnumString};
 
@@ -10,6 +11,7 @@ use rustic_core::{RepositoryBackends, WriteBackend};
 use crate::{
     error::BackendAccessErrorKind,
     local::LocalBackend,
+    opendal::AsyncOpenDALBackend,
     util::{location_to_type_and_path, BackendLocation},
 };
 
@@ -95,6 +97,19 @@ impl BackendOptions {
         Ok(RepositoryBackends::new(be, be_hot))
     }
 
+    pub fn to_async_backends(&self) -> Result<AsyncRepositoryBackends> {
+        let mut options = self.options.clone();
+        options.extend(self.options_cold.clone());
+        let be = self
+            .get_async_backed(self.repository.as_ref(), options)?
+            .ok_or_else(|| anyhow!("No repository given."))?;
+        let mut options = self.options.clone();
+        options.extend(self.options_hot.clone());
+        let be_hot = self.get_async_backed(self.repo_hot.as_ref(), options)?;
+
+        Ok(AsyncRepositoryBackends::new(be, be_hot))
+    }
+
     /// Get the backend for the given repository.
     ///
     /// # Arguments
@@ -125,6 +140,25 @@ impl BackendOptions {
             })
             .transpose()
     }
+
+    fn get_async_backed(
+        &self,
+        repo_string: Option<&String>,
+        options: HashMap<String, String>,
+    ) -> Result<Option<Arc<dyn AsyncWriteBackend>>> {
+        repo_string
+            .map(|string| {
+                let (be_type, location) = location_to_type_and_path(string)?;
+                match be_type.to_async_backends(location, options.into()) {
+                    Ok(e) => Ok(e),
+                    Err(e) if e.downcast_ref::<BackendAccessErrorKind>().is_some() => Err(e.into()),
+                    Err(e) => {
+                        Err(BackendAccessErrorKind::BackendLoadError(be_type.to_string(), e).into())
+                    }
+                }
+            })
+            .transpose()
+    }
 }
 
 /// Trait which can be implemented to choose a backend from a backend type, a backend path and options given as `HashMap`.
@@ -146,6 +180,12 @@ pub trait BackendChoice {
         location: BackendLocation,
         options: Option<HashMap<String, String>>,
     ) -> Result<Arc<dyn WriteBackend>>;
+
+    fn to_async_backends(
+        &self,
+        location: BackendLocation,
+        options: Option<HashMap<String, String>>,
+    ) -> Result<Arc<dyn AsyncWriteBackend>>;
 }
 
 /// The supported backend types.
@@ -195,6 +235,18 @@ impl BackendChoice for SupportedBackend {
             #[cfg(feature = "opendal")]
             Self::OpenDAL => Arc::new(OpenDALBackend::new(location, options)?),
         })
+    }
+
+    fn to_async_backends(
+        &self,
+        location: BackendLocation,
+        options: Option<HashMap<String, String>>,
+    ) -> Result<Arc<dyn AsyncWriteBackend>> {
+        let options = options.unwrap_or_default();
+        match self {
+            Self::OpenDAL => Ok(Arc::new(AsyncOpenDALBackend::new(location, options)?)),
+            _ => Err(BackendAccessErrorKind::BackendNoAsync(location.to_string()).into()),
+        }
     }
 }
 

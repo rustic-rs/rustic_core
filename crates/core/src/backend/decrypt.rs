@@ -1,6 +1,7 @@
 use std::{num::NonZeroU32, sync::Arc};
 
 use anyhow::Result;
+use async_trait::async_trait;
 use bytes::Bytes;
 use crossbeam_channel::{unbounded, Receiver};
 use rayon::prelude::*;
@@ -20,8 +21,10 @@ use crate::{
     error::{CryptBackendErrorKind, RusticErrorKind},
     id::Id,
     repofile::RepoFile,
-    Progress, RusticResult,
+    Progress, RusticError, RusticResult,
 };
+
+use super::{AsyncReadBackend, AsyncWriteBackend};
 
 /// A backend that can decrypt data.
 /// This is a trait that is implemented by all backends that can decrypt data.
@@ -29,7 +32,11 @@ use crate::{
 /// This trait is used by the `Repository` to decrypt data.
 pub trait DecryptFullBackend: DecryptWriteBackend + DecryptReadBackend {}
 
+pub trait AsyncDecryptFullBackend: AsyncDecryptWriteBackend + AsyncDecryptReadBackend {}
+
 impl<T: DecryptWriteBackend + DecryptReadBackend> DecryptFullBackend for T {}
+
+impl<T: AsyncDecryptWriteBackend + AsyncDecryptReadBackend> AsyncDecryptFullBackend for T {}
 
 pub trait DecryptReadBackend: ReadBackend + Clone + 'static {
     /// Decrypts the given data.
@@ -176,6 +183,71 @@ pub trait DecryptReadBackend: ReadBackend + Clone + 'static {
                 p.inc(1);
                 tx.send(file).unwrap();
             });
+        Ok(rx)
+    }
+}
+
+pub trait AsyncDecryptReadBackend: AsyncReadBackend + Clone + 'static {
+    fn decrypt(&self, data: &[u8]) -> RusticResult<Vec<u8>>;
+    async fn read_encrypted_full(&self, tpe: FileType, id: &Id) -> RusticResult<Bytes>;
+    fn read_encrypted_from_partial(
+        &self,
+        data: &[u8],
+        uncompressed_length: Option<NonZeroU32>,
+    ) -> RusticResult<Bytes> {
+        let mut data = self.decrypt(data)?;
+        if let Some(length) = uncompressed_length {
+            data = decode_all(&*data)
+                .map_err(CryptBackendErrorKind::DecodingZstdCompressedDataFailed)?;
+            if data.len() != length.get() as usize {
+                return Err(CryptBackendErrorKind::LengthOfUncompressedDataDoesNotMatch.into());
+            }
+        }
+        Ok(data.into())
+    }
+    async fn read_encrypted_partial(
+        &self,
+        tpe: FileType,
+        id: &Id,
+        cacheable: bool,
+        offset: u32,
+        length: u32,
+        uncompressed_length: Option<NonZeroU32>,
+    ) -> RusticResult<Bytes> {
+        self.read_encrypted_from_partial(
+            &self
+                .read_partial(tpe, id, cacheable, offset, length)
+                .await
+                .map_err(RusticErrorKind::Backend)?,
+            uncompressed_length,
+        )
+    }
+    async fn get_file<F: RepoFile>(&self, id: &Id) -> RusticResult<F> {
+        let data = self.read_encrypted_full(F::TYPE, id).await?;
+        Ok(serde_json::from_slice(&data)
+            .map_err(CryptBackendErrorKind::DeserializingFromBytesOfJsonTextFailed)?)
+    }
+    async fn stream_all<F: RepoFile>(
+        &self,
+        p: &impl Progress,
+    ) -> RusticResult<Receiver<RusticResult<(Id, F)>>> {
+        let list = self.list(F::TYPE).await.map_err(RusticErrorKind::Backend)?;
+        self.stream_list(&list, p).await
+    }
+    async fn stream_list<F: RepoFile>(
+        &self,
+        list: &[Id],
+        p: &impl Progress,
+    ) -> RusticResult<Receiver<RusticResult<(Id, F)>>> {
+        p.set_length(list.len() as u64);
+        let (tx, rx) = unbounded();
+
+        // TODO - use futures::stream::Stream;
+        for id in list {
+            let file = self.get_file::<F>(id).await.map(|file| (*id, file));
+            p.inc(1);
+            tx.send(file).unwrap();
+        }
         Ok(rx)
     }
 }
@@ -339,6 +411,64 @@ pub trait DecryptWriteBackend: WriteBackend + Clone + 'static {
     fn set_extra_verify(&mut self, extra_check: bool);
 }
 
+pub trait AsyncDecryptWriteBackend: AsyncWriteBackend + Clone + 'static {
+    type Key: CryptoKey;
+    fn key(&self) -> &Self::Key;
+    async fn hash_write_full(&self, tpe: FileType, data: &[u8]) -> RusticResult<Id>;
+    async fn process_data(&self, data: &[u8]) -> RusticResult<(Vec<u8>, u32, Option<NonZeroU32>)>;
+    async fn hash_write_full_uncompressed(&self, tpe: FileType, data: &[u8]) -> RusticResult<Id> {
+        let data = self.key().encrypt_data(data)?;
+        let id = hash(&data);
+        self.write_bytes(tpe, &id, false, data.into())
+            .await
+            .map_err(RusticErrorKind::Backend)?;
+        Ok(id)
+    }
+    async fn save_file<F: RepoFile>(&self, file: &F) -> RusticResult<Id> {
+        let data = serde_json::to_vec(file)
+            .map_err(CryptBackendErrorKind::SerializingToJsonByteVectorFailed)?;
+        self.hash_write_full(F::TYPE, &data).await
+    }
+    async fn save_file_uncompressed<F: RepoFile>(&self, file: &F) -> RusticResult<Id> {
+        let data = serde_json::to_vec(file)
+            .map_err(CryptBackendErrorKind::SerializingToJsonByteVectorFailed)?;
+        self.hash_write_full_uncompressed(F::TYPE, &data).await
+    }
+    async fn save_list<'a, F: RepoFile, I: ExactSizeIterator<Item = &'a F> + Send>(
+        &self,
+        list: I,
+        p: impl Progress,
+    ) -> RusticResult<()> {
+        p.set_length(list.len() as u64);
+
+        // TODO - use futures::stream::Stream;
+        for file in list {
+            _ = self.save_file(file).await?;
+            p.inc(1);
+        }
+        p.finish();
+        Ok(())
+    }
+    async fn delete_list<'a, I: ExactSizeIterator<Item = &'a Id> + Send>(
+        &self,
+        tpe: FileType,
+        cacheable: bool,
+        list: I,
+        p: impl Progress,
+    ) -> RusticResult<()> {
+        // TODO - use futures::stream::Stream;
+        p.set_length(list.len() as u64);
+        for id in list {
+            self.remove(tpe, id, cacheable).await.unwrap();
+            p.inc(1);
+        }
+        p.finish();
+        Ok(())
+    }
+    fn set_zstd(&mut self, zstd: Option<i32>);
+    fn set_extra_verify(&mut self, extra_check: bool);
+}
+
 /// A backend that can decrypt data.
 ///
 /// # Type Parameters
@@ -348,6 +478,18 @@ pub trait DecryptWriteBackend: WriteBackend + Clone + 'static {
 pub struct DecryptBackend<C: CryptoKey> {
     /// The backend to decrypt.
     be: Arc<dyn WriteBackend>,
+    /// The key to decrypt the backend with.
+    key: C,
+    /// The compression level to use for zstd.
+    zstd: Option<i32>,
+    /// Whether to do an extra verification by decompressing and decrypting the data
+    extra_verify: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct AsyncDecryptBackend<C: CryptoKey> {
+    /// The backend to decrypt.
+    be: Arc<dyn AsyncWriteBackend>,
     /// The key to decrypt the backend with.
     key: C,
     /// The compression level to use for zstd.
@@ -372,6 +514,100 @@ impl<C: CryptoKey> DecryptBackend<C> {
     ///
     /// The new decrypt backend.
     pub fn new(be: Arc<dyn WriteBackend>, key: C) -> Self {
+        Self {
+            be,
+            key,
+            // zstd and extra_verify are directly set, where needed.
+            zstd: None,
+            extra_verify: false,
+        }
+    }
+
+    /// Decrypt and potentially decompress an already read repository file
+    fn decrypt_file(&self, data: &[u8]) -> RusticResult<Vec<u8>> {
+        let decrypted = self.decrypt(data)?;
+        Ok(match decrypted.first() {
+            Some(b'{' | b'[') => decrypted, // not compressed
+            Some(2) => decode_all(&decrypted[1..])
+                .map_err(CryptBackendErrorKind::DecodingZstdCompressedDataFailed)?, // 2 indicates compressed data following
+            _ => return Err(CryptBackendErrorKind::DecryptionNotSupportedForBackend)?,
+        })
+    }
+
+    /// encrypt and potentially compress a repository file
+    fn encrypt_file(&self, data: &[u8]) -> RusticResult<Vec<u8>> {
+        let data_encrypted = match self.zstd {
+            Some(level) => {
+                let mut out = vec![2_u8];
+                copy_encode(data, &mut out, level)
+                    .map_err(CryptBackendErrorKind::CopyEncodingDataFailed)?;
+                self.key().encrypt_data(&out)?
+            }
+            None => self.key().encrypt_data(data)?,
+        };
+        Ok(data_encrypted)
+    }
+
+    fn very_file(&self, data_encrypted: &[u8], data: &[u8]) -> RusticResult<()> {
+        if self.extra_verify {
+            let check_data = self.decrypt_file(data_encrypted)?;
+            if data != check_data {
+                return Err(CryptBackendErrorKind::ExtraVerificationFailed.into());
+            }
+        }
+        Ok(())
+    }
+
+    /// encrypt and potentially compress some data
+    fn encrypt_data(&self, data: &[u8]) -> RusticResult<(Vec<u8>, u32, Option<NonZeroU32>)> {
+        let data_len: u32 = data
+            .len()
+            .try_into()
+            .map_err(CryptBackendErrorKind::IntConversionFailed)?;
+        let (data_encrypted, uncompressed_length) = match self.zstd {
+            None => (self.key.encrypt_data(data)?, None),
+            // compress if requested
+            Some(level) => (
+                self.key.encrypt_data(&encode_all(data, level)?)?,
+                NonZeroU32::new(data_len),
+            ),
+        };
+        Ok((data_encrypted, data_len, uncompressed_length))
+    }
+
+    fn very_data(
+        &self,
+        data_encrypted: &[u8],
+        uncompressed_length: Option<NonZeroU32>,
+        data: &[u8],
+    ) -> RusticResult<()> {
+        if self.extra_verify {
+            let data_check =
+                self.read_encrypted_from_partial(data_encrypted, uncompressed_length)?;
+            if data != data_check {
+                return Err(CryptBackendErrorKind::ExtraVerificationFailed.into());
+            }
+        }
+        Ok(())
+    }
+}
+
+impl<C: CryptoKey> AsyncDecryptBackend<C> {
+    /// Creates a new decrypt backend.
+    ///
+    /// # Type Parameters
+    ///
+    /// * `C` - The type of the key to decrypt the backend with.
+    ///
+    /// # Arguments
+    ///
+    /// * `be` - The backend to decrypt.
+    /// * `key` - The key to decrypt the backend with.
+    ///
+    /// # Returns
+    ///
+    /// The new decrypt backend.
+    pub fn new(be: Arc<dyn AsyncWriteBackend>, key: C) -> Self {
         Self {
             be,
             key,
@@ -509,6 +745,66 @@ impl<C: CryptoKey> DecryptWriteBackend for DecryptBackend<C> {
     }
 }
 
+impl<C: CryptoKey> AsyncDecryptWriteBackend for AsyncDecryptBackend<C> {
+    /// The type of the key.
+    type Key = C;
+
+    /// Gets the key.
+    fn key(&self) -> &Self::Key {
+        &self.key
+    }
+
+    /// Writes the given data to the backend and returns the id of the data.
+    ///
+    /// # Arguments
+    ///
+    /// * `tpe` - The type of the file.
+    /// * `data` - The data to write.
+    ///
+    /// # Errors
+    ///
+    /// * [`CryptBackendErrorKind::CopyEncodingDataFailed`] - If the data could not be encoded.
+    ///
+    /// # Returns
+    ///
+    /// The id of the data.
+    ///
+    /// [`CryptBackendErrorKind::CopyEncodingDataFailed`]: crate::error::CryptBackendErrorKind::CopyEncodingDataFailed
+    async fn hash_write_full(&self, tpe: FileType, data: &[u8]) -> RusticResult<Id> {
+        let data_encrypted = self.encrypt_file(data)?;
+        self.very_file(&data_encrypted, data)?;
+        let id = hash(&data_encrypted);
+        self.write_bytes(tpe, &id, false, data_encrypted.into())
+            .await
+            .map_err(RusticErrorKind::Backend)?;
+        Ok(id)
+    }
+
+    async fn process_data(&self, data: &[u8]) -> RusticResult<(Vec<u8>, u32, Option<NonZeroU32>)> {
+        let (data_encrypted, data_len, uncompressed_length) = self.encrypt_data(data)?;
+        self.very_data(&data_encrypted, uncompressed_length, data)?;
+        Ok((data_encrypted, data_len, uncompressed_length))
+    }
+
+    /// Sets the compression level to use for zstd.
+    ///
+    /// # Arguments
+    ///
+    /// * `zstd` - The compression level to use for zstd.
+    fn set_zstd(&mut self, zstd: Option<i32>) {
+        self.zstd = zstd;
+    }
+
+    /// Sets `extra_check`, i.e. whether to do an extra check after compressing/encrypting
+    ///
+    /// # Arguments
+    ///
+    /// * `extra_echeck` - The compression level to use for zstd.
+    fn set_extra_verify(&mut self, extra_verify: bool) {
+        self.extra_verify = extra_verify;
+    }
+}
+
 impl<C: CryptoKey> DecryptReadBackend for DecryptBackend<C> {
     /// Decrypts the given data.
     ///
@@ -543,6 +839,22 @@ impl<C: CryptoKey> DecryptReadBackend for DecryptBackend<C> {
     }
 }
 
+impl<C: CryptoKey> AsyncDecryptReadBackend for AsyncDecryptBackend<C> {
+    fn decrypt(&self, data: &[u8]) -> RusticResult<Vec<u8>> {
+        self.key.decrypt_data(data)
+    }
+
+    async fn read_encrypted_full(&self, tpe: FileType, id: &Id) -> RusticResult<Bytes> {
+        self.decrypt_file(
+            &self
+                .read_full(tpe, id)
+                .await
+                .map_err(RusticErrorKind::Backend)?,
+        )
+        .map(Into::into)
+    }
+}
+
 impl<C: CryptoKey> ReadBackend for DecryptBackend<C> {
     fn location(&self) -> String {
         self.be.location()
@@ -572,6 +884,38 @@ impl<C: CryptoKey> ReadBackend for DecryptBackend<C> {
     }
 }
 
+#[async_trait]
+impl<C: CryptoKey> AsyncReadBackend for AsyncDecryptBackend<C> {
+    fn location(&self) -> String {
+        self.be.location()
+    }
+
+    async fn list(&self, tpe: FileType) -> Result<Vec<Id>> {
+        self.be.list(tpe).await
+    }
+
+    async fn list_with_size(&self, tpe: FileType) -> Result<Vec<(Id, u32)>> {
+        self.be.list_with_size(tpe).await
+    }
+
+    async fn read_full(&self, tpe: FileType, id: &Id) -> Result<Bytes> {
+        self.be.read_full(tpe, id).await
+    }
+
+    async fn read_partial(
+        &self,
+        tpe: FileType,
+        id: &Id,
+        cacheable: bool,
+        offset: u32,
+        length: u32,
+    ) -> Result<Bytes> {
+        self.be
+            .read_partial(tpe, id, cacheable, offset, length)
+            .await
+    }
+}
+
 impl<C: CryptoKey> WriteBackend for DecryptBackend<C> {
     fn create(&self) -> Result<()> {
         self.be.create()
@@ -583,6 +927,21 @@ impl<C: CryptoKey> WriteBackend for DecryptBackend<C> {
 
     fn remove(&self, tpe: FileType, id: &Id, cacheable: bool) -> Result<()> {
         self.be.remove(tpe, id, cacheable)
+    }
+}
+
+#[async_trait]
+impl<C: CryptoKey> AsyncWriteBackend for AsyncDecryptBackend<C> {
+    async fn create(&self) -> Result<()> {
+        self.be.create().await
+    }
+
+    async fn write_bytes(&self, tpe: FileType, id: &Id, cacheable: bool, buf: Bytes) -> Result<()> {
+        self.be.write_bytes(tpe, id, cacheable, buf).await
+    }
+
+    async fn remove(&self, tpe: FileType, id: &Id, cacheable: bool) -> Result<()> {
+        self.be.remove(tpe, id, cacheable).await
     }
 }
 

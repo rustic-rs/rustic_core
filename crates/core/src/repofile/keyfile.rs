@@ -9,6 +9,7 @@ use crate::{
     crypto::{aespoly1305::Key, CryptoKey},
     error::{KeyFileErrorKind, RusticErrorKind, RusticResult},
     id::Id,
+    AsyncReadBackend,
 };
 
 pub(super) mod constants {
@@ -209,6 +210,17 @@ impl KeyFile {
                 .map_err(KeyFileErrorKind::DeserializingFromSliceFailed)?,
         )
     }
+
+    async fn from_async_backend<B: AsyncReadBackend>(be: &B, id: &Id) -> RusticResult<Self> {
+        let data = be
+            .read_full(FileType::Key, id)
+            .await
+            .map_err(RusticErrorKind::Backend)?;
+        Ok(
+            serde_json::from_slice(&data)
+                .map_err(KeyFileErrorKind::DeserializingFromSliceFailed)?,
+        )
+    }
 }
 
 /// Calculate the logarithm to base 2 of the given number
@@ -305,6 +317,16 @@ pub(crate) fn key_from_backend<B: ReadBackend>(
     KeyFile::from_backend(be, id)?.key_from_password(passwd)
 }
 
+pub(crate) async fn key_from_async_backend<B: AsyncReadBackend>(
+    be: &B,
+    id: &Id,
+    passwd: &impl AsRef<[u8]>,
+) -> RusticResult<Key> {
+    KeyFile::from_async_backend(be, id)
+        .await?
+        .key_from_password(passwd)
+}
+
 /// Find a [`KeyFile`] in the backend that fits to the given password and return the contained key.
 /// If a key hint is given, only this key is tested.
 /// This is recommended for a large number of keys.
@@ -334,6 +356,27 @@ pub(crate) fn find_key_in_backend<B: ReadBackend>(
     } else {
         for id in be.list(FileType::Key).map_err(RusticErrorKind::Backend)? {
             if let Ok(key) = key_from_backend(be, &id, passwd) {
+                return Ok(key);
+            }
+        }
+        Err(KeyFileErrorKind::NoSuitableKeyFound.into())
+    }
+}
+
+pub(crate) async fn find_key_in_async_backend<B: AsyncReadBackend>(
+    be: &B,
+    passwd: &impl AsRef<[u8]>,
+    hint: Option<&Id>,
+) -> RusticResult<Key> {
+    if let Some(id) = hint {
+        key_from_async_backend(be, id, passwd).await
+    } else {
+        for id in be
+            .list(FileType::Key)
+            .await
+            .map_err(RusticErrorKind::Backend)?
+        {
+            if let Ok(key) = key_from_async_backend(be, &id, passwd).await {
                 return Ok(key);
             }
         }

@@ -13,7 +13,8 @@ use crate::{
         snapshotfile::{SnapshotGroup, SnapshotGroupCriterion},
         SnapshotFile, StringList,
     },
-    repository::{Open, Repository},
+    repository::{AsyncOpen, Open, Repository},
+    AsyncRepository,
 };
 
 type CheckFunction = fn(&SnapshotFile, &SnapshotFile) -> bool;
@@ -88,6 +89,29 @@ pub(crate) fn get_forget_snapshots<P: ProgressBars, S: Open>(
 
     let groups = repo
         .get_snapshot_group(&[], group_by, filter)?
+        .into_iter()
+        .map(|(group, snapshots)| -> RusticResult<_> {
+            Ok(ForgetGroup {
+                group,
+                snapshots: keep.apply(snapshots, now)?,
+            })
+        })
+        .collect::<RusticResult<_>>()?;
+
+    Ok(ForgetGroups(groups))
+}
+
+pub(crate) async fn get_forget_snapshots_async<P: ProgressBars, S: AsyncOpen>(
+    repo: &AsyncRepository<P, S>,
+    keep: &KeepOptions,
+    group_by: SnapshotGroupCriterion,
+    filter: impl FnMut(&SnapshotFile) -> bool,
+) -> RusticResult<ForgetGroups> {
+    let now = Local::now();
+
+    let groups = repo
+        .get_snapshot_group(&[], group_by, filter)
+        .await?
         .into_iter()
         .map(|(group, snapshots)| -> RusticResult<_> {
             Ok(ForgetGroup {
