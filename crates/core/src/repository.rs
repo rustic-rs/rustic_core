@@ -1277,8 +1277,10 @@ impl<P: ProgressBars, S: Open> Repository<P, S> {
 
 /// A repository which is indexed such that all tree blobs are contained in the index.
 pub trait IndexedTree: Open {
+    /// The used index
     type I: ReadGlobalIndex;
 
+    /// Returns the used indexs
     fn index(&self) -> &Self::I;
 }
 
