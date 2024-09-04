@@ -829,6 +829,18 @@ pub struct SnapshotGroupCriterion {
     pub tags: bool,
 }
 
+impl SnapshotGroupCriterion {
+    /// Create a new empty `SnapshotGroupCriterion`
+    pub fn new() -> Self {
+        Self {
+            hostname: false,
+            label: false,
+            paths: false,
+            tags: false,
+        }
+    }
+}
+
 impl Default for SnapshotGroupCriterion {
     fn default() -> Self {
         Self {
@@ -843,7 +855,7 @@ impl Default for SnapshotGroupCriterion {
 impl FromStr for SnapshotGroupCriterion {
     type Err = RusticError;
     fn from_str(s: &str) -> RusticResult<Self> {
-        let mut crit = Self::default();
+        let mut crit = Self::new();
         for val in s.split(',') {
             match val {
                 "host" => crit.hostname = true,
@@ -1205,7 +1217,6 @@ fn sanitize_dot(path: &Path) -> RusticResult<PathBuf> {
 mod tests {
     use super::*;
     use anyhow::Result;
-
     use rstest::rstest;
 
     #[rstest]
@@ -1243,6 +1254,27 @@ mod tests {
         assert!(snap.add_tags(vec![tags]));
         let expected = StringList::from_str("abc,def")?;
         assert_eq!(snap.tags, expected);
+        Ok(())
+    }
+
+    #[rstest]
+    #[case("host,label,paths", true, true, true, false)]
+    #[case("host", true, false, false, false)]
+    #[case("label,host", true, true, false, false)]
+    #[case("tags", false, false, false, true)]
+    #[case("paths,label", false, true, true, false)]
+    fn criterion_fromstr(
+        #[case] crit: SnapshotGroupCriterion,
+        #[case] is_host: bool,
+        #[case] is_label: bool,
+        #[case] is_path: bool,
+        #[case] is_tags: bool,
+    ) -> Result<()> {
+        assert_eq!(crit.hostname, is_host);
+        assert_eq!(crit.label, is_label);
+        assert_eq!(crit.paths, is_path);
+        assert_eq!(crit.tags, is_tags);
+
         Ok(())
     }
 }
