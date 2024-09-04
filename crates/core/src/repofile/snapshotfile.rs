@@ -1270,12 +1270,10 @@ mod tests {
         #[case] is_label: bool,
         #[case] is_path: bool,
         #[case] is_tags: bool,
-    ) -> Result<()> {
+    ) {
         assert_eq!(crit.hostname, is_host);
         assert_eq!(crit.label, is_label);
         assert_eq!(crit.paths, is_path);
         assert_eq!(crit.tags, is_tags);
-
-        Ok(())
     }
 }
