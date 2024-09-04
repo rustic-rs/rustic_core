@@ -390,6 +390,12 @@ impl ReadBackend for Arc<dyn WriteBackend> {
     fn warmup_path(&self, tpe: FileType, id: &Id) -> String {
         self.deref().warmup_path(tpe, id)
     }
+    fn needs_warm_up(&self) -> bool {
+        self.deref().needs_warm_up()
+    }
+    fn warm_up(&self, tpe: FileType, id: &Id) -> RusticResult<()> {
+        self.deref().warm_up(tpe, id)
+    }
 }
 
 impl std::fmt::Debug for dyn WriteBackend {
