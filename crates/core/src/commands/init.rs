@@ -60,7 +60,7 @@ pub(crate) fn init<P, S>(
     Ok((key, config))
 }
 
-/// Initialize a new repository with a given config.
+/// Save a [`ConfigFile`] only to the hot part of a repository
 ///
 /// # Type Parameters
 ///
@@ -69,14 +69,15 @@ pub(crate) fn init<P, S>(
 ///
 /// # Arguments
 ///
-/// * `repo` - The repository to initialize.
-/// * `pass` - The password to encrypt the key with.
-/// * `key_opts` - The options to create the key with.
-/// * `config` - The config to use.
+/// * `repo` - The repository to save the config to
+/// * `new_config` - The config to save
+/// * `key` - The key to encrypt the config with
 ///
-/// # Returns
+/// # Errors
 ///
-/// The key used to encrypt the config.
+/// * [`CryptBackendErrorKind::SerializingToJsonByteVectorFailed`] - If the file could not be serialized to json.
+///
+/// [`CryptBackendErrorKind::SerializingToJsonByteVectorFailed`]: crate::error::CryptBackendErrorKind::SerializingToJsonByteVectorFailed
 pub(crate) fn init_with_config<P, S>(
     repo: &Repository<P, S>,
     pass: &str,
