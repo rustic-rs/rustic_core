@@ -831,6 +831,7 @@ pub struct SnapshotGroupCriterion {
 
 impl SnapshotGroupCriterion {
     /// Create a new empty `SnapshotGroupCriterion`
+    #[must_use]
     pub fn new() -> Self {
         Self {
             hostname: false,
@@ -1263,7 +1264,7 @@ mod tests {
     #[case("label,host", true, true, false, false)]
     #[case("tags", false, false, false, true)]
     #[case("paths,label", false, true, true, false)]
-    fn criterion_fromstr(
+    fn snapshot_group_criterion_fromstr(
         #[case] crit: SnapshotGroupCriterion,
         #[case] is_host: bool,
         #[case] is_label: bool,
