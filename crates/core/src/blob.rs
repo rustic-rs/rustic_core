@@ -4,6 +4,7 @@ pub(crate) mod tree;
 use derive_more::Constructor;
 use enum_map::{Enum, EnumMap};
 use serde_derive::{Deserialize, Serialize};
+use typed_id::TypedId;
 
 use crate::id::Id;
 
@@ -22,6 +23,10 @@ pub enum BlobType {
     /// This is a data blob
     Data,
 }
+
+#[derive(Debug, Clone, Copy)]
+pub struct Data;
+pub type DataId = TypedId<Id, Data>;
 
 impl BlobType {
     /// Defines the cacheability of a [`BlobType`]
@@ -66,17 +71,19 @@ impl<T: Default> Initialize<T> for BlobTypeMap<T> {
     }
 }
 
+pub type BlobId = TypedId<Id, Blob>;
+
 /// A `Blob` is a file that is stored in the backend.
 ///
 /// It can be a `tree` or a `data` blob.
 ///
 /// A `tree` blob is a file that contains a list of other blobs.
 /// A `data` blob is a file that contains the actual data.
-#[derive(Debug, PartialEq, Eq, Clone, Constructor)]
-pub(crate) struct Blob {
+#[derive(Debug, PartialEq, Eq, Copy, Clone, Constructor)]
+pub struct Blob {
     /// The type of the blob
     tpe: BlobType,
 
     /// The id of the blob
-    id: Id,
+    id: BlobId,
 }

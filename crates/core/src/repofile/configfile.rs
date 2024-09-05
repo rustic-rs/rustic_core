@@ -108,6 +108,7 @@ pub struct ConfigFile {
 impl RepoFile for ConfigFile {
     /// The file type of the config file
     const TYPE: FileType = FileType::Config;
+    type Id = Id;
 }
 
 impl ConfigFile {

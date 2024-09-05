@@ -19,7 +19,7 @@ use crate::{
     crypto::{hasher::hash, CryptoKey},
     error::{CryptBackendErrorKind, RusticErrorKind},
     id::Id,
-    repofile::RepoFile,
+    repofile::{RepoFile, RepoId},
     Progress, RusticResult,
 };
 
@@ -145,7 +145,7 @@ pub trait DecryptReadBackend: ReadBackend + Clone + 'static {
     fn stream_all<F: RepoFile>(
         &self,
         p: &impl Progress,
-    ) -> RusticResult<Receiver<RusticResult<(Id, F)>>> {
+    ) -> RusticResult<Receiver<RusticResult<(F::Id, F)>>> {
         let list = self.list(F::TYPE).map_err(RusticErrorKind::Backend)?;
         self.stream_list(&list, p)
     }
@@ -166,13 +166,13 @@ pub trait DecryptReadBackend: ReadBackend + Clone + 'static {
         &self,
         list: &[Id],
         p: &impl Progress,
-    ) -> RusticResult<Receiver<RusticResult<(Id, F)>>> {
+    ) -> RusticResult<Receiver<RusticResult<(F::Id, F)>>> {
         p.set_length(list.len() as u64);
         let (tx, rx) = unbounded();
 
         list.into_par_iter()
             .for_each_with((self, p, tx), |(be, p, tx), id| {
-                let file = be.get_file::<F>(id).map(|file| (*id, file));
+                let file = be.get_file::<F>(id).map(|file| (F::Id::from(*id), file));
                 p.inc(1);
                 tx.send(file).unwrap();
             });
@@ -311,9 +311,8 @@ pub trait DecryptWriteBackend: WriteBackend + Clone + 'static {
     /// # Panics
     ///
     /// If the files could not be deleted.
-    fn delete_list<'a, I: ExactSizeIterator<Item = &'a Id> + Send>(
+    fn delete_list<'a, ID: RepoId, I: ExactSizeIterator<Item = &'a ID> + Send>(
         &self,
-        tpe: FileType,
         cacheable: bool,
         list: I,
         p: impl Progress,
@@ -321,7 +320,7 @@ pub trait DecryptWriteBackend: WriteBackend + Clone + 'static {
         p.set_length(list.len() as u64);
         list.par_bridge().try_for_each(|id| -> RusticResult<_> {
             // TODO: Don't panic on file not being able to be deleted.
-            self.remove(tpe, id, cacheable).unwrap();
+            self.remove(ID::TYPE, id, cacheable).unwrap();
             p.inc(1);
             Ok(())
         })?;

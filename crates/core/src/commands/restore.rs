@@ -23,10 +23,10 @@ use crate::{
         node::{Node, NodeType},
         FileType, ReadBackend,
     },
-    blob::BlobType,
+    blob::{BlobId, BlobType},
     error::{CommandErrorKind, RusticResult},
-    id::Id,
     progress::{Progress, ProgressBars},
+    repofile::packfile::PackId,
     repository::{IndexedFull, IndexedTree, Open, Repository},
 };
 
@@ -38,7 +38,7 @@ pub(crate) mod constants {
     pub(crate) const LIMIT_PACK_READ: u32 = 40 * 1024 * 1024; // 40 MiB
 }
 
-type RestoreInfo = BTreeMap<(Id, BlobLocation), Vec<FileLocation>>;
+type RestoreInfo = BTreeMap<(PackId, BlobLocation), Vec<FileLocation>>;
 type Filenames = Vec<PathBuf>;
 
 #[allow(clippy::struct_excessive_bools)]
@@ -690,7 +690,7 @@ impl RestorePlan {
         let mut file_pos = 0;
         let mut has_unmatched = false;
         for id in file.content.iter().flatten() {
-            let ie = repo.get_index_entry(BlobType::Data, id)?;
+            let ie = repo.get_index_entry(BlobType::Data, &BlobId::from(**id))?;
             let bl = BlobLocation {
                 offset: ie.offset,
                 length: ie.length,
@@ -735,7 +735,7 @@ impl RestorePlan {
     ///
     /// This can be used e.g. to warm-up those pack files before doing the atual restore.
     #[must_use]
-    pub fn to_packs(&self) -> Vec<Id> {
+    pub fn to_packs(&self) -> Vec<PackId> {
         self.r
             .iter()
             // filter out packs which we need

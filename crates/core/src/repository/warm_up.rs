@@ -7,8 +7,8 @@ use rayon::ThreadPoolBuilder;
 use crate::{
     backend::{FileType, ReadBackend},
     error::{RepositoryErrorKind, RusticResult},
-    id::Id,
     progress::{Progress, ProgressBars},
+    repofile::packfile::PackId,
     repository::Repository,
 };
 
@@ -33,7 +33,7 @@ pub(super) mod constants {
 /// [`RepositoryErrorKind::FromThreadPoolbilderError`]: crate::error::RepositoryErrorKind::FromThreadPoolbilderError
 pub(crate) fn warm_up_wait<P: ProgressBars, S>(
     repo: &Repository<P, S>,
-    packs: impl ExactSizeIterator<Item = Id>,
+    packs: impl ExactSizeIterator<Item = PackId>,
 ) -> RusticResult<()> {
     warm_up(repo, packs)?;
     if let Some(wait) = repo.opts.warm_up_wait {
@@ -60,7 +60,7 @@ pub(crate) fn warm_up_wait<P: ProgressBars, S>(
 /// [`RepositoryErrorKind::FromThreadPoolbilderError`]: crate::error::RepositoryErrorKind::FromThreadPoolbilderError
 pub(crate) fn warm_up<P: ProgressBars, S>(
     repo: &Repository<P, S>,
-    packs: impl ExactSizeIterator<Item = Id>,
+    packs: impl ExactSizeIterator<Item = PackId>,
 ) -> RusticResult<()> {
     if !repo.opts.warm_up_command.is_empty() {
         warm_up_command(packs, &repo.opts.warm_up_command, &repo.pb)?;
@@ -84,7 +84,7 @@ pub(crate) fn warm_up<P: ProgressBars, S>(
 ///
 /// [`RepositoryErrorKind::FromSplitError`]: crate::error::RepositoryErrorKind::FromSplitError
 fn warm_up_command<P: ProgressBars>(
-    packs: impl ExactSizeIterator<Item = Id>,
+    packs: impl ExactSizeIterator<Item = PackId>,
     command: &[String],
     pb: &P,
 ) -> RusticResult<()> {
@@ -119,7 +119,7 @@ fn warm_up_command<P: ProgressBars>(
 /// [`RepositoryErrorKind::FromThreadPoolbilderError`]: crate::error::RepositoryErrorKind::FromThreadPoolbilderError
 fn warm_up_repo<P: ProgressBars, S>(
     repo: &Repository<P, S>,
-    packs: impl ExactSizeIterator<Item = Id>,
+    packs: impl ExactSizeIterator<Item = PackId>,
 ) -> RusticResult<()> {
     let progress_bar = repo.pb.progress_counter("warming up packs...");
     progress_bar.set_length(packs.len() as u64);

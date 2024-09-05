@@ -3,13 +3,18 @@ use std::{cmp::Ordering, num::NonZeroU32};
 use chrono::{DateTime, Local};
 
 use serde_derive::{Deserialize, Serialize};
+use typed_id::TypedId;
 
 use crate::{
     backend::FileType,
-    blob::BlobType,
+    blob::{BlobId, BlobType},
     id::Id,
     repofile::{packfile::PackHeaderRef, RepoFile},
 };
+
+use super::packfile::PackId;
+
+pub type IndexId = TypedId<Id, IndexFile>;
 
 /// Index files describe index information about multiple `pack` files.
 ///
@@ -29,6 +34,7 @@ pub struct IndexFile {
 impl RepoFile for IndexFile {
     /// The [`FileType`] associated with the [`IndexFile`]
     const TYPE: FileType = FileType::Index;
+    type Id = IndexId;
 }
 
 impl IndexFile {
@@ -58,7 +64,7 @@ impl IndexFile {
 /// Index information about a `pack`
 pub struct IndexPack {
     /// pack Id
-    pub id: Id,
+    pub id: PackId,
     /// Index information about contained blobs
     pub blobs: Vec<IndexBlob>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -81,7 +87,7 @@ impl IndexPack {
     /// * `uncompressed_length` - The blob uncompressed length within the pack
     pub(crate) fn add(
         &mut self,
-        id: Id,
+        id: BlobId,
         tpe: BlobType,
         offset: u32,
         length: u32,
@@ -123,7 +129,7 @@ impl IndexPack {
 /// Index information about a `blob`
 pub struct IndexBlob {
     /// Blob Id
-    pub id: Id,
+    pub id: BlobId,
     #[serde(rename = "type")]
     /// Type of the blob
     pub tpe: BlobType,

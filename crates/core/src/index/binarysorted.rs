@@ -2,17 +2,19 @@ use rayon::prelude::*;
 use std::num::NonZeroU32;
 
 use crate::{
-    blob::{BlobType, BlobTypeMap},
-    id::Id,
+    blob::{BlobId, BlobType, BlobTypeMap},
     index::{IndexEntry, ReadIndex},
-    repofile::indexfile::{IndexBlob, IndexPack},
+    repofile::{
+        indexfile::{IndexBlob, IndexPack},
+        packfile::PackId,
+    },
 };
 
 /// A sorted entry in the index.
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) struct SortedEntry {
     /// The ID of the entry.
-    id: Id,
+    id: BlobId,
     /// The index of the pack containing the entry.
     pack_idx: usize,
     /// The offset of the entry in the pack.
@@ -38,7 +40,7 @@ pub enum IndexType {
 #[derive(Debug)]
 pub(crate) enum EntriesVariants {
     None,
-    Ids(Vec<Id>),
+    Ids(Vec<BlobId>),
     FullEntries(Vec<SortedEntry>),
 }
 
@@ -50,7 +52,7 @@ impl Default for EntriesVariants {
 
 #[derive(Default, Debug)]
 pub(crate) struct TypeIndexCollector {
-    packs: Vec<(Id, u32)>,
+    packs: Vec<(PackId, u32)>,
     entries: EntriesVariants,
     total_size: u64,
 }
@@ -67,7 +69,7 @@ pub struct PackIndexes {
 
 #[derive(Debug)]
 pub(crate) struct TypeIndex {
-    packs: Vec<Id>,
+    packs: Vec<PackId>,
     entries: EntriesVariants,
     total_size: u64,
 }
@@ -91,12 +93,12 @@ impl IndexCollector {
     }
 
     #[must_use]
-    pub fn tree_packs(&self) -> &Vec<(Id, u32)> {
+    pub fn tree_packs(&self) -> &Vec<(PackId, u32)> {
         &self.0[BlobType::Tree].packs
     }
 
     #[must_use]
-    pub fn data_packs(&self) -> &Vec<(Id, u32)> {
+    pub fn data_packs(&self) -> &Vec<(PackId, u32)> {
         &self.0[BlobType::Data].packs
     }
 
@@ -229,7 +231,7 @@ impl IntoIterator for Index {
 }
 
 impl ReadIndex for Index {
-    fn get_id(&self, blob_type: BlobType, id: &Id) -> Option<IndexEntry> {
+    fn get_id(&self, blob_type: BlobType, id: &BlobId) -> Option<IndexEntry> {
         let EntriesVariants::FullEntries(vec) = &self.0[blob_type].entries else {
             // get_id() only gives results if index contains full entries
             return None;
@@ -251,7 +253,7 @@ impl ReadIndex for Index {
         self.0[blob_type].total_size
     }
 
-    fn has(&self, blob_type: BlobType, id: &Id) -> bool {
+    fn has(&self, blob_type: BlobType, id: &BlobId) -> bool {
         match &self.0[blob_type].entries {
             EntriesVariants::FullEntries(entries) => {
                 entries.binary_search_by_key(id, |e| e.id).is_ok()
@@ -265,8 +267,10 @@ impl ReadIndex for Index {
 
 #[cfg(test)]
 mod tests {
+    use typed_id::TypedId;
+
     use super::*;
-    use crate::repofile::indexfile::IndexFile;
+    use crate::{repofile::indexfile::IndexFile, Id};
 
     const JSON_INDEX: &str = r#"
 {"packs":[{"id":"217f145b63fbc10267f5a686186689ea3389bed0d6a54b50ffc84d71f99eb7fa",
@@ -338,8 +342,8 @@ mod tests {
     /// # Panics
     ///
     /// If the string is not a valid hexadecimal string.
-    fn parse(s: &str) -> Id {
-        Id::from_hex(s).unwrap()
+    fn parse<T>(s: &str) -> TypedId<Id, T> {
+        Id::from_hex(s).unwrap().into()
     }
 
     #[test]

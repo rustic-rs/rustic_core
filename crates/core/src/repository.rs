@@ -28,8 +28,8 @@ use crate::{
         FileType, ReadBackend, WriteBackend,
     },
     blob::{
-        tree::{FindMatches, FindNode, NodeStreamer, TreeStreamerOptions as LsOptions},
-        BlobType,
+        tree::{FindMatches, FindNode, NodeStreamer, TreeId, TreeStreamerOptions as LsOptions},
+        BlobId, BlobType,
     },
     commands::{
         self,
@@ -57,10 +57,11 @@ use crate::{
     progress::{NoProgressBars, Progress, ProgressBars},
     repofile::{
         keyfile::find_key_in_backend,
-        snapshotfile::{SnapshotGroup, SnapshotGroupCriterion},
+        packfile::PackId,
+        snapshotfile::{SnapshotGroup, SnapshotGroupCriterion, SnapshotId},
         ConfigFile, PathList, RepoFile, SnapshotFile, SnapshotSummary, Tree,
     },
-    repository::{warm_up::warm_up, warm_up::warm_up_wait},
+    repository::warm_up::{warm_up, warm_up_wait},
     vfs::OpenFile,
     RepositoryBackends, RusticResult,
 };
@@ -711,7 +712,7 @@ impl<P: ProgressBars, S> Repository<P, S> {
     /// # Returns
     ///
     /// The result of the warm up
-    pub fn warm_up(&self, packs: impl ExactSizeIterator<Item = Id>) -> RusticResult<()> {
+    pub fn warm_up(&self, packs: impl ExactSizeIterator<Item = PackId>) -> RusticResult<()> {
         warm_up(self, packs)
     }
 
@@ -728,7 +729,7 @@ impl<P: ProgressBars, S> Repository<P, S> {
     ///
     /// [`RepositoryErrorKind::FromSplitError`]: crate::error::RepositoryErrorKind::FromSplitError
     /// [`RepositoryErrorKind::FromThreadPoolbilderError`]: crate::error::RepositoryErrorKind::FromThreadPoolbilderError
-    pub fn warm_up_wait(&self, packs: impl ExactSizeIterator<Item = Id>) -> RusticResult<()> {
+    pub fn warm_up_wait(&self, packs: impl ExactSizeIterator<Item = PackId>) -> RusticResult<()> {
         warm_up_wait(self, packs)
     }
 }
@@ -1038,7 +1039,7 @@ impl<P: ProgressBars, S: Open> Repository<P, S> {
     /// # Panics
     ///
     /// If the files could not be deleted.
-    pub fn delete_snapshots(&self, ids: &[Id]) -> RusticResult<()> {
+    pub fn delete_snapshots(&self, ids: &[SnapshotId]) -> RusticResult<()> {
         if self.config().append_only == Some(true) {
             return Err(CommandErrorKind::NotAllowedWithAppendOnly(
                 "snapshots removal".to_string(),
@@ -1046,8 +1047,7 @@ impl<P: ProgressBars, S: Open> Repository<P, S> {
             .into());
         }
         let p = self.pb.progress_counter("removing snapshots...");
-        self.dbe()
-            .delete_list(FileType::Snapshot, true, ids.iter(), p)?;
+        self.dbe().delete_list(true, ids.iter(), p)?;
         Ok(())
     }
 
@@ -1064,7 +1064,7 @@ impl<P: ProgressBars, S: Open> Repository<P, S> {
     /// [`CryptBackendErrorKind::SerializingToJsonByteVectorFailed`]: crate::error::CryptBackendErrorKind::SerializingToJsonByteVectorFailed
     pub fn save_snapshots(&self, mut snaps: Vec<SnapshotFile>) -> RusticResult<()> {
         for snap in &mut snaps {
-            snap.id = Id::default();
+            snap.id = SnapshotId::default();
         }
         let p = self.pb.progress_counter("saving snapshots...");
         self.dbe().save_list(snaps.iter(), p)?;
@@ -1250,7 +1250,7 @@ impl<P: ProgressBars, S: Open> Repository<P, S> {
     /// An iterator over all files of the given type
     pub fn stream_files<F: RepoFile>(
         &self,
-    ) -> RusticResult<impl Iterator<Item = RusticResult<(Id, F)>>> {
+    ) -> RusticResult<impl Iterator<Item = RusticResult<(F::Id, F)>>> {
         Ok(self
             .dbe()
             .stream_all::<F>(&self.pb.progress_hidden())?
@@ -1431,7 +1431,7 @@ impl<P, S: IndexedFull> Repository<P, S> {
     /// * [`RepositoryErrorKind::IdNotFound`] - If the id is not found in the index
     ///
     /// [`RepositoryErrorKind::IdNotFound`]: crate::error::RepositoryErrorKind::IdNotFound
-    pub fn get_index_entry(&self, tpe: BlobType, id: &Id) -> RusticResult<IndexEntry> {
+    pub fn get_index_entry(&self, tpe: BlobType, id: &BlobId) -> RusticResult<IndexEntry> {
         let ie = self
             .index()
             .get_id(tpe, id)
@@ -1492,7 +1492,7 @@ impl<P, S: IndexedTree> Repository<P, S> {
     ///
     /// [`TreeErrorKind::BlobIdNotFound`]: crate::error::TreeErrorKind::BlobIdNotFound
     /// [`TreeErrorKind::DeserializingTreeFailed`]: crate::error::TreeErrorKind::DeserializingTreeFailed
-    pub fn get_tree(&self, id: &Id) -> RusticResult<Tree> {
+    pub fn get_tree(&self, id: &TreeId) -> RusticResult<Tree> {
         Tree::from_backend(self.dbe(), self.index(), *id)
     }
 
@@ -1515,7 +1515,7 @@ impl<P, S: IndexedTree> Repository<P, S> {
     /// [`TreeErrorKind::NotADirectory`]: crate::error::TreeErrorKind::NotADirectory
     /// [`TreeErrorKind::PathNotFound`]: crate::error::TreeErrorKind::PathNotFound
     /// [`TreeErrorKind::PathIsNotUtf8Conform`]: crate::error::TreeErrorKind::PathIsNotUtf8Conform
-    pub fn node_from_path(&self, root_tree: Id, path: &Path) -> RusticResult<Node> {
+    pub fn node_from_path(&self, root_tree: TreeId, path: &Path) -> RusticResult<Node> {
         Tree::node_from_path(self.dbe(), self.index(), root_tree, Path::new(path))
     }
 
@@ -1530,7 +1530,7 @@ impl<P, S: IndexedTree> Repository<P, S> {
     /// if loading trees from the backend fails
     pub fn find_nodes_from_path(
         &self,
-        ids: impl IntoIterator<Item = Id>,
+        ids: impl IntoIterator<Item = TreeId>,
         path: &Path,
     ) -> RusticResult<FindNode> {
         Tree::find_nodes_from_path(self.dbe(), self.index(), ids, path)
@@ -1547,7 +1547,7 @@ impl<P, S: IndexedTree> Repository<P, S> {
     /// if loading trees from the backend fails
     pub fn find_matching_nodes(
         &self,
-        ids: impl IntoIterator<Item = Id>,
+        ids: impl IntoIterator<Item = TreeId>,
         matches: &impl Fn(&Path, &Node) -> bool,
     ) -> RusticResult<FindMatches> {
         Tree::find_matching_nodes(self.dbe(), self.index(), ids, matches)
@@ -1694,10 +1694,10 @@ impl<P: ProgressBars, S: IndexedTree> Repository<P, S> {
     /// This method returns the blob [`Id`] of the merged tree.
     pub fn merge_trees(
         &self,
-        trees: &[Id],
+        trees: &[TreeId],
         cmp: &impl Fn(&Node, &Node) -> Ordering,
         summary: &mut SnapshotSummary,
-    ) -> RusticResult<Id> {
+    ) -> RusticResult<TreeId> {
         commands::merge::merge_trees(self, trees, cmp, summary)
     }
 
@@ -1774,7 +1774,7 @@ impl<P, S: IndexedFull> Repository<P, S> {
     /// The cached blob in bytes.
     ///
     /// [`IndexErrorKind::BlobInIndexNotFound`]: crate::error::IndexErrorKind::BlobInIndexNotFound
-    pub fn get_blob_cached(&self, id: &Id, tpe: BlobType) -> RusticResult<Bytes> {
+    pub fn get_blob_cached(&self, id: &BlobId, tpe: BlobType) -> RusticResult<Bytes> {
         self.get_blob_or_insert_with(id, || self.index().blob_from_backend(self.dbe(), tpe, id))
     }
 }

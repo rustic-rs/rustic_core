@@ -2,7 +2,7 @@ use std::io::Write;
 
 use crate::{
     backend::node::{Node, NodeType},
-    blob::BlobType,
+    blob::{BlobId, BlobType},
     error::{CommandErrorKind, RusticResult},
     repository::{IndexedFull, Repository},
 };
@@ -35,7 +35,7 @@ pub(crate) fn dump<P, S: IndexedFull>(
     }
 
     for id in node.content.as_ref().unwrap() {
-        let data = repo.get_blob_cached(id, BlobType::Data)?;
+        let data = repo.get_blob_cached(&BlobId::from(**id), BlobType::Data)?;
         w.write_all(&data)?;
     }
     Ok(())

@@ -28,7 +28,7 @@ use crate::{
     blob::{
         packer::{PackSizer, Repacker},
         tree::TreeStreamerOnce,
-        BlobType, BlobTypeMap, Initialize,
+        BlobId, BlobType, BlobTypeMap, Initialize,
     },
     error::{CommandErrorKind, RusticErrorKind, RusticResult},
     id::Id,
@@ -38,7 +38,10 @@ use crate::{
         GlobalIndex, ReadGlobalIndex, ReadIndex,
     },
     progress::{Progress, ProgressBars},
-    repofile::{HeaderEntry, IndexBlob, IndexFile, IndexPack, SnapshotFile},
+    repofile::{
+        indexfile::IndexId, packfile::PackId, HeaderEntry, IndexBlob, IndexFile, IndexPack,
+        SnapshotFile,
+    },
     repository::{Open, Repository},
 };
 
@@ -210,6 +213,7 @@ impl PruneOptions {
             .list_with_size(FileType::Pack)
             .map_err(RusticErrorKind::Backend)?
             .into_iter()
+            .map(|(id, size)| (PackId::from(id), size))
             .collect();
         p.finish();
 
@@ -437,7 +441,7 @@ impl PruneStats {
 #[derive(Debug)]
 struct PruneIndex {
     /// The id of the index file
-    id: Id,
+    id: IndexId,
     /// Whether the index file was modified
     modified: bool,
     /// The packs in the index file
@@ -482,7 +486,7 @@ impl Default for PackToDo {
 #[derive(Debug)]
 struct PrunePack {
     /// The id of the pack
-    id: Id,
+    id: PackId,
     /// The type of the pack
     blob_type: BlobType,
     /// The size of the pack
@@ -633,9 +637,9 @@ pub struct PrunePlan {
     /// The time the plan was created
     time: DateTime<Local>,
     /// The ids of the blobs which are used
-    used_ids: BTreeMap<Id, u8>,
+    used_ids: BTreeMap<BlobId, u8>,
     /// The ids of the existing packs
-    existing_packs: BTreeMap<Id, u32>,
+    existing_packs: BTreeMap<PackId, u32>,
     /// The packs which should be repacked
     repack_candidates: Vec<(PackInfo, EnumSet<PackStatus>, RepackReason, usize, usize)>,
     /// The index files
@@ -653,9 +657,9 @@ impl PrunePlan {
     /// * `existing_packs` - The ids of the existing packs
     /// * `index_files` - The index files
     fn new(
-        used_ids: BTreeMap<Id, u8>,
-        existing_packs: BTreeMap<Id, u32>,
-        index_files: Vec<(Id, IndexFile)>,
+        used_ids: BTreeMap<BlobId, u8>,
+        existing_packs: BTreeMap<PackId, u32>,
+        index_files: Vec<(IndexId, IndexFile)>,
     ) -> Self {
         let mut processed_packs = BTreeSet::new();
         let mut processed_packs_delete = BTreeSet::new();
@@ -1085,7 +1089,7 @@ impl PrunePlan {
 
     /// Get the list of packs-to-repack from the [`PrunePlan`].
     #[must_use]
-    pub fn repack_packs(&self) -> Vec<Id> {
+    pub fn repack_packs(&self) -> Vec<PackId> {
         self.index_files
             .iter()
             .flat_map(|index| &index.packs)
@@ -1166,7 +1170,7 @@ impl PrunePlan {
             if opts.instant_delete {
                 let p = pb.progress_counter("removing unindexed packs...");
                 let existing_packs: Vec<_> = self.existing_packs.into_keys().collect();
-                be.delete_list(FileType::Pack, true, existing_packs.iter(), p)?;
+                be.delete_list(true, existing_packs.iter(), p)?;
             } else {
                 let p =
                     pb.progress_counter("marking unneeded unindexed pack files for deletion...");
@@ -1225,7 +1229,7 @@ impl PrunePlan {
         // remove old index files early if requested
         if !indexes_remove.is_empty() && opts.early_delete_index {
             let p = pb.progress_counter("removing old index files...");
-            be.delete_list(FileType::Index, true, indexes_remove.iter(), p)?;
+            be.delete_list(true, indexes_remove.iter(), p)?;
         }
 
         // write new pack files and index files
@@ -1303,21 +1307,21 @@ impl PrunePlan {
         // remove old index files first as they may reference pack files which are removed soon.
         if !indexes_remove.is_empty() && !opts.early_delete_index {
             let p = pb.progress_counter("removing old index files...");
-            be.delete_list(FileType::Index, true, indexes_remove.iter(), p)?;
+            be.delete_list(true, indexes_remove.iter(), p)?;
         }
 
         // get variable out of Arc<Mutex<_>>
         let data_packs_remove = data_packs_remove.lock().unwrap();
         if !data_packs_remove.is_empty() {
             let p = pb.progress_counter("removing old data packs...");
-            be.delete_list(FileType::Pack, false, data_packs_remove.iter(), p)?;
+            be.delete_list(false, data_packs_remove.iter(), p)?;
         }
 
         // get variable out of Arc<Mutex<_>>
         let tree_packs_remove = tree_packs_remove.lock().unwrap();
         if !tree_packs_remove.is_empty() {
             let p = pb.progress_counter("removing old tree packs...");
-            be.delete_list(FileType::Pack, true, tree_packs_remove.iter(), p)?;
+            be.delete_list(true, tree_packs_remove.iter(), p)?;
         }
 
         Ok(())
@@ -1365,7 +1369,7 @@ impl PackInfo {
     ///
     /// * `pack` - The `PrunePack` to create the `PackInfo` from
     /// * `used_ids` - The `BTreeMap` of used ids
-    fn from_pack(pack: &PrunePack, used_ids: &mut BTreeMap<Id, u8>) -> Self {
+    fn from_pack(pack: &PrunePack, used_ids: &mut BTreeMap<BlobId, u8>) -> Self {
         let mut pi = Self {
             blob_type: pack.blob_type,
             used_blobs: 0,
@@ -1456,7 +1460,7 @@ fn find_used_blobs(
     index: &impl ReadGlobalIndex,
     ignore_snaps: &[Id],
     pb: &impl ProgressBars,
-) -> RusticResult<BTreeMap<Id, u8>> {
+) -> RusticResult<BTreeMap<BlobId, u8>> {
     let ignore_snaps: BTreeSet<_> = ignore_snaps.iter().collect();
 
     let p = pb.progress_counter("reading snapshots...");
@@ -1473,7 +1477,10 @@ fn find_used_blobs(
         .try_collect()?;
     p.finish();
 
-    let mut ids: BTreeMap<_, _> = snap_trees.iter().map(|id| (*id, 0)).collect();
+    let mut ids: BTreeMap<_, _> = snap_trees
+        .iter()
+        .map(|id| (BlobId::from(**id), 0))
+        .collect();
     let p = pb.progress_counter("finding used blobs...");
 
     let mut tree_streamer = TreeStreamerOnce::new(be, index, snap_trees, p)?;
@@ -1482,10 +1489,15 @@ fn find_used_blobs(
         for node in tree.nodes {
             match node.node_type {
                 NodeType::File => {
-                    ids.extend(node.content.iter().flatten().map(|id| (*id, 0)));
+                    ids.extend(
+                        node.content
+                            .iter()
+                            .flatten()
+                            .map(|id| (BlobId::from(**id), 0)),
+                    );
                 }
                 NodeType::Dir => {
-                    _ = ids.insert(node.subtree.unwrap(), 0);
+                    _ = ids.insert(BlobId::from(*node.subtree.unwrap()), 0);
                 }
                 _ => {} // nothing to do
             }

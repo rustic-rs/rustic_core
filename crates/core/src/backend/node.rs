@@ -27,7 +27,7 @@ use serde_with::{
 #[cfg(not(windows))]
 use crate::error::NodeErrorKind;
 
-use crate::id::Id;
+use crate::blob::{tree::TreeId, DataId};
 
 #[derive(
     Default, Serialize, Deserialize, Clone, Debug, PartialEq, Eq, Constructor, PartialOrd, Ord,
@@ -53,14 +53,14 @@ pub struct Node {
     /// # Note
     ///
     /// This should be only set for regular files.
-    pub content: Option<Vec<Id>>,
+    pub content: Option<Vec<DataId>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     /// Subtree of the Node.
     ///
     /// # Note
     ///
     /// This should be only set for directories. (TODO: Check if this is correct)
-    pub subtree: Option<Id>,
+    pub subtree: Option<TreeId>,
 }
 
 #[serde_as]

@@ -22,7 +22,12 @@ use chrono::OutOfRangeError;
 use displaydoc::Display;
 use thiserror::Error;
 
-use crate::{backend::node::NodeType, id::Id, repofile::indexfile::IndexPack};
+use crate::{
+    backend::node::NodeType,
+    blob::{tree::TreeId, BlobId},
+    id::Id,
+    repofile::{indexfile::IndexPack, packfile::PackId},
+};
 
 /// Result type that is being returned from methods that can fail and thus have [`RusticError`]s.
 pub type RusticResult<T> = Result<T, RusticError>;
@@ -173,13 +178,13 @@ pub enum CommandErrorKind {
     /// path is no dir: `{0:?}`
     PathIsNoDir(String),
     /// used blobs are missing: blob {0} doesn't existing
-    BlobsMissing(Id),
+    BlobsMissing(BlobId),
     /// used pack {0}: size does not match! Expected size: {1}, real size: {2}
-    PackSizeNotMatching(Id, u32, u32),
+    PackSizeNotMatching(PackId, u32, u32),
     /// "used pack {0} does not exist!
-    PackNotExisting(Id),
+    PackNotExisting(PackId),
     /// pack {0} got no decision what to do
-    NoDecision(Id),
+    NoDecision(PackId),
     /// {0:?}
     FromParseIntError(#[from] ParseIntError),
     /// {0}
@@ -302,7 +307,7 @@ pub enum RepositoryErrorKind {
     /// Config file already exists. Aborting.
     ConfigFileExists,
     /// did not find id {0} in index
-    IdNotFound(Id),
+    IdNotFound(BlobId),
     /// no suitable backend type found
     NoBackendTypeGiven,
 }
@@ -458,7 +463,7 @@ pub enum PackerErrorKind {
     GettingTotalSizeFailed,
     /// crossbeam couldn't send message: `{0:?}`
     SendingCrossbeamMessageFailed(
-        #[from] crossbeam_channel::SendError<(bytes::Bytes, Id, Option<u32>)>,
+        #[from] crossbeam_channel::SendError<(bytes::Bytes, BlobId, Option<u32>)>,
     ),
     /// crossbeam couldn't send message: `{0:?}`
     SendingCrossbeamMessageFailedForIndexPack(
@@ -504,7 +509,7 @@ pub enum TreeErrorKind {
     /// failed to read file string from glob file: `{0:?}`
     ReadingFileStringFromGlobsFailed(#[from] std::io::Error),
     /// crossbeam couldn't send message: `{0:?}`
-    SendingCrossbeamMessageFailed(#[from] crossbeam_channel::SendError<(PathBuf, Id, usize)>),
+    SendingCrossbeamMessageFailed(#[from] crossbeam_channel::SendError<(PathBuf, TreeId, usize)>),
     /// crossbeam couldn't receive message: `{0:?}`
     ReceivingCrossbreamMessageFailed(#[from] crossbeam_channel::RecvError),
 }

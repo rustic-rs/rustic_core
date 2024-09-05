@@ -16,10 +16,9 @@ use crate::{
         stdin::StdinSource,
     },
     error::RusticResult,
-    id::Id,
     progress::ProgressBars,
     repofile::{
-        snapshotfile::{SnapshotGroup, SnapshotGroupCriterion},
+        snapshotfile::{SnapshotGroup, SnapshotGroupCriterion, SnapshotId},
         PathList, SnapshotFile,
     },
     repository::{IndexedIds, IndexedTree, Repository},
@@ -91,7 +90,7 @@ impl ParentOptions {
         repo: &Repository<P, S>,
         snap: &SnapshotFile,
         backup_stdin: bool,
-    ) -> (Option<Id>, Parent) {
+    ) -> (Option<SnapshotId>, Parent) {
         let parent = match (backup_stdin, self.force, &self.parent) {
             (true, _, _) | (false, true, _) => None,
             (false, false, None) => {

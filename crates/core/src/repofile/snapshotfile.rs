@@ -16,9 +16,11 @@ use log::info;
 use path_dedot::ParseDot;
 use serde_derive::{Deserialize, Serialize};
 use serde_with::{serde_as, DisplayFromStr, OneOrMany};
+use typed_id::TypedId;
 
 use crate::{
     backend::{decrypt::DecryptReadBackend, FileType, FindInBackend},
+    blob::tree::TreeId,
     error::{RusticError, RusticResult, SnapshotFileErrorKind},
     id::Id,
     progress::Progress,
@@ -258,6 +260,8 @@ impl DeleteOption {
     }
 }
 
+pub type SnapshotId = TypedId<Id, SnapshotFile>;
+
 #[serde_with::apply(Option => #[serde(default, skip_serializing_if = "Option::is_none")])]
 #[derive(Debug, Clone, Serialize, Deserialize, Derivative)]
 #[derivative(Default)]
@@ -282,10 +286,10 @@ pub struct SnapshotFile {
     pub program_version: String,
 
     /// The Id of the parent snapshot that this snapshot has been based on
-    pub parent: Option<Id>,
+    pub parent: Option<SnapshotId>,
 
     /// The tree blob id where the contents of this snapshot are stored
-    pub tree: Id,
+    pub tree: TreeId,
 
     /// Label for the snapshot
     #[serde(default, skip_serializing_if = "String::is_empty")]
@@ -315,7 +319,7 @@ pub struct SnapshotFile {
     pub tags: StringList,
 
     /// The original Id of this snapshot. This is stored when the snapshot is modified.
-    pub original: Option<Id>,
+    pub original: Option<SnapshotId>,
 
     /// Options for deletion of the snapshot
     #[serde(default, skip_serializing_if = "DeleteOption::is_not_set")]
@@ -329,12 +333,13 @@ pub struct SnapshotFile {
 
     /// The snapshot Id (not stored within the JSON)
     #[serde(default, skip_serializing_if = "Id::is_null")]
-    pub id: Id,
+    pub id: SnapshotId,
 }
 
 impl RepoFile for SnapshotFile {
     /// The file type of a [`SnapshotFile`] is always [`FileType::Snapshot`]
     const TYPE: FileType = FileType::Snapshot;
+    type Id = SnapshotId;
 }
 
 impl SnapshotFile {
@@ -419,7 +424,7 @@ impl SnapshotFile {
     /// # Arguments
     ///
     /// * `tuple` - A tuple of the [`Id`] and the [`RepoFile`] to use
-    fn set_id(tuple: (Id, Self)) -> Self {
+    fn set_id(tuple: (SnapshotId, Self)) -> Self {
         let (id, mut snap) = tuple;
         snap.id = id;
         _ = snap.original.get_or_insert(id);
@@ -432,7 +437,7 @@ impl SnapshotFile {
     ///
     /// * `be` - The backend to use
     /// * `id` - The id of the snapshot
-    fn from_backend<B: DecryptReadBackend>(be: &B, id: &Id) -> RusticResult<Self> {
+    fn from_backend<B: DecryptReadBackend>(be: &B, id: &SnapshotId) -> RusticResult<Self> {
         Ok(Self::set_id((*id, be.get_file(id)?)))
     }
 
@@ -524,7 +529,7 @@ impl SnapshotFile {
     pub(crate) fn from_id<B: DecryptReadBackend>(be: &B, id: &str) -> RusticResult<Self> {
         info!("getting snapshot...");
         let id = be.find_id(FileType::Snapshot, id)?;
-        Self::from_backend(be, &id)
+        Self::from_backend(be, &SnapshotId::from(id))
     }
 
     /// Get a list of [`SnapshotFile`]s from the backend by supplying a list of/parts of their Ids
@@ -555,7 +560,7 @@ impl SnapshotFile {
         // sort back to original order
         Ok(ids
             .into_iter()
-            .filter_map(|id| list.remove_entry(&id))
+            .filter_map(|id| list.remove_entry(&SnapshotId::from(id)))
             .map(Self::set_id)
             .collect())
     }
@@ -783,7 +788,7 @@ impl SnapshotFile {
     /// * `sn` - The snapshot to clear the ids from
     #[must_use]
     pub(crate) fn clear_ids(mut sn: Self) -> Self {
-        sn.id = Id::default();
+        sn.id = SnapshotId::default();
         sn.parent = None;
         sn
     }
