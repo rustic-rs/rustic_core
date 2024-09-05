@@ -35,7 +35,7 @@ pub struct BackendOptions {
     /// Repository to use
     #[cfg_attr(
         feature = "clap",
-        clap(short, long, global = true, alias = "repo", env = "RUSTIC_REPOSITORY", value_hint = ValueHint::DirPath)
+        clap(short, long, global = true, visible_alias = "repo", env = "RUSTIC_REPOSITORY", value_hint = ValueHint::DirPath)
     )]
     pub repository: Option<String>,
 
