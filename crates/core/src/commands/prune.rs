@@ -31,7 +31,6 @@ use crate::{
         BlobId, BlobType, BlobTypeMap, Initialize,
     },
     error::{CommandErrorKind, RusticErrorKind, RusticResult},
-    id::Id,
     index::{
         binarysorted::{IndexCollector, IndexType},
         indexer::Indexer,
@@ -40,7 +39,7 @@ use crate::{
     progress::{Progress, ProgressBars},
     repofile::{
         indexfile::IndexId, packfile::PackId, HeaderEntry, IndexBlob, IndexFile, IndexPack,
-        SnapshotFile,
+        SnapshotFile, SnapshotId,
     },
     repository::{Open, Repository},
 };
@@ -1458,7 +1457,7 @@ impl PackInfo {
 fn find_used_blobs(
     be: &impl DecryptReadBackend,
     index: &impl ReadGlobalIndex,
-    ignore_snaps: &[Id],
+    ignore_snaps: &[SnapshotId],
     pb: &impl ProgressBars,
 ) -> RusticResult<BTreeMap<BlobId, u8>> {
     let ignore_snaps: BTreeSet<_> = ignore_snaps.iter().collect();
@@ -1468,7 +1467,7 @@ fn find_used_blobs(
         .list(FileType::Snapshot)
         .map_err(RusticErrorKind::Backend)?
         .into_iter()
-        .filter(|id| !ignore_snaps.contains(id))
+        .filter(|id| !ignore_snaps.contains(&SnapshotId::from(*id)))
         .collect();
     let snap_trees: Vec<_> = be
         .stream_list::<SnapshotFile>(&list, &p)?
