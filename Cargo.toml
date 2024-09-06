@@ -17,8 +17,8 @@ anyhow = "1.0.86"
 bytes = "1.7.1"
 enum-map = "2.7.3"
 rustic_backend = { path = "crates/backend" }
-rustic_core = { path = "crates/core" }
-rustic_testing = { path = "crates/testing" }
+rustic_core = { path = "crates/core", version = "0" }
+rustic_testing = { path = "crates/testing", version = "0" }
 simplelog = "0.12.2"
 
 # dev-dependencies
