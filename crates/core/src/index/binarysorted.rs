@@ -267,8 +267,6 @@ impl ReadIndex for Index {
 
 #[cfg(test)]
 mod tests {
-    use typed_id::TypedId;
-
     use super::*;
     use crate::{repofile::indexfile::IndexFile, Id};
 
@@ -342,7 +340,7 @@ mod tests {
     /// # Panics
     ///
     /// If the string is not a valid hexadecimal string.
-    fn parse<T>(s: &str) -> TypedId<Id, T> {
+    fn parse<T: From<Id>>(s: &str) -> T {
         Id::from_hex(s).unwrap().into()
     }
 

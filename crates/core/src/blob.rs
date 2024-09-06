@@ -4,9 +4,8 @@ pub(crate) mod tree;
 use derive_more::Constructor;
 use enum_map::{Enum, EnumMap};
 use serde_derive::{Deserialize, Serialize};
-use typed_id::TypedId;
 
-use crate::id::Id;
+use crate::new_id;
 
 /// All [`BlobType`]s which are supported by the repository
 pub const ALL_BLOB_TYPES: [BlobType; 2] = [BlobType::Tree, BlobType::Data];
@@ -24,9 +23,7 @@ pub enum BlobType {
     Data,
 }
 
-#[derive(Debug, Clone, Copy)]
-pub struct Data;
-pub type DataId = TypedId<Id, Data>;
+new_id!(DataId, "data blob");
 
 impl BlobType {
     /// Defines the cacheability of a [`BlobType`]
@@ -71,7 +68,7 @@ impl<T: Default> Initialize<T> for BlobTypeMap<T> {
     }
 }
 
-pub type BlobId = TypedId<Id, Blob>;
+new_id!(BlobId, "blob");
 
 /// A `Blob` is a file that is stored in the backend.
 ///

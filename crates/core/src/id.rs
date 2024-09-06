@@ -16,6 +16,31 @@ pub(super) mod constants {
     pub(super) const HEX_LEN: usize = LEN * 2;
 }
 
+#[macro_export]
+/// Generate newtypes for `Id`s identifying Repository files
+macro_rules! new_id {
+    ($a:ident, $b: expr) => {
+        #[doc = concat!("An Id identifying a ", stringify!($b))]
+        #[derive(
+            Debug,
+            Clone,
+            Copy,
+            Default,
+            PartialEq,
+            Eq,
+            PartialOrd,
+            Ord,
+            Hash,
+            derive_more::Deref,
+            derive_more::Display,
+            derive_more::From,
+            serde::Serialize,
+            serde::Deserialize,
+        )]
+        pub struct $a($crate::Id);
+    };
+}
+
 /// `Id` is the hash id of an object.
 ///
 /// It is being used to identify blobs or files saved in the repository.

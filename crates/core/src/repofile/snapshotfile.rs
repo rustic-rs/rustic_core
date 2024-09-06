@@ -16,15 +16,15 @@ use log::info;
 use path_dedot::ParseDot;
 use serde_derive::{Deserialize, Serialize};
 use serde_with::{serde_as, DisplayFromStr, OneOrMany};
-use typed_id::TypedId;
 
 use crate::{
     backend::{decrypt::DecryptReadBackend, FileType, FindInBackend},
     blob::tree::TreeId,
     error::{RusticError, RusticResult, SnapshotFileErrorKind},
-    id::Id,
+    new_repofile, new_repoid,
     progress::Progress,
     repofile::RepoFile,
+    Id,
 };
 
 /// Options for creating a new [`SnapshotFile`] structure for a new backup snapshot.
@@ -260,7 +260,7 @@ impl DeleteOption {
     }
 }
 
-pub type SnapshotId = TypedId<Id, SnapshotFile>;
+new_repofile!(SnapshotId, FileType::Snapshot, SnapshotFile);
 
 #[serde_with::apply(Option => #[serde(default, skip_serializing_if = "Option::is_none")])]
 #[derive(Debug, Clone, Serialize, Deserialize, Derivative)]
@@ -334,12 +334,6 @@ pub struct SnapshotFile {
     /// The snapshot Id (not stored within the JSON)
     #[serde(default, skip_serializing_if = "Id::is_null")]
     pub id: SnapshotId,
-}
-
-impl RepoFile for SnapshotFile {
-    /// The file type of a [`SnapshotFile`] is always [`FileType::Snapshot`]
-    const TYPE: FileType = FileType::Snapshot;
-    type Id = SnapshotId;
 }
 
 impl SnapshotFile {

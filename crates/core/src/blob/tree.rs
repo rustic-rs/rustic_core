@@ -12,7 +12,6 @@ use derivative::Derivative;
 use derive_setters::Setters;
 use ignore::overrides::{Override, OverrideBuilder};
 use ignore::Match;
-use typed_id::TypedId;
 
 use serde::{Deserialize, Deserializer};
 use serde_derive::Serialize;
@@ -24,8 +23,8 @@ use crate::{
     },
     crypto::hasher::hash,
     error::{RusticResult, TreeErrorKind},
-    id::Id,
     index::ReadGlobalIndex,
+    new_id,
     progress::Progress,
     repofile::snapshotfile::SnapshotSummary,
 };
@@ -37,7 +36,7 @@ pub(super) mod constants {
 
 pub(crate) type TreeStreamItem = RusticResult<(PathBuf, Tree)>;
 type NodeStreamItem = RusticResult<(PathBuf, Node)>;
-pub type TreeId = TypedId<Id, Tree>;
+new_id!(TreeId, "tree blob");
 
 #[derive(Default, Serialize, Deserialize, Clone, Debug)]
 /// A [`Tree`] is a list of [`Node`]s

@@ -1,20 +1,19 @@
 use std::{cmp::Ordering, num::NonZeroU32};
 
 use chrono::{DateTime, Local};
-
 use serde_derive::{Deserialize, Serialize};
-use typed_id::TypedId;
 
 use crate::{
     backend::FileType,
     blob::{BlobId, BlobType},
     id::Id,
+    new_repoid,
     repofile::{packfile::PackHeaderRef, RepoFile},
 };
 
 use super::packfile::PackId;
 
-pub type IndexId = TypedId<Id, IndexFile>;
+new_repoid!(IndexId, FileType::Index);
 
 /// Index files describe index information about multiple `pack` files.
 ///

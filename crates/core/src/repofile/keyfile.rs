@@ -3,13 +3,12 @@ use rand::{thread_rng, RngCore};
 use scrypt::Params;
 use serde_derive::{Deserialize, Serialize};
 use serde_with::{base64::Base64, serde_as};
-use typed_id::TypedId;
 
 use crate::{
     backend::{FileType, ReadBackend},
     crypto::{aespoly1305::Key, CryptoKey},
     error::{KeyFileErrorKind, RusticErrorKind, RusticResult},
-    id::Id,
+    new_repoid,
 };
 
 pub(super) mod constants {
@@ -21,7 +20,7 @@ pub(super) mod constants {
     }
 }
 
-pub type KeyId = TypedId<Id, KeyFile>;
+new_repoid!(KeyId, FileType::Key);
 
 /// Key files describe information about repository access keys.
 ///

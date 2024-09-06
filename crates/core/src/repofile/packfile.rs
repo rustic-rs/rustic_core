@@ -2,26 +2,18 @@ use std::num::NonZeroU32;
 
 use binrw::{io::Cursor, BinRead, BinWrite};
 use log::trace;
-use typed_id::TypedId;
 
 use crate::{
     backend::{decrypt::DecryptReadBackend, FileType},
     blob::BlobType,
     error::{PackFileErrorKind, RusticErrorKind},
     id::Id,
+    new_repoid,
     repofile::indexfile::{IndexBlob, IndexPack},
     RusticResult,
 };
 
-use super::RepoId;
-
-#[derive(Debug, Clone, Copy)]
-pub struct PackFile;
-
-pub type PackId = TypedId<Id, PackFile>;
-impl RepoId for PackId {
-    const TYPE: FileType = FileType::Pack;
-}
+new_repoid!(PackId, FileType::Pack);
 
 pub(super) mod constants {
     // 32 equals the size of the crypto overhead

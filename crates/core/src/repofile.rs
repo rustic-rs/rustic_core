@@ -1,7 +1,6 @@
 use std::ops::Deref;
 
 use serde::{de::DeserializeOwned, Serialize};
-use typed_id::TypedId;
 
 pub(crate) mod configfile;
 pub(crate) mod indexfile;
@@ -23,13 +22,30 @@ pub trait RepoId: Deref<Target = Id> + Sized + Send + Sync + 'static {
     const TYPE: FileType;
 }
 
-// Auto-implement RepoId for RepoFiles
-impl<F: RepoFile> RepoId for TypedId<Id, F> {
-    const TYPE: FileType = F::TYPE;
+#[macro_export]
+/// Generate newtypes for `Id`s identifying Repository files
+macro_rules! new_repoid {
+    ($a:ident, $b: expr) => {
+        $crate::new_id!($a, concat!("repository file of type", stringify!($b)));
+        impl $crate::repofile::RepoId for $a {
+            const TYPE: FileType = $b;
+        }
+    };
+}
+
+#[macro_export]
+/// Generate newtypes for `Id`s identifying Repository files implementing `RepoFile`
+macro_rules! new_repofile {
+    ($a:ident, $b: expr, $c: ty) => {
+        new_repoid!($a, $b);
+        impl RepoFile for $c {
+            const TYPE: FileType = $b;
+            type Id = $a;
+        }
+    };
 }
 
 // Part of public API
-
 use crate::Id;
 
 pub use {

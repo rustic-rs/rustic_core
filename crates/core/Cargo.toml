@@ -46,7 +46,7 @@ thiserror = "1.0.63"
 
 # macros
 derivative = "2.2.0"
-derive_more = { version = "1.0.0", features = ["add", "constructor", "display"] }
+derive_more = { version = "1.0.0", features = ["add", "constructor", "display", "from", "deref"] }
 derive_setters = "0.1.6"
 
 # logging
@@ -109,7 +109,6 @@ itertools = "0.13.0"
 quick_cache = "0.6.2"
 strum = { version = "0.26.3", features = ["derive"] }
 zstd = "0.13.2"
-typed_id = { version = "0.1.0", features = ["serde"] }
 
 [target.'cfg(not(windows))'.dependencies]
 sha2 = { version = "0.10.8", features = ["asm"] }
