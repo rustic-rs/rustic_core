@@ -49,21 +49,21 @@ use crate::{
     },
     crypto::aespoly1305::Key,
     error::{CommandErrorKind, KeyFileErrorKind, RepositoryErrorKind, RusticErrorKind},
-    id::Id,
     index::{
         binarysorted::{IndexCollector, IndexType},
         GlobalIndex, IndexEntry, ReadGlobalIndex, ReadIndex,
     },
     progress::{NoProgressBars, Progress, ProgressBars},
     repofile::{
+        configfile::ConfigId,
         keyfile::find_key_in_backend,
         packfile::PackId,
         snapshotfile::{SnapshotGroup, SnapshotGroupCriterion, SnapshotId},
-        ConfigFile, PathList, RepoFile, SnapshotFile, SnapshotSummary, Tree,
+        ConfigFile, KeyId, PathList, RepoFile, SnapshotFile, SnapshotSummary, Tree,
     },
     repository::warm_up::{warm_up, warm_up_wait},
     vfs::OpenFile,
-    RepositoryBackends, RusticResult,
+    Id, RepositoryBackends, RusticResult,
 };
 
 mod constants {
@@ -401,14 +401,14 @@ impl<P, S> Repository<P, S> {
     ///
     /// [`RepositoryErrorKind::ListingRepositoryConfigFileFailed`]: crate::error::RepositoryErrorKind::ListingRepositoryConfigFileFailed
     /// [`RepositoryErrorKind::MoreThanOneRepositoryConfig`]: crate::error::RepositoryErrorKind::MoreThanOneRepositoryConfig
-    pub fn config_id(&self) -> RusticResult<Option<Id>> {
+    pub fn config_id(&self) -> RusticResult<Option<ConfigId>> {
         let config_ids = self
             .be
             .list(FileType::Config)
             .map_err(|_| RepositoryErrorKind::ListingRepositoryConfigFileFailed)?;
 
         match config_ids.len() {
-            1 => Ok(Some(config_ids[0])),
+            1 => Ok(Some(ConfigId::from(config_ids[0]))),
             0 => Ok(None),
             _ => Err(RepositoryErrorKind::MoreThanOneRepositoryConfig(self.name.clone()).into()),
         }
@@ -824,7 +824,7 @@ impl<P, S: Open> Repository<P, S> {
     /// * [`CommandErrorKind::FromJsonError`] - If the key could not be serialized.
     ///
     /// [`CommandErrorKind::FromJsonError`]: crate::error::CommandErrorKind::FromJsonError
-    pub fn add_key(&self, pass: &str, opts: &KeyOptions) -> RusticResult<Id> {
+    pub fn add_key(&self, pass: &str, opts: &KeyOptions) -> RusticResult<KeyId> {
         opts.add_key(self, pass)
     }
 
@@ -1300,8 +1300,8 @@ impl<P, S: IndexedTree> IndexedTree for Repository<P, S> {
 /// Defines a weighted cache with weight equal to the length of the blob size
 pub(crate) struct BytesWeighter;
 
-impl quick_cache::Weighter<Id, Bytes> for BytesWeighter {
-    fn weight(&self, _key: &Id, val: &Bytes) -> u64 {
+impl quick_cache::Weighter<BlobId, Bytes> for BytesWeighter {
+    fn weight(&self, _key: &BlobId, val: &Bytes) -> u64 {
         u64::try_from(val.len())
             .expect("weight overflow in cache should not happen")
             // Be cautions out about zero weights!
@@ -1328,7 +1328,7 @@ pub trait IndexedFull: IndexedIds {
     /// and the function is called.
     fn get_blob_or_insert_with(
         &self,
-        id: &Id,
+        id: &BlobId,
         with: impl FnOnce() -> RusticResult<Bytes>,
     ) -> RusticResult<Bytes>;
 }
@@ -1361,7 +1361,7 @@ pub struct IdIndex;
 /// As we usually use this to access data blobs from the repository, we also have defined a blob cache for
 /// repositories with full index.
 pub struct FullIndex {
-    cache: quick_cache::sync::Cache<Id, Bytes, BytesWeighter>,
+    cache: quick_cache::sync::Cache<BlobId, Bytes, BytesWeighter>,
 }
 
 impl<T, S: Open> IndexedTree for IndexedStatus<T, S> {
@@ -1381,7 +1381,7 @@ impl<P, S: IndexedFull> IndexedIds for Repository<P, S> {}
 impl<S: Open> IndexedFull for IndexedStatus<FullIndex, S> {
     fn get_blob_or_insert_with(
         &self,
-        id: &Id,
+        id: &BlobId,
         with: impl FnOnce() -> RusticResult<Bytes>,
     ) -> RusticResult<Bytes> {
         self.index_data.cache.get_or_insert_with(id, with)
@@ -1397,7 +1397,7 @@ impl<P, S: IndexedFull> IndexedFull for Repository<P, S> {
     /// * `with` - The function which fetches the blob from the repository if it is not contained in the cache
     fn get_blob_or_insert_with(
         &self,
-        id: &Id,
+        id: &BlobId,
         with: impl FnOnce() -> RusticResult<Bytes>,
     ) -> RusticResult<Bytes> {
         self.status.get_blob_or_insert_with(id, with)

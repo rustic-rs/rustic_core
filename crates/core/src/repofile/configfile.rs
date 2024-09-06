@@ -1,8 +1,8 @@
 use serde_derive::{Deserialize, Serialize};
 
 use crate::{
-    backend::FileType, blob::BlobType, error::ConfigFileErrorKind, id::Id, repofile::RepoFile,
-    RusticResult,
+    backend::FileType, blob::BlobType, error::ConfigFileErrorKind, new_id, new_repofile,
+    repofile::RepoFile, RusticResult,
 };
 
 pub(super) mod constants {
@@ -27,6 +27,9 @@ pub(super) mod constants {
     pub(super) const DEFAULT_MIN_PERCENTAGE: u32 = 30;
 }
 
+new_id!(RepositoryId, "repository");
+new_repofile!(ConfigId, FileType::Config, ConfigFile);
+
 #[serde_with::apply(Option => #[serde(default, skip_serializing_if = "Option::is_none")])]
 #[derive(Serialize, Deserialize, Debug, Default, Clone, PartialEq, Eq)]
 /// The config file describes all repository-wide information.
@@ -36,8 +39,8 @@ pub struct ConfigFile {
     /// Repository version. Currently 1 and 2 are supported
     pub version: u32,
 
-    /// The [`Id`] identifying the repsitors
-    pub id: Id,
+    /// The [`Id`] identifying the repsitory
+    pub id: RepositoryId,
 
     /// The chunker polynomial used to chunk data
     pub chunker_polynomial: String,
@@ -105,12 +108,6 @@ pub struct ConfigFile {
     pub extra_verify: Option<bool>,
 }
 
-impl RepoFile for ConfigFile {
-    /// The file type of the config file
-    const TYPE: FileType = FileType::Config;
-    type Id = Id;
-}
-
 impl ConfigFile {
     #[must_use]
     /// Creates a new `ConfigFile`.
@@ -120,7 +117,7 @@ impl ConfigFile {
     /// * `version` - The version of the repository
     /// * `id` - The id of the repository
     /// * `poly` - The chunker polynomial
-    pub fn new(version: u32, id: Id, poly: u64) -> Self {
+    pub fn new(version: u32, id: RepositoryId, poly: u64) -> Self {
         Self {
             version,
             id,

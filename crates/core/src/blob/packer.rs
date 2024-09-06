@@ -20,7 +20,6 @@ use crate::{
     blob::BlobType,
     crypto::{hasher::hash, CryptoKey},
     error::{PackerErrorKind, RusticErrorKind, RusticResult},
-    id::Id,
     index::indexer::SharedIndexer,
     repofile::{
         configfile::ConfigFile,
@@ -804,7 +803,7 @@ impl<BE: DecryptFullBackend> Repacker<BE> {
     ///
     /// If the blob could not be added
     /// If reading the blob from the backend fails
-    pub fn add_fast(&self, pack_id: &Id, blob: &IndexBlob) -> RusticResult<()> {
+    pub fn add_fast(&self, pack_id: &PackId, blob: &IndexBlob) -> RusticResult<()> {
         let data = self
             .be
             .read_partial(
@@ -836,7 +835,7 @@ impl<BE: DecryptFullBackend> Repacker<BE> {
     ///
     /// If the blob could not be added
     /// If reading the blob from the backend fails
-    pub fn add(&self, pack_id: &Id, blob: &IndexBlob) -> RusticResult<()> {
+    pub fn add(&self, pack_id: &PackId, blob: &IndexBlob) -> RusticResult<()> {
         let data = self.be.read_encrypted_partial(
             FileType::Pack,
             pack_id,

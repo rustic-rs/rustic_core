@@ -16,6 +16,7 @@ use crate::{
     backend::{FileType, ReadBackend, WriteBackend},
     error::{CacheBackendErrorKind, RusticResult},
     id::Id,
+    repofile::configfile::RepositoryId,
 };
 
 /// Backend that caches data.
@@ -235,7 +236,7 @@ impl Cache {
     ///
     /// [`CacheBackendErrorKind::NoCacheDirectory`]: crate::error::CacheBackendErrorKind::NoCacheDirectory
     /// [`CacheBackendErrorKind::FromIoError`]: crate::error::CacheBackendErrorKind::FromIoError
-    pub fn new(id: Id, path: Option<PathBuf>) -> RusticResult<Self> {
+    pub fn new(id: RepositoryId, path: Option<PathBuf>) -> RusticResult<Self> {
         let mut path = path.unwrap_or({
             let mut dir = cache_dir().ok_or_else(|| CacheBackendErrorKind::NoCacheDirectory)?;
             dir.push("rustic");

@@ -6,7 +6,6 @@ use serde_derive::{Deserialize, Serialize};
 use crate::{
     backend::FileType,
     blob::{BlobId, BlobType},
-    id::Id,
     new_repoid,
     repofile::{packfile::PackHeaderRef, RepoFile},
 };
@@ -22,7 +21,7 @@ new_repoid!(IndexId, FileType::Index);
 pub struct IndexFile {
     #[serde(skip_serializing_if = "Option::is_none")]
     /// which other index files are superseded by this (not actively used)
-    pub supersedes: Option<Vec<Id>>,
+    pub supersedes: Option<Vec<IndexId>>,
     /// Index information about used packs
     pub packs: Vec<IndexPack>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]

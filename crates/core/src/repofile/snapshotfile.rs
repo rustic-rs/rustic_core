@@ -21,7 +21,7 @@ use crate::{
     backend::{decrypt::DecryptReadBackend, FileType, FindInBackend},
     blob::tree::TreeId,
     error::{RusticError, RusticResult, SnapshotFileErrorKind},
-    new_repofile, new_repoid,
+    new_repofile,
     progress::Progress,
     repofile::RepoFile,
     Id,
