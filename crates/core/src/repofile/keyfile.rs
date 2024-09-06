@@ -3,6 +3,7 @@ use rand::{thread_rng, RngCore};
 use scrypt::Params;
 use serde_derive::{Deserialize, Serialize};
 use serde_with::{base64::Base64, serde_as};
+use typed_id::TypedId;
 
 use crate::{
     backend::{FileType, ReadBackend},
@@ -19,6 +20,8 @@ pub(super) mod constants {
         std::mem::size_of::<T>() * 8
     }
 }
+
+pub type KeyId = TypedId<Id, KeyFile>;
 
 /// Key files describe information about repository access keys.
 ///
@@ -200,7 +203,7 @@ impl KeyFile {
     /// # Returns
     ///
     /// The [`KeyFile`] read from the backend
-    fn from_backend<B: ReadBackend>(be: &B, id: &Id) -> RusticResult<Self> {
+    fn from_backend<B: ReadBackend>(be: &B, id: &KeyId) -> RusticResult<Self> {
         let data = be
             .read_full(FileType::Key, id)
             .map_err(RusticErrorKind::Backend)?;
@@ -299,7 +302,7 @@ impl MasterKey {
 // TODO!: Add errors!
 pub(crate) fn key_from_backend<B: ReadBackend>(
     be: &B,
-    id: &Id,
+    id: &KeyId,
     passwd: &impl AsRef<[u8]>,
 ) -> RusticResult<Key> {
     KeyFile::from_backend(be, id)?.key_from_password(passwd)
@@ -327,13 +330,13 @@ pub(crate) fn key_from_backend<B: ReadBackend>(
 pub(crate) fn find_key_in_backend<B: ReadBackend>(
     be: &B,
     passwd: &impl AsRef<[u8]>,
-    hint: Option<&Id>,
+    hint: Option<&KeyId>,
 ) -> RusticResult<Key> {
     if let Some(id) = hint {
         key_from_backend(be, id, passwd)
     } else {
         for id in be.list(FileType::Key).map_err(RusticErrorKind::Backend)? {
-            if let Ok(key) = key_from_backend(be, &id, passwd) {
+            if let Ok(key) = key_from_backend(be, &KeyId::from(id), passwd) {
                 return Ok(key);
             }
         }

@@ -41,8 +41,8 @@ pub use {
         blob::{tree::Tree, BlobType, ALL_BLOB_TYPES},
     },
     configfile::ConfigFile,
-    indexfile::{IndexBlob, IndexFile, IndexPack},
-    keyfile::KeyFile,
-    packfile::{HeaderEntry, PackHeader, PackHeaderLength, PackHeaderRef},
-    snapshotfile::{DeleteOption, PathList, SnapshotFile, SnapshotSummary, StringList},
+    indexfile::{IndexBlob, IndexFile, IndexId, IndexPack},
+    keyfile::{KeyFile, KeyId},
+    packfile::{HeaderEntry, PackHeader, PackHeaderLength, PackHeaderRef, PackId},
+    snapshotfile::{DeleteOption, PathList, SnapshotFile, SnapshotId, SnapshotSummary, StringList},
 };

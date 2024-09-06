@@ -132,7 +132,7 @@ pub struct PruneOptions {
     ///
     /// If you specify snapshots which are not deleted, running the resulting `PrunePlan`
     /// will remove data which is used within those snapshots!
-    pub ignore_snaps: Vec<Id>,
+    pub ignore_snaps: Vec<SnapshotId>,
 }
 
 impl Default for PruneOptions {

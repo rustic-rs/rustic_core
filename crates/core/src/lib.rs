@@ -129,7 +129,10 @@ pub use crate::{
         FileType, ReadBackend, ReadSource, ReadSourceEntry, ReadSourceOpen, RepositoryBackends,
         WriteBackend, ALL_FILE_TYPES,
     },
-    blob::tree::{FindMatches, FindNode, TreeStreamerOptions as LsOptions},
+    blob::{
+        tree::{FindMatches, FindNode, TreeId, TreeStreamerOptions as LsOptions},
+        BlobId, DataId,
+    },
     commands::{
         backup::{BackupOptions, ParentOptions},
         check::CheckOptions,
