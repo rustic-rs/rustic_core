@@ -945,8 +945,31 @@ impl<P: ProgressBars, S: Open> Repository<P, S> {
     ///
     // TODO: Document errors
     pub fn get_snapshots<T: AsRef<str>>(&self, ids: &[T]) -> RusticResult<Vec<SnapshotFile>> {
+        self.update_snapshots(Vec::new(), ids)
+    }
+
+    /// Update the given snapshots.
+    ///
+    /// # Arguments
+    ///
+    /// * `current` - The existing snapshots
+    /// * `ids` - The ids of the snapshots to get
+    ///
+    /// # Notes
+    ///
+    /// `ids` may contain part of snapshots id which will be resolved.
+    /// However, "latest" is not supported in this function.
+    ///
+    /// # Errors
+    ///
+    // TODO: Document errors
+    pub fn update_snapshots<T: AsRef<str>>(
+        &self,
+        current: Vec<SnapshotFile>,
+        ids: &[T],
+    ) -> RusticResult<Vec<SnapshotFile>> {
         let p = self.pb.progress_counter("getting snapshots...");
-        let result = SnapshotFile::from_ids(self.dbe(), ids, &p);
+        let result = SnapshotFile::update_from_ids(self.dbe(), current, ids, &p);
         p.finish();
         result
     }
@@ -958,6 +981,22 @@ impl<P: ProgressBars, S: Open> Repository<P, S> {
     // TODO: Document errors
     pub fn get_all_snapshots(&self) -> RusticResult<Vec<SnapshotFile>> {
         self.get_matching_snapshots(|_| true)
+    }
+
+    /// Update existing snapshots to all from the repository
+    ///
+    /// # Arguments
+    ///
+    /// * `current` - The existing snapshots
+    ///
+    /// # Errors
+    ///
+    // TODO: Document errors
+    pub fn update_all_snapshots(
+        &self,
+        current: Vec<SnapshotFile>,
+    ) -> RusticResult<Vec<SnapshotFile>> {
+        self.update_matching_snapshots(current, |_| true)
     }
 
     /// Get all snapshots from the repository respecting the given `filter`
@@ -976,8 +1015,29 @@ impl<P: ProgressBars, S: Open> Repository<P, S> {
         &self,
         filter: impl FnMut(&SnapshotFile) -> bool,
     ) -> RusticResult<Vec<SnapshotFile>> {
+        self.update_matching_snapshots(Vec::new(), filter)
+    }
+
+    /// Update existing snapshots to all from the repository respecting the given `filter`
+    ///
+    /// # Arguments
+    ///
+    /// * `current` - The existing snapshots
+    /// * `filter` - The filter to use
+    ///
+    /// # Errors
+    ///
+    /// # Note
+    ///  The result is not sorted and may come in random order!
+    ///
+    // TODO: Document errors
+    pub fn update_matching_snapshots(
+        &self,
+        current: Vec<SnapshotFile>,
+        filter: impl FnMut(&SnapshotFile) -> bool,
+    ) -> RusticResult<Vec<SnapshotFile>> {
         let p = self.pb.progress_counter("getting snapshots...");
-        let result = SnapshotFile::all_from_backend(self.dbe(), filter, &p);
+        let result = SnapshotFile::update_from_backend(self.dbe(), current, filter, &p);
         p.finish();
         result
     }

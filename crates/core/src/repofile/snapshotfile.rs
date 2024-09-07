@@ -19,7 +19,7 @@ use serde_with::{serde_as, DisplayFromStr, OneOrMany};
 
 use crate::{
     backend::{decrypt::DecryptReadBackend, FileType, FindInBackend},
-    error::{RusticError, RusticResult, SnapshotFileErrorKind},
+    error::{RusticError, RusticErrorKind, RusticResult, SnapshotFileErrorKind},
     id::Id,
     progress::Progress,
     repofile::RepoFile,
@@ -552,13 +552,64 @@ impl SnapshotFile {
         ids: &[T],
         p: &impl Progress,
     ) -> RusticResult<Vec<Self>> {
+        Self::update_from_ids(be, Vec::new(), ids, p)
+    }
+
+    /// Update a list of [`SnapshotFile`]s from the backend by supplying a list of/parts of their Ids
+    ///
+    /// # Arguments
+    ///
+    /// * `be` - The backend to use
+    /// * `ids` - The list of (parts of the) ids of the snapshots
+    /// * `p` - A progress bar to use
+    ///
+    /// # Errors
+    ///
+    /// * [`IdErrorKind::HexError`] - If the string is not a valid hexadecimal string
+    /// * [`BackendAccessErrorKind::NoSuitableIdFound`] - If no id could be found.
+    /// * [`BackendAccessErrorKind::IdNotUnique`] - If the id is not unique.
+    ///
+    /// [`IdErrorKind::HexError`]: crate::error::IdErrorKind::HexError
+    /// [`BackendAccessErrorKind::NoSuitableIdFound`]: crate::error::BackendAccessErrorKind::NoSuitableIdFound
+    /// [`BackendAccessErrorKind::IdNotUnique`]: crate::error::BackendAccessErrorKind::IdNotUnique
+    pub(crate) fn update_from_ids<B: DecryptReadBackend, T: AsRef<str>>(
+        be: &B,
+        current: Vec<Self>,
+        ids: &[T],
+        p: &impl Progress,
+    ) -> RusticResult<Vec<Self>> {
         let ids = be.find_ids(FileType::Snapshot, ids)?;
-        let mut list: BTreeMap<_, _> =
-            be.stream_list::<Self>(&ids, p)?.into_iter().try_collect()?;
+        Self::fill_missing(be, current, &ids, |_| true, p)
+    }
+
+    // helper func
+    fn fill_missing<B, F>(
+        be: &B,
+        current: Vec<Self>,
+        ids: &[Id],
+        mut filter: F,
+        p: &impl Progress,
+    ) -> RusticResult<Vec<Self>>
+    where
+        B: DecryptReadBackend,
+        F: FnMut(&Self) -> bool,
+    {
+        let mut snaps: BTreeMap<_, _> = current.into_iter().map(|snap| (snap.id, snap)).collect();
+        let missing_ids: Vec<_> = ids
+            .iter()
+            .filter(|id| !snaps.contains_key(id))
+            .copied()
+            .collect();
+        for res in be.stream_list::<Self>(&missing_ids, p)? {
+            let (id, snap) = res?;
+            if filter(&snap) {
+                let _ = snaps.insert(id, snap);
+            }
+        }
         // sort back to original order
         Ok(ids
             .into_iter()
-            .filter_map(|id| list.remove_entry(&id))
+            .filter_map(|id| snaps.remove_entry(&id))
             .map(Self::set_id)
             .collect())
     }
@@ -638,7 +689,22 @@ impl SnapshotFile {
         B: DecryptReadBackend,
         F: FnMut(&Self) -> bool,
     {
-        let mut snaps = Self::all_from_backend(be, filter, p)?;
+        Self::update_group_from_backend(be, Vec::new(), filter, crit, p)
+    }
+
+    pub(crate) fn update_group_from_backend<B, F>(
+        be: &B,
+        current: Vec<(SnapshotGroup, Vec<Self>)>,
+        filter: F,
+        crit: SnapshotGroupCriterion,
+        p: &impl Progress,
+    ) -> RusticResult<Vec<(SnapshotGroup, Vec<Self>)>>
+    where
+        B: DecryptReadBackend,
+        F: FnMut(&Self) -> bool,
+    {
+        let current = current.into_iter().flat_map(|(_, snaps)| snaps).collect();
+        let mut snaps = Self::update_from_backend(be, current, filter, p)?;
         snaps.sort_unstable_by(|sn1, sn2| sn1.cmp_group(crit, sn2));
 
         let mut result = Vec::new();
@@ -667,6 +733,23 @@ impl SnapshotFile {
             .map_ok(Self::set_id)
             .filter_ok(filter)
             .try_collect()
+    }
+
+    // TODO: add documentation!
+    pub(crate) fn update_from_backend<B, F>(
+        be: &B,
+        current: Vec<Self>,
+        filter: F,
+        p: &impl Progress,
+    ) -> RusticResult<Vec<Self>>
+    where
+        B: DecryptReadBackend,
+        F: FnMut(&Self) -> bool,
+    {
+        let ids = be
+            .list(FileType::Snapshot)
+            .map_err(RusticErrorKind::Backend)?;
+        Self::fill_missing(be, current, &ids, filter, p)
     }
 
     /// Add tag lists to snapshot.
