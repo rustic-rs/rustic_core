@@ -132,7 +132,7 @@ pub use crate::{
     blob::tree::{FindMatches, FindNode, TreeStreamerOptions as LsOptions},
     commands::{
         backup::{BackupOptions, ParentOptions},
-        check::CheckOptions,
+        check::{CheckOptions, ReadSubset},
         config::ConfigOptions,
         copy::CopySnapshot,
         forget::{ForgetGroup, ForgetGroups, ForgetSnapshot, KeepOptions},

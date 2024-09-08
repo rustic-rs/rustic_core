@@ -1076,7 +1076,7 @@ impl<P: ProgressBars, S: Open> Repository<P, S> {
         Ok(())
     }
 
-    /// Check the repository for errors or inconsistencies
+    /// Check the repository and all snapshot trees for errors or inconsistencies
     ///
     /// # Arguments
     ///
@@ -1086,7 +1086,26 @@ impl<P: ProgressBars, S: Open> Repository<P, S> {
     ///
     // TODO: Document errors
     pub fn check(&self, opts: CheckOptions) -> RusticResult<()> {
-        opts.run(self)
+        let trees = self
+            .get_all_snapshots()?
+            .into_iter()
+            .map(|snap| snap.tree)
+            .collect();
+
+        opts.run(self, trees)
+    }
+
+    /// Check the repository and given trees for errors or inconsistencies
+    ///
+    /// # Arguments
+    ///
+    /// * `opts` - The options to use
+    ///
+    /// # Errors
+    ///
+    // TODO: Document errors
+    pub fn check_with_trees(&self, opts: CheckOptions, trees: Vec<Id>) -> RusticResult<()> {
+        opts.run(self, trees)
     }
 
     /// Get the plan about what should be pruned and/or repacked.

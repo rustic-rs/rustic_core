@@ -5,6 +5,7 @@ use std::{fmt, io::Read, ops::Deref, path::Path};
 use binrw::{BinRead, BinWrite};
 use derive_more::{Constructor, Display};
 use rand::{thread_rng, RngCore};
+use safe_transmute::{transmute_one, TriviallyTransmutable};
 use serde_derive::{Deserialize, Serialize};
 
 use crate::{crypto::hasher::hash, error::IdErrorKind, RusticResult};
@@ -135,6 +136,10 @@ impl Id {
         // check if SHA256 matches
         let mut vec = vec![0; length];
         r.read_exact(&mut vec).is_ok() && self == &hash(&vec)
+    }
+
+    pub(crate) fn transmute<T: TriviallyTransmutable>(&self) -> T {
+        transmute_one(&self.0).unwrap()
     }
 }
 

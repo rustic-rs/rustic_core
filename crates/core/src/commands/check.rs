@@ -1,27 +1,72 @@
 //! `check` subcommand
-use std::collections::HashMap;
+use std::{
+    collections::{BTreeSet, HashMap},
+    str::FromStr,
+};
 
 use bytes::Bytes;
+use bytesize::ByteSize;
 use derive_setters::Setters;
-use itertools::Itertools;
 use log::{debug, error, warn};
-use rayon::prelude::{IntoParallelIterator, ParallelBridge, ParallelIterator};
+use rand::{prelude::SliceRandom, thread_rng};
+use rayon::prelude::{IntoParallelIterator, ParallelIterator};
 use zstd::stream::decode_all;
 
 use crate::{
     backend::{cache::Cache, decrypt::DecryptReadBackend, node::NodeType, FileType, ReadBackend},
     blob::{tree::TreeStreamerOnce, BlobType},
     crypto::hasher::hash,
-    error::{RusticErrorKind, RusticResult},
+    error::{CommandErrorKind, RusticErrorKind, RusticResult},
     id::Id,
     index::{
         binarysorted::{IndexCollector, IndexType},
         GlobalIndex, ReadGlobalIndex,
     },
     progress::{Progress, ProgressBars},
-    repofile::{IndexFile, IndexPack, PackHeader, PackHeaderLength, PackHeaderRef, SnapshotFile},
+    repofile::{IndexFile, IndexPack, PackHeader, PackHeaderLength, PackHeaderRef},
     repository::{Open, Repository},
 };
+
+#[derive(Clone, Copy, Debug, Default)]
+///
+pub enum ReadSubset {
+    #[default]
+    /// Read all pack files
+    All,
+    /// Read a random subset of pack files with (approximately) the given percentage of total size
+    Percentage(f64),
+    /// Read a random subset of pack files with (approximately) the given size
+    Size(u64),
+    /// Read a subset of packfiles based on Ids: Using (1,n) .. (n,n) in separate runs will cover all pack files
+    IdSubSet((u32, u32)),
+}
+
+fn id_matches_n_m(id: &Id, n: u32, m: u32) -> bool {
+    let short_id: u32 = id.transmute();
+    short_id % m == n % m
+}
+
+impl FromStr for ReadSubset {
+    type Err = CommandErrorKind;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let result = if s == "all" {
+            Self::All
+        } else if let Some(p) = s.strip_suffix('%') {
+            // try to read percentage
+            Self::Percentage(p.parse()?)
+        } else if let Some((n, m)) = s.split_once('/') {
+            // try to read n/m
+            Self::IdSubSet((n.parse()?, m.parse()?))
+        } else {
+            Self::Size(
+                ByteSize::from_str(s)
+                    .map_err(CommandErrorKind::FromByteSizeParser)?
+                    .as_u64(),
+            )
+        };
+        Ok(result)
+    }
+}
 
 #[cfg_attr(feature = "clap", derive(clap::Parser))]
 #[derive(Clone, Copy, Debug, Default, Setters)]
@@ -32,9 +77,13 @@ pub struct CheckOptions {
     #[cfg_attr(feature = "clap", clap(long, conflicts_with = "no_cache"))]
     pub trust_cache: bool,
 
-    /// Read all data blobs
+    /// Also read and check pack files
     #[cfg_attr(feature = "clap", clap(long))]
     pub read_data: bool,
+
+    /// Read and check pack files
+    #[cfg_attr(feature = "clap", clap(long, default_value = "all"))]
+    pub read_data_subset: ReadSubset,
 }
 
 impl CheckOptions {
@@ -52,7 +101,11 @@ impl CheckOptions {
     /// # Errors
     ///
     /// If the repository is corrupted
-    pub(crate) fn run<P: ProgressBars, S: Open>(self, repo: &Repository<P, S>) -> RusticResult<()> {
+    pub(crate) fn run<P: ProgressBars, S: Open>(
+        self,
+        repo: &Repository<P, S>,
+        trees: Vec<Id>,
+    ) -> RusticResult<()> {
         let be = repo.dbe();
         let cache = repo.cache();
         let hot_be = &repo.be_hot;
@@ -99,37 +152,57 @@ impl CheckOptions {
             }
         }
 
-        let total_pack_size: u64 = index_collector
-            .data_packs()
-            .iter()
-            .map(|(_, size)| u64::from(*size))
-            .sum::<u64>()
-            + index_collector
-                .tree_packs()
-                .iter()
-                .map(|(_, size)| u64::from(*size))
-                .sum::<u64>();
-
         let index_be = GlobalIndex::new_from_index(index_collector.into_index());
 
-        check_snapshots(be, &index_be, pb)?;
+        let packs = check_trees(be, &index_be, trees, pb)?;
 
         if self.read_data {
+            let mut total_size: u64 = 0;
+            let mut packs: Vec<_> = index_be
+                .into_index()
+                .into_iter()
+                .filter(|p| packs.contains(&p.id))
+                .map(|p| {
+                    let size = u64::from(p.pack_size());
+                    (p, size)
+                })
+                .inspect(|(_, size)| total_size += size)
+                .collect();
+
+            // Apply read-subset option
+            if let Some(mut size) = match self.read_data_subset {
+                ReadSubset::All => None,
+                ReadSubset::Percentage(p) => Some((total_size as f64 * p / 100.0) as u64),
+                ReadSubset::Size(s) => Some(s),
+                ReadSubset::IdSubSet((n, m)) => {
+                    packs.retain(|(p, _)| id_matches_n_m(&p.id, n, m));
+                    None
+                }
+            } {
+                // random subset of given size is required
+                packs.shuffle(&mut thread_rng());
+                packs.retain(|(_, p_size)| {
+                    if size > *p_size {
+                        size = size.saturating_sub(*p_size);
+                        true
+                    } else {
+                        false
+                    }
+                });
+            }
+
+            let total_pack_size = packs.iter().map(|(_, size)| size).sum();
             let p = pb.progress_bytes("reading pack data...");
             p.set_length(total_pack_size);
 
-            index_be
-                .into_index()
-                .into_iter()
-                .par_bridge()
-                .for_each(|pack| {
-                    let id = pack.id;
-                    let data = be.read_full(FileType::Pack, &id).unwrap();
-                    match check_pack(be, pack, data, &p) {
-                        Ok(()) => {}
-                        Err(err) => error!("Error reading pack {id} : {err}",),
-                    }
-                });
+            packs.into_par_iter().for_each(|(pack, _)| {
+                let id = pack.id;
+                let data = be.read_full(FileType::Pack, &id).unwrap();
+                match check_pack(be, pack, data, &p) {
+                    Ok(()) => {}
+                    Err(err) => error!("Error reading pack {id} : {err}",),
+                }
+            });
             p.finish();
         }
         Ok(())
@@ -369,19 +442,13 @@ fn check_packs_list(be: &impl ReadBackend, mut packs: HashMap<Id, u32>) -> Rusti
 /// # Errors
 ///
 /// If a snapshot or tree is missing or has a different size
-fn check_snapshots(
+fn check_trees(
     be: &impl DecryptReadBackend,
     index: &impl ReadGlobalIndex,
+    snap_trees: Vec<Id>,
     pb: &impl ProgressBars,
-) -> RusticResult<()> {
-    let p = pb.progress_counter("reading snapshots...");
-    let snap_trees: Vec<_> = be
-        .stream_all::<SnapshotFile>(&p)?
-        .iter()
-        .map_ok(|(_, snap)| snap.tree)
-        .try_collect()?;
-    p.finish();
-
+) -> RusticResult<BTreeSet<Id>> {
+    let mut packs = BTreeSet::new();
     let p = pb.progress_counter("checking trees...");
     let mut tree_streamer = TreeStreamerOnce::new(be, index, snap_trees, p)?;
     while let Some(item) = tree_streamer.next().transpose()? {
@@ -398,12 +465,17 @@ fn check_snapshots(
                                 error!("file {:?} blob {} has null ID", path.join(node.name()), i);
                             }
 
-                            if !index.has_data(id) {
-                                error!(
-                                    "file {:?} blob {} is missing in index",
-                                    path.join(node.name()),
-                                    id
-                                );
+                            match index.get_data(id) {
+                                None => {
+                                    error!(
+                                        "file {:?} blob {} is missing in index",
+                                        path.join(node.name()),
+                                        id
+                                    );
+                                }
+                                Some(entry) => {
+                                    _ = packs.insert(entry.pack);
+                                }
                             }
                         }
                     },
@@ -417,7 +489,18 @@ fn check_snapshots(
                         Some(tree) if tree.is_null() => {
                             error!("dir {:?} subtree has null ID", path.join(node.name()));
                         }
-                        _ => {} // subtree is ok
+                        Some(id) => match index.get_tree(&id) {
+                            None => {
+                                error!(
+                                    "dir {:?} subtree blob {} is missing in index",
+                                    path.join(node.name()),
+                                    id
+                                );
+                            }
+                            Some(entry) => {
+                                _ = packs.insert(entry.pack);
+                            }
+                        }, // subtree is ok
                     }
                 }
 
@@ -426,7 +509,7 @@ fn check_snapshots(
         }
     }
 
-    Ok(())
+    Ok(packs)
 }
 
 /// Check if a pack is valid
