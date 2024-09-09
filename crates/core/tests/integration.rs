@@ -114,6 +114,8 @@ fn insta_snapshotfile_redaction() -> Settings {
     settings.add_dynamic_redaction(".**.parent", handle_option);
     settings.add_redaction(".**.id", "[id]");
     settings.add_redaction(".**.original", "[original]");
+    settings.add_redaction(".**.hostname", "[hostname]");
+    settings.add_redaction(".**.command", "[command]");
     settings.add_redaction(".**.summary.backup_start", "[backup_start]");
     settings.add_redaction(".**.summary.backup_end", "[backup_end]");
     settings.add_redaction(".**.summary.backup_duration", "[backup_duration]");
@@ -245,7 +247,7 @@ fn test_backup_with_tar_gz_passes(
     let third_snapshot = repo.backup(&opts, paths, snap)?;
 
     insta_snapshotfile_redaction.bind(|| {
-        assert_with_win("backup-tar-summary-third", &second_snapshot);
+        assert_with_win("backup-tar-summary-third", &third_snapshot);
     });
     assert_eq!(third_snapshot.parent, Some(second_snapshot.id));
     assert_eq!(third_snapshot.tree, second_snapshot.tree);

@@ -9,7 +9,7 @@ SnapshotFile(
   paths: StringList([
     "test",
   ]),
-  hostname: "",
+  hostname: "[hostname]",
   username: "",
   uid: 0,
   gid: 0,
@@ -33,7 +33,7 @@ SnapshotFile(
     data_added_files_packed: 78740,
     data_added_trees: "[data_added_trees]",
     data_added_trees_packed: "[data_added_trees_packed]",
-    command: "",
+    command: "[command]",
     backup_start: "[backup_start]",
     backup_end: "[backup_end]",
     backup_duration: "[backup_duration]",

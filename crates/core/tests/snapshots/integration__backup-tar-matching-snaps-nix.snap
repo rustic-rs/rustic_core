@@ -11,7 +11,7 @@ expression: snap
     paths: StringList([
       "test",
     ]),
-    hostname: "latitude",
+    hostname: "[hostname]",
     username: "",
     uid: 0,
     gid: 0,
@@ -39,7 +39,7 @@ expression: snap
       data_added_files_packed: 0,
       data_added_trees: "[data_added_trees]",
       data_added_trees_packed: "[data_added_trees_packed]",
-      command: "/home/alex-dev/rust/rustic_core/target/debug/deps/integration-17052277a5b56351 --color=auto",
+      command: "[command]",
       backup_start: "[backup_start]",
       backup_end: "[backup_end]",
       backup_duration: "[backup_duration]",
