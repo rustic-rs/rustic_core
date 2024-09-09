@@ -4,7 +4,7 @@ expression: snap
 ---
 [
   (SnapshotGroup(
-    tags: "[tags]",
+    tags: Some(StringList([])),
   ), [
     SnapshotFile(
       time: "[time]",
@@ -17,8 +17,8 @@ expression: snap
       username: "",
       uid: 0,
       gid: 0,
-      tags: "[tags]",
-      original: Some(Id("8e73284dc2932e02d98b731b01f2bb869b6beb6917d329538589397da96f4516")),
+      tags: StringList([]),
+      original: "[original]",
       summary: Some(SnapshotSummary(
         files_new: 73,
         files_changed: 0,
@@ -58,8 +58,8 @@ expression: snap
       username: "",
       uid: 0,
       gid: 0,
-      tags: "[tags]",
-      original: Some(Id("f35e73aacc988931fb4ba18bd556e2eace332e4c5285bd9e9cf99323733a950b")),
+      tags: StringList([]),
+      original: "[original]",
       summary: Some(SnapshotSummary(
         files_new: 0,
         files_changed: 0,
@@ -89,7 +89,10 @@ expression: snap
     ),
   ]),
   (SnapshotGroup(
-    tags: "[tags]",
+    tags: Some(StringList([
+      "a",
+      "b",
+    ])),
   ), [
     SnapshotFile(
       time: "[time]",
@@ -103,8 +106,11 @@ expression: snap
       username: "",
       uid: 0,
       gid: 0,
-      tags: "[tags]",
-      original: Some(Id("89a20e891f73f1943ab0f043611a6302fda8a1dc1db156baceff975c97993def")),
+      tags: StringList([
+        "a",
+        "b",
+      ]),
+      original: "[original]",
       summary: Some(SnapshotSummary(
         files_new: 0,
         files_changed: 0,

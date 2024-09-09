@@ -14,7 +14,7 @@ SnapshotFile(
   username: "",
   uid: 0,
   gid: 0,
-  tags: "[tags]",
+  tags: StringList([]),
   summary: Some(SnapshotSummary(
     files_new: 0,
     files_changed: 0,

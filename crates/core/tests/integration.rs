@@ -99,7 +99,7 @@ fn handle_option(val: Content, _: ContentPath<'_>) -> String {
 }
 
 #[fixture]
-fn insta_summary_redaction() -> Settings {
+fn insta_snapshotfile_redaction() -> Settings {
     let mut settings = Settings::clone_current();
 
     settings.add_redaction(".**.tree", "[tree_id]");
@@ -112,8 +112,8 @@ fn insta_summary_redaction() -> Settings {
     });
     settings.add_redaction(".**.time", "[time]");
     settings.add_dynamic_redaction(".**.parent", handle_option);
-    settings.add_redaction(".**.tags", "[tags]");
     settings.add_redaction(".**.id", "[id]");
+    settings.add_redaction(".**.original", "[original]");
     settings.add_redaction(".**.summary.backup_start", "[backup_start]");
     settings.add_redaction(".**.summary.backup_end", "[backup_end]");
     settings.add_redaction(".**.summary.backup_duration", "[backup_duration]");
@@ -177,7 +177,7 @@ fn assert_with_win<T: Serialize>(test: &str, snap: T) {
 fn test_backup_with_tar_gz_passes(
     tar_gz_testdata: Result<TestSource>,
     set_up_repo: Result<RepoOpen>,
-    insta_summary_redaction: Settings,
+    insta_snapshotfile_redaction: Settings,
     insta_node_redaction: Settings,
 ) -> Result<()> {
     // uncomment for logging output
@@ -197,7 +197,7 @@ fn test_backup_with_tar_gz_passes(
     // We can also bind to scope ( https://docs.rs/insta/latest/insta/struct.Settings.html#method.bind_to_scope )
     // But I think that can get messy with a lot of tests, also checking which settings are currently applied
     // will be probably harder
-    insta_summary_redaction.bind(|| {
+    insta_snapshotfile_redaction.bind(|| {
         assert_with_win("backup-tar-summary-first", &first_snapshot);
     });
 
@@ -224,7 +224,7 @@ fn test_backup_with_tar_gz_passes(
     // second backup
     let second_snapshot = repo.backup(&opts, paths, SnapshotFile::default())?;
 
-    insta_summary_redaction.bind(|| {
+    insta_snapshotfile_redaction.bind(|| {
         assert_with_win("backup-tar-summary-second", &second_snapshot);
     });
 
@@ -244,7 +244,7 @@ fn test_backup_with_tar_gz_passes(
     let opts = opts.parent_opts(ParentOptions::default().parent(second_snapshot.id.to_string()));
     let third_snapshot = repo.backup(&opts, paths, snap)?;
 
-    insta_summary_redaction.bind(|| {
+    insta_snapshotfile_redaction.bind(|| {
         assert_with_win("backup-tar-summary-third", &second_snapshot);
     });
     assert_eq!(third_snapshot.parent, Some(second_snapshot.id));
@@ -275,16 +275,20 @@ fn test_backup_with_tar_gz_passes(
 
     // get snapshot group
     let group_by = SnapshotGroupCriterion::new().tags(true);
-    let groups = repo.get_snapshot_group(&[], group_by, |_| true)?;
+    let mut groups = repo.get_snapshot_group(&[], group_by, |_| true)?;
 
-    insta_summary_redaction.bind(|| {
+    // sort groups to get unique result
+    groups.iter_mut().for_each(|(_, snaps)| snaps.sort());
+    groups.sort_by_key(|(group, _)| group.tags.clone());
+
+    insta_snapshotfile_redaction.bind(|| {
         assert_with_win("backup-tar-groups", &groups);
     });
 
     // filter snapshots by tag
     let filter = |snap: &SnapshotFile| snap.tags.contains("a");
     let snaps = repo.get_matching_snapshots(filter)?;
-    insta_summary_redaction.bind(|| {
+    insta_snapshotfile_redaction.bind(|| {
         assert_with_win("backup-tar-matching-snaps", &snaps);
     });
 
@@ -295,7 +299,7 @@ fn test_backup_with_tar_gz_passes(
 fn test_backup_dry_run_with_tar_gz_passes(
     tar_gz_testdata: Result<TestSource>,
     set_up_repo: Result<RepoOpen>,
-    insta_summary_redaction: Settings,
+    insta_snapshotfile_redaction: Settings,
     insta_node_redaction: Settings,
 ) -> Result<()> {
     // Fixtures
@@ -311,7 +315,7 @@ fn test_backup_dry_run_with_tar_gz_passes(
     // dry-run backup
     let snap_dry_run = repo.backup(&opts, paths, SnapshotFile::default())?;
 
-    insta_summary_redaction.bind(|| {
+    insta_snapshotfile_redaction.bind(|| {
         assert_with_win("dryrun-tar-summary-first", &snap_dry_run);
     });
 
@@ -343,7 +347,7 @@ fn test_backup_dry_run_with_tar_gz_passes(
     let opts = opts.dry_run(true);
     let snap_dry_run = repo.backup(&opts, paths, SnapshotFile::default())?;
 
-    insta_summary_redaction.bind(|| {
+    insta_snapshotfile_redaction.bind(|| {
         assert_with_win("dryrun-tar-summary-second", &snap_dry_run);
     });
 

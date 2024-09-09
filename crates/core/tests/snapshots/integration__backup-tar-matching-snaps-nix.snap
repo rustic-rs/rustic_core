@@ -15,8 +15,11 @@ expression: snap
     username: "",
     uid: 0,
     gid: 0,
-    tags: "[tags]",
-    original: Some(Id("89a20e891f73f1943ab0f043611a6302fda8a1dc1db156baceff975c97993def")),
+    tags: StringList([
+      "a",
+      "b",
+    ]),
+    original: "[original]",
     summary: Some(SnapshotSummary(
       files_new: 0,
       files_changed: 0,
