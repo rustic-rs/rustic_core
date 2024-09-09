@@ -552,7 +552,7 @@ impl KeepOptions {
 mod tests {
     use std::str::FromStr;
 
-    use crate::{repofile::DeleteOption, Id};
+    use crate::repofile::DeleteOption;
 
     use super::*;
     use anyhow::Result;
@@ -706,7 +706,7 @@ mod tests {
             .chain(by_date_and_id.into_iter().map(|(time, id)| -> Result<_> {
                 let opts = &crate::SnapshotOptions::default().time(parse_time(time)?);
                 let mut snap = SnapshotFile::from_options(opts)?;
-                snap.id = SnapshotId::from(Id::from_hex(id)?);
+                snap.id = id.parse()?;
                 Ok(snap)
             }))
             .chain(

@@ -1,13 +1,13 @@
 //! The `Id` type and related functions
 
-use std::{fmt, io::Read, ops::Deref, path::Path};
+use std::{fmt, io::Read, ops::Deref, path::Path, str::FromStr};
 
 use binrw::{BinRead, BinWrite};
 use derive_more::{Constructor, Display};
 use rand::{thread_rng, RngCore};
 use serde_derive::{Deserialize, Serialize};
 
-use crate::{crypto::hasher::hash, error::IdErrorKind, RusticResult};
+use crate::{crypto::hasher::hash, error::IdErrorKind, RusticError, RusticResult};
 
 pub(super) mod constants {
     /// The length of the hash in bytes
@@ -34,6 +34,7 @@ macro_rules! new_id {
             derive_more::Deref,
             derive_more::Display,
             derive_more::From,
+            derive_more::FromStr,
             serde::Serialize,
             serde::Deserialize,
         )]
@@ -68,6 +69,15 @@ pub struct Id(
     [u8; constants::LEN],
 );
 
+impl FromStr for Id {
+    type Err = RusticError;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let mut id = Self::default();
+        hex::decode_to_slice(s, &mut id.0).map_err(IdErrorKind::HexError)?;
+        Ok(id)
+    }
+}
+
 impl Id {
     /// Parse an `Id` from a hexadecimal string
     ///
@@ -90,12 +100,9 @@ impl Id {
     /// ```
     ///
     /// [`IdErrorKind::HexError`]: crate::error::IdErrorKind::HexError
+    #[deprecated(note = "use FromStr::from_str instead")]
     pub fn from_hex(s: &str) -> RusticResult<Self> {
-        let mut id = Self::default();
-
-        hex::decode_to_slice(s, &mut id.0).map_err(IdErrorKind::HexError)?;
-
-        Ok(id)
+        s.parse()
     }
 
     /// Generate a random `Id`.
