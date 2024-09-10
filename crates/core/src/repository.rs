@@ -59,11 +59,11 @@ use crate::{
         keyfile::find_key_in_backend,
         packfile::PackId,
         snapshotfile::{SnapshotGroup, SnapshotGroupCriterion, SnapshotId},
-        ConfigFile, KeyId, PathList, RepoFile, SnapshotFile, SnapshotSummary, Tree,
+        ConfigFile, KeyId, PathList, RepoFile, RepoId, SnapshotFile, SnapshotSummary, Tree,
     },
     repository::warm_up::{warm_up, warm_up_wait},
     vfs::OpenFile,
-    Id, RepositoryBackends, RusticResult,
+    RepositoryBackends, RusticResult,
 };
 
 mod constants {
@@ -679,12 +679,13 @@ impl<P, S> Repository<P, S> {
     /// # Errors
     ///
     // TODO: Document errors
-    pub fn list(&self, tpe: FileType) -> RusticResult<impl Iterator<Item = Id>> {
+    pub fn list<T: RepoId>(&self) -> RusticResult<impl Iterator<Item = T>> {
         Ok(self
             .be
-            .list(tpe)
+            .list(T::TYPE)
             .map_err(RusticErrorKind::Backend)?
-            .into_iter())
+            .into_iter()
+            .map(|id| id.into()))
     }
 }
 

@@ -17,7 +17,7 @@ pub trait RepoFile: Serialize + DeserializeOwned + Sized + Send + Sync + 'static
 }
 
 /// Marker trait for Ids which identify repository files
-pub trait RepoId: Deref<Target = Id> + Sized + Send + Sync + 'static {
+pub trait RepoId: Deref<Target = Id> + From<Id> + Sized + Send + Sync + 'static {
     /// The [`FileType`] associated with Id type
     const TYPE: FileType;
 }
