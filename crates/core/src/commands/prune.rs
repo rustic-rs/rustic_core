@@ -1218,9 +1218,8 @@ impl PrunePlan {
         let packs: Vec<_> = self
             .index_files
             .into_iter()
-            .map(|index| {
+            .inspect(|index| {
                 indexes_remove.push(index.id);
-                index
             })
             .flat_map(|index| index.packs)
             .collect();

@@ -27,6 +27,9 @@ use crate::{
     Id,
 };
 
+#[cfg(feature = "clap")]
+use clap::ValueHint;
+
 /// Options for creating a new [`SnapshotFile`] structure for a new backup snapshot.
 ///
 /// This struct derives [`serde::Deserialize`] allowing to use it in config files.
@@ -64,7 +67,7 @@ pub struct SnapshotOptions {
     /// Add description to snapshot from file
     #[cfg_attr(
         feature = "clap",
-        clap(long, value_name = "FILE", conflicts_with = "description")
+        clap(long, value_name = "FILE", conflicts_with = "description", value_hint = ValueHint::FilePath)
     )]
     pub description_from: Option<PathBuf>,
 
@@ -828,6 +831,19 @@ pub struct SnapshotGroupCriterion {
     pub tags: bool,
 }
 
+impl SnapshotGroupCriterion {
+    /// Create a new empty `SnapshotGroupCriterion`
+    #[must_use]
+    pub fn new() -> Self {
+        Self {
+            hostname: false,
+            label: false,
+            paths: false,
+            tags: false,
+        }
+    }
+}
+
 impl Default for SnapshotGroupCriterion {
     fn default() -> Self {
         Self {
@@ -842,7 +858,7 @@ impl Default for SnapshotGroupCriterion {
 impl FromStr for SnapshotGroupCriterion {
     type Err = RusticError;
     fn from_str(s: &str) -> RusticResult<Self> {
-        let mut crit = Self::default();
+        let mut crit = Self::new();
         for val in s.split(',') {
             match val {
                 "host" => crit.hostname = true,
@@ -1204,7 +1220,6 @@ fn sanitize_dot(path: &Path) -> RusticResult<PathBuf> {
 mod tests {
     use super::*;
     use anyhow::Result;
-
     use rstest::rstest;
 
     #[rstest]
@@ -1243,5 +1258,24 @@ mod tests {
         let expected = StringList::from_str("abc,def")?;
         assert_eq!(snap.tags, expected);
         Ok(())
+    }
+
+    #[rstest]
+    #[case("host,label,paths", true, true, true, false)]
+    #[case("host", true, false, false, false)]
+    #[case("label,host", true, true, false, false)]
+    #[case("tags", false, false, false, true)]
+    #[case("paths,label", false, true, true, false)]
+    fn snapshot_group_criterion_fromstr(
+        #[case] crit: SnapshotGroupCriterion,
+        #[case] is_host: bool,
+        #[case] is_label: bool,
+        #[case] is_path: bool,
+        #[case] is_tags: bool,
+    ) {
+        assert_eq!(crit.hostname, is_host);
+        assert_eq!(crit.label, is_label);
+        assert_eq!(crit.paths, is_path);
+        assert_eq!(crit.tags, is_tags);
     }
 }
