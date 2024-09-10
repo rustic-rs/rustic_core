@@ -15,7 +15,7 @@ use itertools::Itertools;
 use log::info;
 use path_dedot::ParseDot;
 use serde_derive::{Deserialize, Serialize};
-use serde_with::{serde_as, DisplayFromStr, OneOrMany};
+use serde_with::{serde_as, skip_serializing_none, DisplayFromStr, OneOrMany};
 
 use crate::{
     backend::{decrypt::DecryptReadBackend, FileType, FindInBackend},
@@ -261,7 +261,7 @@ impl DeleteOption {
     }
 }
 
-#[serde_with::apply(Option => #[serde(default, skip_serializing_if = "Option::is_none")])]
+#[skip_serializing_none]
 #[derive(Debug, Clone, Serialize, Deserialize, Derivative)]
 #[derivative(Default)]
 /// A [`SnapshotFile`] is the repository representation of the snapshot metadata saved in a repository.
@@ -894,7 +894,7 @@ impl Display for SnapshotGroupCriterion {
     }
 }
 
-#[serde_with::apply(Option => #[serde(default, skip_serializing_if = "Option::is_none")])]
+#[skip_serializing_none]
 #[derive(Serialize, Default, Debug, PartialEq, Eq)]
 #[non_exhaustive]
 /// [`SnapshotGroup`] specifies the group after a grouping using [`SnapshotGroupCriterion`].
