@@ -36,7 +36,8 @@ use rstest::{fixture, rstest};
 use rustic_core::{
     repofile::SnapshotFile, BackupOptions, CheckOptions, ConfigOptions, FindMatches, FindNode,
     FullIndex, IndexedFull, IndexedStatus, KeyOptions, LimitOption, LsOptions, NoProgressBars,
-    OpenStatus, PathList, Repository, RepositoryBackends, RepositoryOptions, RusticResult,
+    OpenStatus, ParentOptions, PathList, Repository, RepositoryBackends, RepositoryOptions,
+    RusticResult, SnapshotGroupCriterion, SnapshotOptions, StringList,
 };
 use rustic_core::{
     repofile::{Metadata, Node},
@@ -98,36 +99,38 @@ fn handle_option(val: Content, _: ContentPath<'_>) -> String {
 }
 
 #[fixture]
-fn insta_summary_redaction() -> Settings {
+fn insta_snapshotfile_redaction() -> Settings {
     let mut settings = Settings::clone_current();
 
-    settings.add_redaction(".tree", "[tree_id]");
-    settings.add_dynamic_redaction(".program_version", |val, _| {
+    settings.add_redaction(".**.tree", "[tree_id]");
+    settings.add_dynamic_redaction(".**.program_version", |val, _| {
         val.resolve_inner()
             .as_str()
             .map_or("[program_version]".to_string(), |v| {
                 v.replace(env!("CARGO_PKG_VERSION"), "[rustic_core_version]")
             })
     });
-    settings.add_redaction(".time", "[time]");
-    settings.add_dynamic_redaction(".parent", handle_option);
-    settings.add_redaction(".tags", "[tags]");
-    settings.add_redaction(".id", "[id]");
-    settings.add_redaction(".summary.backup_start", "[backup_start]");
-    settings.add_redaction(".summary.backup_end", "[backup_end]");
-    settings.add_redaction(".summary.backup_duration", "[backup_duration]");
-    settings.add_redaction(".summary.total_duration", "[total_duration]");
-    settings.add_redaction(".summary.data_added", "[data_added]");
-    settings.add_redaction(".summary.data_added_packed", "[data_added_packed]");
+    settings.add_redaction(".**.time", "[time]");
+    settings.add_dynamic_redaction(".**.parent", handle_option);
+    settings.add_redaction(".**.id", "[id]");
+    settings.add_redaction(".**.original", "[original]");
+    settings.add_redaction(".**.hostname", "[hostname]");
+    settings.add_redaction(".**.command", "[command]");
+    settings.add_redaction(".**.summary.backup_start", "[backup_start]");
+    settings.add_redaction(".**.summary.backup_end", "[backup_end]");
+    settings.add_redaction(".**.summary.backup_duration", "[backup_duration]");
+    settings.add_redaction(".**.summary.total_duration", "[total_duration]");
+    settings.add_redaction(".**.summary.data_added", "[data_added]");
+    settings.add_redaction(".**.summary.data_added_packed", "[data_added_packed]");
     settings.add_redaction(
-        ".summary.total_dirsize_processed",
+        ".**.summary.total_dirsize_processed",
         "[total_dirsize_processed]",
     );
     settings.add_redaction(
-        ".summary.data_added_trees_packed",
+        ".**.summary.data_added_trees_packed",
         "[data_added_trees_packed]",
     );
-    settings.add_redaction(".summary.data_added_trees", "[data_added_trees]");
+    settings.add_redaction(".**.summary.data_added_trees", "[data_added_trees]");
 
     settings
 }
@@ -176,7 +179,7 @@ fn assert_with_win<T: Serialize>(test: &str, snap: T) {
 fn test_backup_with_tar_gz_passes(
     tar_gz_testdata: Result<TestSource>,
     set_up_repo: Result<RepoOpen>,
-    insta_summary_redaction: Settings,
+    insta_snapshotfile_redaction: Settings,
     insta_node_redaction: Settings,
 ) -> Result<()> {
     // uncomment for logging output
@@ -196,7 +199,7 @@ fn test_backup_with_tar_gz_passes(
     // We can also bind to scope ( https://docs.rs/insta/latest/insta/struct.Settings.html#method.bind_to_scope )
     // But I think that can get messy with a lot of tests, also checking which settings are currently applied
     // will be probably harder
-    insta_summary_redaction.bind(|| {
+    insta_snapshotfile_redaction.bind(|| {
         assert_with_win("backup-tar-summary-first", &first_snapshot);
     });
 
@@ -223,21 +226,43 @@ fn test_backup_with_tar_gz_passes(
     // second backup
     let second_snapshot = repo.backup(&opts, paths, SnapshotFile::default())?;
 
-    insta_summary_redaction.bind(|| {
+    insta_snapshotfile_redaction.bind(|| {
         assert_with_win("backup-tar-summary-second", &second_snapshot);
     });
 
     assert_eq!(second_snapshot.parent, Some(first_snapshot.id));
     assert_eq!(first_snapshot.tree, second_snapshot.tree);
 
-    // get all snapshots and check them
-    let mut all_snapshots = repo.get_all_snapshots()?;
-    all_snapshots.sort_unstable();
-    assert_eq!(vec![first_snapshot, second_snapshot], all_snapshots);
-
     // pack files should be unchanged
     let packs2: Vec<_> = repo.list(rustic_core::FileType::Pack)?.collect();
     assert_eq!(packs1, packs2);
+
+    // re-read index
+    let repo = repo.to_indexed_ids()?;
+    // third backup with tags and explicitely given parent
+    let snap = SnapshotOptions::default()
+        .tag([StringList::from_str("a,b")?])
+        .to_snapshot()?;
+    let opts = opts.parent_opts(ParentOptions::default().parent(second_snapshot.id.to_string()));
+    let third_snapshot = repo.backup(&opts, paths, snap)?;
+
+    insta_snapshotfile_redaction.bind(|| {
+        assert_with_win("backup-tar-summary-third", &third_snapshot);
+    });
+    assert_eq!(third_snapshot.parent, Some(second_snapshot.id));
+    assert_eq!(third_snapshot.tree, second_snapshot.tree);
+
+    // get all snapshots and check them
+    let mut all_snapshots = repo.get_all_snapshots()?;
+    all_snapshots.sort_unstable();
+    assert_eq!(
+        vec![first_snapshot, second_snapshot, third_snapshot],
+        all_snapshots
+    );
+
+    // pack files should be unchanged
+    let packs3: Vec<_> = repo.list(rustic_core::FileType::Pack)?.collect();
+    assert_eq!(packs1, packs3);
 
     // Check if snapshots can be retrieved
     let mut ids: Vec<_> = all_snapshots.iter().map(|sn| sn.id.to_string()).collect();
@@ -250,6 +275,25 @@ fn test_backup_with_tar_gz_passes(
     let snaps = repo.get_snapshots(&ids)?;
     assert_eq!(snaps, all_snapshots);
 
+    // get snapshot group
+    let group_by = SnapshotGroupCriterion::new().tags(true);
+    let mut groups = repo.get_snapshot_group(&[], group_by, |_| true)?;
+
+    // sort groups to get unique result
+    groups.iter_mut().for_each(|(_, snaps)| snaps.sort());
+    groups.sort_by_key(|(group, _)| group.tags.clone());
+
+    insta_snapshotfile_redaction.bind(|| {
+        assert_with_win("backup-tar-groups", &groups);
+    });
+
+    // filter snapshots by tag
+    let filter = |snap: &SnapshotFile| snap.tags.contains("a");
+    let snaps = repo.get_matching_snapshots(filter)?;
+    insta_snapshotfile_redaction.bind(|| {
+        assert_with_win("backup-tar-matching-snaps", &snaps);
+    });
+
     Ok(())
 }
 
@@ -257,7 +301,7 @@ fn test_backup_with_tar_gz_passes(
 fn test_backup_dry_run_with_tar_gz_passes(
     tar_gz_testdata: Result<TestSource>,
     set_up_repo: Result<RepoOpen>,
-    insta_summary_redaction: Settings,
+    insta_snapshotfile_redaction: Settings,
     insta_node_redaction: Settings,
 ) -> Result<()> {
     // Fixtures
@@ -273,7 +317,7 @@ fn test_backup_dry_run_with_tar_gz_passes(
     // dry-run backup
     let snap_dry_run = repo.backup(&opts, paths, SnapshotFile::default())?;
 
-    insta_summary_redaction.bind(|| {
+    insta_snapshotfile_redaction.bind(|| {
         assert_with_win("dryrun-tar-summary-first", &snap_dry_run);
     });
 
@@ -305,7 +349,7 @@ fn test_backup_dry_run_with_tar_gz_passes(
     let opts = opts.dry_run(true);
     let snap_dry_run = repo.backup(&opts, paths, SnapshotFile::default())?;
 
-    insta_summary_redaction.bind(|| {
+    insta_snapshotfile_redaction.bind(|| {
         assert_with_win("dryrun-tar-summary-second", &snap_dry_run);
     });
 
