@@ -175,7 +175,7 @@ impl RepositoryOptions {
     /// * [`RepositoryErrorKind::OpeningPasswordFileFailed`] - If opening the password file failed
     /// * [`RepositoryErrorKind::ReadingPasswordFromReaderFailed`] - If reading the password failed
     /// * [`RepositoryErrorKind::FromSplitError`] - If splitting the password command failed
-    /// * [`RepositoryErrorKind::PasswordCommandParsingFailed`] - If parsing the password command failed
+    /// * [`RepositoryErrorKind::PasswordCommandExecutionFailed`] - If executing the password command failed
     /// * [`RepositoryErrorKind::ReadingPasswordFromCommandFailed`] - If reading the password from the command failed
     ///
     /// # Returns
@@ -185,7 +185,7 @@ impl RepositoryOptions {
     /// [`RepositoryErrorKind::OpeningPasswordFileFailed`]: crate::error::RepositoryErrorKind::OpeningPasswordFileFailed
     /// [`RepositoryErrorKind::ReadingPasswordFromReaderFailed`]: crate::error::RepositoryErrorKind::ReadingPasswordFromReaderFailed
     /// [`RepositoryErrorKind::FromSplitError`]: crate::error::RepositoryErrorKind::FromSplitError
-    /// [`RepositoryErrorKind::PasswordCommandParsingFailed`]: crate::error::RepositoryErrorKind::PasswordCommandParsingFailed
+    /// [`RepositoryErrorKind::PasswordCommandExecutionFailed`]: crate::error::RepositoryErrorKind::PasswordCommandExecutionFailed
     /// [`RepositoryErrorKind::ReadingPasswordFromCommandFailed`]: crate::error::RepositoryErrorKind::ReadingPasswordFromCommandFailed
     pub fn evaluate_password(&self) -> RusticResult<Option<String>> {
         match (&self.password, &self.password_file, &self.password_command) {
@@ -201,10 +201,24 @@ impl RepositoryOptions {
                 let command = Command::new(&command[0])
                     .args(&command[1..])
                     .stdout(Stdio::piped())
-                    .spawn()?;
-                let Ok(output) = command.wait_with_output() else {
-                    return Err(RepositoryErrorKind::PasswordCommandParsingFailed.into());
+                    .spawn();
+
+                let process = match command {
+                    Ok(process) => process,
+                    Err(err) => {
+                        error!("password-command could not be executed: {}", err);
+                        return Err(RepositoryErrorKind::PasswordCommandExecutionFailed.into());
+                    }
                 };
+
+                let output = match process.wait_with_output() {
+                    Ok(output) => output,
+                    Err(err) => {
+                        error!("error reading output from password-command: {}", err);
+                        return Err(RepositoryErrorKind::ReadingPasswordFromCommandFailed.into());
+                    }
+                };
+
                 if !output.status.success() {
                     #[allow(clippy::option_if_let_else)]
                     let s = match output.status.code() {
@@ -212,7 +226,7 @@ impl RepositoryOptions {
                         None => "was terminated".into(),
                     };
                     error!("password-command {s}");
-                    return Err(RepositoryErrorKind::ReadingPasswordFromCommandFailed.into());
+                    return Err(RepositoryErrorKind::PasswordCommandExecutionFailed.into());
                 }
 
                 let mut pwd = BufReader::new(&*output.stdout);
@@ -376,7 +390,7 @@ impl<P, S> Repository<P, S> {
     /// * [`RepositoryErrorKind::OpeningPasswordFileFailed`] - If opening the password file failed
     /// * [`RepositoryErrorKind::ReadingPasswordFromReaderFailed`] - If reading the password failed
     /// * [`RepositoryErrorKind::FromSplitError`] - If splitting the password command failed
-    /// * [`RepositoryErrorKind::PasswordCommandParsingFailed`] - If parsing the password command failed
+    /// * [`RepositoryErrorKind::PasswordCommandExecutionFailed`] - If parsing the password command failed
     /// * [`RepositoryErrorKind::ReadingPasswordFromCommandFailed`] - If reading the password from the command failed
     ///
     /// # Returns
@@ -386,7 +400,7 @@ impl<P, S> Repository<P, S> {
     /// [`RepositoryErrorKind::OpeningPasswordFileFailed`]: crate::error::RepositoryErrorKind::OpeningPasswordFileFailed
     /// [`RepositoryErrorKind::ReadingPasswordFromReaderFailed`]: crate::error::RepositoryErrorKind::ReadingPasswordFromReaderFailed
     /// [`RepositoryErrorKind::FromSplitError`]: crate::error::RepositoryErrorKind::FromSplitError
-    /// [`RepositoryErrorKind::PasswordCommandParsingFailed`]: crate::error::RepositoryErrorKind::PasswordCommandParsingFailed
+    /// [`RepositoryErrorKind::PasswordCommandExecutionFailed`]: crate::error::RepositoryErrorKind::PasswordCommandExecutionFailed
     /// [`RepositoryErrorKind::ReadingPasswordFromCommandFailed`]: crate::error::RepositoryErrorKind::ReadingPasswordFromCommandFailed
     pub fn password(&self) -> RusticResult<Option<String>> {
         self.opts.evaluate_password()
@@ -427,7 +441,7 @@ impl<P, S> Repository<P, S> {
     /// * [`RepositoryErrorKind::NoPasswordGiven`] - If no password is given
     /// * [`RepositoryErrorKind::ReadingPasswordFromReaderFailed`] - If reading the password failed
     /// * [`RepositoryErrorKind::OpeningPasswordFileFailed`] - If opening the password file failed
-    /// * [`RepositoryErrorKind::PasswordCommandParsingFailed`] - If parsing the password command failed
+    /// * [`RepositoryErrorKind::PasswordCommandExecutionFailed`] - If parsing the password command failed
     /// * [`RepositoryErrorKind::ReadingPasswordFromCommandFailed`] - If reading the password from the command failed
     /// * [`RepositoryErrorKind::FromSplitError`] - If splitting the password command failed
     /// * [`RepositoryErrorKind::NoRepositoryConfigFound`] - If no repository config file is found
@@ -444,7 +458,7 @@ impl<P, S> Repository<P, S> {
     /// [`RepositoryErrorKind::NoPasswordGiven`]: crate::error::RepositoryErrorKind::NoPasswordGiven
     /// [`RepositoryErrorKind::ReadingPasswordFromReaderFailed`]: crate::error::RepositoryErrorKind::ReadingPasswordFromReaderFailed
     /// [`RepositoryErrorKind::OpeningPasswordFileFailed`]: crate::error::RepositoryErrorKind::OpeningPasswordFileFailed
-    /// [`RepositoryErrorKind::PasswordCommandParsingFailed`]: crate::error::RepositoryErrorKind::PasswordCommandParsingFailed
+    /// [`RepositoryErrorKind::PasswordCommandExecutionFailed`]: crate::error::RepositoryErrorKind::PasswordCommandExecutionFailed
     /// [`RepositoryErrorKind::ReadingPasswordFromCommandFailed`]: crate::error::RepositoryErrorKind::ReadingPasswordFromCommandFailed
     /// [`RepositoryErrorKind::FromSplitError`]: crate::error::RepositoryErrorKind::FromSplitError
     /// [`RepositoryErrorKind::NoRepositoryConfigFound`]: crate::error::RepositoryErrorKind::NoRepositoryConfigFound
@@ -537,14 +551,14 @@ impl<P, S> Repository<P, S> {
     /// * [`RepositoryErrorKind::NoPasswordGiven`] - If no password is given
     /// * [`RepositoryErrorKind::ReadingPasswordFromReaderFailed`] - If reading the password failed
     /// * [`RepositoryErrorKind::OpeningPasswordFileFailed`] - If opening the password file failed
-    /// * [`RepositoryErrorKind::PasswordCommandParsingFailed`] - If parsing the password command failed
+    /// * [`RepositoryErrorKind::PasswordCommandExecutionFailed`] - If parsing the password command failed
     /// * [`RepositoryErrorKind::ReadingPasswordFromCommandFailed`] - If reading the password from the command failed
     /// * [`RepositoryErrorKind::FromSplitError`] - If splitting the password command failed
     ///
     /// [`RepositoryErrorKind::NoPasswordGiven`]: crate::error::RepositoryErrorKind::NoPasswordGiven
     /// [`RepositoryErrorKind::ReadingPasswordFromReaderFailed`]: crate::error::RepositoryErrorKind::ReadingPasswordFromReaderFailed
     /// [`RepositoryErrorKind::OpeningPasswordFileFailed`]: crate::error::RepositoryErrorKind::OpeningPasswordFileFailed
-    /// [`RepositoryErrorKind::PasswordCommandParsingFailed`]: crate::error::RepositoryErrorKind::PasswordCommandParsingFailed
+    /// [`RepositoryErrorKind::PasswordCommandExecutionFailed`]: crate::error::RepositoryErrorKind::PasswordCommandExecutionFailed
     /// [`RepositoryErrorKind::ReadingPasswordFromCommandFailed`]: crate::error::RepositoryErrorKind::ReadingPasswordFromCommandFailed
     /// [`RepositoryErrorKind::FromSplitError`]: crate::error::RepositoryErrorKind::FromSplitError
     pub fn init(
