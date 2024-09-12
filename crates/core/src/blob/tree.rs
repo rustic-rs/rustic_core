@@ -21,10 +21,11 @@ use crate::{
         decrypt::DecryptReadBackend,
         node::{Metadata, Node, NodeType},
     },
+    blob::BlobType,
     crypto::hasher::hash,
     error::{RusticResult, TreeErrorKind},
     index::ReadGlobalIndex,
-    new_id,
+    new_blobid,
     progress::Progress,
     repofile::snapshotfile::SnapshotSummary,
 };
@@ -36,7 +37,7 @@ pub(super) mod constants {
 
 pub(crate) type TreeStreamItem = RusticResult<(PathBuf, Tree)>;
 type NodeStreamItem = RusticResult<(PathBuf, Node)>;
-new_id!(TreeId, "tree blob");
+new_blobid!(TreeId, BlobType::Tree);
 
 #[derive(Default, Serialize, Deserialize, Clone, Debug)]
 /// A [`Tree`] is a list of [`Node`]s
@@ -112,7 +113,7 @@ impl Tree {
     ) -> RusticResult<Self> {
         let data = index
             .get_tree(&id)
-            .ok_or_else(|| TreeErrorKind::BlobIdNotFound(*id))?
+            .ok_or_else(|| TreeErrorKind::BlobIdNotFound(id))?
             .read_data(be)?;
 
         Ok(serde_json::from_slice(&data).map_err(TreeErrorKind::DeserializingTreeFailed)?)

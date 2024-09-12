@@ -9,7 +9,7 @@ use crate::{
     blob::{
         packer::Packer,
         tree::{Tree, TreeId},
-        BlobId, BlobType,
+        BlobType,
     },
     error::{ArchiverErrorKind, RusticResult},
     index::{indexer::SharedIndexer, ReadGlobalIndex},
@@ -196,7 +196,7 @@ impl<'a, BE: DecryptWriteBackend, I: ReadGlobalIndex> TreeArchiver<'a, BE, I> {
         }
 
         if !self.index.has_tree(&id) {
-            self.tree_packer.add(chunk.into(), BlobId::from(*id))?;
+            self.tree_packer.add(chunk.into(), id.into())?;
         }
         Ok(id)
     }

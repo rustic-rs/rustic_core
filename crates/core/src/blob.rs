@@ -23,8 +23,6 @@ pub enum BlobType {
     Data,
 }
 
-new_id!(DataId, "data blob");
-
 impl BlobType {
     /// Defines the cacheability of a [`BlobType`]
     ///
@@ -69,6 +67,33 @@ impl<T: Default> Initialize<T> for BlobTypeMap<T> {
 }
 
 new_id!(BlobId, "blob");
+
+pub trait PackedId: Into<BlobId> + From<BlobId> {
+    const TYPE: BlobType;
+}
+
+#[macro_export]
+/// Generate newtypes for `Id`s identifying packed blobs
+macro_rules! new_blobid {
+    ($a:ident, $b: expr) => {
+        $crate::new_id!($a, concat!("blob of type", stringify!($b)));
+        impl From<$crate::blob::BlobId> for $a {
+            fn from(id: $crate::blob::BlobId) -> Self {
+                (*id).into()
+            }
+        }
+        impl From<$a> for $crate::blob::BlobId {
+            fn from(id: $a) -> Self {
+                (*id).into()
+            }
+        }
+        impl $crate::blob::PackedId for $a {
+            const TYPE: $crate::blob::BlobType = $b;
+        }
+    };
+}
+
+new_blobid!(DataId, BlobType::Data);
 
 /// A `Blob` is a file that is stored in the backend.
 ///

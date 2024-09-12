@@ -248,8 +248,6 @@ pub enum PolynomialErrorKind {
 /// [`FileErrorKind`] describes the errors that can happen while dealing with files during restore/backups
 #[derive(Error, Debug, Display)]
 pub enum FileErrorKind {
-    /// did not find id in index: `{0:?}`
-    CouldNotFindIdInIndex(Id),
     /// transposing an Option of a Result into a Result of an Option failed: `{0:?}`
     TransposingOptionResultFailed(std::io::Error),
     /// conversion from `u64` to `usize` failed: `{0:?}`
@@ -489,7 +487,7 @@ pub enum PackerErrorKind {
 #[derive(Error, Debug, Display)]
 pub enum TreeErrorKind {
     /// blob {0:?} not found in index
-    BlobIdNotFound(Id),
+    BlobIdNotFound(TreeId),
     /// {0:?} is no dir
     NotADirectory(OsString),
     /// "{0:?} not found"

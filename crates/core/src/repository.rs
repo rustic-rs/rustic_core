@@ -29,7 +29,7 @@ use crate::{
     },
     blob::{
         tree::{FindMatches, FindNode, NodeStreamer, TreeId, TreeStreamerOptions as LsOptions},
-        BlobId, BlobType,
+        BlobId, BlobType, PackedId,
     },
     commands::{
         self,
@@ -1437,10 +1437,10 @@ impl<P, S: IndexedFull> Repository<P, S> {
     /// * [`RepositoryErrorKind::IdNotFound`] - If the id is not found in the index
     ///
     /// [`RepositoryErrorKind::IdNotFound`]: crate::error::RepositoryErrorKind::IdNotFound
-    pub fn get_index_entry(&self, tpe: BlobType, id: &BlobId) -> RusticResult<IndexEntry> {
+    pub fn get_index_entry<T: PackedId>(&self, id: &T) -> RusticResult<IndexEntry> {
         let ie = self
             .index()
-            .get_id(tpe, id)
+            .get_id(T::TYPE, id)
             .ok_or_else(|| RepositoryErrorKind::IdNotFound(*id))?;
         Ok(ie)
     }
