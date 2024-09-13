@@ -220,6 +220,8 @@ pub enum CommandErrorKind {
     NotAllowedWithAppendOnly(String),
     /// Specify one of the keep-* options for forget! Please use keep-none to keep no snapshot.
     NoKeepOption,
+    /// {0:?}
+    FromParseError(#[from] shell_words::ParseError),
 }
 
 /// [`CryptoErrorKind`] describes the errors that can happen while dealing with Cryptographic functions
