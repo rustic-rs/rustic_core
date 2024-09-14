@@ -283,8 +283,8 @@ pub enum RepositoryErrorKind {
     IsNotHotRepository,
     /// incorrect password!
     IncorrectPassword,
-    /// failed to call password command
-    PasswordCommandParsingFailed,
+    /// error running the password command
+    PasswordCommandExecutionFailed,
     /// error reading password from command
     ReadingPasswordFromCommandFailed,
     /// error listing the repo config file
