@@ -1,10 +1,17 @@
-use std::{fmt::Display, process::Command, str::FromStr};
+use std::{
+    fmt::{Debug, Display},
+    process::Command,
+    str::FromStr,
+};
 
 use log::{debug, error, trace, warn};
 use serde::{Deserialize, Serialize, Serializer};
 use serde_with::{serde_as, DisplayFromStr, PickFirst};
 
-use crate::{error::RusticErrorKind, RusticError, RusticResult};
+use crate::{
+    error::{RepositoryErrorKind, RusticErrorKind},
+    RusticError, RusticResult,
+};
 
 /// A command to be called which can be given as CLI option as well as in config files
 /// `CommandInput` implements Serialize/Deserialize as well as FromStr.
@@ -71,24 +78,31 @@ impl CommandInput {
     ///
     /// # Errors
     ///
-    /// `std::io::Error` if return status cannot be read
-    pub fn run(&self, context: &str, what: &str) -> Result<(), std::io::Error> {
+    /// `RusticError` if return status cannot be read
+    pub fn run(&self, context: &str, what: &str) -> RusticResult<()> {
         if !self.is_set() {
             trace!("not calling command {context}:{what} - not set");
             return Ok(());
         }
         debug!("calling command {context}:{what}: {self:?}");
-        let status = Command::new(self.command()).args(self.args()).status()?;
+        let status = Command::new(self.command())
+            .args(self.args())
+            .status()
+            .map_err(|err| {
+                RepositoryErrorKind::CommandExecutionFailed(context.into(), what.into(), err).into()
+            });
+        let Some(status) = eval_on_failure(&self.0.on_failure, status)? else {
+            return Ok(());
+        };
+
         if !status.success() {
-            match self.0.on_failure {
-                None | Some(OnFailure::Error) => {
-                    error!("running command {context}:{what} was not successful. {status}");
-                }
-                Some(OnFailure::Warn) => {
-                    warn!("running command {context}:{what} was not successful. {status}")
-                }
-                _ => {}
-            }
+            let _: Option<()> = eval_on_failure(
+                &self.0.on_failure,
+                Err(
+                    RepositoryErrorKind::CommandErrorStatus(context.into(), what.into(), status)
+                        .into(),
+                ),
+            )?;
         }
         Ok(())
     }
@@ -157,6 +171,23 @@ enum OnFailure {
     Error,
     Warn,
     Ignore,
+}
+
+fn eval_on_failure<T>(of: &Option<OnFailure>, res: RusticResult<T>) -> RusticResult<Option<T>> {
+    match res {
+        Err(err) => match of {
+            None | Some(OnFailure::Error) => {
+                error!("{err}");
+                Err(err)
+            }
+            Some(OnFailure::Warn) => {
+                warn!("{err}");
+                Ok(None)
+            }
+            Some(OnFailure::Ignore) => Ok(None),
+        },
+        Ok(res) => Ok(Some(res)),
+    }
 }
 
 #[serde_as]
