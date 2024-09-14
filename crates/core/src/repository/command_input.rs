@@ -2,7 +2,7 @@ use std::{fmt::Display, process::Command, str::FromStr};
 
 use log::{debug, error, trace, warn};
 use serde::{Deserialize, Serialize, Serializer};
-use serde_with::{serde_as, DisplayFromStr, PickFirst, TryFromInto};
+use serde_with::{serde_as, DisplayFromStr, PickFirst};
 
 use crate::{error::RusticErrorKind, RusticError, RusticResult};
 
@@ -16,7 +16,7 @@ pub struct CommandInput(
     //    serialize_with = "serialize_command",
     //    deserialize_with = "deserialize_command"
     //)]
-    #[serde_as(as = "PickFirst<(TryFromInto<String>,_)>")] CommandInputInternal,
+    #[serde_as(as = "PickFirst<(DisplayFromStr,_)>")] CommandInputInternal,
 );
 
 impl Serialize for CommandInput {
@@ -136,29 +136,10 @@ impl CommandInputInternal {
     }
 }
 
-impl TryInto<CommandInputInternal> for String {
-    type Error = RusticError;
-    fn try_into(self) -> Result<CommandInputInternal, Self::Error> {
-        self.parse()
-    }
-}
-
 impl FromStr for CommandInputInternal {
     type Err = RusticError;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         Ok(Self::from_vec(split(s)?))
-    }
-}
-
-impl TryInto<String> for CommandInputInternal {
-    type Error = bool;
-    fn try_into(self) -> Result<String, Self::Error> {
-        if self.on_failure.is_none() || self.on_failure == Some(OnFailure::default()) {
-            Ok(self.to_string())
-        } else {
-            // Return an arbitrary error. This is not used as PickFirst will use the standard serialization
-            Err(false)
-        }
     }
 }
 
