@@ -32,14 +32,16 @@ fn toml() -> Result<()> {
         command2: CommandInput,
         command3: CommandInput,
         command4: CommandInput,
+        command5: CommandInput,
     }
 
     let test = toml::from_str::<Test>(
         r#"
             command1 = "echo test"
-            command2 = {command = "echo", args = "test test"}
+            command2 = {command = "echo", args = "test test", on-failure = "error"}
             command3 = {command = "echo", args = "'test test'"}
             command4 = {command = "echo", args = ["test test", "test"]}
+            command5 = {command = "echo", args = ["test test", "test"], on-failure = "warn"}
         "#,
     )?;
 
@@ -57,6 +59,11 @@ fn toml() -> Result<()> {
 command2 = "echo test test"
 command3 = "echo 'test test'"
 command4 = "echo 'test test' test"
+
+[command5]
+command = "echo"
+args = ["test test", "test"]
+on-failure = "warn"
 "#
     );
     Ok(())

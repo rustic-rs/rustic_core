@@ -1,19 +1,36 @@
 use std::{fmt::Display, process::Command, str::FromStr};
 
-use log::{debug, trace, warn};
-use serde::{Deserialize, Serialize};
-use serde_with::{serde_as, DisplayFromStr, PickFirst};
+use log::{debug, error, trace, warn};
+use serde::{Deserialize, Serialize, Serializer};
+use serde_with::{serde_as, DisplayFromStr, PickFirst, TryFromInto};
 
 use crate::{error::RusticErrorKind, RusticError, RusticResult};
 
 /// A command to be called which can be given as CLI option as well as in config files
 /// `CommandInput` implements Serialize/Deserialize as well as FromStr.
 #[serde_as]
-#[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Default, Clone, PartialEq, Eq, Deserialize)]
 pub struct CommandInput(
     // Note: we use CommandInputInternal here which itself impls FromStr in order to use serde_as PickFirst for CommandInput.
-    #[serde_as(as = "PickFirst<(DisplayFromStr,_)>")] CommandInputInternal,
+    //#[serde(
+    //    serialize_with = "serialize_command",
+    //    deserialize_with = "deserialize_command"
+    //)]
+    #[serde_as(as = "PickFirst<(TryFromInto<String>,_)>")] CommandInputInternal,
 );
+
+impl Serialize for CommandInput {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        if self.0.on_failure.is_none() || self.0.on_failure == Some(OnFailure::default()) {
+            serializer.serialize_str(&self.to_string())
+        } else {
+            self.0.serialize(serializer)
+        }
+    }
+}
 
 impl From<Vec<String>> for CommandInput {
     fn from(value: Vec<String>) -> Self {
@@ -63,7 +80,15 @@ impl CommandInput {
         debug!("calling command {context}:{what}: {self:?}");
         let status = Command::new(self.command()).args(self.args()).status()?;
         if !status.success() {
-            warn!("running command {context}:{what} was not successful. {status}");
+            match self.0.on_failure {
+                None | Some(OnFailure::Error) => {
+                    error!("running command {context}:{what} was not successful. {status}");
+                }
+                Some(OnFailure::Warn) => {
+                    warn!("running command {context}:{what} was not successful. {status}")
+                }
+                _ => {}
+            }
         }
         Ok(())
     }
@@ -83,12 +108,13 @@ impl Display for CommandInput {
 }
 
 #[serde_as]
-#[derive(Debug, Default, Clone, PartialEq, Eq, Deserialize)]
-#[serde(default)]
+#[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default, rename_all = "kebab-case")]
 struct CommandInputInternal {
     command: Option<String>,
-    #[serde_as(as = "PickFirst<(DisplayFromStr,_)>")]
+    #[serde_as(as = "PickFirst<(_,DisplayFromStr)>")]
     args: ArgInternal,
+    on_failure: Option<OnFailure>,
 }
 
 impl CommandInputInternal {
@@ -104,8 +130,16 @@ impl CommandInputInternal {
             Self {
                 command,
                 args: ArgInternal(vec),
+                ..Default::default()
             }
         }
+    }
+}
+
+impl TryInto<CommandInputInternal> for String {
+    type Error = RusticError;
+    fn try_into(self) -> Result<CommandInputInternal, Self::Error> {
+        self.parse()
     }
 }
 
@@ -116,6 +150,18 @@ impl FromStr for CommandInputInternal {
     }
 }
 
+impl TryInto<String> for CommandInputInternal {
+    type Error = bool;
+    fn try_into(self) -> Result<String, Self::Error> {
+        if self.on_failure.is_none() || self.on_failure == Some(OnFailure::default()) {
+            Ok(self.to_string())
+        } else {
+            // Return an arbitrary error. This is not used as PickFirst will use the standard serialization
+            Err(false)
+        }
+    }
+}
+
 impl Display for CommandInputInternal {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let s = shell_words::join(self.iter());
@@ -123,14 +169,30 @@ impl Display for CommandInputInternal {
     }
 }
 
+#[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+enum OnFailure {
+    #[default]
+    Error,
+    Warn,
+    Ignore,
+}
+
 #[serde_as]
-#[derive(Debug, Default, Clone, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
 struct ArgInternal(Vec<String>);
 
 impl FromStr for ArgInternal {
     type Err = RusticError;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         Ok(Self(split(s)?))
+    }
+}
+
+impl Display for ArgInternal {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let s = shell_words::join(self.0.iter());
+        f.write_str(&s)
     }
 }
 
