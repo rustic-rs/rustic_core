@@ -290,7 +290,7 @@ pub enum RepositoryErrorKind {
     ReadingPasswordFromCommandFailed,
     /// running command {0}:{1} was not successful: {2}
     CommandExecutionFailed(String, String, std::io::Error),
-    /// running command {0}:{1} returned command: {2}
+    /// running command {0}:{1} returned status: {2}
     CommandErrorStatus(String, String, ExitStatus),
     /// error listing the repo config file
     ListingRepositoryConfigFileFailed,
