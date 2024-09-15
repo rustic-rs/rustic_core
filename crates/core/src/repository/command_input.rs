@@ -41,7 +41,7 @@ impl Serialize for CommandInput {
 
 impl From<Vec<String>> for CommandInput {
     fn from(value: Vec<String>) -> Self {
-        Self(_CommandInput::from_vec(value))
+        Self(value.into())
     }
 }
 
@@ -135,15 +135,17 @@ impl _CommandInput {
     fn iter(&self) -> impl Iterator<Item = &String> {
         std::iter::once(&self.command).chain(self.args.iter())
     }
+}
 
-    fn from_vec(mut vec: Vec<String>) -> Self {
-        if vec.is_empty() {
+impl From<Vec<String>> for _CommandInput {
+    fn from(mut value: Vec<String>) -> Self {
+        if value.is_empty() {
             Self::default()
         } else {
-            let command = vec.remove(0);
+            let command = value.remove(0);
             Self {
                 command,
-                args: vec,
+                args: value,
                 ..Default::default()
             }
         }
@@ -153,7 +155,7 @@ impl _CommandInput {
 impl FromStr for _CommandInput {
     type Err = RusticError;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        Ok(Self::from_vec(split(s)?))
+        Ok(split(s)?.into())
     }
 }
 
