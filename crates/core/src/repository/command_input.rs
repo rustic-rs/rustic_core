@@ -18,12 +18,12 @@ use crate::{
 #[serde_as]
 #[derive(Debug, Default, Clone, PartialEq, Eq, Deserialize)]
 pub struct CommandInput(
-    // Note: we use CommandInputInternal here which itself impls FromStr in order to use serde_as PickFirst for CommandInput.
+    // Note: we use _CommandInput here which itself impls FromStr in order to use serde_as PickFirst for CommandInput.
     //#[serde(
     //    serialize_with = "serialize_command",
     //    deserialize_with = "deserialize_command"
     //)]
-    #[serde_as(as = "PickFirst<(DisplayFromStr,_)>")] CommandInputInternal,
+    #[serde_as(as = "PickFirst<(DisplayFromStr,_)>")] _CommandInput,
 );
 
 impl Serialize for CommandInput {
@@ -41,7 +41,7 @@ impl Serialize for CommandInput {
 
 impl From<Vec<String>> for CommandInput {
     fn from(value: Vec<String>) -> Self {
-        Self(CommandInputInternal::from_vec(value))
+        Self(_CommandInput::from_vec(value))
     }
 }
 
@@ -113,7 +113,7 @@ impl CommandInput {
 impl FromStr for CommandInput {
     type Err = RusticError;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        Ok(Self(CommandInputInternal::from_str(s)?))
+        Ok(Self(_CommandInput::from_str(s)?))
     }
 }
 
@@ -125,13 +125,13 @@ impl Display for CommandInput {
 
 #[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, rename_all = "kebab-case")]
-struct CommandInputInternal {
+struct _CommandInput {
     command: String,
     args: Vec<String>,
     on_failure: OnFailure,
 }
 
-impl CommandInputInternal {
+impl _CommandInput {
     fn iter(&self) -> impl Iterator<Item = &String> {
         std::iter::once(&self.command).chain(self.args.iter())
     }
@@ -150,14 +150,14 @@ impl CommandInputInternal {
     }
 }
 
-impl FromStr for CommandInputInternal {
+impl FromStr for _CommandInput {
     type Err = RusticError;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         Ok(Self::from_vec(split(s)?))
     }
 }
 
-impl Display for CommandInputInternal {
+impl Display for _CommandInput {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let s = shell_words::join(self.iter());
         f.write_str(&s)
