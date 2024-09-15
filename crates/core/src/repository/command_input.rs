@@ -71,7 +71,7 @@ impl CommandInput {
     /// Returns the command args if it is set
     #[must_use]
     pub fn args(&self) -> &[String] {
-        &self.0.args.0
+        &self.0.args
     }
 
     /// Runs the command if it is set
@@ -121,19 +121,17 @@ impl Display for CommandInput {
     }
 }
 
-#[serde_as]
 #[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, rename_all = "kebab-case")]
 struct CommandInputInternal {
     command: Option<String>,
-    #[serde_as(as = "PickFirst<(_,DisplayFromStr)>")]
-    args: ArgInternal,
+    args: Vec<String>,
     on_failure: Option<OnFailure>,
 }
 
 impl CommandInputInternal {
     fn iter(&self) -> impl Iterator<Item = &String> {
-        self.command.iter().chain(self.args.0.iter())
+        self.command.iter().chain(self.args.iter())
     }
 
     fn from_vec(mut vec: Vec<String>) -> Self {
@@ -143,7 +141,7 @@ impl CommandInputInternal {
             let command = Some(vec.remove(0));
             Self {
                 command,
-                args: ArgInternal(vec),
+                args: vec,
                 ..Default::default()
             }
         }
@@ -187,24 +185,6 @@ fn eval_on_failure<T>(of: &Option<OnFailure>, res: RusticResult<T>) -> RusticRes
             Some(OnFailure::Ignore) => Ok(None),
         },
         Ok(res) => Ok(Some(res)),
-    }
-}
-
-#[serde_as]
-#[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
-struct ArgInternal(Vec<String>);
-
-impl FromStr for ArgInternal {
-    type Err = RusticError;
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        Ok(Self(split(s)?))
-    }
-}
-
-impl Display for ArgInternal {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let s = shell_words::join(self.0.iter());
-        f.write_str(&s)
     }
 }
 

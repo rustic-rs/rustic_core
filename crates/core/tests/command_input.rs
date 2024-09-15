@@ -32,35 +32,32 @@ fn toml() -> Result<()> {
         command2: CommandInput,
         command3: CommandInput,
         command4: CommandInput,
-        command5: CommandInput,
     }
 
     let test = toml::from_str::<Test>(
         r#"
             command1 = "echo test"
-            command2 = {command = "echo", args = "test test", on-failure = "error"}
-            command3 = {command = "echo", args = "'test test'"}
-            command4 = {command = "echo", args = ["test test", "test"]}
-            command5 = {command = "echo", args = ["test test", "test"], on-failure = "warn"}
+            command2 = {command = "echo", args = ["test test"], on-failure = "error"}
+            command3 = {command = "echo", args = ["test test", "test"]}
+            command4 = {command = "echo", args = ["test test", "test"], on-failure = "warn"}
         "#,
     )?;
 
     assert_eq!(test.command1.command(), "echo");
     assert_eq!(test.command1.args(), ["test"]);
+    assert_eq!(test.command2.command(), "echo");
+    assert_eq!(test.command2.args(), ["test test"]);
     assert_eq!(test.command3.command(), "echo");
-    assert_eq!(test.command3.args(), ["test test"]);
-    assert_eq!(test.command4.command(), "echo");
-    assert_eq!(test.command4.args(), ["test test", "test"]);
+    assert_eq!(test.command3.args(), ["test test", "test"]);
 
     let test_ser = toml::to_string(&test)?;
     assert_eq!(
         test_ser,
         r#"command1 = "echo test"
-command2 = "echo test test"
-command3 = "echo 'test test'"
-command4 = "echo 'test test' test"
+command2 = "echo 'test test'"
+command3 = "echo 'test test' test"
 
-[command5]
+[command4]
 command = "echo"
 args = ["test test", "test"]
 on-failure = "warn"
