@@ -73,8 +73,8 @@ impl CommandInput {
 
     /// Returns the error handling for the command
     #[must_use]
-    pub fn on_failure(&self) -> &OnFailure {
-        &self.0.on_failure
+    pub fn on_failure(&self) -> OnFailure {
+        self.0.on_failure
     }
 
     /// Runs the command if it is set
@@ -164,18 +164,18 @@ pub enum OnFailure {
 }
 
 impl OnFailure {
-    fn eval<T>(&self, res: RusticResult<T>) -> RusticResult<Option<T>> {
+    fn eval<T>(self, res: RusticResult<T>) -> RusticResult<Option<T>> {
         match res {
             Err(err) => match self {
-                OnFailure::Error => {
+                Self::Error => {
                     error!("{err}");
                     Err(err)
                 }
-                OnFailure::Warn => {
+                Self::Warn => {
                     warn!("{err}");
                     Ok(None)
                 }
-                OnFailure::Ignore => Ok(None),
+                Self::Ignore => Ok(None),
             },
             Ok(res) => Ok(Some(res)),
         }
@@ -183,7 +183,7 @@ impl OnFailure {
 
     /// Handle a status of a called command depending on the defined error handling
     pub fn handle_status(
-        &self,
+        self,
         status: Result<ExitStatus, std::io::Error>,
         context: &str,
         what: &str,
