@@ -31,7 +31,7 @@ impl Serialize for CommandInput {
     where
         S: Serializer,
     {
-        if self.0.on_failure.is_none() || self.0.on_failure == Some(OnFailure::default()) {
+        if self.0.on_failure == OnFailure::default() {
             serializer.serialize_str(&self.to_string())
         } else {
             self.0.serialize(serializer)
@@ -91,18 +91,20 @@ impl CommandInput {
             .map_err(|err| {
                 RepositoryErrorKind::CommandExecutionFailed(context.into(), what.into(), err).into()
             });
-        let Some(status) = eval_on_failure(&self.0.on_failure, status)? else {
+        let Some(status) = self.0.on_failure.eval(status)? else {
             return Ok(());
         };
 
         if !status.success() {
-            let _: Option<()> = eval_on_failure(
-                &self.0.on_failure,
-                Err(
-                    RepositoryErrorKind::CommandErrorStatus(context.into(), what.into(), status)
-                        .into(),
-                ),
-            )?;
+            let _: Option<()> =
+                self.0
+                    .on_failure
+                    .eval(Err(RepositoryErrorKind::CommandErrorStatus(
+                        context.into(),
+                        what.into(),
+                        status,
+                    )
+                    .into()))?;
         }
         Ok(())
     }
@@ -126,7 +128,7 @@ impl Display for CommandInput {
 struct CommandInputInternal {
     command: Option<String>,
     args: Vec<String>,
-    on_failure: Option<OnFailure>,
+    on_failure: OnFailure,
 }
 
 impl CommandInputInternal {
@@ -171,20 +173,22 @@ enum OnFailure {
     Ignore,
 }
 
-fn eval_on_failure<T>(of: &Option<OnFailure>, res: RusticResult<T>) -> RusticResult<Option<T>> {
-    match res {
-        Err(err) => match of {
-            None | Some(OnFailure::Error) => {
-                error!("{err}");
-                Err(err)
-            }
-            Some(OnFailure::Warn) => {
-                warn!("{err}");
-                Ok(None)
-            }
-            Some(OnFailure::Ignore) => Ok(None),
-        },
-        Ok(res) => Ok(Some(res)),
+impl OnFailure {
+    fn eval<T>(&self, res: RusticResult<T>) -> RusticResult<Option<T>> {
+        match res {
+            Err(err) => match self {
+                OnFailure::Error => {
+                    error!("{err}");
+                    Err(err)
+                }
+                OnFailure::Warn => {
+                    warn!("{err}");
+                    Ok(None)
+                }
+                OnFailure::Ignore => Ok(None),
+            },
+            Ok(res) => Ok(Some(res)),
+        }
     }
 }
 
