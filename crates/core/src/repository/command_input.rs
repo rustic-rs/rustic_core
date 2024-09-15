@@ -1,6 +1,6 @@
 use std::{
     fmt::{Debug, Display},
-    process::Command,
+    process::{Command, ExitStatus},
     str::FromStr,
 };
 
@@ -31,6 +31,7 @@ impl Serialize for CommandInput {
     where
         S: Serializer,
     {
+        // if on_failure is default, we serialize to the short `Display` version, else we serialize the struct
         if self.0.on_failure == OnFailure::default() {
             serializer.serialize_str(&self.to_string())
         } else {
@@ -58,20 +59,22 @@ impl CommandInput {
         !self.0.command.is_empty()
     }
 
-    /// Returns the command if it is set
-    ///
-    /// # Panics
-    ///
-    /// Panics if no command is set.
+    /// Returns the command
     #[must_use]
     pub fn command(&self) -> &str {
         &self.0.command
     }
 
-    /// Returns the command args if it is set
+    /// Returns the command args
     #[must_use]
     pub fn args(&self) -> &[String] {
         &self.0.args
+    }
+
+    /// Returns the error handling for the command
+    #[must_use]
+    pub fn on_failure(&self) -> &OnFailure {
+        &self.0.on_failure
     }
 
     /// Runs the command if it is set
@@ -85,27 +88,8 @@ impl CommandInput {
             return Ok(());
         }
         debug!("calling command {context}:{what}: {self:?}");
-        let status = Command::new(self.command())
-            .args(self.args())
-            .status()
-            .map_err(|err| {
-                RepositoryErrorKind::CommandExecutionFailed(context.into(), what.into(), err).into()
-            });
-        let Some(status) = self.0.on_failure.eval(status)? else {
-            return Ok(());
-        };
-
-        if !status.success() {
-            let _: Option<()> =
-                self.0
-                    .on_failure
-                    .eval(Err(RepositoryErrorKind::CommandErrorStatus(
-                        context.into(),
-                        what.into(),
-                        status,
-                    )
-                    .into()))?;
-        }
+        let status = Command::new(self.command()).args(self.args()).status();
+        self.on_failure().handle_status(status, context, what)?;
         Ok(())
     }
 }
@@ -166,12 +150,16 @@ impl Display for _CommandInput {
     }
 }
 
-#[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
+/// Error handling for commands called as `CommandInput`
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
-enum OnFailure {
+pub enum OnFailure {
+    /// errors in command calling will result in rustic errors
     #[default]
     Error,
+    /// errors in command calling will result in rustic warnings, but are otherwise ignored
     Warn,
+    /// errors in command calling will be ignored
     Ignore,
 }
 
@@ -192,9 +180,34 @@ impl OnFailure {
             Ok(res) => Ok(Some(res)),
         }
     }
+
+    /// Handle a status of a called command depending on the defined error handling
+    pub fn handle_status(
+        &self,
+        status: Result<ExitStatus, std::io::Error>,
+        context: &str,
+        what: &str,
+    ) -> RusticResult<()> {
+        let status = status.map_err(|err| {
+            RepositoryErrorKind::CommandExecutionFailed(context.into(), what.into(), err).into()
+        });
+        let Some(status) = self.eval(status)? else {
+            return Ok(());
+        };
+
+        if !status.success() {
+            let _: Option<()> = self.eval(Err(RepositoryErrorKind::CommandErrorStatus(
+                context.into(),
+                what.into(),
+                status,
+            )
+            .into()))?;
+        }
+        Ok(())
+    }
 }
 
-// helper to split arguments
+/// helper to split arguments
 // TODO: Maybe use special parser (winsplit?) for windows?
 fn split(s: &str) -> RusticResult<Vec<String>> {
     Ok(shell_words::split(s).map_err(|err| RusticErrorKind::Command(err.into()))?)
