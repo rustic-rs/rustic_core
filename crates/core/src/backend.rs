@@ -22,7 +22,7 @@ use mockall::mock;
 use serde_derive::{Deserialize, Serialize};
 
 use crate::{
-    backend::node::Node,
+    backend::node::{Metadata, Node, NodeType},
     error::{BackendAccessErrorKind, RusticErrorKind},
     id::Id,
     RusticResult,
@@ -424,6 +424,17 @@ pub struct ReadSourceEntry<O> {
     pub open: Option<O>,
 }
 
+impl<O> ReadSourceEntry<O> {
+    fn from_path(path: PathBuf, open: Option<O>) -> Self {
+        let node = Node::new_node(
+            path.file_name().unwrap(),
+            NodeType::File,
+            Metadata::default(),
+        );
+        Self { path, node, open }
+    }
+}
+
 /// Trait for backends that can read and open sources.
 /// This trait is implemented by all backends that can read data and open from a source.
 pub trait ReadSourceOpen {
@@ -440,6 +451,14 @@ pub trait ReadSourceOpen {
     ///
     /// The reader used to read from the source.
     fn open(self) -> RusticResult<Self::Reader>;
+}
+
+/// blanket implementation for readers
+impl<T: Read + Send + 'static> ReadSourceOpen for T {
+    type Reader = T;
+    fn open(self) -> RusticResult<Self::Reader> {
+        Ok(self)
+    }
 }
 
 /// Trait for backends that can read from a source.
