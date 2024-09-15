@@ -55,7 +55,7 @@ impl CommandInput {
     /// Returns if a command is set
     #[must_use]
     pub fn is_set(&self) -> bool {
-        self.0.command.is_some()
+        !self.0.command.is_empty()
     }
 
     /// Returns the command if it is set
@@ -65,7 +65,7 @@ impl CommandInput {
     /// Panics if no command is set.
     #[must_use]
     pub fn command(&self) -> &str {
-        self.0.command.as_ref().unwrap()
+        &self.0.command
     }
 
     /// Returns the command args if it is set
@@ -126,21 +126,21 @@ impl Display for CommandInput {
 #[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, rename_all = "kebab-case")]
 struct CommandInputInternal {
-    command: Option<String>,
+    command: String,
     args: Vec<String>,
     on_failure: OnFailure,
 }
 
 impl CommandInputInternal {
     fn iter(&self) -> impl Iterator<Item = &String> {
-        self.command.iter().chain(self.args.iter())
+        std::iter::once(&self.command).chain(self.args.iter())
     }
 
     fn from_vec(mut vec: Vec<String>) -> Self {
         if vec.is_empty() {
             Self::default()
         } else {
-            let command = Some(vec.remove(0));
+            let command = vec.remove(0);
             Self {
                 command,
                 args: vec,
