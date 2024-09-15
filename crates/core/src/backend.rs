@@ -1,5 +1,6 @@
 //! Module for backend related functionality.
 pub(crate) mod cache;
+pub(crate) mod childstdout;
 pub(crate) mod decrypt;
 pub(crate) mod dry_run;
 pub(crate) mod hotcold;
