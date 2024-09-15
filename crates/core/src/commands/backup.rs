@@ -251,8 +251,8 @@ pub(crate) fn backup<P: ProgressBars, S: IndexedIds>(
     let p = repo.pb.progress_bytes("backing up...");
 
     let snap = if backup_stdin {
+        let path = &backup_path[0];
         if let Some(command) = &opts.stdin_command {
-            let path = &backup_path[0];
             let src = ChildStdoutSource::new(command, path.clone())?;
             let res = archiver.archive(
                 &src,
@@ -265,7 +265,6 @@ pub(crate) fn backup<P: ProgressBars, S: IndexedIds>(
             src.finish()?;
             res
         } else {
-            let path = &backup_path[0];
             let src = StdinSource::new(path.clone());
             archiver.archive(
                 &src,
