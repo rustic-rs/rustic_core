@@ -1,18 +1,16 @@
-use std::{io::stdin, path::PathBuf};
+use std::{
+    io::{stdin, Stdin},
+    path::PathBuf,
+};
 
 use crate::{
-    backend::{
-        node::{Metadata, Node, NodeType},
-        ReadSource, ReadSourceEntry, ReadSourceOpen,
-    },
+    backend::{ReadSource, ReadSourceEntry},
     error::RusticResult,
 };
 
 /// The `StdinSource` is a `ReadSource` for stdin.
 #[derive(Debug, Clone)]
 pub struct StdinSource {
-    /// Whether we have already yielded the stdin entry.
-    finished: bool,
     /// The path of the stdin entry.
     path: PathBuf,
 }
@@ -20,32 +18,15 @@ pub struct StdinSource {
 impl StdinSource {
     /// Creates a new `StdinSource`.
     pub const fn new(path: PathBuf) -> Self {
-        Self {
-            finished: false,
-            path,
-        }
-    }
-}
-
-/// The `OpenStdin` is a `ReadSourceOpen` for stdin.
-#[derive(Debug, Copy, Clone)]
-pub struct OpenStdin();
-
-impl ReadSourceOpen for OpenStdin {
-    /// The reader type.
-    type Reader = std::io::Stdin;
-
-    /// Opens stdin.
-    fn open(self) -> RusticResult<Self::Reader> {
-        Ok(stdin())
+        Self { path }
     }
 }
 
 impl ReadSource for StdinSource {
     /// The open type.
-    type Open = OpenStdin;
+    type Open = Stdin;
     /// The iterator type.
-    type Iter = Self;
+    type Iter = std::option::IntoIter<RusticResult<ReadSourceEntry<Stdin>>>;
 
     /// Returns the size of the source.
     fn size(&self) -> RusticResult<Option<u64>> {
@@ -54,27 +35,7 @@ impl ReadSource for StdinSource {
 
     /// Returns an iterator over the source.
     fn entries(&self) -> Self::Iter {
-        self.clone()
-    }
-}
-
-impl Iterator for StdinSource {
-    type Item = RusticResult<ReadSourceEntry<OpenStdin>>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        if self.finished {
-            return None;
-        }
-        self.finished = true;
-
-        Some(Ok(ReadSourceEntry {
-            path: self.path.clone(),
-            node: Node::new_node(
-                self.path.file_name().unwrap(),
-                NodeType::File,
-                Metadata::default(),
-            ),
-            open: Some(OpenStdin()),
-        }))
+        let open = Some(stdin());
+        Some(Ok(ReadSourceEntry::from_path(self.path.clone(), open))).into_iter()
     }
 }
