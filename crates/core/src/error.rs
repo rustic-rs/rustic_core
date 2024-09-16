@@ -11,6 +11,7 @@ use std::{
     num::{ParseIntError, TryFromIntError},
     ops::RangeInclusive,
     path::{PathBuf, StripPrefixError},
+    process::ExitStatus,
     str::Utf8Error,
 };
 
@@ -220,6 +221,8 @@ pub enum CommandErrorKind {
     NotAllowedWithAppendOnly(String),
     /// Specify one of the keep-* options for forget! Please use keep-none to keep no snapshot.
     NoKeepOption,
+    /// {0:?}
+    FromParseError(#[from] shell_words::ParseError),
 }
 
 /// [`CryptoErrorKind`] describes the errors that can happen while dealing with Cryptographic functions
@@ -285,6 +288,10 @@ pub enum RepositoryErrorKind {
     PasswordCommandExecutionFailed,
     /// error reading password from command
     ReadingPasswordFromCommandFailed,
+    /// running command {0}:{1} was not successful: {2}
+    CommandExecutionFailed(String, String, std::io::Error),
+    /// running command {0}:{1} returned status: {2}
+    CommandErrorStatus(String, String, ExitStatus),
     /// error listing the repo config file
     ListingRepositoryConfigFileFailed,
     /// error listing the repo keys

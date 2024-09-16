@@ -1,7 +1,10 @@
 // Note: we need a fully qualified Vec here for clap, see https://github.com/clap-rs/clap/issues/4481
 #![allow(unused_qualifications)]
 
+mod command_input;
 mod warm_up;
+
+pub use command_input::CommandInput;
 
 use std::{
     cmp::Ordering,
