@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.3.1](https://github.com/rustic-rs/rustic_core/compare/rustic_core-v0.3.0...rustic_core-v0.3.1) - 2024-09-06
+
+### Added
+- Add autocompletion hints  ([#257](https://github.com/rustic-rs/rustic_core/pull/257))
+
+### Fixed
+- don't give invalid password error for other keyfile errors ([#247](https://github.com/rustic-rs/rustic_core/pull/247))
+- adjust tests to new Rust version ([#259](https://github.com/rustic-rs/rustic_core/pull/259))
+- fix FromStr for SnapshotGroupCriterion ([#254](https://github.com/rustic-rs/rustic_core/pull/254))
+- make more Indexed traits public ([#253](https://github.com/rustic-rs/rustic_core/pull/253))
+- fix StringList::contains_all ([#246](https://github.com/rustic-rs/rustic_core/pull/246))
+- *(build)* unbreak building on OpenBSD ([#245](https://github.com/rustic-rs/rustic_core/pull/245))
+
 ## [0.3.0](https://github.com/rustic-rs/rustic_core/compare/rustic_core-v0.2.0...rustic_core-v0.3.0) - 2024-08-18
 
 ### Added

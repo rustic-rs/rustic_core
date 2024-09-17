@@ -1,4 +1,5 @@
 use serde_derive::{Deserialize, Serialize};
+use serde_with::skip_serializing_none;
 
 use crate::{
     backend::FileType, blob::BlobType, error::ConfigFileErrorKind, id::Id, repofile::RepoFile,
@@ -27,7 +28,7 @@ pub(super) mod constants {
     pub(super) const DEFAULT_MIN_PERCENTAGE: u32 = 30;
 }
 
-#[serde_with::apply(Option => #[serde(default, skip_serializing_if = "Option::is_none")])]
+#[skip_serializing_none]
 #[derive(Serialize, Deserialize, Debug, Default, Clone, PartialEq, Eq)]
 /// The config file describes all repository-wide information.
 ///

@@ -8,6 +8,7 @@ use crate::{
         SnapshotFile,
     },
     repository::{Open, Repository},
+    Progress,
 };
 
 /// Get the snapshots from the repository.
@@ -56,6 +57,7 @@ pub(crate) fn get_snapshot_group<P: ProgressBars, S: Open>(
             vec![item]
         }
     };
+    p.finish();
 
     Ok(groups)
 }

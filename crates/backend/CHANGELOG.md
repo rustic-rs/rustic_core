@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.2.1](https://github.com/rustic-rs/rustic_core/compare/rustic_backend-v0.2.0...rustic_backend-v0.2.1) - 2024-09-06
+
+### Added
+- Add autocompletion hints  ([#257](https://github.com/rustic-rs/rustic_core/pull/257))
+
+### Fixed
+- Re-add missing opendal services ([#249](https://github.com/rustic-rs/rustic_core/pull/249))
+
+### Other
+- Revert "backend: specify core version"
+
 ## [0.2.0](https://github.com/rustic-rs/rustic_core/compare/rustic_backend-v0.1.1...rustic_backend-v0.2.0) - 2024-08-18
 
 ### Added

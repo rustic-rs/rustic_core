@@ -15,7 +15,7 @@ use itertools::Itertools;
 use log::info;
 use path_dedot::ParseDot;
 use serde_derive::{Deserialize, Serialize};
-use serde_with::{serde_as, DisplayFromStr, OneOrMany};
+use serde_with::{serde_as, skip_serializing_none, DisplayFromStr, OneOrMany};
 
 use crate::{
     backend::{decrypt::DecryptReadBackend, FileType, FindInBackend},
@@ -24,6 +24,9 @@ use crate::{
     progress::Progress,
     repofile::RepoFile,
 };
+
+#[cfg(feature = "clap")]
+use clap::ValueHint;
 
 /// Options for creating a new [`SnapshotFile`] structure for a new backup snapshot.
 ///
@@ -62,7 +65,7 @@ pub struct SnapshotOptions {
     /// Add description to snapshot from file
     #[cfg_attr(
         feature = "clap",
-        clap(long, value_name = "FILE", conflicts_with = "description")
+        clap(long, value_name = "FILE", conflicts_with = "description", value_hint = ValueHint::FilePath)
     )]
     pub description_from: Option<PathBuf>,
 
@@ -258,7 +261,7 @@ impl DeleteOption {
     }
 }
 
-#[serde_with::apply(Option => #[serde(default, skip_serializing_if = "Option::is_none")])]
+#[skip_serializing_none]
 #[derive(Debug, Clone, Serialize, Deserialize, Derivative)]
 #[derivative(Default)]
 /// A [`SnapshotFile`] is the repository representation of the snapshot metadata saved in a repository.
@@ -829,6 +832,19 @@ pub struct SnapshotGroupCriterion {
     pub tags: bool,
 }
 
+impl SnapshotGroupCriterion {
+    /// Create a new empty `SnapshotGroupCriterion`
+    #[must_use]
+    pub fn new() -> Self {
+        Self {
+            hostname: false,
+            label: false,
+            paths: false,
+            tags: false,
+        }
+    }
+}
+
 impl Default for SnapshotGroupCriterion {
     fn default() -> Self {
         Self {
@@ -843,7 +859,7 @@ impl Default for SnapshotGroupCriterion {
 impl FromStr for SnapshotGroupCriterion {
     type Err = RusticError;
     fn from_str(s: &str) -> RusticResult<Self> {
-        let mut crit = Self::default();
+        let mut crit = Self::new();
         for val in s.split(',') {
             match val {
                 "host" => crit.hostname = true,
@@ -878,7 +894,7 @@ impl Display for SnapshotGroupCriterion {
     }
 }
 
-#[serde_with::apply(Option => #[serde(default, skip_serializing_if = "Option::is_none")])]
+#[skip_serializing_none]
 #[derive(Serialize, Default, Debug, PartialEq, Eq)]
 #[non_exhaustive]
 /// [`SnapshotGroup`] specifies the group after a grouping using [`SnapshotGroupCriterion`].
@@ -1205,7 +1221,6 @@ fn sanitize_dot(path: &Path) -> RusticResult<PathBuf> {
 mod tests {
     use super::*;
     use anyhow::Result;
-
     use rstest::rstest;
 
     #[rstest]
@@ -1244,5 +1259,24 @@ mod tests {
         let expected = StringList::from_str("abc,def")?;
         assert_eq!(snap.tags, expected);
         Ok(())
+    }
+
+    #[rstest]
+    #[case("host,label,paths", true, true, true, false)]
+    #[case("host", true, false, false, false)]
+    #[case("label,host", true, true, false, false)]
+    #[case("tags", false, false, false, true)]
+    #[case("paths,label", false, true, true, false)]
+    fn snapshot_group_criterion_fromstr(
+        #[case] crit: SnapshotGroupCriterion,
+        #[case] is_host: bool,
+        #[case] is_label: bool,
+        #[case] is_path: bool,
+        #[case] is_tags: bool,
+    ) {
+        assert_eq!(crit.hostname, is_host);
+        assert_eq!(crit.label, is_label);
+        assert_eq!(crit.paths, is_path);
+        assert_eq!(crit.tags, is_tags);
     }
 }

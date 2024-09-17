@@ -3,6 +3,7 @@ use std::{cmp::Ordering, num::NonZeroU32};
 use chrono::{DateTime, Local};
 
 use serde_derive::{Deserialize, Serialize};
+use serde_with::skip_serializing_none;
 
 use crate::{
     backend::FileType,
@@ -14,9 +15,9 @@ use crate::{
 /// Index files describe index information about multiple `pack` files.
 ///
 /// They are usually stored in the repository under `/index/<ID>`
+#[skip_serializing_none]
 #[derive(Serialize, Deserialize, Debug, Default)]
 pub struct IndexFile {
-    #[serde(skip_serializing_if = "Option::is_none")]
     /// which other index files are superseded by this (not actively used)
     pub supersedes: Option<Vec<Id>>,
     /// Index information about used packs
@@ -54,6 +55,7 @@ impl IndexFile {
     }
 }
 
+#[skip_serializing_none]
 #[derive(Serialize, Deserialize, Default, Debug, Clone)]
 /// Index information about a `pack`
 pub struct IndexPack {
@@ -61,10 +63,8 @@ pub struct IndexPack {
     pub id: Id,
     /// Index information about contained blobs
     pub blobs: Vec<IndexBlob>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     /// The pack creation time or time when the pack was marked for deletion
     pub time: Option<DateTime<Local>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     /// The pack size
     pub size: Option<u32>,
 }
