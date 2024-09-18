@@ -106,8 +106,6 @@ pub enum LocalBackendErrorKind {
     /// error building automaton `{0:?}`
     FromAhoCorasick(#[from] aho_corasick::BuildError),
     /// {0:?}
-    FromSplitError(#[from] shell_words::ParseError),
-    /// {0:?}
     #[error(transparent)]
     FromTryIntError(#[from] TryFromIntError),
     /// {0:?}

@@ -12,13 +12,11 @@ use rand::{
     distributions::{Alphanumeric, DistString},
     thread_rng,
 };
-
 use semver::{BuildMetadata, Prerelease, Version, VersionReq};
-use shell_words::split;
 
 use crate::{error::RcloneErrorKind, rest::RestBackend};
 
-use rustic_core::{FileType, Id, ReadBackend, WriteBackend};
+use rustic_core::{CommandInput, FileType, Id, ReadBackend, WriteBackend};
 
 pub(super) mod constants {
     /// The string to search for in the rclone output.
@@ -150,12 +148,16 @@ impl RcloneBackend {
         let user = Alphanumeric.sample_string(&mut thread_rng(), 12);
         let password = Alphanumeric.sample_string(&mut thread_rng(), 12);
 
-        let mut rclone_command =
-            split(rclone_command.map_or("rclone serve restic --addr localhost:0", String::as_str))?;
-        rclone_command.push(url.as_ref().to_string());
+        let mut rclone_command = rclone_command.map_or(
+            "rclone serve restic --addr localhost:0".to_string(),
+            ToString::to_string,
+        );
+        rclone_command.push(' ');
+        rclone_command.push_str(url.as_ref());
+        let rclone_command: CommandInput = rclone_command.parse()?;
         debug!("starting rclone via {rclone_command:?}");
 
-        let mut command = Command::new(&rclone_command[0]);
+        let mut command = Command::new(rclone_command.command());
 
         if use_password {
             // TODO: We should handle errors here
@@ -165,7 +167,7 @@ impl RcloneBackend {
         }
 
         let mut child = command
-            .args(&rclone_command[1..])
+            .args(rclone_command.args())
             .stderr(Stdio::piped())
             .spawn()
             .map_err(RcloneErrorKind::FromIoError)?;
