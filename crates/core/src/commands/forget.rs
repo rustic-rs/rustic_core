@@ -835,7 +835,7 @@ mod tests {
         // shorten name, if too long
         if options.len() > 40 {
             options = options[..35].to_string();
-            options.push_str("[cut]")
+            options.push_str("[cut]");
         }
 
         insta_forget_snapshots_redaction.bind(|| {
