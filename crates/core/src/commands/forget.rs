@@ -832,6 +832,11 @@ mod tests {
         // good naming of snapshots: serialize into json and remove control chars
         let mut options = serde_json::to_string(&options)?;
         options.retain(|c| !"{}\":".contains(c));
+        // shorten name, if too long
+        if options.len() > 40 {
+            options = options[..35].to_string();
+            options.push_str("[cut]")
+        }
 
         insta_forget_snapshots_redaction.bind(|| {
             assert_ron_snapshot!(options, result);
