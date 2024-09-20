@@ -87,11 +87,11 @@ tokio = { version = "1.39.3", optional = true, default-features = false }
 
 [target.'cfg(not(windows))'.dependencies]
 # opendal backend - sftp is not supported on windows, see https://github.com/apache/incubator-opendal/issues/2963
-opendal = { version = "0.49.0", features = ["services-b2", "services-sftp", "services-swift", "services-azblob", "services-azdls", "services-cos", "services-fs", "services-ftp", "services-dropbox", "services-gdrive", "services-gcs", "services-ghac", "services-http", "services-ipmfs", "services-memory", "services-obs", "services-onedrive", "services-oss", "services-s3", "services-webdav", "services-webhdfs", "services-azfile", "layers-blocking", "layers-throttle"], optional = true }
+opendal = { version = "0.50.0", features = ["services-b2", "services-sftp", "services-swift", "services-azblob", "services-azdls", "services-cos", "services-fs", "services-ftp", "services-dropbox", "services-gdrive", "services-gcs", "services-ghac", "services-http", "services-ipmfs", "services-memory", "services-obs", "services-onedrive", "services-oss", "services-s3", "services-webdav", "services-webhdfs", "services-azfile", "layers-blocking", "layers-throttle"], optional = true }
 
 [target.'cfg(windows)'.dependencies]
 # opendal backend
-opendal = { version = "0.49.0", features = ["services-b2", "services-swift", "services-azblob", "services-azdls", "services-cos", "services-fs", "services-ftp", "services-dropbox", "services-gdrive", "services-gcs", "services-ghac", "services-http", "services-ipmfs", "services-memory", "services-obs", "services-onedrive", "services-oss", "services-s3", "services-webdav", "services-webhdfs", "services-azfile", "layers-blocking", "layers-throttle"], optional = true }
+opendal = { version = "0.50.0", features = ["services-b2", "services-swift", "services-azblob", "services-azdls", "services-cos", "services-fs", "services-ftp", "services-dropbox", "services-gdrive", "services-gcs", "services-ghac", "services-http", "services-ipmfs", "services-memory", "services-obs", "services-onedrive", "services-oss", "services-s3", "services-webdav", "services-webhdfs", "services-azfile", "layers-blocking", "layers-throttle"], optional = true }
 
 [dev-dependencies]
 rstest = { workspace = true }
