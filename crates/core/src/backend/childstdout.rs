@@ -11,13 +11,18 @@ use crate::{
     CommandInput,
 };
 
-/// The `ChildSource` is a `ReadSource` when spawning a child process and reading its stdout
+/// The `ChildStdoutSource` is a `ReadSource` when spawning a child process and reading its stdout
 #[derive(Debug)]
 pub struct ChildStdoutSource {
     /// The path of the stdin entry.
     path: PathBuf,
     /// The child process
-    // Note: this is in a Mutex as we want to take out ChildStdout in the `entries` method - but this method only gets a reference of self.
+    ///
+    /// # Note
+    /// 
+    /// This is in a Mutex as we want to take out ChildStdout
+    /// in the `entries` method - but this method only gets a
+    /// reference of self.
     process: Mutex<Child>,
     /// the command which is called
     command: CommandInput,
