@@ -68,6 +68,6 @@ impl ReadSource for ChildStdoutSource {
 
     fn entries(&self) -> Self::Iter {
         let open = self.process.lock().unwrap().stdout.take();
-        once(Ok(ReadSourceEntry::from_path(self.path.clone(), open)))
+        once(ReadSourceEntry::from_path(self.path.clone(), open))
     }
 }

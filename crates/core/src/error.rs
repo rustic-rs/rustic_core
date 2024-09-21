@@ -364,6 +364,8 @@ pub enum BackendAccessErrorKind {
     RemovingDataFromBackendFailed,
     /// failed to list files on Backend
     ListingFilesOnBackendFailed,
+    /// Path is not allowed: `{0:?}`
+    PathNotAllowed(PathBuf),
 }
 
 /// [`ConfigFileErrorKind`] describes the errors that can be returned for `ConfigFile`s
