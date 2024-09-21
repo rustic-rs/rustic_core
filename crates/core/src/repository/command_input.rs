@@ -175,7 +175,7 @@ impl OnFailure {
 
     /// Displays a result depending on the defined error handling which still yielding the same result
     /// # Note
-    /// 
+    ///
     /// This can be used where an error might occur, but in that
     /// case we have to abort.
     pub fn display_result<T>(self, res: RusticResult<T>) -> RusticResult<T> {
