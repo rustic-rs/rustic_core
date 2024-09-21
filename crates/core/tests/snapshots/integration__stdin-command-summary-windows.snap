@@ -1,6 +1,5 @@
 ---
 source: crates/core/tests/integration.rs
-assertion_line: 173
 expression: snap
 ---
 SnapshotFile(
