@@ -1,5 +1,6 @@
 use std::{
     io::{stdin, Stdin},
+    iter::{once, Once},
     path::PathBuf,
 };
 
@@ -26,7 +27,7 @@ impl ReadSource for StdinSource {
     /// The open type.
     type Open = Stdin;
     /// The iterator type.
-    type Iter = std::option::IntoIter<RusticResult<ReadSourceEntry<Stdin>>>;
+    type Iter = Once<RusticResult<ReadSourceEntry<Stdin>>>;
 
     /// Returns the size of the source.
     fn size(&self) -> RusticResult<Option<u64>> {
@@ -36,6 +37,6 @@ impl ReadSource for StdinSource {
     /// Returns an iterator over the source.
     fn entries(&self) -> Self::Iter {
         let open = Some(stdin());
-        Some(Ok(ReadSourceEntry::from_path(self.path.clone(), open))).into_iter()
+        once(Ok(ReadSourceEntry::from_path(self.path.clone(), open)))
     }
 }

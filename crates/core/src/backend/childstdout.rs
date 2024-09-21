@@ -1,4 +1,5 @@
 use std::{
+    iter::{once, Once},
     path::PathBuf,
     process::{Child, ChildStdout, Command, Stdio},
     sync::Mutex,
@@ -59,7 +60,7 @@ impl ChildStdoutSource {
 
 impl ReadSource for ChildStdoutSource {
     type Open = ChildStdout;
-    type Iter = std::option::IntoIter<RusticResult<ReadSourceEntry<ChildStdout>>>;
+    type Iter = Once<RusticResult<ReadSourceEntry<ChildStdout>>>;
 
     fn size(&self) -> RusticResult<Option<u64>> {
         Ok(None)
@@ -67,6 +68,6 @@ impl ReadSource for ChildStdoutSource {
 
     fn entries(&self) -> Self::Iter {
         let open = self.process.lock().unwrap().stdout.take();
-        Some(Ok(ReadSourceEntry::from_path(self.path.clone(), open))).into_iter()
+        once(Ok(ReadSourceEntry::from_path(self.path.clone(), open)))
     }
 }
