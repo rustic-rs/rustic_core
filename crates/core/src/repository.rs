@@ -1,7 +1,7 @@
-// Note: we need a fully qualified Vec here for clap, see https://github.com/clap-rs/clap/issues/4481
-#![allow(unused_qualifications)]
-
+mod command_input;
 mod warm_up;
+
+pub use command_input::CommandInput;
 
 use std::{
     cmp::Ordering,
@@ -15,7 +15,7 @@ use std::{
 use bytes::Bytes;
 use derive_setters::Setters;
 use log::{debug, error, info};
-use serde_with::{serde_as, DisplayFromStr, OneOrMany};
+use serde_with::{serde_as, DisplayFromStr};
 
 use crate::{
     backend::{
@@ -117,13 +117,8 @@ pub struct RepositoryOptions {
         global = true,
         env = "RUSTIC_PASSWORD_COMMAND",
         conflicts_with_all = &["password", "password_file"],
-        value_parser = clap::builder::ValueParser::new(shell_words::split),
-        default_value = "",
     ))]
-    #[cfg_attr(feature = "merge", merge(strategy = merge::vec::overwrite_empty))]
-    #[serde_as(as = "OneOrMany<_>")]
-    // Note: we need a fully qualified Vec here for clap, see https://github.com/clap-rs/clap/issues/4481
-    pub password_command: std::vec::Vec<String>,
+    pub password_command: Option<CommandInput>,
 
     /// Don't use a cache.
     #[cfg_attr(feature = "clap", clap(long, global = true, env = "RUSTIC_NO_CACHE"))]
@@ -149,18 +144,11 @@ pub struct RepositoryOptions {
     pub warm_up: bool,
 
     /// Warm up needed data pack files by running the command with %id replaced by pack id
-    #[cfg_attr(feature = "clap", clap(
-        long,
-        global = true,
-        conflicts_with = "warm_up", 
-        value_parser = clap::builder::ValueParser::new(shell_words::split),
-        action = clap::ArgAction::Set,
-        default_value = "",
-    ))]
-    #[cfg_attr(feature = "merge", merge(strategy = merge::vec::overwrite_empty))]
-    #[serde_as(as = "OneOrMany<_>")]
-    // Note: we need a fully qualified Vec here for clap, see https://github.com/clap-rs/clap/issues/4481
-    pub warm_up_command: std::vec::Vec<String>,
+    #[cfg_attr(
+        feature = "clap",
+        clap(long, global = true, conflicts_with = "warm_up",)
+    )]
+    pub warm_up_command: Option<CommandInput>,
 
     /// Duration (e.g. 10m) to wait after warm up
     #[cfg_attr(feature = "clap", clap(long, global = true, value_name = "DURATION"))]
@@ -176,7 +164,7 @@ impl RepositoryOptions {
     /// * [`RepositoryErrorKind::OpeningPasswordFileFailed`] - If opening the password file failed
     /// * [`RepositoryErrorKind::ReadingPasswordFromReaderFailed`] - If reading the password failed
     /// * [`RepositoryErrorKind::FromSplitError`] - If splitting the password command failed
-    /// * [`RepositoryErrorKind::PasswordCommandParsingFailed`] - If parsing the password command failed
+    /// * [`RepositoryErrorKind::PasswordCommandExecutionFailed`] - If executing the password command failed
     /// * [`RepositoryErrorKind::ReadingPasswordFromCommandFailed`] - If reading the password from the command failed
     ///
     /// # Returns
@@ -186,7 +174,7 @@ impl RepositoryOptions {
     /// [`RepositoryErrorKind::OpeningPasswordFileFailed`]: crate::error::RepositoryErrorKind::OpeningPasswordFileFailed
     /// [`RepositoryErrorKind::ReadingPasswordFromReaderFailed`]: crate::error::RepositoryErrorKind::ReadingPasswordFromReaderFailed
     /// [`RepositoryErrorKind::FromSplitError`]: crate::error::RepositoryErrorKind::FromSplitError
-    /// [`RepositoryErrorKind::PasswordCommandParsingFailed`]: crate::error::RepositoryErrorKind::PasswordCommandParsingFailed
+    /// [`RepositoryErrorKind::PasswordCommandExecutionFailed`]: crate::error::RepositoryErrorKind::PasswordCommandExecutionFailed
     /// [`RepositoryErrorKind::ReadingPasswordFromCommandFailed`]: crate::error::RepositoryErrorKind::ReadingPasswordFromCommandFailed
     pub fn evaluate_password(&self) -> RusticResult<Option<String>> {
         match (&self.password, &self.password_file, &self.password_command) {
@@ -197,15 +185,29 @@ impl RepositoryOptions {
                 );
                 Ok(Some(read_password_from_reader(&mut file)?))
             }
-            (_, _, command) if !command.is_empty() => {
+            (_, _, Some(command)) if command.is_set() => {
                 debug!("commands: {command:?}");
-                let command = Command::new(&command[0])
-                    .args(&command[1..])
+                let command = Command::new(command.command())
+                    .args(command.args())
                     .stdout(Stdio::piped())
-                    .spawn()?;
-                let Ok(output) = command.wait_with_output() else {
-                    return Err(RepositoryErrorKind::PasswordCommandParsingFailed.into());
+                    .spawn();
+
+                let process = match command {
+                    Ok(process) => process,
+                    Err(err) => {
+                        error!("password-command could not be executed: {}", err);
+                        return Err(RepositoryErrorKind::PasswordCommandExecutionFailed.into());
+                    }
                 };
+
+                let output = match process.wait_with_output() {
+                    Ok(output) => output,
+                    Err(err) => {
+                        error!("error reading output from password-command: {}", err);
+                        return Err(RepositoryErrorKind::ReadingPasswordFromCommandFailed.into());
+                    }
+                };
+
                 if !output.status.success() {
                     #[allow(clippy::option_if_let_else)]
                     let s = match output.status.code() {
@@ -213,7 +215,7 @@ impl RepositoryOptions {
                         None => "was terminated".into(),
                     };
                     error!("password-command {s}");
-                    return Err(RepositoryErrorKind::ReadingPasswordFromCommandFailed.into());
+                    return Err(RepositoryErrorKind::PasswordCommandExecutionFailed.into());
                 }
 
                 let mut pwd = BufReader::new(&*output.stdout);
@@ -340,11 +342,11 @@ impl<P> Repository<P, ()> {
         let mut be = backends.repository();
         let be_hot = backends.repo_hot();
 
-        if !opts.warm_up_command.is_empty() {
-            if opts.warm_up_command.iter().all(|c| !c.contains("%id")) {
+        if let Some(warm_up) = &opts.warm_up_command {
+            if warm_up.args().iter().all(|c| !c.contains("%id")) {
                 return Err(RepositoryErrorKind::NoIDSpecified.into());
             }
-            info!("using warm-up command {:?}", opts.warm_up_command);
+            info!("using warm-up command {warm_up}");
         }
 
         if opts.warm_up {
@@ -377,7 +379,7 @@ impl<P, S> Repository<P, S> {
     /// * [`RepositoryErrorKind::OpeningPasswordFileFailed`] - If opening the password file failed
     /// * [`RepositoryErrorKind::ReadingPasswordFromReaderFailed`] - If reading the password failed
     /// * [`RepositoryErrorKind::FromSplitError`] - If splitting the password command failed
-    /// * [`RepositoryErrorKind::PasswordCommandParsingFailed`] - If parsing the password command failed
+    /// * [`RepositoryErrorKind::PasswordCommandExecutionFailed`] - If parsing the password command failed
     /// * [`RepositoryErrorKind::ReadingPasswordFromCommandFailed`] - If reading the password from the command failed
     ///
     /// # Returns
@@ -387,7 +389,7 @@ impl<P, S> Repository<P, S> {
     /// [`RepositoryErrorKind::OpeningPasswordFileFailed`]: crate::error::RepositoryErrorKind::OpeningPasswordFileFailed
     /// [`RepositoryErrorKind::ReadingPasswordFromReaderFailed`]: crate::error::RepositoryErrorKind::ReadingPasswordFromReaderFailed
     /// [`RepositoryErrorKind::FromSplitError`]: crate::error::RepositoryErrorKind::FromSplitError
-    /// [`RepositoryErrorKind::PasswordCommandParsingFailed`]: crate::error::RepositoryErrorKind::PasswordCommandParsingFailed
+    /// [`RepositoryErrorKind::PasswordCommandExecutionFailed`]: crate::error::RepositoryErrorKind::PasswordCommandExecutionFailed
     /// [`RepositoryErrorKind::ReadingPasswordFromCommandFailed`]: crate::error::RepositoryErrorKind::ReadingPasswordFromCommandFailed
     pub fn password(&self) -> RusticResult<Option<String>> {
         self.opts.evaluate_password()
@@ -428,7 +430,7 @@ impl<P, S> Repository<P, S> {
     /// * [`RepositoryErrorKind::NoPasswordGiven`] - If no password is given
     /// * [`RepositoryErrorKind::ReadingPasswordFromReaderFailed`] - If reading the password failed
     /// * [`RepositoryErrorKind::OpeningPasswordFileFailed`] - If opening the password file failed
-    /// * [`RepositoryErrorKind::PasswordCommandParsingFailed`] - If parsing the password command failed
+    /// * [`RepositoryErrorKind::PasswordCommandExecutionFailed`] - If parsing the password command failed
     /// * [`RepositoryErrorKind::ReadingPasswordFromCommandFailed`] - If reading the password from the command failed
     /// * [`RepositoryErrorKind::FromSplitError`] - If splitting the password command failed
     /// * [`RepositoryErrorKind::NoRepositoryConfigFound`] - If no repository config file is found
@@ -445,7 +447,7 @@ impl<P, S> Repository<P, S> {
     /// [`RepositoryErrorKind::NoPasswordGiven`]: crate::error::RepositoryErrorKind::NoPasswordGiven
     /// [`RepositoryErrorKind::ReadingPasswordFromReaderFailed`]: crate::error::RepositoryErrorKind::ReadingPasswordFromReaderFailed
     /// [`RepositoryErrorKind::OpeningPasswordFileFailed`]: crate::error::RepositoryErrorKind::OpeningPasswordFileFailed
-    /// [`RepositoryErrorKind::PasswordCommandParsingFailed`]: crate::error::RepositoryErrorKind::PasswordCommandParsingFailed
+    /// [`RepositoryErrorKind::PasswordCommandExecutionFailed`]: crate::error::RepositoryErrorKind::PasswordCommandExecutionFailed
     /// [`RepositoryErrorKind::ReadingPasswordFromCommandFailed`]: crate::error::RepositoryErrorKind::ReadingPasswordFromCommandFailed
     /// [`RepositoryErrorKind::FromSplitError`]: crate::error::RepositoryErrorKind::FromSplitError
     /// [`RepositoryErrorKind::NoRepositoryConfigFound`]: crate::error::RepositoryErrorKind::NoRepositoryConfigFound
@@ -538,14 +540,14 @@ impl<P, S> Repository<P, S> {
     /// * [`RepositoryErrorKind::NoPasswordGiven`] - If no password is given
     /// * [`RepositoryErrorKind::ReadingPasswordFromReaderFailed`] - If reading the password failed
     /// * [`RepositoryErrorKind::OpeningPasswordFileFailed`] - If opening the password file failed
-    /// * [`RepositoryErrorKind::PasswordCommandParsingFailed`] - If parsing the password command failed
+    /// * [`RepositoryErrorKind::PasswordCommandExecutionFailed`] - If parsing the password command failed
     /// * [`RepositoryErrorKind::ReadingPasswordFromCommandFailed`] - If reading the password from the command failed
     /// * [`RepositoryErrorKind::FromSplitError`] - If splitting the password command failed
     ///
     /// [`RepositoryErrorKind::NoPasswordGiven`]: crate::error::RepositoryErrorKind::NoPasswordGiven
     /// [`RepositoryErrorKind::ReadingPasswordFromReaderFailed`]: crate::error::RepositoryErrorKind::ReadingPasswordFromReaderFailed
     /// [`RepositoryErrorKind::OpeningPasswordFileFailed`]: crate::error::RepositoryErrorKind::OpeningPasswordFileFailed
-    /// [`RepositoryErrorKind::PasswordCommandParsingFailed`]: crate::error::RepositoryErrorKind::PasswordCommandParsingFailed
+    /// [`RepositoryErrorKind::PasswordCommandExecutionFailed`]: crate::error::RepositoryErrorKind::PasswordCommandExecutionFailed
     /// [`RepositoryErrorKind::ReadingPasswordFromCommandFailed`]: crate::error::RepositoryErrorKind::ReadingPasswordFromCommandFailed
     /// [`RepositoryErrorKind::FromSplitError`]: crate::error::RepositoryErrorKind::FromSplitError
     pub fn init(

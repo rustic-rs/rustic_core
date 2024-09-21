@@ -11,6 +11,7 @@ use serde_with::{serde_as, DisplayFromStr};
 use crate::{
     archiver::{parent::Parent, Archiver},
     backend::{
+        childstdout::ChildStdoutSource,
         dry_run::DryRunBackend,
         ignore::{LocalSource, LocalSourceFilterOptions, LocalSourceSaveOptions},
         stdin::StdinSource,
@@ -22,6 +23,7 @@ use crate::{
         PathList, SnapshotFile,
     },
     repository::{IndexedIds, IndexedTree, Repository},
+    CommandInput,
 };
 
 #[cfg(feature = "clap")]
@@ -140,6 +142,10 @@ pub struct BackupOptions {
     #[cfg_attr(feature = "merge", merge(skip))]
     pub stdin_filename: String,
 
+    /// Call the given command and use its output as stdin
+    #[cfg_attr(feature = "clap", clap(long, value_name = "COMMAND"))]
+    pub stdin_command: Option<CommandInput>,
+
     /// Manually set backup path in snapshot
     #[cfg_attr(feature = "clap", clap(long, value_name = "PATH", value_hint = ValueHint::DirPath))]
     pub as_path: Option<PathBuf>,
@@ -245,15 +251,29 @@ pub(crate) fn backup<P: ProgressBars, S: IndexedIds>(
 
     let snap = if backup_stdin {
         let path = &backup_path[0];
-        let src = StdinSource::new(path.clone());
-        archiver.archive(
-            &src,
-            path,
-            as_path.as_ref(),
-            opts.parent_opts.skip_identical_parent,
-            opts.no_scan,
-            &p,
-        )?
+        if let Some(command) = &opts.stdin_command {
+            let src = ChildStdoutSource::new(command, path.clone())?;
+            let res = archiver.archive(
+                &src,
+                path,
+                as_path.as_ref(),
+                opts.parent_opts.skip_identical_parent,
+                opts.no_scan,
+                &p,
+            )?;
+            src.finish()?;
+            res
+        } else {
+            let src = StdinSource::new(path.clone());
+            archiver.archive(
+                &src,
+                path,
+                as_path.as_ref(),
+                opts.parent_opts.skip_identical_parent,
+                opts.no_scan,
+                &p,
+            )?
+        }
     } else {
         let src = LocalSource::new(
             opts.ignore_save_opts,

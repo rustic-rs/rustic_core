@@ -2,7 +2,7 @@ use chrono::{DateTime, Local};
 use rand::{thread_rng, RngCore};
 use scrypt::Params;
 use serde_derive::{Deserialize, Serialize};
-use serde_with::{base64::Base64, serde_as};
+use serde_with::{base64::Base64, serde_as, skip_serializing_none};
 
 use crate::{
     backend::{FileType, ReadBackend},
@@ -26,7 +26,7 @@ new_repoid!(KeyId, FileType::Key);
 ///
 /// They are usually stored in the repository under `/keys/<ID>`
 #[serde_as]
-#[serde_with::apply(Option => #[serde(default, skip_serializing_if = "Option::is_none")])]
+#[skip_serializing_none]
 #[derive(Serialize, Deserialize, Debug)]
 pub struct KeyFile {
     /// Hostname where the key was created

@@ -14,7 +14,10 @@ SnapshotFile(
   username: "",
   uid: 0,
   gid: 0,
-  tags: StringList([]),
+  tags: StringList([
+    "a",
+    "b",
+  ]),
   summary: Some(SnapshotSummary(
     files_new: 0,
     files_changed: 0,
@@ -40,4 +43,5 @@ SnapshotFile(
     backup_duration: "[backup_duration]",
     total_duration: "[total_duration]",
   )),
+  id: "[id]",
 )

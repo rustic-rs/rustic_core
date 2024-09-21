@@ -1,4 +1,5 @@
 use serde_derive::{Deserialize, Serialize};
+use serde_with::skip_serializing_none;
 
 use crate::{
     backend::FileType, blob::BlobType, error::ConfigFileErrorKind, new_id, new_repofile,
@@ -30,7 +31,7 @@ pub(super) mod constants {
 new_id!(RepositoryId, "repository");
 new_repofile!(ConfigId, FileType::Config, ConfigFile);
 
-#[serde_with::apply(Option => #[serde(default, skip_serializing_if = "Option::is_none")])]
+#[skip_serializing_none]
 #[derive(Serialize, Deserialize, Debug, Default, Clone, PartialEq, Eq)]
 /// The config file describes all repository-wide information.
 ///
