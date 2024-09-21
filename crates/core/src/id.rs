@@ -38,6 +38,7 @@ macro_rules! new_id {
             serde::Serialize,
             serde::Deserialize,
         )]
+        #[serde(transparent)]
         pub struct $a($crate::Id);
     };
 }
