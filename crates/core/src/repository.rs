@@ -1,6 +1,3 @@
-// Note: we need a fully qualified Vec here for clap, see https://github.com/clap-rs/clap/issues/4481
-#![allow(unused_qualifications)]
-
 mod command_input;
 mod warm_up;
 
@@ -18,7 +15,7 @@ use std::{
 use bytes::Bytes;
 use derive_setters::Setters;
 use log::{debug, error, info};
-use serde_with::{serde_as, DisplayFromStr, OneOrMany};
+use serde_with::{serde_as, DisplayFromStr};
 
 use crate::{
     backend::{
@@ -119,13 +116,8 @@ pub struct RepositoryOptions {
         global = true,
         env = "RUSTIC_PASSWORD_COMMAND",
         conflicts_with_all = &["password", "password_file"],
-        value_parser = clap::builder::ValueParser::new(shell_words::split),
-        default_value = "",
     ))]
-    #[cfg_attr(feature = "merge", merge(strategy = merge::vec::overwrite_empty))]
-    #[serde_as(as = "OneOrMany<_>")]
-    // Note: we need a fully qualified Vec here for clap, see https://github.com/clap-rs/clap/issues/4481
-    pub password_command: std::vec::Vec<String>,
+    pub password_command: Option<CommandInput>,
 
     /// Don't use a cache.
     #[cfg_attr(feature = "clap", clap(long, global = true, env = "RUSTIC_NO_CACHE"))]
@@ -151,18 +143,11 @@ pub struct RepositoryOptions {
     pub warm_up: bool,
 
     /// Warm up needed data pack files by running the command with %id replaced by pack id
-    #[cfg_attr(feature = "clap", clap(
-        long,
-        global = true,
-        conflicts_with = "warm_up", 
-        value_parser = clap::builder::ValueParser::new(shell_words::split),
-        action = clap::ArgAction::Set,
-        default_value = "",
-    ))]
-    #[cfg_attr(feature = "merge", merge(strategy = merge::vec::overwrite_empty))]
-    #[serde_as(as = "OneOrMany<_>")]
-    // Note: we need a fully qualified Vec here for clap, see https://github.com/clap-rs/clap/issues/4481
-    pub warm_up_command: std::vec::Vec<String>,
+    #[cfg_attr(
+        feature = "clap",
+        clap(long, global = true, conflicts_with = "warm_up",)
+    )]
+    pub warm_up_command: Option<CommandInput>,
 
     /// Duration (e.g. 10m) to wait after warm up
     #[cfg_attr(feature = "clap", clap(long, global = true, value_name = "DURATION"))]
@@ -199,10 +184,10 @@ impl RepositoryOptions {
                 );
                 Ok(Some(read_password_from_reader(&mut file)?))
             }
-            (_, _, command) if !command.is_empty() => {
+            (_, _, Some(command)) if command.is_set() => {
                 debug!("commands: {command:?}");
-                let command = Command::new(&command[0])
-                    .args(&command[1..])
+                let command = Command::new(command.command())
+                    .args(command.args())
                     .stdout(Stdio::piped())
                     .spawn();
 
@@ -356,11 +341,11 @@ impl<P> Repository<P, ()> {
         let mut be = backends.repository();
         let be_hot = backends.repo_hot();
 
-        if !opts.warm_up_command.is_empty() {
-            if opts.warm_up_command.iter().all(|c| !c.contains("%id")) {
+        if let Some(warm_up) = &opts.warm_up_command {
+            if warm_up.args().iter().all(|c| !c.contains("%id")) {
                 return Err(RepositoryErrorKind::NoIDSpecified.into());
             }
-            info!("using warm-up command {:?}", opts.warm_up_command);
+            info!("using warm-up command {warm_up}");
         }
 
         if opts.warm_up {

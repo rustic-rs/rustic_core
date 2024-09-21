@@ -175,6 +175,22 @@ fn assert_with_win<T: Serialize>(test: &str, snap: T) {
     assert_ron_snapshot!(format!("{test}-nix"), snap);
 }
 
+#[test]
+fn repo_with_commands() -> Result<()> {
+    let be = InMemoryBackend::new();
+    let be = RepositoryBackends::new(Arc::new(be), None);
+    let command: CommandInput = "echo test".parse()?;
+    let warm_up: CommandInput = "echo %id".parse()?;
+    let options = RepositoryOptions::default()
+        .password_command(command)
+        .warm_up_command(warm_up);
+    let repo = Repository::new(&options, &be)?;
+    let key_opts = KeyOptions::default();
+    let config_opts = &ConfigOptions::default();
+    let _repo = repo.init(&key_opts, config_opts)?;
+    Ok(())
+}
+
 #[rstest]
 fn test_backup_with_tar_gz_passes(
     tar_gz_testdata: Result<TestSource>,
