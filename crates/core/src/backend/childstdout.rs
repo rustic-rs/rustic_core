@@ -20,7 +20,7 @@ pub struct ChildStdoutSource {
     ///
     /// # Note
     /// 
-    /// This is in a Mutex as we want to take out ChildStdout
+    /// This is in a Mutex as we want to take out `ChildStdout`
     /// in the `entries` method - but this method only gets a
     /// reference of self.
     process: Mutex<Child>,
