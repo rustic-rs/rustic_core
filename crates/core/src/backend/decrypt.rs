@@ -31,6 +31,8 @@ pub trait DecryptFullBackend: DecryptWriteBackend + DecryptReadBackend {}
 
 impl<T: DecryptWriteBackend + DecryptReadBackend> DecryptFullBackend for T {}
 
+pub type StreamResult<Id, F> = RusticResult<Receiver<RusticResult<(Id, F)>>>;
+
 pub trait DecryptReadBackend: ReadBackend + Clone + 'static {
     /// Decrypts the given data.
     ///
@@ -142,10 +144,7 @@ pub trait DecryptReadBackend: ReadBackend + Clone + 'static {
     /// # Errors
     ///
     /// If the files could not be read.
-    fn stream_all<F: RepoFile>(
-        &self,
-        p: &impl Progress,
-    ) -> RusticResult<Receiver<RusticResult<(F::Id, F)>>> {
+    fn stream_all<F: RepoFile>(&self, p: &impl Progress) -> StreamResult<F::Id, F> {
         let list = self.list(F::TYPE).map_err(RusticErrorKind::Backend)?;
         self.stream_list(&list, p)
     }
@@ -162,11 +161,7 @@ pub trait DecryptReadBackend: ReadBackend + Clone + 'static {
     /// # Errors
     ///
     /// If the files could not be read.
-    fn stream_list<F: RepoFile>(
-        &self,
-        list: &[Id],
-        p: &impl Progress,
-    ) -> RusticResult<Receiver<RusticResult<(F::Id, F)>>> {
+    fn stream_list<F: RepoFile>(&self, list: &[Id], p: &impl Progress) -> StreamResult<F::Id, F> {
         p.set_length(list.len() as u64);
         let (tx, rx) = unbounded();
 

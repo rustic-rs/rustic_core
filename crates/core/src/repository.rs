@@ -692,7 +692,7 @@ impl<P, S> Repository<P, S> {
             .list(T::TYPE)
             .map_err(RusticErrorKind::Backend)?
             .into_iter()
-            .map(|id| id.into()))
+            .map(Into::into))
     }
 }
 
