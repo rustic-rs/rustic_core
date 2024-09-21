@@ -34,10 +34,10 @@ use insta::{
 use pretty_assertions::assert_eq;
 use rstest::{fixture, rstest};
 use rustic_core::{
-    repofile::SnapshotFile, BackupOptions, CheckOptions, ConfigOptions, FindMatches, FindNode,
-    FullIndex, IndexedFull, IndexedStatus, KeyOptions, LimitOption, LsOptions, NoProgressBars,
-    OpenStatus, ParentOptions, PathList, Repository, RepositoryBackends, RepositoryOptions,
-    RusticResult, SnapshotGroupCriterion, SnapshotOptions, StringList,
+    repofile::SnapshotFile, BackupOptions, CheckOptions, CommandInput, ConfigOptions, FindMatches,
+    FindNode, FullIndex, IndexedFull, IndexedStatus, KeyOptions, LimitOption, LsOptions,
+    NoProgressBars, OpenStatus, ParentOptions, PathList, Repository, RepositoryBackends,
+    RepositoryOptions, RusticResult, SnapshotGroupCriterion, SnapshotOptions, StringList,
 };
 use rustic_core::{
     repofile::{Metadata, Node},
@@ -365,6 +365,36 @@ fn test_backup_dry_run_with_tar_gz_passes(
     let opts = opts.dry_run(false);
     let second_snapshot = repo.backup(&opts, paths, SnapshotFile::default())?;
     assert_eq!(snap_dry_run.tree, second_snapshot.tree);
+    Ok(())
+}
+
+#[rstest]
+fn test_backup_stdin_command(
+    set_up_repo: Result<RepoOpen>,
+    insta_snapshotfile_redaction: Settings,
+) -> Result<()> {
+    // Fixtures
+    let repo = set_up_repo?.to_indexed_ids()?;
+    let paths = PathList::from_string("-")?;
+
+    let cmd: CommandInput = "echo test".parse()?;
+    let opts = BackupOptions::default()
+        .stdin_filename("test")
+        .stdin_command(cmd);
+    // backup data from cmd
+    let snapshot = repo.backup(&opts, &paths, SnapshotFile::default())?;
+    insta_snapshotfile_redaction.bind(|| {
+        assert_with_win("stdin-command-summary", &snapshot);
+    });
+
+    // re-read index
+    let repo = repo.to_indexed()?;
+
+    // check content
+    let node = repo.node_from_snapshot_path("latest:test", |_| true)?;
+    let mut content = Vec::new();
+    repo.dump(&node, &mut content)?;
+    assert_eq!(content, b"test\n");
     Ok(())
 }
 
