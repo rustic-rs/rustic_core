@@ -9,10 +9,9 @@ use aho_corasick::AhoCorasick;
 use anyhow::Result;
 use bytes::Bytes;
 use log::{debug, trace, warn};
-use shell_words::split;
 use walkdir::WalkDir;
 
-use rustic_core::{FileType, Id, ReadBackend, WriteBackend, ALL_FILE_TYPES};
+use rustic_core::{CommandInput, FileType, Id, ReadBackend, WriteBackend, ALL_FILE_TYPES};
 
 use crate::error::LocalBackendErrorKind;
 
@@ -121,9 +120,9 @@ impl LocalBackend {
         let replace_with = &[filename.to_str().unwrap(), tpe.dirname(), id.as_str()];
         let actual_command = ac.replace_all(command, replace_with);
         debug!("calling {actual_command}...");
-        let commands = split(&actual_command).map_err(LocalBackendErrorKind::FromSplitError)?;
-        let status = Command::new(&commands[0])
-            .args(&commands[1..])
+        let command: CommandInput = actual_command.parse()?;
+        let status = Command::new(command.command())
+            .args(command.args())
             .status()
             .map_err(LocalBackendErrorKind::CommandExecutionFailed)?;
         if !status.success() {
