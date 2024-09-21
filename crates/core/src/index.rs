@@ -124,7 +124,7 @@ pub trait ReadIndex {
     ///
     /// The [`IndexEntry`] of the tree if it exists otherwise `None`
     fn get_tree(&self, id: &TreeId) -> Option<IndexEntry> {
-        self.get_id(BlobType::Tree, &id.into())
+        self.get_id(BlobType::Tree, &BlobId::from(**id))
     }
 
     /// Get a data blob from the index

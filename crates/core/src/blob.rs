@@ -68,7 +68,7 @@ impl<T: Default> Initialize<T> for BlobTypeMap<T> {
 
 new_id!(BlobId, "blob");
 
-pub trait PackedId: Into<BlobId> + From<BlobId> {
+pub trait PackedId: Copy + Into<BlobId> + From<BlobId> {
     const TYPE: BlobType;
 }
 

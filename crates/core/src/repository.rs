@@ -1440,10 +1440,11 @@ impl<P, S: IndexedFull> Repository<P, S> {
     ///
     /// [`RepositoryErrorKind::IdNotFound`]: crate::error::RepositoryErrorKind::IdNotFound
     pub fn get_index_entry<T: PackedId>(&self, id: &T) -> RusticResult<IndexEntry> {
+        let blob_id: BlobId = (*id).into();
         let ie = self
             .index()
-            .get_id(T::TYPE, id)
-            .ok_or_else(|| RepositoryErrorKind::IdNotFound(*id))?;
+            .get_id(T::TYPE, &blob_id)
+            .ok_or_else(|| RepositoryErrorKind::IdNotFound(blob_id))?;
         Ok(ie)
     }
 

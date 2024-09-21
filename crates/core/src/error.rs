@@ -26,7 +26,6 @@ use thiserror::Error;
 use crate::{
     backend::node::NodeType,
     blob::{tree::TreeId, BlobId},
-    id::Id,
     repofile::{indexfile::IndexPack, packfile::PackId},
 };
 

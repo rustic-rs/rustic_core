@@ -23,7 +23,6 @@ use crate::{
         node::{Node, NodeType},
         FileType, ReadBackend,
     },
-    blob::{BlobId, BlobType},
     error::{CommandErrorKind, RusticResult},
     progress::{Progress, ProgressBars},
     repofile::packfile::PackId,
@@ -690,7 +689,7 @@ impl RestorePlan {
         let mut file_pos = 0;
         let mut has_unmatched = false;
         for id in file.content.iter().flatten() {
-            let ie = repo.get_index_entry(BlobType::Data, &BlobId::from(**id))?;
+            let ie = repo.get_index_entry(id)?;
             let bl = BlobLocation {
                 offset: ie.offset,
                 length: ie.length,

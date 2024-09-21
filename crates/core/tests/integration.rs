@@ -34,11 +34,11 @@ use insta::{
 use pretty_assertions::assert_eq;
 use rstest::{fixture, rstest};
 use rustic_core::{
-    repofile::{PackId, SnapshotFile},
+    repofile::{Metadata, Node, PackId, SnapshotFile},
     BackupOptions, CheckOptions, CommandInput, ConfigOptions, FindMatches, FindNode, FullIndex,
     IndexedFull, IndexedStatus, KeyOptions, LimitOption, LsOptions, NoProgressBars, OpenStatus,
-    ParentOptions, PathList, Repository, RepositoryBackends, RepositoryOptions, RusticResult,
-    SnapshotGroupCriterion, SnapshotOptions, StringList,
+    ParentOptions, PathList, PruneOptions, Repository, RepositoryBackends, RepositoryOptions,
+    RusticResult, SnapshotGroupCriterion, SnapshotOptions, StringList,
 };
 use serde::Serialize;
 
