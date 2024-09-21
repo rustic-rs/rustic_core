@@ -342,7 +342,7 @@ impl<P> Repository<P, ()> {
         let be_hot = backends.repo_hot();
 
         if let Some(warm_up) = &opts.warm_up_command {
-            if !warm_up.args().iter().all(|c| !c.contains("%id")) {
+            if warm_up.args().iter().all(|c| !c.contains("%id")) {
                 return Err(RepositoryErrorKind::NoIDSpecified.into());
             }
             info!("using warm-up command {warm_up}");

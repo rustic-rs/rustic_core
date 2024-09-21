@@ -7,6 +7,7 @@ use std::{
 
 use anyhow::Result;
 use bytes::Bytes;
+use constants::DEFAULT_COMMAND;
 use log::{debug, info};
 use rand::{
     distributions::{Alphanumeric, DistString},
@@ -19,6 +20,8 @@ use crate::{error::RcloneErrorKind, rest::RestBackend};
 use rustic_core::{CommandInput, FileType, Id, ReadBackend, WriteBackend};
 
 pub(super) mod constants {
+    /// The default command called if no other is specified
+    pub(super) const DEFAULT_COMMAND: &str = "rclone serve restic --addr localhost:0";
     /// The string to search for in the rclone output.
     pub(super) const SEARCHSTRING: &str = "Serving restic REST API on ";
 }
@@ -148,10 +151,7 @@ impl RcloneBackend {
         let user = Alphanumeric.sample_string(&mut thread_rng(), 12);
         let password = Alphanumeric.sample_string(&mut thread_rng(), 12);
 
-        let mut rclone_command = rclone_command.map_or(
-            "rclone serve restic --addr localhost:0".to_string(),
-            ToString::to_string,
-        );
+        let mut rclone_command = rclone_command.map_or(DEFAULT_COMMAND.to_string(), Clone::clone);
         rclone_command.push(' ');
         rclone_command.push_str(url.as_ref());
         let rclone_command: CommandInput = rclone_command.parse()?;
