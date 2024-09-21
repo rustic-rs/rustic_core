@@ -343,7 +343,7 @@ mod tests {
             assert!(index.get_id(BlobType::Tree, &id).is_none());
 
             let id = "aac5e908151e5652b7570108127b96e6bae22bcdda1d3d867f63ed1555fc8aef".parse()?;
-            assert!(!index.has(BlobType::Data, &id,));
+            assert!(!index.has(BlobType::Data, &id));
             assert!(index.get_id(BlobType::Data, &id).is_none());
             assert!(!index.has(BlobType::Tree, &id));
             assert!(index.get_id(BlobType::Tree, &id).is_none());
