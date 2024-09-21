@@ -70,7 +70,6 @@ merge = { version = "0.1.0", optional = true }
 
 # local backend
 aho-corasick = { workspace = true }
-shell-words = "1.1.0"
 walkdir = "2.5.0"
 
 # rest backend

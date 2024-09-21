@@ -10,6 +10,7 @@ use crate::{
     id::Id,
     progress::{Progress, ProgressBars},
     repository::Repository,
+    CommandInput,
 };
 
 pub(super) mod constants {
@@ -62,8 +63,8 @@ pub(crate) fn warm_up<P: ProgressBars, S>(
     repo: &Repository<P, S>,
     packs: impl ExactSizeIterator<Item = Id>,
 ) -> RusticResult<()> {
-    if !repo.opts.warm_up_command.is_empty() {
-        warm_up_command(packs, &repo.opts.warm_up_command, &repo.pb)?;
+    if let Some(warm_up_cmd) = &repo.opts.warm_up_command {
+        warm_up_command(packs, warm_up_cmd, &repo.pb)?;
     } else if repo.be.needs_warm_up() {
         warm_up_repo(repo, packs)?;
     }
@@ -85,18 +86,19 @@ pub(crate) fn warm_up<P: ProgressBars, S>(
 /// [`RepositoryErrorKind::FromSplitError`]: crate::error::RepositoryErrorKind::FromSplitError
 fn warm_up_command<P: ProgressBars>(
     packs: impl ExactSizeIterator<Item = Id>,
-    command: &[String],
+    command: &CommandInput,
     pb: &P,
 ) -> RusticResult<()> {
     let p = pb.progress_counter("warming up packs...");
     p.set_length(packs.len() as u64);
     for pack in packs {
-        let command: Vec<_> = command
+        let args: Vec<_> = command
+            .args()
             .iter()
             .map(|c| c.replace("%id", &pack.to_hex()))
             .collect();
         debug!("calling {command:?}...");
-        let status = Command::new(&command[0]).args(&command[1..]).status()?;
+        let status = Command::new(command.command()).args(&args).status()?;
         if !status.success() {
             warn!("warm-up command was not successful for pack {pack:?}. {status}");
         }
