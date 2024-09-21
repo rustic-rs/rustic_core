@@ -15,7 +15,7 @@ use itertools::Itertools;
 use log::info;
 use path_dedot::ParseDot;
 use serde_derive::{Deserialize, Serialize};
-use serde_with::{serde_as, skip_serializing_none, DisplayFromStr, OneOrMany};
+use serde_with::{serde_as, skip_serializing_none, DisplayFromStr};
 
 use crate::{
     backend::{decrypt::DecryptReadBackend, FileType, FindInBackend},
@@ -54,7 +54,6 @@ pub struct SnapshotOptions {
 
     /// Tags to add to snapshot (can be specified multiple times)
     #[cfg_attr(feature = "clap", clap(long = "tag", value_name = "TAG[,TAG,..]"))]
-    #[serde_as(as = "OneOrMany<DisplayFromStr>")]
     #[cfg_attr(feature = "merge", merge(strategy = merge::vec::overwrite_empty))]
     pub tags: Vec<StringList>,
 
