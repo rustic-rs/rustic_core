@@ -31,7 +31,7 @@ pub trait DecryptFullBackend: DecryptWriteBackend + DecryptReadBackend {}
 
 impl<T: DecryptWriteBackend + DecryptReadBackend> DecryptFullBackend for T {}
 
-pub type StreamResult<Id, F> = RusticResult<Receiver<RusticResult<(Id, F)>>>;
+type StreamResult<Id, F> = RusticResult<Receiver<RusticResult<(Id, F)>>>;
 
 pub trait DecryptReadBackend: ReadBackend + Clone + 'static {
     /// Decrypts the given data.

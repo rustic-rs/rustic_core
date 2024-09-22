@@ -24,8 +24,8 @@ use crate::{
     blob::BlobType,
     crypto::hasher::hash,
     error::{RusticResult, TreeErrorKind},
+    impl_blobid,
     index::ReadGlobalIndex,
-    new_blobid,
     progress::Progress,
     repofile::snapshotfile::SnapshotSummary,
 };
@@ -37,7 +37,7 @@ pub(super) mod constants {
 
 pub(crate) type TreeStreamItem = RusticResult<(PathBuf, Tree)>;
 type NodeStreamItem = RusticResult<(PathBuf, Node)>;
-new_blobid!(TreeId, BlobType::Tree);
+impl_blobid!(TreeId, BlobType::Tree);
 
 #[derive(Default, Serialize, Deserialize, Clone, Debug)]
 /// A [`Tree`] is a list of [`Node`]s

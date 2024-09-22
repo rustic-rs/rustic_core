@@ -24,9 +24,9 @@ pub trait RepoId: Deref<Target = Id> + From<Id> + Sized + Send + Sync + 'static 
 
 #[macro_export]
 /// Generate newtypes for `Id`s identifying Repository files
-macro_rules! new_repoid {
+macro_rules! impl_repoid {
     ($a:ident, $b: expr) => {
-        $crate::new_id!($a, concat!("repository file of type", stringify!($b)));
+        $crate::define_new_id_struct!($a, concat!("repository file of type", stringify!($b)));
         impl $crate::repofile::RepoId for $a {
             const TYPE: FileType = $b;
         }
@@ -35,7 +35,7 @@ macro_rules! new_repoid {
 
 #[macro_export]
 /// Generate newtypes for `Id`s identifying Repository files implementing `RepoFile`
-macro_rules! new_repofile {
+macro_rules! impl_repofile {
     ($a:ident, $b: expr, $c: ty) => {
         $crate::new_repoid!($a, $b);
         impl RepoFile for $c {

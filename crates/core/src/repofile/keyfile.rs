@@ -8,7 +8,7 @@ use crate::{
     backend::{FileType, ReadBackend},
     crypto::{aespoly1305::Key, CryptoKey},
     error::{CryptoErrorKind, KeyFileErrorKind, RusticErrorKind, RusticResult},
-    new_repoid, RusticError,
+    impl_repoid, RusticError,
 };
 
 pub(super) mod constants {
@@ -20,7 +20,7 @@ pub(super) mod constants {
     }
 }
 
-new_repoid!(KeyId, FileType::Key);
+impl_repoid!(KeyId, FileType::Key);
 
 /// Key files describe information about repository access keys.
 ///

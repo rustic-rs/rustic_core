@@ -18,7 +18,7 @@ pub(super) mod constants {
 
 #[macro_export]
 /// Generate newtypes for `Id`s identifying Repository files
-macro_rules! new_id {
+macro_rules! define_new_id_struct {
     ($a:ident, $b: expr) => {
         #[doc = concat!("An Id identifying a ", stringify!($b))]
         #[derive(

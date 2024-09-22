@@ -17,7 +17,7 @@ use crate::{
         decrypt::{DecryptFullBackend, DecryptWriteBackend},
         FileType,
     },
-    blob::BlobType,
+    blob::{BlobId, BlobType},
     crypto::{hasher::hash, CryptoKey},
     error::{PackerErrorKind, RusticErrorKind, RusticResult},
     index::indexer::SharedIndexer,
@@ -28,8 +28,6 @@ use crate::{
         snapshotfile::SnapshotSummary,
     },
 };
-
-use super::BlobId;
 
 pub(super) mod constants {
     use std::time::Duration;

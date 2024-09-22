@@ -8,12 +8,12 @@ use crate::{
     blob::BlobType,
     error::{PackFileErrorKind, RusticErrorKind},
     id::Id,
-    new_repoid,
+    impl_repoid,
     repofile::indexfile::{IndexBlob, IndexPack},
     RusticResult,
 };
 
-new_repoid!(PackId, FileType::Pack);
+impl_repoid!(PackId, FileType::Pack);
 
 pub(super) mod constants {
     // 32 equals the size of the crypto overhead

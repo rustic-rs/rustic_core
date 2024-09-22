@@ -21,7 +21,7 @@ use crate::{
     backend::{decrypt::DecryptReadBackend, FileType, FindInBackend},
     blob::tree::TreeId,
     error::{RusticError, RusticResult, SnapshotFileErrorKind},
-    new_repofile,
+    impl_repofile,
     progress::Progress,
     repofile::RepoFile,
     Id,
@@ -263,7 +263,7 @@ impl DeleteOption {
     }
 }
 
-new_repofile!(SnapshotId, FileType::Snapshot, SnapshotFile);
+impl_repofile!(SnapshotId, FileType::Snapshot, SnapshotFile);
 
 #[skip_serializing_none]
 #[derive(Debug, Clone, Serialize, Deserialize, Derivative)]

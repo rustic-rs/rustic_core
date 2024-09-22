@@ -7,13 +7,13 @@ use serde_with::skip_serializing_none;
 use crate::{
     backend::FileType,
     blob::{BlobId, BlobType},
-    new_repoid,
+    impl_repoid,
     repofile::{packfile::PackHeaderRef, RepoFile},
 };
 
 use super::packfile::PackId;
 
-new_repoid!(IndexId, FileType::Index);
+impl_repoid!(IndexId, FileType::Index);
 
 /// Index files describe index information about multiple `pack` files.
 ///

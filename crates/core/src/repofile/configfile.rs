@@ -2,8 +2,8 @@ use serde_derive::{Deserialize, Serialize};
 use serde_with::skip_serializing_none;
 
 use crate::{
-    backend::FileType, blob::BlobType, error::ConfigFileErrorKind, new_id, new_repofile,
-    repofile::RepoFile, RusticResult,
+    backend::FileType, blob::BlobType, define_new_id_struct, error::ConfigFileErrorKind,
+    impl_repofile, repofile::RepoFile, RusticResult,
 };
 
 pub(super) mod constants {
@@ -28,8 +28,8 @@ pub(super) mod constants {
     pub(super) const DEFAULT_MIN_PERCENTAGE: u32 = 30;
 }
 
-new_id!(RepositoryId, "repository");
-new_repofile!(ConfigId, FileType::Config, ConfigFile);
+define_new_id_struct!(RepositoryId, "repository");
+impl_repofile!(ConfigId, FileType::Config, ConfigFile);
 
 #[skip_serializing_none]
 #[derive(Serialize, Deserialize, Debug, Default, Clone, PartialEq, Eq)]
