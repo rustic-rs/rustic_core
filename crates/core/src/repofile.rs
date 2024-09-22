@@ -37,7 +37,7 @@ macro_rules! impl_repoid {
 /// Generate newtypes for `Id`s identifying Repository files implementing `RepoFile`
 macro_rules! impl_repofile {
     ($a:ident, $b: expr, $c: ty) => {
-        $crate::new_repoid!($a, $b);
+        $crate::impl_repoid!($a, $b);
         impl RepoFile for $c {
             const TYPE: FileType = $b;
             type Id = $a;
