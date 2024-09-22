@@ -257,7 +257,7 @@ fn test_backup_with_tar_gz_passes(
     let repo = repo.to_indexed_ids()?;
     // third backup with tags and explicitely given parent
     let snap = SnapshotOptions::default()
-        .tag([StringList::from_str("a,b")?])
+        .tags([StringList::from_str("a,b")?])
         .to_snapshot()?;
     let opts = opts.parent_opts(ParentOptions::default().parent(second_snapshot.id.to_string()));
     let third_snapshot = repo.backup(&opts, paths, snap)?;
