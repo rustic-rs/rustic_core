@@ -20,7 +20,7 @@ jobs:
         uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4
 
       - name: Install cargo-hack
-        uses: taiki-e/install-action@d9dbaa35c1268d171952e74d148ee79629a77c35 # v2
+        uses: taiki-e/install-action@7348990d6a11d92f3e482c9b1bb48cf31ab7f658 # v2
         with:
           tool: cargo-tarpaulin
 
