@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - '**/Cargo.toml'
+      - '**/Cargo.lock'
       - '**.yml'
   schedule:
     # Runs at 00:00 UTC everyday
@@ -11,6 +12,7 @@ on:
   push:
     paths:
       - '**/Cargo.toml'
+      - '**/Cargo.lock'
       - '**.yml'
   merge_group:
     types: [checks_requested]
@@ -32,6 +34,10 @@ jobs:
         with:
           toolchain: stable
       - uses: Swatinem/rust-cache@23bce251a8cd2ffc3c1075eaa2367cf899916d84 # v2
+
+      - name: Run cargo update for Cargo.lock
+        run: cargo update
+
       - uses: rustsec/audit-check@69366f33c96575abad1ee0dba8212993eecbe998 # v2.0.0
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
