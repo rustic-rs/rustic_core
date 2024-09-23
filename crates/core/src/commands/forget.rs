@@ -7,10 +7,9 @@ use serde_with::{serde_as, skip_serializing_none, DisplayFromStr};
 
 use crate::{
     error::{CommandErrorKind, RusticResult},
-    id::Id,
     progress::ProgressBars,
     repofile::{
-        snapshotfile::{SnapshotGroup, SnapshotGroupCriterion},
+        snapshotfile::{SnapshotGroup, SnapshotGroupCriterion, SnapshotId},
         SnapshotFile, StringList,
     },
     repository::{Open, Repository},
@@ -45,7 +44,7 @@ pub struct ForgetSnapshot {
 impl ForgetGroups {
     /// Turn `ForgetGroups` into the list of all snapshot IDs to remove.
     #[must_use]
-    pub fn into_forget_ids(self) -> Vec<Id> {
+    pub fn into_forget_ids(self) -> Vec<SnapshotId> {
         self.0
             .into_iter()
             .flat_map(|fg| {
@@ -706,7 +705,7 @@ mod tests {
             .chain(by_date_and_id.into_iter().map(|(time, id)| -> Result<_> {
                 let opts = &crate::SnapshotOptions::default().time(parse_time(time)?);
                 let mut snap = SnapshotFile::from_options(opts)?;
-                snap.id = Id::from_hex(id)?;
+                snap.id = id.parse()?;
                 Ok(snap)
             }))
             .chain(

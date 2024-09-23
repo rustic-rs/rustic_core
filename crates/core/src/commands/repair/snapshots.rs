@@ -8,14 +8,16 @@ use crate::{
     backend::{
         decrypt::{DecryptFullBackend, DecryptWriteBackend},
         node::NodeType,
-        FileType,
     },
-    blob::{packer::Packer, tree::Tree, BlobType},
+    blob::{
+        packer::Packer,
+        tree::{Tree, TreeId},
+        BlobId, BlobType,
+    },
     error::{CommandErrorKind, RusticResult},
-    id::Id,
     index::{indexer::Indexer, ReadGlobalIndex, ReadIndex},
     progress::ProgressBars,
-    repofile::{SnapshotFile, StringList},
+    repofile::{snapshotfile::SnapshotId, SnapshotFile, StringList},
     repository::{IndexedFull, IndexedTree, Repository},
 };
 
@@ -67,9 +69,9 @@ enum Changed {
 
 #[derive(Default)]
 struct RepairState {
-    replaced: BTreeMap<Id, (Changed, Id)>,
-    seen: BTreeSet<Id>,
-    delete: Vec<Id>,
+    replaced: BTreeMap<TreeId, (Changed, TreeId)>,
+    seen: BTreeSet<TreeId>,
+    delete: Vec<SnapshotId>,
 }
 
 impl RepairSnapshotsOptions {
@@ -157,7 +159,6 @@ impl RepairSnapshotsOptions {
                 info!("would have removed {} snapshots.", state.delete.len());
             } else {
                 be.delete_list(
-                    FileType::Snapshot,
                     true,
                     state.delete.iter(),
                     repo.pb.progress_counter("remove defect snapshots"),
@@ -191,10 +192,10 @@ impl RepairSnapshotsOptions {
         be: &impl DecryptFullBackend,
         index: &impl ReadGlobalIndex,
         packer: &mut Packer<BE>,
-        id: Option<Id>,
+        id: Option<TreeId>,
         state: &mut RepairState,
         dry_run: bool,
-    ) -> RusticResult<(Changed, Id)> {
+    ) -> RusticResult<(Changed, TreeId)> {
         let (tree, changed) = match id {
             None => (Tree::new(), Changed::This),
             Some(id) => {
@@ -278,7 +279,7 @@ impl RepairSnapshotsOptions {
                 // the tree has been changed => save it
                 let (chunk, new_id) = tree.serialize()?;
                 if !index.has_tree(&new_id) && !dry_run {
-                    packer.add(chunk.into(), new_id)?;
+                    packer.add(chunk.into(), BlobId::from(*new_id))?;
                 }
                 if let Some(id) = id {
                     _ = state.replaced.insert(id, (c, new_id));

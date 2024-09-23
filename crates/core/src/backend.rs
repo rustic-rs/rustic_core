@@ -277,7 +277,7 @@ pub trait FindInBackend: ReadBackend {
     /// [`BackendAccessErrorKind::IdNotUnique`]: crate::error::BackendAccessErrorKind::IdNotUnique
     fn find_ids<T: AsRef<str>>(&self, tpe: FileType, ids: &[T]) -> RusticResult<Vec<Id>> {
         ids.iter()
-            .map(|id| Id::from_hex(id.as_ref()))
+            .map(|id| id.as_ref().parse())
             .collect::<RusticResult<Vec<_>>>()
             .or_else(|err|{
                 trace!("no valid IDs given: {err}, searching for ID starting with given strings instead");

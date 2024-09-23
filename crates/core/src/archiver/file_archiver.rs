@@ -13,7 +13,7 @@ use crate::{
     },
     blob::{
         packer::{Packer, PackerStats},
-        BlobType,
+        BlobId, BlobType, DataId,
     },
     cdc::rolling_hash::Rabin64,
     chunker::ChunkIter,
@@ -147,11 +147,11 @@ impl<'a, BE: DecryptWriteBackend, I: ReadGlobalIndex> FileArchiver<'a, BE, I> {
             let id = hash(&chunk);
             let size = chunk.len() as u64;
 
-            if !self.index.has_data(&id) {
-                self.data_packer.add(chunk.into(), id)?;
+            if !self.index.has_data(&DataId::from(id)) {
+                self.data_packer.add(chunk.into(), BlobId::from(id))?;
             }
             p.inc(size);
-            Ok((id, size))
+            Ok((DataId::from(id), size))
         })
         .collect::<RusticResult<_>>()?;
 

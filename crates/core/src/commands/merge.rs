@@ -8,11 +8,10 @@ use crate::{
     backend::{decrypt::DecryptWriteBackend, node::Node},
     blob::{
         packer::Packer,
-        tree::{self, Tree},
-        BlobType,
+        tree::{self, Tree, TreeId},
+        BlobId, BlobType,
     },
     error::{CommandErrorKind, RusticResult},
-    id::Id,
     index::{indexer::Indexer, ReadIndex},
     progress::{Progress, ProgressBars},
     repofile::{PathList, SnapshotFile, SnapshotSummary},
@@ -56,13 +55,13 @@ pub(crate) fn merge_snapshots<P: ProgressBars, S: IndexedTree>(
     let mut summary = snap.summary.take().unwrap_or_default();
     summary.backup_start = Local::now();
 
-    let trees: Vec<Id> = snapshots.iter().map(|sn| sn.tree).collect();
+    let trees: Vec<TreeId> = snapshots.iter().map(|sn| sn.tree).collect();
     snap.tree = merge_trees(repo, &trees, cmp, &mut summary)?;
 
     summary.finalize(now)?;
     snap.summary = Some(summary);
 
-    snap.id = repo.dbe().save_file(&snap)?;
+    snap.id = repo.dbe().save_file(&snap)?.into();
     Ok(snap)
 }
 
@@ -91,10 +90,10 @@ pub(crate) fn merge_snapshots<P: ProgressBars, S: IndexedTree>(
 /// [`CommandErrorKind::ConversionToU64Failed`]: crate::error::CommandErrorKind::ConversionToU64Failed
 pub(crate) fn merge_trees<P: ProgressBars, S: IndexedTree>(
     repo: &Repository<P, S>,
-    trees: &[Id],
+    trees: &[TreeId],
     cmp: &impl Fn(&Node, &Node) -> Ordering,
     summary: &mut SnapshotSummary,
-) -> RusticResult<Id> {
+) -> RusticResult<TreeId> {
     let be = repo.dbe();
     let index = repo.index();
     let indexer = Indexer::new(repo.dbe().clone()).into_shared();
@@ -109,7 +108,7 @@ pub(crate) fn merge_trees<P: ProgressBars, S: IndexedTree>(
         let (chunk, new_id) = tree.serialize()?;
         let size = u64::try_from(chunk.len()).map_err(CommandErrorKind::ConversionFromIntFailed)?;
         if !index.has_tree(&new_id) {
-            packer.add(chunk.into(), new_id)?;
+            packer.add(chunk.into(), BlobId::from(*new_id))?;
         }
         Ok((new_id, size))
     };

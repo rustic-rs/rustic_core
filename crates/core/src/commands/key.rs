@@ -5,8 +5,7 @@ use crate::{
     backend::{decrypt::DecryptWriteBackend, FileType, WriteBackend},
     crypto::{aespoly1305::Key, hasher::hash},
     error::{CommandErrorKind, RusticErrorKind, RusticResult},
-    id::Id,
-    repofile::KeyFile,
+    repofile::{KeyFile, KeyId},
     repository::{Open, Repository},
 };
 
@@ -54,7 +53,7 @@ impl KeyOptions {
         &self,
         repo: &Repository<P, S>,
         pass: &str,
-    ) -> RusticResult<Id> {
+    ) -> RusticResult<KeyId> {
         let key = repo.dbe().key();
         self.add(repo, pass, *key)
     }
@@ -78,7 +77,7 @@ impl KeyOptions {
         &self,
         repo: &Repository<P, S>,
         pass: &str,
-    ) -> RusticResult<(Key, Id)> {
+    ) -> RusticResult<(Key, KeyId)> {
         // generate key
         let key = Key::new();
         Ok((key, self.add(repo, pass, key)?))
@@ -101,12 +100,12 @@ impl KeyOptions {
     /// The id of the key.
     ///
     /// [`CommandErrorKind::FromJsonError`]: crate::error::CommandErrorKind::FromJsonError
-    fn add<P, S>(&self, repo: &Repository<P, S>, pass: &str, key: Key) -> RusticResult<Id> {
+    fn add<P, S>(&self, repo: &Repository<P, S>, pass: &str, key: Key) -> RusticResult<KeyId> {
         let ko = self.clone();
         let keyfile = KeyFile::generate(key, &pass, ko.hostname, ko.username, ko.with_created)?;
 
         let data = serde_json::to_vec(&keyfile).map_err(CommandErrorKind::FromJsonError)?;
-        let id = hash(&data);
+        let id = KeyId::from(hash(&data));
         repo.be
             .write_bytes(FileType::Key, &id, false, data.into())
             .map_err(RusticErrorKind::Backend)?;

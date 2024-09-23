@@ -34,14 +34,11 @@ use insta::{
 use pretty_assertions::assert_eq;
 use rstest::{fixture, rstest};
 use rustic_core::{
-    repofile::SnapshotFile, BackupOptions, CheckOptions, CommandInput, ConfigOptions, FindMatches,
-    FindNode, FullIndex, IndexedFull, IndexedStatus, KeyOptions, LimitOption, LsOptions,
-    NoProgressBars, OpenStatus, ParentOptions, PathList, Repository, RepositoryBackends,
-    RepositoryOptions, RusticResult, SnapshotGroupCriterion, SnapshotOptions, StringList,
-};
-use rustic_core::{
-    repofile::{Metadata, Node},
-    PruneOptions,
+    repofile::{Metadata, Node, PackId, SnapshotFile},
+    BackupOptions, CheckOptions, CommandInput, ConfigOptions, FindMatches, FindNode, FullIndex,
+    IndexedFull, IndexedStatus, KeyOptions, LimitOption, LsOptions, NoProgressBars, OpenStatus,
+    ParentOptions, PathList, PruneOptions, Repository, RepositoryBackends, RepositoryOptions,
+    RusticResult, SnapshotGroupCriterion, SnapshotOptions, StringList,
 };
 use serde::Serialize;
 
@@ -235,7 +232,7 @@ fn test_backup_with_tar_gz_passes(
     let all_snapshots = repo.get_all_snapshots()?;
     assert_eq!(vec![first_snapshot.clone()], all_snapshots);
     // save list of pack files
-    let packs1: Vec<_> = repo.list(rustic_core::FileType::Pack)?.collect();
+    let packs1: Vec<PackId> = repo.list()?.collect();
 
     // re-read index
     let repo = repo.to_indexed_ids()?;
@@ -250,7 +247,7 @@ fn test_backup_with_tar_gz_passes(
     assert_eq!(first_snapshot.tree, second_snapshot.tree);
 
     // pack files should be unchanged
-    let packs2: Vec<_> = repo.list(rustic_core::FileType::Pack)?.collect();
+    let packs2: Vec<_> = repo.list()?.collect();
     assert_eq!(packs1, packs2);
 
     // re-read index
@@ -277,7 +274,9 @@ fn test_backup_with_tar_gz_passes(
     );
 
     // pack files should be unchanged
-    let packs3: Vec<_> = repo.list(rustic_core::FileType::Pack)?.collect();
+    let packs2: Vec<_> = repo.list()?.collect();
+    assert_eq!(packs1, packs2);
+    let packs3: Vec<_> = repo.list()?.collect();
     assert_eq!(packs1, packs3);
 
     // Check if snapshots can be retrieved
@@ -340,14 +339,14 @@ fn test_backup_dry_run_with_tar_gz_passes(
     // check that repo is still empty
     let snaps = repo.get_all_snapshots()?;
     assert_eq!(snaps.len(), 0);
-    assert_eq!(repo.list(rustic_core::FileType::Pack)?.count(), 0);
-    assert_eq!(repo.list(rustic_core::FileType::Index)?.count(), 0);
+    assert_eq!(repo.list::<PackId>()?.count(), 0);
+    assert_eq!(repo.list::<PackId>()?.count(), 0);
 
     // first real backup
     let opts = opts.dry_run(false);
     let first_snapshot = repo.backup(&opts, paths, SnapshotFile::default())?;
     assert_eq!(snap_dry_run.tree, first_snapshot.tree);
-    let packs: Vec<_> = repo.list(rustic_core::FileType::Pack)?.collect();
+    let packs: Vec<_> = repo.list::<PackId>()?.collect();
 
     // tree of first backup
     // re-read index
@@ -372,7 +371,7 @@ fn test_backup_dry_run_with_tar_gz_passes(
     // check that no data has been added
     let snaps = repo.get_all_snapshots()?;
     assert_eq!(snaps, vec![first_snapshot]);
-    let packs_dry_run: Vec<_> = repo.list(rustic_core::FileType::Pack)?.collect();
+    let packs_dry_run: Vec<PackId> = repo.list()?.collect();
     assert_eq!(packs_dry_run, packs);
 
     // re-read index

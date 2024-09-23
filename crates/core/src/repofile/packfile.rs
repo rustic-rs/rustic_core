@@ -8,9 +8,13 @@ use crate::{
     blob::BlobType,
     error::{PackFileErrorKind, RusticErrorKind},
     id::Id,
+    impl_repoid,
     repofile::indexfile::{IndexBlob, IndexPack},
     RusticResult,
 };
+
+impl_repoid!(PackId, FileType::Pack);
+
 pub(super) mod constants {
     // 32 equals the size of the crypto overhead
     // TODO: use from crypto mod
@@ -133,25 +137,25 @@ impl HeaderEntry {
     /// # Arguments
     ///
     /// * `blob` - The [`IndexBlob`] to read from
-    const fn from_blob(blob: &IndexBlob) -> Self {
+    fn from_blob(blob: &IndexBlob) -> Self {
         match (blob.uncompressed_length, blob.tpe) {
             (None, BlobType::Data) => Self::Data {
                 len: blob.length,
-                id: blob.id,
+                id: *blob.id,
             },
             (None, BlobType::Tree) => Self::Tree {
                 len: blob.length,
-                id: blob.id,
+                id: *blob.id,
             },
             (Some(len), BlobType::Data) => Self::CompData {
                 len: blob.length,
                 len_data: len.get(),
-                id: blob.id,
+                id: *blob.id,
             },
             (Some(len), BlobType::Tree) => Self::CompTree {
                 len: blob.length,
                 len_data: len.get(),
-                id: blob.id,
+                id: *blob.id,
             },
         }
     }
@@ -169,31 +173,31 @@ impl HeaderEntry {
     /// # Arguments
     ///
     /// * `offset` - The offset to read from
-    const fn into_blob(self, offset: u32) -> IndexBlob {
+    fn into_blob(self, offset: u32) -> IndexBlob {
         match self {
             Self::Data { len, id } => IndexBlob {
-                id,
+                id: id.into(),
                 length: len,
                 tpe: BlobType::Data,
                 uncompressed_length: None,
                 offset,
             },
             Self::Tree { len, id } => IndexBlob {
-                id,
+                id: id.into(),
                 length: len,
                 tpe: BlobType::Tree,
                 uncompressed_length: None,
                 offset,
             },
             Self::CompData { len, id, len_data } => IndexBlob {
-                id,
+                id: id.into(),
                 length: len,
                 tpe: BlobType::Data,
                 uncompressed_length: NonZeroU32::new(len_data),
                 offset,
             },
             Self::CompTree { len, id, len_data } => IndexBlob {
-                id,
+                id: id.into(),
                 length: len,
                 tpe: BlobType::Tree,
                 uncompressed_length: NonZeroU32::new(len_data),
@@ -259,7 +263,7 @@ impl PackHeader {
     /// [`PackFileErrorKind::HeaderPackSizeComputedDoesNotMatchRealPackFile`]: crate::error::PackFileErrorKind::HeaderPackSizeComputedDoesNotMatchRealPackFile
     pub(crate) fn from_file(
         be: &impl DecryptReadBackend,
-        id: Id,
+        id: PackId,
         size_hint: Option<u32>,
         pack_size: u32,
     ) -> RusticResult<Self> {
