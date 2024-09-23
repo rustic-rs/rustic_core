@@ -68,7 +68,9 @@ impl<T: Default> Initialize<T> for BlobTypeMap<T> {
 
 define_new_id_struct!(BlobId, "blob");
 
+/// A marker trait for Ids which identify Blobs in pack files
 pub trait PackedId: Copy + Into<BlobId> + From<BlobId> {
+    /// The `BlobType` of the blob identified by the Id
     const TYPE: BlobType;
 }
 
