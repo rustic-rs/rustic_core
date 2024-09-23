@@ -102,7 +102,7 @@ impl IndexPack {
 
     /// Calculate the pack size from the contained blobs
     #[must_use]
-    pub(crate) fn pack_size(&self) -> u32 {
+    pub fn pack_size(&self) -> u32 {
         self.size
             .unwrap_or_else(|| PackHeaderRef::from_index_pack(self).pack_size())
     }
