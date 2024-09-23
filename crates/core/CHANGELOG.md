@@ -2,6 +2,27 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.4.0](https://github.com/rustic-rs/rustic_core/compare/rustic_core-v0.3.1...rustic_core-v0.4.0) - 2024-09-23
+
+### Added
+- Add Repository::drop_index and ::drop_data_from_index ([#166](https://github.com/rustic-rs/rustic_core/pull/166))
+- *(commands)* Add option stdin_command to be used in CLI and config file ([#266](https://github.com/rustic-rs/rustic_core/pull/266))
+- [**breaking**] Use CommandInput for commands ([#269](https://github.com/rustic-rs/rustic_core/pull/269))
+- Add CommandInput ([#252](https://github.com/rustic-rs/rustic_core/pull/252))
+
+### Fixed
+- de/serialize tags as DisplayFromStr ([#270](https://github.com/rustic-rs/rustic_core/pull/270))
+- [**breaking**] use plural names for options ([#267](https://github.com/rustic-rs/rustic_core/pull/267))
+- fix clippy lint
+- *(test)* shorten snapshot names for windows environment
+- [**breaking**] improve password-command error reporting ([#265](https://github.com/rustic-rs/rustic_core/pull/265))
+- properly finish progress bar in Repository::get_snapshot_group ([#263](https://github.com/rustic-rs/rustic_core/pull/263))
+
+### Other
+- remove readme versions in usage section for easier release due to release PR ([#271](https://github.com/rustic-rs/rustic_core/pull/271))
+- [**breaking**] Use different Id types ([#256](https://github.com/rustic-rs/rustic_core/pull/256))
+- Use serde_with::skip_serializing_none instead of manual mapping ([#251](https://github.com/rustic-rs/rustic_core/pull/251))
+
 ## [0.3.1](https://github.com/rustic-rs/rustic_core/compare/rustic_core-v0.3.0...rustic_core-v0.3.1) - 2024-09-06
 
 ### Added

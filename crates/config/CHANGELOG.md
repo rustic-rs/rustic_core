@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 
 ## [unreleased]
 
+## [0.2.1](https://github.com/rustic-rs/rustic_core/compare/rustic_config-v0.2.0...rustic_config-v0.2.1) - 2024-09-23
+
+### Other
+- remove readme versions in usage section for easier release due to release PR ([#271](https://github.com/rustic-rs/rustic_core/pull/271))
+
 ## [0.2.0](https://github.com/rustic-rs/rustic_core/compare/rustic_config-v0.1.0...rustic_config-v0.2.0) - 2024-08-18
 
 ### Added
