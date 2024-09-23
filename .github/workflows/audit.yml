@@ -4,7 +4,6 @@ on:
   pull_request:
     paths:
       - '**/Cargo.toml'
-      - '**/Cargo.lock'
       - '**.yml'
   schedule:
     # Runs at 00:00 UTC everyday
@@ -12,7 +11,6 @@ on:
   push:
     paths:
       - '**/Cargo.toml'
-      - '**/Cargo.lock'
       - '**.yml'
   merge_group:
     types: [checks_requested]
