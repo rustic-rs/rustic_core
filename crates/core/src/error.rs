@@ -11,6 +11,7 @@ use std::{
     num::{ParseIntError, TryFromIntError},
     ops::RangeInclusive,
     path::{PathBuf, StripPrefixError},
+    process::ExitStatus,
     str::Utf8Error,
 };
 
@@ -22,7 +23,11 @@ use chrono::OutOfRangeError;
 use displaydoc::Display;
 use thiserror::Error;
 
-use crate::{backend::node::NodeType, id::Id, repofile::indexfile::IndexPack};
+use crate::{
+    backend::node::NodeType,
+    blob::{tree::TreeId, BlobId},
+    repofile::{indexfile::IndexPack, packfile::PackId},
+};
 
 /// Result type that is being returned from methods that can fail and thus have [`RusticError`]s.
 pub type RusticResult<T> = Result<T, RusticError>;
@@ -31,7 +36,7 @@ pub type RusticResult<T> = Result<T, RusticError>;
 #[derive(Error, Debug)]
 #[error(transparent)]
 /// Errors that can result from rustic.
-pub struct RusticError(#[from] RusticErrorKind);
+pub struct RusticError(#[from] pub(crate) RusticErrorKind);
 
 // Accessors for anything we do want to expose publicly.
 impl RusticError {
@@ -173,13 +178,13 @@ pub enum CommandErrorKind {
     /// path is no dir: `{0:?}`
     PathIsNoDir(String),
     /// used blobs are missing: blob {0} doesn't existing
-    BlobsMissing(Id),
+    BlobsMissing(BlobId),
     /// used pack {0}: size does not match! Expected size: {1}, real size: {2}
-    PackSizeNotMatching(Id, u32, u32),
+    PackSizeNotMatching(PackId, u32, u32),
     /// "used pack {0} does not exist!
-    PackNotExisting(Id),
+    PackNotExisting(PackId),
     /// pack {0} got no decision what to do
-    NoDecision(Id),
+    NoDecision(PackId),
     /// {0:?}
     FromParseIntError(#[from] ParseIntError),
     /// {0}
@@ -220,6 +225,8 @@ pub enum CommandErrorKind {
     NotAllowedWithAppendOnly(String),
     /// Specify one of the keep-* options for forget! Please use keep-none to keep no snapshot.
     NoKeepOption,
+    /// {0:?}
+    FromParseError(#[from] shell_words::ParseError),
 }
 
 /// [`CryptoErrorKind`] describes the errors that can happen while dealing with Cryptographic functions
@@ -243,8 +250,6 @@ pub enum PolynomialErrorKind {
 /// [`FileErrorKind`] describes the errors that can happen while dealing with files during restore/backups
 #[derive(Error, Debug, Display)]
 pub enum FileErrorKind {
-    /// did not find id in index: `{0:?}`
-    CouldNotFindIdInIndex(Id),
     /// transposing an Option of a Result into a Result of an Option failed: `{0:?}`
     TransposingOptionResultFailed(std::io::Error),
     /// conversion from `u64` to `usize` failed: `{0:?}`
@@ -281,10 +286,14 @@ pub enum RepositoryErrorKind {
     IsNotHotRepository,
     /// incorrect password!
     IncorrectPassword,
-    /// failed to call password command
-    PasswordCommandParsingFailed,
+    /// error running the password command
+    PasswordCommandExecutionFailed,
     /// error reading password from command
     ReadingPasswordFromCommandFailed,
+    /// running command {0}:{1} was not successful: {2}
+    CommandExecutionFailed(String, String, std::io::Error),
+    /// running command {0}:{1} returned status: {2}
+    CommandErrorStatus(String, String, ExitStatus),
     /// error listing the repo config file
     ListingRepositoryConfigFileFailed,
     /// error listing the repo keys
@@ -302,7 +311,7 @@ pub enum RepositoryErrorKind {
     /// Config file already exists. Aborting.
     ConfigFileExists,
     /// did not find id {0} in index
-    IdNotFound(Id),
+    IdNotFound(BlobId),
     /// no suitable backend type found
     NoBackendTypeGiven,
 }
@@ -357,6 +366,8 @@ pub enum BackendAccessErrorKind {
     RemovingDataFromBackendFailed,
     /// failed to list files on Backend
     ListingFilesOnBackendFailed,
+    /// Path is not allowed: `{0:?}`
+    PathNotAllowed(PathBuf),
 }
 
 /// [`ConfigFileErrorKind`] describes the errors that can be returned for `ConfigFile`s
@@ -458,7 +469,7 @@ pub enum PackerErrorKind {
     GettingTotalSizeFailed,
     /// crossbeam couldn't send message: `{0:?}`
     SendingCrossbeamMessageFailed(
-        #[from] crossbeam_channel::SendError<(bytes::Bytes, Id, Option<u32>)>,
+        #[from] crossbeam_channel::SendError<(bytes::Bytes, BlobId, Option<u32>)>,
     ),
     /// crossbeam couldn't send message: `{0:?}`
     SendingCrossbeamMessageFailedForIndexPack(
@@ -484,7 +495,7 @@ pub enum PackerErrorKind {
 #[derive(Error, Debug, Display)]
 pub enum TreeErrorKind {
     /// blob {0:?} not found in index
-    BlobIdNotFound(Id),
+    BlobIdNotFound(TreeId),
     /// {0:?} is no dir
     NotADirectory(OsString),
     /// "{0:?} not found"
@@ -504,7 +515,7 @@ pub enum TreeErrorKind {
     /// failed to read file string from glob file: `{0:?}`
     ReadingFileStringFromGlobsFailed(#[from] std::io::Error),
     /// crossbeam couldn't send message: `{0:?}`
-    SendingCrossbeamMessageFailed(#[from] crossbeam_channel::SendError<(PathBuf, Id, usize)>),
+    SendingCrossbeamMessageFailed(#[from] crossbeam_channel::SendError<(PathBuf, TreeId, usize)>),
     /// crossbeam couldn't receive message: `{0:?}`
     ReceivingCrossbreamMessageFailed(#[from] crossbeam_channel::RecvError),
 }
