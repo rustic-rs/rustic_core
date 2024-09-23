@@ -3,7 +3,7 @@
 use chrono::{DateTime, Datelike, Duration, Local, Timelike};
 use derive_setters::Setters;
 use serde_derive::{Deserialize, Serialize};
-use serde_with::{serde_as, skip_serializing_none, DisplayFromStr, OneOrMany};
+use serde_with::{serde_as, skip_serializing_none, DisplayFromStr};
 
 use crate::{
     error::{CommandErrorKind, RusticResult},
@@ -112,14 +112,13 @@ pub struct KeepOptions {
     /// Keep snapshots with this taglist (can be specified multiple times)
     #[cfg_attr(feature = "clap", clap(long, value_name = "TAG[,TAG,..]"))]
     #[cfg_attr(feature = "merge", merge(strategy=merge::vec::overwrite_empty))]
-    #[serde_as(as = "OneOrMany<DisplayFromStr>")]
+    #[serde_as(as = "Vec<DisplayFromStr>")]
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub keep_tags: Vec<StringList>,
 
     /// Keep snapshots ids that start with ID (can be specified multiple times)
     #[cfg_attr(feature = "clap", clap(long = "keep-id", value_name = "ID"))]
     #[cfg_attr(feature = "merge", merge(strategy=merge::vec::overwrite_empty))]
-    #[serde_as(as = "OneOrMany<_>")]
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub keep_ids: Vec<String>,
 
@@ -715,7 +714,7 @@ mod tests {
                     .map(|(time, tags)| -> Result<_> {
                         let opts = &crate::SnapshotOptions::default()
                             .time(parse_time(time)?)
-                            .tag(vec![StringList::from_str(tags)?]);
+                            .tags(vec![StringList::from_str(tags)?]);
                         Ok(SnapshotFile::from_options(opts)?)
                     }),
             )

@@ -15,7 +15,7 @@ use itertools::Itertools;
 use log::info;
 use path_dedot::ParseDot;
 use serde_derive::{Deserialize, Serialize};
-use serde_with::{serde_as, skip_serializing_none, DisplayFromStr, OneOrMany};
+use serde_with::{serde_as, skip_serializing_none, DisplayFromStr};
 
 use crate::{
     backend::{decrypt::DecryptReadBackend, FileType, FindInBackend},
@@ -55,10 +55,10 @@ pub struct SnapshotOptions {
     pub label: Option<String>,
 
     /// Tags to add to snapshot (can be specified multiple times)
-    #[cfg_attr(feature = "clap", clap(long, value_name = "TAG[,TAG,..]"))]
-    #[serde_as(as = "OneOrMany<DisplayFromStr>")]
+    #[serde_as(as = "Vec<DisplayFromStr>")]
+    #[cfg_attr(feature = "clap", clap(long = "tag", value_name = "TAG[,TAG,..]"))]
     #[cfg_attr(feature = "merge", merge(strategy = merge::vec::overwrite_empty))]
-    pub tag: Vec<StringList>,
+    pub tags: Vec<StringList>,
 
     /// Add description to snapshot
     #[cfg_attr(feature = "clap", clap(long, value_name = "DESCRIPTION"))]
@@ -111,7 +111,7 @@ impl SnapshotOptions {
     ///
     /// [`SnapshotFileErrorKind::NonUnicodeTag`]: crate::error::SnapshotFileErrorKind::NonUnicodeTag
     pub fn add_tags(mut self, tag: &str) -> RusticResult<Self> {
-        self.tag.push(StringList::from_str(tag)?);
+        self.tags.push(StringList::from_str(tag)?);
         Ok(self)
     }
 
@@ -411,7 +411,7 @@ impl SnapshotFile {
             );
         }
 
-        _ = snap.set_tags(opts.tag.clone());
+        _ = snap.set_tags(opts.tags.clone());
 
         Ok(snap)
     }
@@ -1251,8 +1251,8 @@ mod tests {
 
     #[test]
     fn test_add_tags() -> Result<()> {
-        let tag = vec![StringList::from_str("abc")?];
-        let mut snap = SnapshotFile::from_options(&SnapshotOptions::default().tag(tag))?;
+        let tags = vec![StringList::from_str("abc")?];
+        let mut snap = SnapshotFile::from_options(&SnapshotOptions::default().tags(tags))?;
         let tags = StringList::from_str("def,abc")?;
         assert!(snap.add_tags(vec![tags]));
         let expected = StringList::from_str("abc,def")?;
