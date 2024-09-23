@@ -1288,14 +1288,17 @@ pub trait IndexedTree: Open {
     /// The used index
     type I: ReadGlobalIndex;
 
-    /// Returns the used indexs
+    /// Returns the used indexes
     fn index(&self) -> &Self::I;
+
+    /// Turn the repository into the `Open` state
     fn into_open(self) -> impl Open;
 }
 
 /// A repository which is indexed such that all tree blobs are contained in the index
 /// and additionally the `Id`s of data blobs are also contained in the index.
 pub trait IndexedIds: IndexedTree {
+    /// Turn the repository into the `IndexedTree` state by reading and storing a size-optimized index
     fn into_indexed_tree(self) -> impl IndexedTree;
 }
 
