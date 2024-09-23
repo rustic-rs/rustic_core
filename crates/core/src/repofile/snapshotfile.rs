@@ -53,6 +53,7 @@ pub struct SnapshotOptions {
     pub label: Option<String>,
 
     /// Tags to add to snapshot (can be specified multiple times)
+    #[serde_as(as = "Vec<DisplayFromStr>")]
     #[cfg_attr(feature = "clap", clap(long = "tag", value_name = "TAG[,TAG,..]"))]
     #[cfg_attr(feature = "merge", merge(strategy = merge::vec::overwrite_empty))]
     pub tags: Vec<StringList>,
