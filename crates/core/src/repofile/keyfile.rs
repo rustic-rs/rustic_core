@@ -2,13 +2,13 @@ use chrono::{DateTime, Local};
 use rand::{thread_rng, RngCore};
 use scrypt::Params;
 use serde_derive::{Deserialize, Serialize};
-use serde_with::{base64::Base64, serde_as};
+use serde_with::{base64::Base64, serde_as, skip_serializing_none};
 
 use crate::{
     backend::{FileType, ReadBackend},
     crypto::{aespoly1305::Key, CryptoKey},
-    error::{KeyFileErrorKind, RusticErrorKind, RusticResult},
-    id::Id,
+    error::{CryptoErrorKind, KeyFileErrorKind, RusticErrorKind, RusticResult},
+    impl_repoid, RusticError,
 };
 
 pub(super) mod constants {
@@ -20,11 +20,13 @@ pub(super) mod constants {
     }
 }
 
+impl_repoid!(KeyId, FileType::Key);
+
 /// Key files describe information about repository access keys.
 ///
 /// They are usually stored in the repository under `/keys/<ID>`
 #[serde_as]
-#[serde_with::apply(Option => #[serde(default, skip_serializing_if = "Option::is_none")])]
+#[skip_serializing_none]
 #[derive(Serialize, Deserialize, Debug)]
 pub struct KeyFile {
     /// Hostname where the key was created
@@ -200,7 +202,7 @@ impl KeyFile {
     /// # Returns
     ///
     /// The [`KeyFile`] read from the backend
-    fn from_backend<B: ReadBackend>(be: &B, id: &Id) -> RusticResult<Self> {
+    fn from_backend<B: ReadBackend>(be: &B, id: &KeyId) -> RusticResult<Self> {
         let data = be
             .read_full(FileType::Key, id)
             .map_err(RusticErrorKind::Backend)?;
@@ -299,7 +301,7 @@ impl MasterKey {
 // TODO!: Add errors!
 pub(crate) fn key_from_backend<B: ReadBackend>(
     be: &B,
-    id: &Id,
+    id: &KeyId,
     passwd: &impl AsRef<[u8]>,
 ) -> RusticResult<Key> {
     KeyFile::from_backend(be, id)?.key_from_password(passwd)
@@ -327,14 +329,18 @@ pub(crate) fn key_from_backend<B: ReadBackend>(
 pub(crate) fn find_key_in_backend<B: ReadBackend>(
     be: &B,
     passwd: &impl AsRef<[u8]>,
-    hint: Option<&Id>,
+    hint: Option<&KeyId>,
 ) -> RusticResult<Key> {
     if let Some(id) = hint {
         key_from_backend(be, id, passwd)
     } else {
         for id in be.list(FileType::Key).map_err(RusticErrorKind::Backend)? {
-            if let Ok(key) = key_from_backend(be, &id, passwd) {
-                return Ok(key);
+            match key_from_backend(be, &id.into(), passwd) {
+                Ok(key) => return Ok(key),
+                Err(RusticError(RusticErrorKind::Crypto(
+                    CryptoErrorKind::DataDecryptionFailed(_),
+                ))) => continue,
+                err => return err,
             }
         }
         Err(KeyFileErrorKind::NoSuitableKeyFound.into())

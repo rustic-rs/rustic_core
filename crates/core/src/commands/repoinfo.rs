@@ -1,4 +1,5 @@
 use serde_derive::{Deserialize, Serialize};
+use serde_with::skip_serializing_none;
 
 use crate::{
     backend::{decrypt::DecryptReadBackend, FileType, ReadBackend, ALL_FILE_TYPES},
@@ -54,7 +55,7 @@ impl BlobInfo {
     }
 }
 
-#[serde_with::apply(Option => #[serde(default, skip_serializing_if = "Option::is_none")])]
+#[skip_serializing_none]
 #[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 /// Information about packs within `repoinfo`
 pub struct PackInfo {
@@ -152,7 +153,7 @@ pub(crate) fn collect_index_infos<P: ProgressBars, S: Open>(
     Ok(info)
 }
 
-#[serde_with::apply(Option => #[serde(default, skip_serializing_if = "Option::is_none")])]
+#[skip_serializing_none]
 #[derive(Default, Clone, Debug, Serialize, Deserialize)]
 /// Information about repository files
 pub struct RepoFileInfos {

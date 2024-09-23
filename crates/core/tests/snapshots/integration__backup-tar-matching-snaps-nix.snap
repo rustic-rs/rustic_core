@@ -1,0 +1,50 @@
+---
+source: crates/core/tests/integration.rs
+expression: snap
+---
+[
+  SnapshotFile(
+    time: "[time]",
+    program_version: "rustic [rustic_core_version]",
+    parent: "[some]",
+    tree: "[tree_id]",
+    paths: StringList([
+      "test",
+    ]),
+    hostname: "[hostname]",
+    username: "",
+    uid: 0,
+    gid: 0,
+    tags: StringList([
+      "a",
+      "b",
+    ]),
+    original: "[original]",
+    summary: Some(SnapshotSummary(
+      files_new: 0,
+      files_changed: 0,
+      files_unmodified: 73,
+      total_files_processed: 73,
+      total_bytes_processed: 1125682,
+      dirs_new: 0,
+      dirs_changed: 0,
+      dirs_unmodified: 6,
+      total_dirs_processed: 6,
+      total_dirsize_processed: "[total_dirsize_processed]",
+      data_blobs: 0,
+      tree_blobs: 0,
+      data_added: "[data_added]",
+      data_added_packed: "[data_added_packed]",
+      data_added_files: 0,
+      data_added_files_packed: 0,
+      data_added_trees: "[data_added_trees]",
+      data_added_trees_packed: "[data_added_trees_packed]",
+      command: "[command]",
+      backup_start: "[backup_start]",
+      backup_end: "[backup_end]",
+      backup_duration: "[backup_duration]",
+      total_duration: "[total_duration]",
+    )),
+    id: "[id]",
+  ),
+]

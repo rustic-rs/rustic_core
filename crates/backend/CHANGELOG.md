@@ -2,6 +2,50 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.2.1](https://github.com/rustic-rs/rustic_core/compare/rustic_backend-v0.2.0...rustic_backend-v0.2.1) - 2024-09-06
+
+### Added
+- Add autocompletion hints  ([#257](https://github.com/rustic-rs/rustic_core/pull/257))
+
+### Fixed
+- Re-add missing opendal services ([#249](https://github.com/rustic-rs/rustic_core/pull/249))
+
+### Other
+- Revert "backend: specify core version"
+
+## [0.2.0](https://github.com/rustic-rs/rustic_core/compare/rustic_backend-v0.1.1...rustic_backend-v0.2.0) - 2024-08-18
+
+### Added
+- *(backends)* Add throttle option to opendal backend ([#216](https://github.com/rustic-rs/rustic_core/pull/216))
+- *(backend)* [**breaking**] remove s3 and sftp wrapper around opendal ([#200](https://github.com/rustic-rs/rustic_core/pull/200))
+- [**breaking**] move clippy lints to cargo manifest and fix upcoming issues all over the workspace ([#176](https://github.com/rustic-rs/rustic_core/pull/176))
+- *(opendal)* Add option connections ([#155](https://github.com/rustic-rs/rustic_core/pull/155))
+
+### Fixed
+- clippy lints ([#220](https://github.com/rustic-rs/rustic_core/pull/220))
+- *(backends)* local: Only create repo dir when creating the repository ([#206](https://github.com/rustic-rs/rustic_core/pull/206))
+- *(deps)* update rust crate reqwest to 0.11.26 ([#196](https://github.com/rustic-rs/rustic_core/pull/196))
+- *(deps)* update rust crate thiserror to 1.0.58 ([#192](https://github.com/rustic-rs/rustic_core/pull/192))
+- *(deps)* update rust crate anyhow to 1.0.81 ([#191](https://github.com/rustic-rs/rustic_core/pull/191))
+- *(rclone)* Use semver for version checking ([#188](https://github.com/rustic-rs/rustic_core/pull/188))
+- *(deps)* update rust crate clap to 4.5.2 ([#183](https://github.com/rustic-rs/rustic_core/pull/183))
+- *(config)* Merge repository options for multiple config sources ([#171](https://github.com/rustic-rs/rustic_core/pull/171))
+- *(backend)* Give useful error message when no repository is given.
+- updated msrv and fix clippy lints ([#160](https://github.com/rustic-rs/rustic_core/pull/160))
+
+### Other
+- dependency updates
+- *(deps)* more version updates ([#237](https://github.com/rustic-rs/rustic_core/pull/237))
+- Update MSRV to 1.76.0
+- *(deps)* Several version updates ([#234](https://github.com/rustic-rs/rustic_core/pull/234))
+- Update MSRV (needed by opendal)
+- update opendal to 0.46 and refactor accordingly ([#225](https://github.com/rustic-rs/rustic_core/pull/225))
+- Update MSRV to 1.73.0
+- fix clippy lints
+- *(deps)* update dependencies ([#180](https://github.com/rustic-rs/rustic_core/pull/180))
+- add rustic_testing to workspace crates
+- reset again after release to workspace dependencies for workspace crates
+
 ## [rustic_backend-v0.1.1] - 2024-02-02
 
 ### Documentation

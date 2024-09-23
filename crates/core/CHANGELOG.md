@@ -2,6 +2,81 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.3.1](https://github.com/rustic-rs/rustic_core/compare/rustic_core-v0.3.0...rustic_core-v0.3.1) - 2024-09-06
+
+### Added
+- Add autocompletion hints  ([#257](https://github.com/rustic-rs/rustic_core/pull/257))
+
+### Fixed
+- don't give invalid password error for other keyfile errors ([#247](https://github.com/rustic-rs/rustic_core/pull/247))
+- adjust tests to new Rust version ([#259](https://github.com/rustic-rs/rustic_core/pull/259))
+- fix FromStr for SnapshotGroupCriterion ([#254](https://github.com/rustic-rs/rustic_core/pull/254))
+- make more Indexed traits public ([#253](https://github.com/rustic-rs/rustic_core/pull/253))
+- fix StringList::contains_all ([#246](https://github.com/rustic-rs/rustic_core/pull/246))
+- *(build)* unbreak building on OpenBSD ([#245](https://github.com/rustic-rs/rustic_core/pull/245))
+
+## [0.3.0](https://github.com/rustic-rs/rustic_core/compare/rustic_core-v0.2.0...rustic_core-v0.3.0) - 2024-08-18
+
+### Added
+- *(forget)* [**breaking**] Make keep-* Options and add keep-none ([#238](https://github.com/rustic-rs/rustic_core/pull/238))
+- add search methods to Repository ([#212](https://github.com/rustic-rs/rustic_core/pull/212))
+- [**breaking**] Allow specifying many options in config profile without array ([#211](https://github.com/rustic-rs/rustic_core/pull/211))
+- [**breaking**] move clippy lints to cargo manifest and fix upcoming issues all over the workspace ([#176](https://github.com/rustic-rs/rustic_core/pull/176))
+- Add extra check before writing data ([#154](https://github.com/rustic-rs/rustic_core/pull/154))
+- Allow missing fields in snapshot summary
+- Hide plain text password from help text ([#170](https://github.com/rustic-rs/rustic_core/pull/170))
+- Add Repository::to_indexed_checked and ::to_index_ids_checked() ([#168](https://github.com/rustic-rs/rustic_core/pull/168))
+- *(prune)* Add more debug info to stats ([#162](https://github.com/rustic-rs/rustic_core/pull/162))
+- Add append-only repository mode ([#164](https://github.com/rustic-rs/rustic_core/pull/164))
+
+### Fixed
+- parse commands given by arg or env using shell_words ([#240](https://github.com/rustic-rs/rustic_core/pull/240))
+- Allow non-value/null xattr ([#235](https://github.com/rustic-rs/rustic_core/pull/235))
+- ensure Rust 1.76.0 compiles
+- backup file even if failed listing extended attributes ([#233](https://github.com/rustic-rs/rustic_core/pull/233))
+- Export types so the Repository type can be fully specified ([#229](https://github.com/rustic-rs/rustic_core/pull/229))
+- Always sort StringList ([#226](https://github.com/rustic-rs/rustic_core/pull/226))
+- *(commands)* Properly finish progress bars
+- *(commands)* [**breaking**] Fix edge case for repair index ([#219](https://github.com/rustic-rs/rustic_core/pull/219))
+- clippy lints ([#220](https://github.com/rustic-rs/rustic_core/pull/220))
+- *(errors)* Show filenames in error message coming from ignore source ([#215](https://github.com/rustic-rs/rustic_core/pull/215))
+- *(paths)* Handle paths starting with "." correctly ([#213](https://github.com/rustic-rs/rustic_core/pull/213))
+- Add warning about unsorted files and sort where neccessary ([#205](https://github.com/rustic-rs/rustic_core/pull/205))
+- *(deps)* update rust crate thiserror to 1.0.58 ([#192](https://github.com/rustic-rs/rustic_core/pull/192))
+- *(deps)* update rust crate anyhow to 1.0.81 ([#191](https://github.com/rustic-rs/rustic_core/pull/191))
+- *(deps)* update rust crate serde_with to 3.7.0 ([#189](https://github.com/rustic-rs/rustic_core/pull/189))
+- *(rclone)* Use semver for version checking ([#188](https://github.com/rustic-rs/rustic_core/pull/188))
+- *(deps)* update rust crate strum to 0.26.2 ([#187](https://github.com/rustic-rs/rustic_core/pull/187))
+- *(deps)* update rust crate clap to 4.5.2 ([#183](https://github.com/rustic-rs/rustic_core/pull/183))
+- Set correct content for symlink with parent snapshot ([#174](https://github.com/rustic-rs/rustic_core/pull/174))
+- update dependency nix ([#169](https://github.com/rustic-rs/rustic_core/pull/169))
+- *(memory)* Limit memory usage for restore when having large pack files ([#165](https://github.com/rustic-rs/rustic_core/pull/165))
+- *(prune)* Correct number of repacks ([#167](https://github.com/rustic-rs/rustic_core/pull/167))
+- updated msrv and fix clippy lints ([#160](https://github.com/rustic-rs/rustic_core/pull/160))
+
+### Other
+- dependency updates
+- Ensure that MSRV 1.76 works
+- *(deps)* more version updates ([#237](https://github.com/rustic-rs/rustic_core/pull/237))
+- Update MSRV to 1.76.0
+- *(deps)* Several version updates ([#234](https://github.com/rustic-rs/rustic_core/pull/234))
+- fix clippy lints ([#236](https://github.com/rustic-rs/rustic_core/pull/236))
+- Update MSRV (needed by opendal)
+- update sha2 dependency
+- add integration tests for `prune` and `ls` ([#221](https://github.com/rustic-rs/rustic_core/pull/221))
+- *(error)* Add error sources ([#217](https://github.com/rustic-rs/rustic_core/pull/217))
+- add more warnings
+- make SnapshotFile::cmp_group public ([#210](https://github.com/rustic-rs/rustic_core/pull/210))
+- Update MSRV to 1.73.0
+- fix clippy lints
+- add backup integration tests using snapshots ([#175](https://github.com/rustic-rs/rustic_core/pull/175))
+- replace dep bitmask-enum by enumset ([#173](https://github.com/rustic-rs/rustic_core/pull/173))
+- *(deps)* update dependencies ([#180](https://github.com/rustic-rs/rustic_core/pull/180))
+- use release-plz action, remove public api fixtures incl. test and related ci and other release related ci
+- Add unit tests for extra verification ([#172](https://github.com/rustic-rs/rustic_core/pull/172))
+- rustic_config v0.1.0
+- add rustic_testing to workspace crates
+
 ## [rustic_core-v0.2.0] - 2024-02-01
 
 ### Bug Fixes

@@ -10,16 +10,18 @@ use zstd::stream::decode_all;
 
 use crate::{
     backend::{cache::Cache, decrypt::DecryptReadBackend, node::NodeType, FileType, ReadBackend},
-    blob::{tree::TreeStreamerOnce, BlobType},
+    blob::{tree::TreeStreamerOnce, BlobId, BlobType},
     crypto::hasher::hash,
     error::{RusticErrorKind, RusticResult},
-    id::Id,
     index::{
         binarysorted::{IndexCollector, IndexType},
         GlobalIndex, ReadGlobalIndex,
     },
     progress::{Progress, ProgressBars},
-    repofile::{IndexFile, IndexPack, PackHeader, PackHeaderLength, PackHeaderRef, SnapshotFile},
+    repofile::{
+        packfile::PackId, IndexFile, IndexPack, PackHeader, PackHeaderLength, PackHeaderRef,
+        SnapshotFile,
+    },
     repository::{Open, Repository},
 };
 
@@ -86,8 +88,12 @@ impl CheckOptions {
 
         if let Some(cache) = &cache {
             let p = pb.progress_spinner("cleaning up packs from cache...");
-            if let Err(err) = cache.remove_not_in_list(FileType::Pack, index_collector.tree_packs())
-            {
+            let ids: Vec<_> = index_collector
+                .tree_packs()
+                .iter()
+                .map(|(id, size)| (**id, *size))
+                .collect();
+            if let Err(err) = cache.remove_not_in_list(FileType::Pack, &ids) {
                 warn!("Error in cache backend removing pack files: {err}");
             }
             p.finish();
@@ -339,12 +345,12 @@ fn check_packs(
 /// # Errors
 ///
 /// If a pack is missing or has a different size
-fn check_packs_list(be: &impl ReadBackend, mut packs: HashMap<Id, u32>) -> RusticResult<()> {
+fn check_packs_list(be: &impl ReadBackend, mut packs: HashMap<PackId, u32>) -> RusticResult<()> {
     for (id, size) in be
         .list_with_size(FileType::Pack)
         .map_err(RusticErrorKind::Backend)?
     {
-        match packs.remove(&id) {
+        match packs.remove(&PackId::from(id)) {
             None => warn!("pack {id} not referenced in index. Can be a parallel backup job. To repair: 'rustic repair index'."),
             Some(index_size) if index_size != size => {
                 error!("pack {id}: size computed by index: {index_size}, actual size: {size}. To repair: 'rustic repair index'.");
@@ -461,7 +467,7 @@ fn check_pack(
         return Ok(());
     }
 
-    let comp_id = hash(&data);
+    let comp_id = PackId::from(hash(&data));
     if id != comp_id {
         error!("pack {id}: Hash mismatch. Computed hash: {comp_id}");
         return Ok(());
@@ -503,7 +509,7 @@ fn check_pack(
             }
         }
 
-        let comp_id = hash(&blob_data);
+        let comp_id = BlobId::from(hash(&blob_data));
         if blob.id != comp_id {
             error!("pack {id}, blob {blob_id}: Hash mismatch. Computed hash: {comp_id}");
             return Ok(());

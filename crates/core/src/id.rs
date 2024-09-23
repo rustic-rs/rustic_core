@@ -1,19 +1,46 @@
 //! The `Id` type and related functions
 
-use std::{fmt, io::Read, ops::Deref, path::Path};
+use std::{fmt, io::Read, ops::Deref, path::Path, str::FromStr};
 
 use binrw::{BinRead, BinWrite};
 use derive_more::{Constructor, Display};
 use rand::{thread_rng, RngCore};
 use serde_derive::{Deserialize, Serialize};
 
-use crate::{crypto::hasher::hash, error::IdErrorKind, RusticResult};
+use crate::{crypto::hasher::hash, error::IdErrorKind, RusticError, RusticResult};
 
 pub(super) mod constants {
     /// The length of the hash in bytes
     pub(super) const LEN: usize = 32;
     /// The length of the hash in hexadecimal characters
     pub(super) const HEX_LEN: usize = LEN * 2;
+}
+
+#[macro_export]
+/// Generate newtypes for `Id`s identifying Repository files
+macro_rules! define_new_id_struct {
+    ($a:ident, $b: expr) => {
+        #[doc = concat!("An Id identifying a ", stringify!($b))]
+        #[derive(
+            Debug,
+            Clone,
+            Copy,
+            Default,
+            PartialEq,
+            Eq,
+            PartialOrd,
+            Ord,
+            Hash,
+            derive_more::Deref,
+            derive_more::Display,
+            derive_more::From,
+            derive_more::FromStr,
+            serde::Serialize,
+            serde::Deserialize,
+        )]
+        #[serde(transparent)]
+        pub struct $a($crate::Id);
+    };
 }
 
 /// `Id` is the hash id of an object.
@@ -35,13 +62,22 @@ pub(super) mod constants {
     BinRead,
     Display,
 )]
-#[display(fmt = "{}", "&self.to_hex()[0..8]")]
+#[display("{}", &self.to_hex()[0..8])]
 pub struct Id(
     /// The actual hash
     #[serde(serialize_with = "hex::serde::serialize")]
     #[serde(deserialize_with = "hex::serde::deserialize")]
     [u8; constants::LEN],
 );
+
+impl FromStr for Id {
+    type Err = RusticError;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let mut id = Self::default();
+        hex::decode_to_slice(s, &mut id.0).map_err(IdErrorKind::HexError)?;
+        Ok(id)
+    }
+}
 
 impl Id {
     /// Parse an `Id` from a hexadecimal string
@@ -65,12 +101,9 @@ impl Id {
     /// ```
     ///
     /// [`IdErrorKind::HexError`]: crate::error::IdErrorKind::HexError
+    #[deprecated(note = "use FromStr::from_str instead")]
     pub fn from_hex(s: &str) -> RusticResult<Self> {
-        let mut id = Self::default();
-
-        hex::decode_to_slice(s, &mut id.0).map_err(IdErrorKind::HexError)?;
-
-        Ok(id)
+        s.parse()
     }
 
     /// Generate a random `Id`.
