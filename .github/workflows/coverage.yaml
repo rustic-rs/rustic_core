@@ -20,7 +20,7 @@ jobs:
         uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4
 
       - name: Install cargo-hack
-        uses: taiki-e/install-action@d9dbaa35c1268d171952e74d148ee79629a77c35 # v2
+        uses: taiki-e/install-action@7348990d6a11d92f3e482c9b1bb48cf31ab7f658 # v2
         with:
           tool: cargo-tarpaulin
 
@@ -33,7 +33,7 @@ jobs:
           cargo tarpaulin --verbose --all-features --workspace --timeout 120 --out xml
       
       - name: Upload coverage reports to Codecov
-        uses: codecov/codecov-action@54bcd8715eee62d40e33596ef5e8f0f48dbbccab # v4
+        uses: codecov/codecov-action@e28ff129e5465c2c0dcc6f003fc735cb6ae0c673 # v4
         with:
             token: ${{ secrets.CODECOV_TOKEN }}
             slug: rustic-rs/rustic_core

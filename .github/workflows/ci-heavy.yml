@@ -89,7 +89,7 @@ jobs:
           INSTA_UPDATE: new
       - name: Upload snapshots of failed tests
         if: ${{ failure() && steps.run_tests.outcome == 'failure' }}
-        uses: actions/upload-artifact@a8a3f3ad30e3422c9c7b888a15615d19a852ae32 # v3
+        uses: actions/upload-artifact@50769540e7f4bd5e21e526ee35c689e35e0d6874 # v4
         with:
           name: failed-snapshots-${{ matrix.job.os }}
           path: "**/snapshots/*.snap.new"
@@ -155,7 +155,7 @@ jobs:
         with:
           toolchain: ${{ matrix.rust }}
       - name: install cargo-hack
-        uses: taiki-e/install-action@d9dbaa35c1268d171952e74d148ee79629a77c35 # v2
+        uses: taiki-e/install-action@7348990d6a11d92f3e482c9b1bb48cf31ab7f658 # v2
         with:
           tool: cargo-hack
       - uses: Swatinem/rust-cache@23bce251a8cd2ffc3c1075eaa2367cf899916d84 # v2
@@ -248,7 +248,7 @@ jobs:
     steps:
       - uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4
       - name: Install cargo-hack
-        uses: taiki-e/install-action@d9dbaa35c1268d171952e74d148ee79629a77c35 # v2
+        uses: taiki-e/install-action@7348990d6a11d92f3e482c9b1bb48cf31ab7f658 # v2
         with:
           tool: cargo-hack
 
