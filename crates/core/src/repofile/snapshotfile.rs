@@ -36,14 +36,14 @@ use clap::ValueHint;
 ///
 /// # Features
 ///
-/// * With the feature `merge` enabled, this also derives [`merge::Merge`] to allow merging [`SnapshotOptions`] from multiple sources.
+/// * With the feature `merge` enabled, this also derives [`conflate::Merge`] to allow merging [`SnapshotOptions`] from multiple sources.
 /// * With the feature `clap` enabled, this also derives [`clap::Parser`] allowing it to be used as CLI options.
 ///
 /// # Note
 ///
 /// The preferred way is to use [`SnapshotFile::from_options`] to create a SnapshotFile for a new backup.
 #[serde_as]
-#[cfg_attr(feature = "merge", derive(merge::Merge))]
+#[cfg_attr(feature = "merge", derive(conflate::Merge))]
 #[cfg_attr(feature = "clap", derive(clap::Parser))]
 #[derive(Deserialize, Serialize, Clone, Default, Debug, Setters)]
 #[serde(default, rename_all = "kebab-case", deny_unknown_fields)]
@@ -52,16 +52,18 @@ use clap::ValueHint;
 pub struct SnapshotOptions {
     /// Label snapshot with given label
     #[cfg_attr(feature = "clap", clap(long, value_name = "LABEL"))]
+    #[cfg_attr(feature = "merge", merge(strategy = conflate::option::overwrite_none))]
     pub label: Option<String>,
 
     /// Tags to add to snapshot (can be specified multiple times)
     #[serde_as(as = "Vec<DisplayFromStr>")]
     #[cfg_attr(feature = "clap", clap(long = "tag", value_name = "TAG[,TAG,..]"))]
-    #[cfg_attr(feature = "merge", merge(strategy = merge::vec::overwrite_empty))]
+    #[cfg_attr(feature = "merge", merge(strategy = conflate::vec::overwrite_empty))]
     pub tags: Vec<StringList>,
 
     /// Add description to snapshot
     #[cfg_attr(feature = "clap", clap(long, value_name = "DESCRIPTION"))]
+    #[cfg_attr(feature = "merge", merge(strategy = conflate::option::overwrite_none))]
     pub description: Option<String>,
 
     /// Add description to snapshot from file
@@ -69,28 +71,33 @@ pub struct SnapshotOptions {
         feature = "clap",
         clap(long, value_name = "FILE", conflicts_with = "description", value_hint = ValueHint::FilePath)
     )]
+    #[cfg_attr(feature = "merge", merge(strategy = conflate::option::overwrite_none))]
     pub description_from: Option<PathBuf>,
 
     /// Set the backup time manually
     #[cfg_attr(feature = "clap", clap(long))]
+    #[cfg_attr(feature = "merge", merge(strategy = conflate::option::overwrite_none))]
     pub time: Option<DateTime<Local>>,
 
     /// Mark snapshot as uneraseable
     #[cfg_attr(feature = "clap", clap(long, conflicts_with = "delete_after"))]
-    #[cfg_attr(feature = "merge", merge(strategy = merge::bool::overwrite_false))]
+    #[cfg_attr(feature = "merge", merge(strategy = conflate::bool::overwrite_false))]
     pub delete_never: bool,
 
     /// Mark snapshot to be deleted after given duration (e.g. 10d)
     #[cfg_attr(feature = "clap", clap(long, value_name = "DURATION"))]
     #[serde_as(as = "Option<DisplayFromStr>")]
+    #[cfg_attr(feature = "merge", merge(strategy = conflate::option::overwrite_none))]
     pub delete_after: Option<humantime::Duration>,
 
     /// Set the host name manually
     #[cfg_attr(feature = "clap", clap(long, value_name = "NAME"))]
+    #[cfg_attr(feature = "merge", merge(strategy = conflate::option::overwrite_none))]
     pub host: Option<String>,
 
     /// Set the backup command manually
     #[cfg_attr(feature = "clap", clap(long))]
+    #[cfg_attr(feature = "merge", merge(strategy = conflate::option::overwrite_none))]
     pub command: Option<String>,
 }
 

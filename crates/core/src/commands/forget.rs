@@ -100,7 +100,7 @@ pub(crate) fn get_forget_snapshots<P: ProgressBars, S: Open>(
 }
 
 #[cfg_attr(feature = "clap", derive(clap::Parser))]
-#[cfg_attr(feature = "merge", derive(merge::Merge))]
+#[cfg_attr(feature = "merge", derive(conflate::Merge))]
 #[skip_serializing_none]
 #[serde_as]
 #[derive(Clone, Debug, PartialEq, Eq, Default, Serialize, Deserialize, Setters)]
@@ -111,14 +111,14 @@ pub(crate) fn get_forget_snapshots<P: ProgressBars, S: Open>(
 pub struct KeepOptions {
     /// Keep snapshots with this taglist (can be specified multiple times)
     #[cfg_attr(feature = "clap", clap(long, value_name = "TAG[,TAG,..]"))]
-    #[cfg_attr(feature = "merge", merge(strategy=merge::vec::overwrite_empty))]
+    #[cfg_attr(feature = "merge", merge(strategy=conflate::vec::overwrite_empty))]
     #[serde_as(as = "Vec<DisplayFromStr>")]
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub keep_tags: Vec<StringList>,
 
     /// Keep snapshots ids that start with ID (can be specified multiple times)
     #[cfg_attr(feature = "clap", clap(long = "keep-id", value_name = "ID"))]
-    #[cfg_attr(feature = "merge", merge(strategy=merge::vec::overwrite_empty))]
+    #[cfg_attr(feature = "merge", merge(strategy=conflate::vec::overwrite_empty))]
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub keep_ids: Vec<String>,
 
@@ -127,6 +127,7 @@ pub struct KeepOptions {
         feature = "clap", 
         clap(long, short = 'l', value_name = "N",  allow_hyphen_values = true, value_parser = clap::value_parser!(i32).range(-1..))
     )]
+    #[cfg_attr(feature = "merge", merge(strategy = conflate::option::overwrite_none))]
     pub keep_last: Option<i32>,
 
     /// Keep the last N hourly snapshots (N == -1: keep all hourly snapshots)
@@ -134,6 +135,7 @@ pub struct KeepOptions {
         feature = "clap", 
         clap(long, short = 'H', value_name = "N",  allow_hyphen_values = true, value_parser = clap::value_parser!(i32).range(-1..))
     )]
+    #[cfg_attr(feature = "merge", merge(strategy = conflate::option::overwrite_none))]
     pub keep_hourly: Option<i32>,
 
     /// Keep the last N daily snapshots (N == -1: keep all daily snapshots)
@@ -141,6 +143,7 @@ pub struct KeepOptions {
         feature = "clap", 
         clap(long, short = 'd', value_name = "N",  allow_hyphen_values = true, value_parser = clap::value_parser!(i32).range(-1..))
     )]
+    #[cfg_attr(feature = "merge", merge(strategy = conflate::option::overwrite_none))]
     pub keep_daily: Option<i32>,
 
     /// Keep the last N weekly snapshots (N == -1: keep all weekly snapshots)
@@ -148,6 +151,7 @@ pub struct KeepOptions {
         feature = "clap",
         clap(long, short = 'w', value_name = "N",  allow_hyphen_values = true, value_parser = clap::value_parser!(i32).range(-1..))
     )]
+    #[cfg_attr(feature = "merge", merge(strategy = conflate::option::overwrite_none))]
     pub keep_weekly: Option<i32>,
 
     /// Keep the last N monthly snapshots (N == -1: keep all monthly snapshots)
@@ -155,6 +159,7 @@ pub struct KeepOptions {
         feature = "clap", 
         clap(long, short = 'm', value_name = "N",  allow_hyphen_values = true, value_parser = clap::value_parser!(i32).range(-1..))
     )]
+    #[cfg_attr(feature = "merge", merge(strategy = conflate::option::overwrite_none))]
     pub keep_monthly: Option<i32>,
 
     /// Keep the last N quarter-yearly snapshots (N == -1: keep all quarter-yearly snapshots)
@@ -162,6 +167,7 @@ pub struct KeepOptions {
         feature = "clap", 
         clap(long, value_name = "N",  allow_hyphen_values = true, value_parser = clap::value_parser!(i32).range(-1..))
     )]
+    #[cfg_attr(feature = "merge", merge(strategy = conflate::option::overwrite_none))]
     pub keep_quarter_yearly: Option<i32>,
 
     /// Keep the last N half-yearly snapshots (N == -1: keep all half-yearly snapshots)
@@ -169,6 +175,7 @@ pub struct KeepOptions {
         feature = "clap", 
         clap(long, value_name = "N",  allow_hyphen_values = true, value_parser = clap::value_parser!(i32).range(-1..))
     )]
+    #[cfg_attr(feature = "merge", merge(strategy = conflate::option::overwrite_none))]
     pub keep_half_yearly: Option<i32>,
 
     /// Keep the last N yearly snapshots (N == -1: keep all yearly snapshots)
@@ -176,51 +183,60 @@ pub struct KeepOptions {
         feature = "clap", 
         clap(long, short = 'y', value_name = "N",  allow_hyphen_values = true, value_parser = clap::value_parser!(i32).range(-1..))
     )]
+    #[cfg_attr(feature = "merge", merge(strategy = conflate::option::overwrite_none))]
     pub keep_yearly: Option<i32>,
 
     /// Keep snapshots newer than DURATION relative to latest snapshot
     #[cfg_attr(feature = "clap", clap(long, value_name = "DURATION"))]
     #[serde_as(as = "Option<DisplayFromStr>")]
+    #[cfg_attr(feature = "merge", merge(strategy = conflate::option::overwrite_none))]
     pub keep_within: Option<humantime::Duration>,
 
     /// Keep hourly snapshots newer than DURATION relative to latest snapshot
     #[cfg_attr(feature = "clap", clap(long, value_name = "DURATION"))]
     #[serde_as(as = "Option<DisplayFromStr>")]
+    #[cfg_attr(feature = "merge", merge(strategy = conflate::option::overwrite_none))]
     pub keep_within_hourly: Option<humantime::Duration>,
 
     /// Keep daily snapshots newer than DURATION relative to latest snapshot
     #[cfg_attr(feature = "clap", clap(long, value_name = "DURATION"))]
     #[serde_as(as = "Option<DisplayFromStr>")]
+    #[cfg_attr(feature = "merge", merge(strategy = conflate::option::overwrite_none))]
     pub keep_within_daily: Option<humantime::Duration>,
 
     /// Keep weekly snapshots newer than DURATION relative to latest snapshot
     #[cfg_attr(feature = "clap", clap(long, value_name = "DURATION"))]
     #[serde_as(as = "Option<DisplayFromStr>")]
+    #[cfg_attr(feature = "merge", merge(strategy = conflate::option::overwrite_none))]
     pub keep_within_weekly: Option<humantime::Duration>,
 
     /// Keep monthly snapshots newer than DURATION relative to latest snapshot
     #[cfg_attr(feature = "clap", clap(long, value_name = "DURATION"))]
     #[serde_as(as = "Option<DisplayFromStr>")]
+    #[cfg_attr(feature = "merge", merge(strategy = conflate::option::overwrite_none))]
     pub keep_within_monthly: Option<humantime::Duration>,
 
     /// Keep quarter-yearly snapshots newer than DURATION relative to latest snapshot
     #[cfg_attr(feature = "clap", clap(long, value_name = "DURATION"))]
     #[serde_as(as = "Option<DisplayFromStr>")]
+    #[cfg_attr(feature = "merge", merge(strategy = conflate::option::overwrite_none))]
     pub keep_within_quarter_yearly: Option<humantime::Duration>,
 
     /// Keep half-yearly snapshots newer than DURATION relative to latest snapshot
     #[cfg_attr(feature = "clap", clap(long, value_name = "DURATION"))]
     #[serde_as(as = "Option<DisplayFromStr>")]
+    #[cfg_attr(feature = "merge", merge(strategy = conflate::option::overwrite_none))]
     pub keep_within_half_yearly: Option<humantime::Duration>,
 
     /// Keep yearly snapshots newer than DURATION relative to latest snapshot
     #[cfg_attr(feature = "clap", clap(long, value_name = "DURATION"))]
     #[serde_as(as = "Option<DisplayFromStr>")]
+    #[cfg_attr(feature = "merge", merge(strategy = conflate::option::overwrite_none))]
     pub keep_within_yearly: Option<humantime::Duration>,
 
     /// Allow to keep no snapshot
     #[cfg_attr(feature = "clap", clap(long))]
-    #[cfg_attr(feature = "merge", merge(strategy=merge::bool::overwrite_false))]
+    #[cfg_attr(feature = "merge", merge(strategy=conflate::bool::overwrite_false))]
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub keep_none: bool,
 }
