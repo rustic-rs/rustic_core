@@ -109,10 +109,16 @@ impl Id {
 
     /// Generate a random `Id`.
     #[must_use]
-    pub fn random() -> Self {
+    pub fn random_from_rng(rng: &mut impl RngCore) -> Self {
         let mut id = Self::default();
-        thread_rng().fill_bytes(&mut id.0);
+        rng.fill_bytes(&mut id.0);
         id
+    }
+
+    /// Generate a random `Id`.
+    #[must_use]
+    pub fn random() -> Self {
+        Self::random_from_rng(&mut thread_rng())
     }
 
     /// Convert to [`HexId`].

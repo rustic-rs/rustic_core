@@ -1,0 +1,171 @@
+---
+source: crates/core/src/commands/check.rs
+expression: packs
+---
+[
+  IndexPack(
+    id: Id("ed49d37e5e9404c82f1373c604335b546e962b6b997fea552ce44a1ab12765a7"),
+    blobs: [],
+    size: Some(13510682),
+  ),
+  IndexPack(
+    id: Id("05f409ef8f73a6c4b6a56d8782f79756955576a285a3c39bbd674a29adeedf90"),
+    blobs: [],
+    size: Some(61236940),
+  ),
+  IndexPack(
+    id: Id("b13349f4e2b1ff600d17d3aef70f25cc4d5ffcd8ba80e7f3c46b37151641d1c5"),
+    blobs: [],
+    size: Some(60477012),
+  ),
+  IndexPack(
+    id: Id("a16680a002905ed49dbf84851f5a4d0fd9a6ef7f783a69599b2845689fd3774d"),
+    blobs: [],
+    size: Some(5256686),
+  ),
+  IndexPack(
+    id: Id("2d02b51df763489e64ecc59c0678dfbeb808e75775d11f6f4727aaec7cd5763e"),
+    blobs: [],
+    size: Some(56964272),
+  ),
+  IndexPack(
+    id: Id("b93c546011f8f398d4bb9351bab79b91693b02208ea4b6b9860bfb8c9cc5a25e"),
+    blobs: [],
+    size: Some(85572176),
+  ),
+  IndexPack(
+    id: Id("01c12f4c2f68e9e96fe4935242fac755a0ed9d6d8f249c92ab234847d141930c"),
+    blobs: [],
+    size: Some(77841320),
+  ),
+  IndexPack(
+    id: Id("c5bc2389666a913dae6254dc0da0c2a4268778b0f2aec695e75ddefd5641f2ba"),
+    blobs: [],
+    size: Some(66233200),
+  ),
+  IndexPack(
+    id: Id("1595155af06c09834c46936d921e0e82a225dd7bc54f9c045ba7e710b569a2e1"),
+    blobs: [],
+    size: Some(98606704),
+  ),
+  IndexPack(
+    id: Id("e5b2e72d3474bec236074943d8bfafe88f16462f81629eb8faeb4d34ac06bd9f"),
+    blobs: [],
+    size: Some(52879925),
+  ),
+  IndexPack(
+    id: Id("19fdef223293ce96c81c383459731ab2d973796815733bd81880819ebca414c4"),
+    blobs: [],
+    size: Some(45698795),
+  ),
+  IndexPack(
+    id: Id("01a8cb9bb17f736297f3f2d6c870c3c63aa518180f1f65793d56e993a39031ef"),
+    blobs: [],
+    size: Some(71425965),
+  ),
+  IndexPack(
+    id: Id("cd3049b4967c028ae7459698cdc110cea7eb197c60d8a7488f2793a0f87a47d4"),
+    blobs: [],
+    size: Some(6894690),
+  ),
+  IndexPack(
+    id: Id("ed86d1d05d6693df14f32e38a692cfac5634cc5b075fa2e7206d4fff9dd93d4f"),
+    blobs: [],
+    size: Some(62093554),
+  ),
+  IndexPack(
+    id: Id("39e85ed58a1ff03a9d340d18054e70961a5af0cf39dce2857488563804456f52"),
+    blobs: [],
+    size: Some(88312189),
+  ),
+  IndexPack(
+    id: Id("ad980c1316495d55ed49233c8adeef7f31c50e3be033da73aba884c42de9a7c3"),
+    blobs: [],
+    size: Some(57914095),
+  ),
+  IndexPack(
+    id: Id("25b85442540500c1542083649b882be38d47243b2a46d1b6be9b7a4866738a56"),
+    blobs: [],
+    size: Some(61033087),
+  ),
+  IndexPack(
+    id: Id("35fb0a065bd90575a8bb3acd9b315f213bf0880a52888ef8f875847085ee3f7a"),
+    blobs: [],
+    size: Some(48811146),
+  ),
+  IndexPack(
+    id: Id("1db4e7abd8f7bac90caca9657fa131bbee769766f425a1db0ca6e9cb5b92adcc"),
+    blobs: [],
+    size: Some(45713686),
+  ),
+  IndexPack(
+    id: Id("198d4ce71d42827765fdab01f65f765469939fb7a14d172f70ec4b8927a18799"),
+    blobs: [],
+    size: Some(39650195),
+  ),
+  IndexPack(
+    id: Id("f53b922989ccc6656ac96019b18a8a11f067e97e938493549fc5f2db1f84cc84"),
+    blobs: [],
+    size: Some(54276772),
+  ),
+  IndexPack(
+    id: Id("55d2f4278ad11c8713274b81d88b60d06d625920360ffdf0e01523bdc52abb47"),
+    blobs: [],
+    size: Some(80911836),
+  ),
+  IndexPack(
+    id: Id("191104767f95246d3946f77375c17d692f55deeb8a61ca4d0483868b3aa0f807"),
+    blobs: [],
+    size: Some(22610310),
+  ),
+  IndexPack(
+    id: Id("450290b4d8be35d70831cd8e2d959c0f6ab6753f422c69781655e3702e488280"),
+    blobs: [],
+    size: Some(12417994),
+  ),
+  IndexPack(
+    id: Id("c906750bc6fe5d788237fdf61565dc1d0bc95241ff62cc5f24c719f08775e460"),
+    blobs: [],
+    size: Some(98166850),
+  ),
+  IndexPack(
+    id: Id("4d3dee0ae9d3d46263a51783802c5ce8995261d03946ea8f556273b018393436"),
+    blobs: [],
+    size: Some(18639141),
+  ),
+  IndexPack(
+    id: Id("b53d3c0f6e3a43c9cf35c68831079d4ad3043354558d52f9941a9c1dafcb86f7"),
+    blobs: [],
+    size: Some(91289786),
+  ),
+  IndexPack(
+    id: Id("49940c21180815deccecaad0f7d9f3114edcef219d889c38657ce88286309f71"),
+    blobs: [],
+    size: Some(53094398),
+  ),
+  IndexPack(
+    id: Id("2dae514a1777cf8ac5d78402af32234ee60e53bf1e69eb2214831d7b3a576829"),
+    blobs: [],
+    size: Some(1700873),
+  ),
+  IndexPack(
+    id: Id("7112f32a249a72883663a3c52a6c49b46429c5e5aae9e400e7e2d7aaba2ae828"),
+    blobs: [],
+    size: Some(29717536),
+  ),
+  IndexPack(
+    id: Id("255d2a4fbbbbd47d585e5515f3f9b60376970bbc692592d57d4827949b99537f"),
+    blobs: [],
+    size: Some(75776186),
+  ),
+  IndexPack(
+    id: Id("cd10ef439ed00c7b3ab758d35195d2ec87eb2465c7dc8efc4ecccf8bdb7aa12a"),
+    blobs: [],
+    size: Some(45284384),
+  ),
+  IndexPack(
+    id: Id("6d363e38a62a8ad3937357ae55057afd7edc5912ac840842145f3a43b07fdd75"),
+    blobs: [],
+    size: Some(7647470),
+  ),
+]
