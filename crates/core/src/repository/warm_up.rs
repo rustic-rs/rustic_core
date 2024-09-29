@@ -7,9 +7,10 @@ use rayon::ThreadPoolBuilder;
 use crate::{
     backend::{FileType, ReadBackend},
     error::{RepositoryErrorKind, RusticResult},
-    id::Id,
     progress::{Progress, ProgressBars},
+    repofile::packfile::PackId,
     repository::Repository,
+    CommandInput,
 };
 
 pub(super) mod constants {
@@ -33,7 +34,7 @@ pub(super) mod constants {
 /// [`RepositoryErrorKind::FromThreadPoolbilderError`]: crate::error::RepositoryErrorKind::FromThreadPoolbilderError
 pub(crate) fn warm_up_wait<P: ProgressBars, S>(
     repo: &Repository<P, S>,
-    packs: impl ExactSizeIterator<Item = Id>,
+    packs: impl ExactSizeIterator<Item = PackId>,
 ) -> RusticResult<()> {
     warm_up(repo, packs)?;
     if let Some(wait) = repo.opts.warm_up_wait {
@@ -60,10 +61,10 @@ pub(crate) fn warm_up_wait<P: ProgressBars, S>(
 /// [`RepositoryErrorKind::FromThreadPoolbilderError`]: crate::error::RepositoryErrorKind::FromThreadPoolbilderError
 pub(crate) fn warm_up<P: ProgressBars, S>(
     repo: &Repository<P, S>,
-    packs: impl ExactSizeIterator<Item = Id>,
+    packs: impl ExactSizeIterator<Item = PackId>,
 ) -> RusticResult<()> {
-    if !repo.opts.warm_up_command.is_empty() {
-        warm_up_command(packs, &repo.opts.warm_up_command, &repo.pb)?;
+    if let Some(warm_up_cmd) = &repo.opts.warm_up_command {
+        warm_up_command(packs, warm_up_cmd, &repo.pb)?;
     } else if repo.be.needs_warm_up() {
         warm_up_repo(repo, packs)?;
     }
@@ -84,19 +85,20 @@ pub(crate) fn warm_up<P: ProgressBars, S>(
 ///
 /// [`RepositoryErrorKind::FromSplitError`]: crate::error::RepositoryErrorKind::FromSplitError
 fn warm_up_command<P: ProgressBars>(
-    packs: impl ExactSizeIterator<Item = Id>,
-    command: &[String],
+    packs: impl ExactSizeIterator<Item = PackId>,
+    command: &CommandInput,
     pb: &P,
 ) -> RusticResult<()> {
     let p = pb.progress_counter("warming up packs...");
     p.set_length(packs.len() as u64);
     for pack in packs {
-        let command: Vec<_> = command
+        let args: Vec<_> = command
+            .args()
             .iter()
             .map(|c| c.replace("%id", &pack.to_hex()))
             .collect();
         debug!("calling {command:?}...");
-        let status = Command::new(&command[0]).args(&command[1..]).status()?;
+        let status = Command::new(command.command()).args(&args).status()?;
         if !status.success() {
             warn!("warm-up command was not successful for pack {pack:?}. {status}");
         }
@@ -119,7 +121,7 @@ fn warm_up_command<P: ProgressBars>(
 /// [`RepositoryErrorKind::FromThreadPoolbilderError`]: crate::error::RepositoryErrorKind::FromThreadPoolbilderError
 fn warm_up_repo<P: ProgressBars, S>(
     repo: &Repository<P, S>,
-    packs: impl ExactSizeIterator<Item = Id>,
+    packs: impl ExactSizeIterator<Item = PackId>,
 ) -> RusticResult<()> {
     let progress_bar = repo.pb.progress_counter("warming up packs...");
     progress_bar.set_length(packs.len() as u64);

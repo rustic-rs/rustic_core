@@ -21,13 +21,13 @@ use serde_derive::{Deserialize, Serialize};
 use serde_with::{
     base64::{Base64, Standard},
     formats::Padded,
-    serde_as, DefaultOnNull,
+    serde_as, skip_serializing_none, DefaultOnNull,
 };
 
 #[cfg(not(windows))]
 use crate::error::NodeErrorKind;
 
-use crate::id::Id;
+use crate::blob::{tree::TreeId, DataId};
 
 #[derive(
     Default, Serialize, Deserialize, Clone, Debug, PartialEq, Eq, Constructor, PartialOrd, Ord,
@@ -53,14 +53,14 @@ pub struct Node {
     /// # Note
     ///
     /// This should be only set for regular files.
-    pub content: Option<Vec<Id>>,
+    pub content: Option<Vec<DataId>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     /// Subtree of the Node.
     ///
     /// # Note
     ///
     /// This should be only set for directories. (TODO: Check if this is correct)
-    pub subtree: Option<Id>,
+    pub subtree: Option<TreeId>,
 }
 
 #[serde_as]
@@ -187,8 +187,8 @@ impl Default for NodeType {
 }
 
 /// Metadata of a [`Node`]
+#[skip_serializing_none]
 #[serde_with::apply(
-    Option => #[serde(default, skip_serializing_if = "Option::is_none")],
     u64 => #[serde(default, skip_serializing_if = "is_default")],
 )]
 #[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord)]
@@ -222,6 +222,10 @@ pub struct Metadata {
     pub extended_attributes: Vec<ExtendedAttribute>,
 }
 
+pub(crate) fn is_default<T: Default + PartialEq>(t: &T) -> bool {
+    t == &T::default()
+}
+
 /// Extended attribute of a [`Node`]
 #[serde_as]
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, PartialOrd, Ord)]
@@ -231,10 +235,6 @@ pub struct ExtendedAttribute {
     /// Value of the extended attribute
     #[serde_as(as = "DefaultOnNull<Option<Base64::<Standard,Padded>>>")]
     pub value: Option<Vec<u8>>,
-}
-
-pub(crate) fn is_default<T: Default + PartialEq>(t: &T) -> bool {
-    t == &T::default()
 }
 
 impl Node {

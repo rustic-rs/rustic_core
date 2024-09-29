@@ -5,7 +5,7 @@ use derive_more::Constructor;
 use enum_map::{Enum, EnumMap};
 use serde_derive::{Deserialize, Serialize};
 
-use crate::id::Id;
+use crate::define_new_id_struct;
 
 /// All [`BlobType`]s which are supported by the repository
 pub const ALL_BLOB_TYPES: [BlobType; 2] = [BlobType::Tree, BlobType::Data];
@@ -66,17 +66,48 @@ impl<T: Default> Initialize<T> for BlobTypeMap<T> {
     }
 }
 
+define_new_id_struct!(BlobId, "blob");
+
+/// A marker trait for Ids which identify Blobs in pack files
+pub trait PackedId: Copy + Into<BlobId> + From<BlobId> {
+    /// The `BlobType` of the blob identified by the Id
+    const TYPE: BlobType;
+}
+
+#[macro_export]
+/// Generate newtypes for `Id`s identifying packed blobs
+macro_rules! impl_blobid {
+    ($a:ident, $b: expr) => {
+        $crate::define_new_id_struct!($a, concat!("blob of type", stringify!($b)));
+        impl From<$crate::blob::BlobId> for $a {
+            fn from(id: $crate::blob::BlobId) -> Self {
+                (*id).into()
+            }
+        }
+        impl From<$a> for $crate::blob::BlobId {
+            fn from(id: $a) -> Self {
+                (*id).into()
+            }
+        }
+        impl $crate::blob::PackedId for $a {
+            const TYPE: $crate::blob::BlobType = $b;
+        }
+    };
+}
+
+impl_blobid!(DataId, BlobType::Data);
+
 /// A `Blob` is a file that is stored in the backend.
 ///
 /// It can be a `tree` or a `data` blob.
 ///
 /// A `tree` blob is a file that contains a list of other blobs.
 /// A `data` blob is a file that contains the actual data.
-#[derive(Debug, PartialEq, Eq, Clone, Constructor)]
+#[derive(Debug, PartialEq, Eq, Copy, Clone, Constructor)]
 pub(crate) struct Blob {
     /// The type of the blob
     tpe: BlobType,
 
     /// The id of the blob
-    id: Id,
+    id: BlobId,
 }

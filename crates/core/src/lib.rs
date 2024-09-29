@@ -129,7 +129,10 @@ pub use crate::{
         FileType, ReadBackend, ReadSource, ReadSourceEntry, ReadSourceOpen, RepositoryBackends,
         WriteBackend, ALL_FILE_TYPES,
     },
-    blob::tree::{FindMatches, FindNode, TreeStreamerOptions as LsOptions},
+    blob::{
+        tree::{FindMatches, FindNode, TreeId, TreeStreamerOptions as LsOptions},
+        BlobId, DataId, PackedId,
+    },
     commands::{
         backup::{BackupOptions, ParentOptions},
         check::CheckOptions,
@@ -149,7 +152,7 @@ pub use crate::{
         PathList, SnapshotGroup, SnapshotGroupCriterion, SnapshotOptions, StringList,
     },
     repository::{
-        FullIndex, IndexedFull, IndexedIds, IndexedStatus, IndexedTree, OpenStatus, Repository,
-        RepositoryOptions,
+        CommandInput, FullIndex, IndexedFull, IndexedIds, IndexedStatus, IndexedTree, Open,
+        OpenStatus, Repository, RepositoryOptions,
     },
 };
