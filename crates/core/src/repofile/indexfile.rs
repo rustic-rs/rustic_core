@@ -1,24 +1,28 @@
 use std::{cmp::Ordering, num::NonZeroU32};
 
 use chrono::{DateTime, Local};
-
 use serde_derive::{Deserialize, Serialize};
+use serde_with::skip_serializing_none;
 
 use crate::{
     backend::FileType,
-    blob::BlobType,
-    id::Id,
+    blob::{BlobId, BlobType},
+    impl_repoid,
     repofile::{packfile::PackHeaderRef, RepoFile},
 };
+
+use super::packfile::PackId;
+
+impl_repoid!(IndexId, FileType::Index);
 
 /// Index files describe index information about multiple `pack` files.
 ///
 /// They are usually stored in the repository under `/index/<ID>`
+#[skip_serializing_none]
 #[derive(Serialize, Deserialize, Debug, Default)]
 pub struct IndexFile {
-    #[serde(skip_serializing_if = "Option::is_none")]
     /// which other index files are superseded by this (not actively used)
-    pub supersedes: Option<Vec<Id>>,
+    pub supersedes: Option<Vec<IndexId>>,
     /// Index information about used packs
     pub packs: Vec<IndexPack>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -29,6 +33,7 @@ pub struct IndexFile {
 impl RepoFile for IndexFile {
     /// The [`FileType`] associated with the [`IndexFile`]
     const TYPE: FileType = FileType::Index;
+    type Id = IndexId;
 }
 
 impl IndexFile {
@@ -54,17 +59,16 @@ impl IndexFile {
     }
 }
 
+#[skip_serializing_none]
 #[derive(Serialize, Deserialize, Default, Debug, Clone)]
 /// Index information about a `pack`
 pub struct IndexPack {
     /// pack Id
-    pub id: Id,
+    pub id: PackId,
     /// Index information about contained blobs
     pub blobs: Vec<IndexBlob>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     /// The pack creation time or time when the pack was marked for deletion
     pub time: Option<DateTime<Local>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     /// The pack size
     pub size: Option<u32>,
 }
@@ -81,7 +85,7 @@ impl IndexPack {
     /// * `uncompressed_length` - The blob uncompressed length within the pack
     pub(crate) fn add(
         &mut self,
-        id: Id,
+        id: BlobId,
         tpe: BlobType,
         offset: u32,
         length: u32,
@@ -98,7 +102,7 @@ impl IndexPack {
 
     /// Calculate the pack size from the contained blobs
     #[must_use]
-    pub(crate) fn pack_size(&self) -> u32 {
+    pub fn pack_size(&self) -> u32 {
         self.size
             .unwrap_or_else(|| PackHeaderRef::from_index_pack(self).pack_size())
     }
@@ -123,7 +127,7 @@ impl IndexPack {
 /// Index information about a `blob`
 pub struct IndexBlob {
     /// Blob Id
-    pub id: Id,
+    pub id: BlobId,
     #[serde(rename = "type")]
     /// Type of the blob
     pub tpe: BlobType,

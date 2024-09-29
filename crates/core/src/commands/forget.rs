@@ -3,14 +3,13 @@
 use chrono::{DateTime, Datelike, Duration, Local, Timelike};
 use derive_setters::Setters;
 use serde_derive::{Deserialize, Serialize};
-use serde_with::{serde_as, skip_serializing_none, DisplayFromStr, OneOrMany};
+use serde_with::{serde_as, skip_serializing_none, DisplayFromStr};
 
 use crate::{
     error::{CommandErrorKind, RusticResult},
-    id::Id,
     progress::ProgressBars,
     repofile::{
-        snapshotfile::{SnapshotGroup, SnapshotGroupCriterion},
+        snapshotfile::{SnapshotGroup, SnapshotGroupCriterion, SnapshotId},
         SnapshotFile, StringList,
     },
     repository::{Open, Repository},
@@ -45,7 +44,7 @@ pub struct ForgetSnapshot {
 impl ForgetGroups {
     /// Turn `ForgetGroups` into the list of all snapshot IDs to remove.
     #[must_use]
-    pub fn into_forget_ids(self) -> Vec<Id> {
+    pub fn into_forget_ids(self) -> Vec<SnapshotId> {
         self.0
             .into_iter()
             .flat_map(|fg| {
@@ -113,14 +112,13 @@ pub struct KeepOptions {
     /// Keep snapshots with this taglist (can be specified multiple times)
     #[cfg_attr(feature = "clap", clap(long, value_name = "TAG[,TAG,..]"))]
     #[cfg_attr(feature = "merge", merge(strategy=merge::vec::overwrite_empty))]
-    #[serde_as(as = "OneOrMany<DisplayFromStr>")]
+    #[serde_as(as = "Vec<DisplayFromStr>")]
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub keep_tags: Vec<StringList>,
 
     /// Keep snapshots ids that start with ID (can be specified multiple times)
     #[cfg_attr(feature = "clap", clap(long = "keep-id", value_name = "ID"))]
     #[cfg_attr(feature = "merge", merge(strategy=merge::vec::overwrite_empty))]
-    #[serde_as(as = "OneOrMany<_>")]
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub keep_ids: Vec<String>,
 
@@ -707,7 +705,7 @@ mod tests {
             .chain(by_date_and_id.into_iter().map(|(time, id)| -> Result<_> {
                 let opts = &crate::SnapshotOptions::default().time(parse_time(time)?);
                 let mut snap = SnapshotFile::from_options(opts)?;
-                snap.id = Id::from_hex(id)?;
+                snap.id = id.parse()?;
                 Ok(snap)
             }))
             .chain(
@@ -716,7 +714,7 @@ mod tests {
                     .map(|(time, tags)| -> Result<_> {
                         let opts = &crate::SnapshotOptions::default()
                             .time(parse_time(time)?)
-                            .tag(vec![StringList::from_str(tags)?]);
+                            .tags(vec![StringList::from_str(tags)?]);
                         Ok(SnapshotFile::from_options(opts)?)
                     }),
             )
@@ -832,6 +830,11 @@ mod tests {
         // good naming of snapshots: serialize into json and remove control chars
         let mut options = serde_json::to_string(&options)?;
         options.retain(|c| !"{}\":".contains(c));
+        // shorten name, if too long
+        if options.len() > 40 {
+            options = options[..35].to_string();
+            options.push_str("[cut]");
+        }
 
         insta_forget_snapshots_redaction.bind(|| {
             assert_ron_snapshot!(options, result);

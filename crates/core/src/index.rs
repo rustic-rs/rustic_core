@@ -5,12 +5,14 @@ use derive_more::Constructor;
 
 use crate::{
     backend::{decrypt::DecryptReadBackend, FileType},
-    blob::BlobType,
+    blob::{tree::TreeId, BlobId, BlobType, DataId},
     error::IndexErrorKind,
-    id::Id,
     index::binarysorted::{Index, IndexCollector, IndexType},
     progress::Progress,
-    repofile::indexfile::{IndexBlob, IndexFile},
+    repofile::{
+        indexfile::{IndexBlob, IndexFile},
+        packfile::PackId,
+    },
     RusticResult,
 };
 
@@ -23,7 +25,7 @@ pub struct IndexEntry {
     /// The type of the blob
     blob_type: BlobType,
     /// The pack the blob is in
-    pub pack: Id,
+    pub pack: PackId,
     /// The offset of the blob in the pack
     pub offset: u32,
     /// The length of the blob in the pack
@@ -40,7 +42,7 @@ impl IndexEntry {
     /// * `blob` - The [`IndexBlob`] to create the [`IndexEntry`] from
     /// * `pack` - The pack the blob is in
     #[must_use]
-    pub const fn from_index_blob(blob: &IndexBlob, pack: Id) -> Self {
+    pub const fn from_index_blob(blob: &IndexBlob, pack: PackId) -> Self {
         Self {
             blob_type: blob.tpe,
             pack,
@@ -95,7 +97,7 @@ pub trait ReadIndex {
     /// # Returns
     ///
     /// The [`IndexEntry`] - If it exists otherwise `None`
-    fn get_id(&self, tpe: BlobType, id: &Id) -> Option<IndexEntry>;
+    fn get_id(&self, tpe: BlobType, id: &BlobId) -> Option<IndexEntry>;
 
     /// Get the total size of all blobs of the given type
     ///
@@ -110,7 +112,7 @@ pub trait ReadIndex {
     ///
     /// * `tpe` - The type of the blob
     /// * `id` - The id of the blob
-    fn has(&self, tpe: BlobType, id: &Id) -> bool;
+    fn has(&self, tpe: BlobType, id: &BlobId) -> bool;
 
     /// Get a tree from the index
     ///
@@ -121,8 +123,8 @@ pub trait ReadIndex {
     /// # Returns
     ///
     /// The [`IndexEntry`] of the tree if it exists otherwise `None`
-    fn get_tree(&self, id: &Id) -> Option<IndexEntry> {
-        self.get_id(BlobType::Tree, id)
+    fn get_tree(&self, id: &TreeId) -> Option<IndexEntry> {
+        self.get_id(BlobType::Tree, &BlobId::from(**id))
     }
 
     /// Get a data blob from the index
@@ -134,8 +136,8 @@ pub trait ReadIndex {
     /// # Returns
     ///
     /// The [`IndexEntry`] of the data blob if it exists otherwise `None`
-    fn get_data(&self, id: &Id) -> Option<IndexEntry> {
-        self.get_id(BlobType::Data, id)
+    fn get_data(&self, id: &DataId) -> Option<IndexEntry> {
+        self.get_id(BlobType::Data, &BlobId::from(**id))
     }
 
     /// Check if the index contains the given tree
@@ -147,8 +149,8 @@ pub trait ReadIndex {
     /// # Returns
     ///
     /// `true` if the index contains the tree otherwise `false`
-    fn has_tree(&self, id: &Id) -> bool {
-        self.has(BlobType::Tree, id)
+    fn has_tree(&self, id: &TreeId) -> bool {
+        self.has(BlobType::Tree, &BlobId::from(**id))
     }
 
     /// Check if the index contains the given data blob
@@ -160,8 +162,8 @@ pub trait ReadIndex {
     /// # Returns
     ///
     /// `true` if the index contains the data blob otherwise `false`
-    fn has_data(&self, id: &Id) -> bool {
-        self.has(BlobType::Data, id)
+    fn has_data(&self, id: &DataId) -> bool {
+        self.has(BlobType::Data, &BlobId::from(**id))
     }
 
     /// Get a blob from the backend
@@ -180,7 +182,7 @@ pub trait ReadIndex {
         &self,
         be: &impl DecryptReadBackend,
         tpe: BlobType,
-        id: &Id,
+        id: &BlobId,
     ) -> RusticResult<Bytes> {
         self.get_id(tpe, id).map_or_else(
             || Err(IndexErrorKind::BlobInIndexNotFound.into()),
@@ -210,7 +212,7 @@ impl ReadIndex for GlobalIndex {
     /// # Returns
     ///
     /// The [`IndexEntry`] - If it exists otherwise `None`
-    fn get_id(&self, tpe: BlobType, id: &Id) -> Option<IndexEntry> {
+    fn get_id(&self, tpe: BlobType, id: &BlobId) -> Option<IndexEntry> {
         self.index.get_id(tpe, id)
     }
 
@@ -233,7 +235,7 @@ impl ReadIndex for GlobalIndex {
     /// # Returns
     ///
     /// `true` if the index contains the blob otherwise `false`
-    fn has(&self, tpe: BlobType, id: &Id) -> bool {
+    fn has(&self, tpe: BlobType, id: &BlobId) -> bool {
         self.index.has(tpe, id)
     }
 }
@@ -315,6 +317,12 @@ impl GlobalIndex {
                 sleep(Duration::from_millis(100));
                 Arc::try_unwrap(arc).expect("index still in use")
             }
+        }
+    }
+
+    pub(crate) fn drop_data(self) -> Self {
+        Self {
+            index: Arc::new(self.into_index().drop_data()),
         }
     }
 }

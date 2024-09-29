@@ -15,16 +15,22 @@ jobs:
     if: ${{ github.repository_owner == 'rustic-rs' }}
     runs-on: ubuntu-latest
     steps:
+      - name: Generate GitHub token
+        uses: actions/create-github-app-token@5d869da34e18e7287c1daad50e0b8ea0f506ce69 # v1
+        id: generate-token
+        with:
+          app-id: ${{ secrets.RELEASE_PLZ_APP_ID }}
+          private-key: ${{ secrets.RELEASE_PLZ_APP_PRIVATE_KEY }}
       - name: Checkout repository
-        uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4
+        uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4
         with:
           fetch-depth: 0
-          token: ${{ secrets.RELEASE_PLZ_TOKEN }}
+          token: ${{ steps.generate-token.outputs.token }}
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
   
       - name: Run release-plz
-        uses: MarcoIeni/release-plz-action@f305593c6550f1f2c625387f359e1ee5a58dbb10 # v0.5
+        uses: MarcoIeni/release-plz-action@f7caa3f8c6302301514192fd4a83c4c56ee793a6 # v0.5
         env:
-          GITHUB_TOKEN: ${{ secrets.RELEASE_PLZ_TOKEN }}
+          GITHUB_TOKEN: ${{ steps.generate-token.outputs.token }}
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}

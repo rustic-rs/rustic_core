@@ -1,5 +1,6 @@
 //! Module for backend related functionality.
 pub(crate) mod cache;
+pub(crate) mod childstdout;
 pub(crate) mod decrypt;
 pub(crate) mod dry_run;
 pub(crate) mod hotcold;
@@ -22,7 +23,7 @@ use mockall::mock;
 use serde_derive::{Deserialize, Serialize};
 
 use crate::{
-    backend::node::Node,
+    backend::node::{Metadata, Node, NodeType},
     error::{BackendAccessErrorKind, RusticErrorKind},
     id::Id,
     RusticResult,
@@ -276,7 +277,7 @@ pub trait FindInBackend: ReadBackend {
     /// [`BackendAccessErrorKind::IdNotUnique`]: crate::error::BackendAccessErrorKind::IdNotUnique
     fn find_ids<T: AsRef<str>>(&self, tpe: FileType, ids: &[T]) -> RusticResult<Vec<Id>> {
         ids.iter()
-            .map(|id| Id::from_hex(id.as_ref()))
+            .map(|id| id.as_ref().parse())
             .collect::<RusticResult<Vec<_>>>()
             .or_else(|err|{
                 trace!("no valid IDs given: {err}, searching for ID starting with given strings instead");
@@ -424,6 +425,18 @@ pub struct ReadSourceEntry<O> {
     pub open: Option<O>,
 }
 
+impl<O> ReadSourceEntry<O> {
+    fn from_path(path: PathBuf, open: Option<O>) -> RusticResult<Self> {
+        let node = Node::new_node(
+            path.file_name()
+                .ok_or_else(|| BackendAccessErrorKind::PathNotAllowed(path.clone()))?,
+            NodeType::File,
+            Metadata::default(),
+        );
+        Ok(Self { path, node, open })
+    }
+}
+
 /// Trait for backends that can read and open sources.
 /// This trait is implemented by all backends that can read data and open from a source.
 pub trait ReadSourceOpen {
@@ -440,6 +453,14 @@ pub trait ReadSourceOpen {
     ///
     /// The reader used to read from the source.
     fn open(self) -> RusticResult<Self::Reader>;
+}
+
+/// blanket implementation for readers
+impl<T: Read + Send + 'static> ReadSourceOpen for T {
+    type Reader = T;
+    fn open(self) -> RusticResult<Self::Reader> {
+        Ok(self)
+    }
 }
 
 /// Trait for backends that can read from a source.

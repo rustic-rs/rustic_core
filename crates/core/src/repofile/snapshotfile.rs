@@ -15,14 +15,16 @@ use itertools::Itertools;
 use log::info;
 use path_dedot::ParseDot;
 use serde_derive::{Deserialize, Serialize};
-use serde_with::{serde_as, DisplayFromStr, OneOrMany};
+use serde_with::{serde_as, skip_serializing_none, DisplayFromStr};
 
 use crate::{
     backend::{decrypt::DecryptReadBackend, FileType, FindInBackend},
+    blob::tree::TreeId,
     error::{RusticError, RusticResult, SnapshotFileErrorKind},
-    id::Id,
+    impl_repofile,
     progress::Progress,
     repofile::RepoFile,
+    Id,
 };
 
 #[cfg(feature = "clap")]
@@ -53,10 +55,10 @@ pub struct SnapshotOptions {
     pub label: Option<String>,
 
     /// Tags to add to snapshot (can be specified multiple times)
-    #[cfg_attr(feature = "clap", clap(long, value_name = "TAG[,TAG,..]"))]
-    #[serde_as(as = "OneOrMany<DisplayFromStr>")]
+    #[serde_as(as = "Vec<DisplayFromStr>")]
+    #[cfg_attr(feature = "clap", clap(long = "tag", value_name = "TAG[,TAG,..]"))]
     #[cfg_attr(feature = "merge", merge(strategy = merge::vec::overwrite_empty))]
-    pub tag: Vec<StringList>,
+    pub tags: Vec<StringList>,
 
     /// Add description to snapshot
     #[cfg_attr(feature = "clap", clap(long, value_name = "DESCRIPTION"))]
@@ -109,7 +111,7 @@ impl SnapshotOptions {
     ///
     /// [`SnapshotFileErrorKind::NonUnicodeTag`]: crate::error::SnapshotFileErrorKind::NonUnicodeTag
     pub fn add_tags(mut self, tag: &str) -> RusticResult<Self> {
-        self.tag.push(StringList::from_str(tag)?);
+        self.tags.push(StringList::from_str(tag)?);
         Ok(self)
     }
 
@@ -261,7 +263,9 @@ impl DeleteOption {
     }
 }
 
-#[serde_with::apply(Option => #[serde(default, skip_serializing_if = "Option::is_none")])]
+impl_repofile!(SnapshotId, FileType::Snapshot, SnapshotFile);
+
+#[skip_serializing_none]
 #[derive(Debug, Clone, Serialize, Deserialize, Derivative)]
 #[derivative(Default)]
 /// A [`SnapshotFile`] is the repository representation of the snapshot metadata saved in a repository.
@@ -285,10 +289,10 @@ pub struct SnapshotFile {
     pub program_version: String,
 
     /// The Id of the parent snapshot that this snapshot has been based on
-    pub parent: Option<Id>,
+    pub parent: Option<SnapshotId>,
 
     /// The tree blob id where the contents of this snapshot are stored
-    pub tree: Id,
+    pub tree: TreeId,
 
     /// Label for the snapshot
     #[serde(default, skip_serializing_if = "String::is_empty")]
@@ -318,7 +322,7 @@ pub struct SnapshotFile {
     pub tags: StringList,
 
     /// The original Id of this snapshot. This is stored when the snapshot is modified.
-    pub original: Option<Id>,
+    pub original: Option<SnapshotId>,
 
     /// Options for deletion of the snapshot
     #[serde(default, skip_serializing_if = "DeleteOption::is_not_set")]
@@ -332,12 +336,7 @@ pub struct SnapshotFile {
 
     /// The snapshot Id (not stored within the JSON)
     #[serde(default, skip_serializing_if = "Id::is_null")]
-    pub id: Id,
-}
-
-impl RepoFile for SnapshotFile {
-    /// The file type of a [`SnapshotFile`] is always [`FileType::Snapshot`]
-    const TYPE: FileType = FileType::Snapshot;
+    pub id: SnapshotId,
 }
 
 impl SnapshotFile {
@@ -412,7 +411,7 @@ impl SnapshotFile {
             );
         }
 
-        _ = snap.set_tags(opts.tag.clone());
+        _ = snap.set_tags(opts.tags.clone());
 
         Ok(snap)
     }
@@ -422,7 +421,7 @@ impl SnapshotFile {
     /// # Arguments
     ///
     /// * `tuple` - A tuple of the [`Id`] and the [`RepoFile`] to use
-    fn set_id(tuple: (Id, Self)) -> Self {
+    fn set_id(tuple: (SnapshotId, Self)) -> Self {
         let (id, mut snap) = tuple;
         snap.id = id;
         _ = snap.original.get_or_insert(id);
@@ -435,7 +434,7 @@ impl SnapshotFile {
     ///
     /// * `be` - The backend to use
     /// * `id` - The id of the snapshot
-    fn from_backend<B: DecryptReadBackend>(be: &B, id: &Id) -> RusticResult<Self> {
+    fn from_backend<B: DecryptReadBackend>(be: &B, id: &SnapshotId) -> RusticResult<Self> {
         Ok(Self::set_id((*id, be.get_file(id)?)))
     }
 
@@ -527,7 +526,7 @@ impl SnapshotFile {
     pub(crate) fn from_id<B: DecryptReadBackend>(be: &B, id: &str) -> RusticResult<Self> {
         info!("getting snapshot...");
         let id = be.find_id(FileType::Snapshot, id)?;
-        Self::from_backend(be, &id)
+        Self::from_backend(be, &SnapshotId::from(id))
     }
 
     /// Get a list of [`SnapshotFile`]s from the backend by supplying a list of/parts of their Ids
@@ -558,7 +557,7 @@ impl SnapshotFile {
         // sort back to original order
         Ok(ids
             .into_iter()
-            .filter_map(|id| list.remove_entry(&id))
+            .filter_map(|id| list.remove_entry(&SnapshotId::from(id)))
             .map(Self::set_id)
             .collect())
     }
@@ -786,7 +785,7 @@ impl SnapshotFile {
     /// * `sn` - The snapshot to clear the ids from
     #[must_use]
     pub(crate) fn clear_ids(mut sn: Self) -> Self {
-        sn.id = Id::default();
+        sn.id = SnapshotId::default();
         sn.parent = None;
         sn
     }
@@ -894,7 +893,7 @@ impl Display for SnapshotGroupCriterion {
     }
 }
 
-#[serde_with::apply(Option => #[serde(default, skip_serializing_if = "Option::is_none")])]
+#[skip_serializing_none]
 #[derive(Serialize, Default, Debug, PartialEq, Eq)]
 #[non_exhaustive]
 /// [`SnapshotGroup`] specifies the group after a grouping using [`SnapshotGroupCriterion`].
@@ -1252,8 +1251,8 @@ mod tests {
 
     #[test]
     fn test_add_tags() -> Result<()> {
-        let tag = vec![StringList::from_str("abc")?];
-        let mut snap = SnapshotFile::from_options(&SnapshotOptions::default().tag(tag))?;
+        let tags = vec![StringList::from_str("abc")?];
+        let mut snap = SnapshotFile::from_options(&SnapshotOptions::default().tags(tags))?;
         let tags = StringList::from_str("def,abc")?;
         assert!(snap.add_tags(vec![tags]));
         let expected = StringList::from_str("abc,def")?;
