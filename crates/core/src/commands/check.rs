@@ -49,10 +49,6 @@ impl ReadSubsetOption {
         self.apply_with_rng(packs, &mut thread_rng())
     }
 
-    // we need some casts to compute percentage...
-    #[allow(clippy::cast_possible_truncation)]
-    #[allow(clippy::cast_precision_loss)]
-    #[allow(clippy::cast_sign_loss)]
     fn apply_with_rng(
         self,
         packs: impl IntoIterator<Item = IndexPack>,
@@ -72,6 +68,10 @@ impl ReadSubsetOption {
         // Apply read-subset option
         if let Some(mut size) = match self {
             Self::All => None,
+            // we need some casts to compute percentage...
+            #[allow(clippy::cast_possible_truncation)]
+            #[allow(clippy::cast_precision_loss)]
+            #[allow(clippy::cast_sign_loss)]
             Self::Percentage(p) => Some((total_size as f64 * p / 100.0) as u64),
             Self::Size(s) => Some(s),
             Self::IdSubSet((n, m)) => {
@@ -654,6 +654,10 @@ mod tests {
     #[case("5/12")]
     #[case("5%")]
     #[case("250MiB")]
+    // we need some casts to compute percentage...
+    #[allow(clippy::cast_possible_truncation)]
+    #[allow(clippy::cast_precision_loss)]
+    #[allow(clippy::cast_sign_loss)]
     fn test_read_subset(mut rng: StdRng, #[case] s: &str) {
         let size =
             |packs: &[IndexPack]| -> u64 { packs.iter().map(|p| u64::from(p.pack_size())).sum() };
