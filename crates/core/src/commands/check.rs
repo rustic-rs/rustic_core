@@ -217,6 +217,8 @@ impl CheckOptions {
 
             let packs = self.read_data_subset.apply(packs);
 
+            repo.warm_up_wait(packs.iter().map(|pack| pack.id))?;
+
             let total_pack_size = packs.iter().map(|pack| u64::from(pack.pack_size())).sum();
             let p = pb.progress_bytes("reading pack data...");
             p.set_length(total_pack_size);
