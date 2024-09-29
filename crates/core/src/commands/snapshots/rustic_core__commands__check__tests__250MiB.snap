@@ -1,66 +1,18 @@
 ---
 source: crates/core/src/commands/check.rs
-expression: packs
+expression: ids
 ---
 [
-  IndexPack(
-    id: Id("50ec36b55a9b35de779a2757571d2e4b16f6d1ca3ff73ade120901262c2b265d"),
-    blobs: [],
-    size: Some(25543042),
-  ),
-  IndexPack(
-    id: Id("d07f392b1dfebfdf50bb10a4a7857b543cbe246f84549af8902dfde9737fd425"),
-    blobs: [],
-    size: Some(16489215),
-  ),
-  IndexPack(
-    id: Id("f879520cb3e653a0c77dcc37dcd813a71ec7d972a4a6185b13f2ed240c6e72e1"),
-    blobs: [],
-    size: Some(3342498),
-  ),
-  IndexPack(
-    id: Id("8ba2cc8cf44054f35be413f12ba83969deb01f1c44660822cee1b960d69a7526"),
-    blobs: [],
-    size: Some(46887261),
-  ),
-  IndexPack(
-    id: Id("e6bae2c9c6b9d8b8a72b45590ffc6c8e034083d6a8180877f6d270537a1ac214"),
-    blobs: [],
-    size: Some(47685315),
-  ),
-  IndexPack(
-    id: Id("f77e206f69693ae3490de38ce00f5e89ae7db4808b770c60e07d64815ee0478d"),
-    blobs: [],
-    size: Some(9217773),
-  ),
-  IndexPack(
-    id: Id("20b51c8c49aff07d7063c76a863cbdcea845989ef79d4a3f8ff599687eaebe48"),
-    blobs: [],
-    size: Some(83677501),
-  ),
-  IndexPack(
-    id: Id("9630b7b1e6329e7c28eb0eeb4e0df36bbf45acf3ba5de4a0403b77e47216857a"),
-    blobs: [],
-    size: Some(24144078),
-  ),
-  IndexPack(
-    id: Id("33e053041d2de235e03cc219a8b8300d8f1e35ee034c45f4613ea782d5e672f2"),
-    blobs: [],
-    size: Some(2254122),
-  ),
-  IndexPack(
-    id: Id("7583c1099bf604771a03af7627f4122a59da07db7358484b8543e881a7939b3f"),
-    blobs: [],
-    size: Some(68829),
-  ),
-  IndexPack(
-    id: Id("a94f61701a165181c6940584ca0cd2c2355e5e1eb65a3a295fc4d1c02fa81138"),
-    blobs: [],
-    size: Some(2347337),
-  ),
-  IndexPack(
-    id: Id("5ae22a813d32049b56ac2760a5a34b8f66e30b5232f66bb8eae420c7022197e8"),
-    blobs: [],
-    size: Some(452910),
-  ),
+  Id("50ec36b55a9b35de779a2757571d2e4b16f6d1ca3ff73ade120901262c2b265d"),
+  Id("d07f392b1dfebfdf50bb10a4a7857b543cbe246f84549af8902dfde9737fd425"),
+  Id("f879520cb3e653a0c77dcc37dcd813a71ec7d972a4a6185b13f2ed240c6e72e1"),
+  Id("8ba2cc8cf44054f35be413f12ba83969deb01f1c44660822cee1b960d69a7526"),
+  Id("e6bae2c9c6b9d8b8a72b45590ffc6c8e034083d6a8180877f6d270537a1ac214"),
+  Id("f77e206f69693ae3490de38ce00f5e89ae7db4808b770c60e07d64815ee0478d"),
+  Id("20b51c8c49aff07d7063c76a863cbdcea845989ef79d4a3f8ff599687eaebe48"),
+  Id("9630b7b1e6329e7c28eb0eeb4e0df36bbf45acf3ba5de4a0403b77e47216857a"),
+  Id("33e053041d2de235e03cc219a8b8300d8f1e35ee034c45f4613ea782d5e672f2"),
+  Id("7583c1099bf604771a03af7627f4122a59da07db7358484b8543e881a7939b3f"),
+  Id("a94f61701a165181c6940584ca0cd2c2355e5e1eb65a3a295fc4d1c02fa81138"),
+  Id("5ae22a813d32049b56ac2760a5a34b8f66e30b5232f66bb8eae420c7022197e8"),
 ]

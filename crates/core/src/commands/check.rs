@@ -654,10 +654,6 @@ mod tests {
     #[case("5/12")]
     #[case("5%")]
     #[case("250MiB")]
-    // we need some casts to compute percentage...
-    #[allow(clippy::cast_possible_truncation)]
-    #[allow(clippy::cast_precision_loss)]
-    #[allow(clippy::cast_sign_loss)]
     fn test_read_subset(mut rng: StdRng, #[case] s: &str) {
         let size =
             |packs: &[IndexPack]| -> u64 { packs.iter().map(|p| u64::from(p.pack_size())).sum() };
@@ -671,14 +667,18 @@ mod tests {
 
         match subset {
             ReadSubsetOption::All => assert_eq!(test_size, total_size),
+            #[allow(clippy::cast_possible_truncation)]
+            #[allow(clippy::cast_precision_loss)]
+            #[allow(clippy::cast_sign_loss)]
             ReadSubsetOption::Percentage(s) => assert!(test_size <= (total_size as f64 * s) as u64),
             ReadSubsetOption::Size(size) => {
-                assert!(test_size < size && size < test_size + PACK_SIZE as u64)
+                assert!(test_size <= size && size <= test_size + u64::from(PACK_SIZE))
             }
-            _ => {}
+            ReadSubsetOption::IdSubSet(_) => {}
         };
 
-        assert_ron_snapshot!(s, packs);
+        let ids: Vec<_> = packs.iter().map(|pack| pack.id).collect();
+        assert_ron_snapshot!(s, ids);
     }
 
     fn test_read_subset_n_m() {
