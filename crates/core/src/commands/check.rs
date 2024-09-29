@@ -672,7 +672,7 @@ mod tests {
             #[allow(clippy::cast_sign_loss)]
             ReadSubsetOption::Percentage(s) => assert!(test_size <= (total_size as f64 * s) as u64),
             ReadSubsetOption::Size(size) => {
-                assert!(test_size <= size && size <= test_size + u64::from(PACK_SIZE))
+                assert!(test_size <= size && size <= test_size + u64::from(PACK_SIZE));
             }
             ReadSubsetOption::IdSubSet(_) => {}
         };
