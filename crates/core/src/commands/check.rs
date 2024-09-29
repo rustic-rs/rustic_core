@@ -31,8 +31,8 @@ use crate::{
 };
 
 #[derive(Clone, Copy, Debug, Default)]
-///
-pub enum ReadSubset {
+/// Options to specify which subset of packs will be read
+pub enum ReadSubsetOption {
     #[default]
     /// Read all pack files
     All,
@@ -44,10 +44,15 @@ pub enum ReadSubset {
     IdSubSet((u32, u32)),
 }
 
-impl ReadSubset {
+impl ReadSubsetOption {
     fn apply(self, packs: impl IntoIterator<Item = IndexPack>) -> Vec<IndexPack> {
         self.apply_with_rng(packs, &mut thread_rng())
     }
+
+    // we need some casts to compute percentage...
+    #[allow(clippy::cast_possible_truncation)]
+    #[allow(clippy::cast_precision_loss)]
+    #[allow(clippy::cast_sign_loss)]
     fn apply_with_rng(
         self,
         packs: impl IntoIterator<Item = IndexPack>,
@@ -66,10 +71,10 @@ impl ReadSubset {
 
         // Apply read-subset option
         if let Some(mut size) = match self {
-            ReadSubset::All => None,
-            ReadSubset::Percentage(p) => Some((total_size as f64 * p / 100.0) as u64),
-            ReadSubset::Size(s) => Some(s),
-            ReadSubset::IdSubSet((n, m)) => {
+            Self::All => None,
+            Self::Percentage(p) => Some((total_size as f64 * p / 100.0) as u64),
+            Self::Size(s) => Some(s),
+            Self::IdSubSet((n, m)) => {
                 packs.retain(|p| id_matches_n_m(&p.id, n, m));
                 None
             }
@@ -90,7 +95,7 @@ impl ReadSubset {
     }
 }
 
-impl FromStr for ReadSubset {
+impl FromStr for ReadSubsetOption {
     type Err = CommandErrorKind;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let result = if s == "all" {
@@ -127,7 +132,7 @@ pub struct CheckOptions {
 
     /// Read and check pack files
     #[cfg_attr(feature = "clap", clap(long, default_value = "all"))]
-    pub read_data_subset: ReadSubset,
+    pub read_data_subset: ReadSubsetOption,
 }
 
 impl CheckOptions {
@@ -654,14 +659,14 @@ mod tests {
         let test_packs = test_packs(&mut rng);
         let total_size = size(&test_packs);
 
-        let subset: ReadSubset = s.parse().unwrap();
+        let subset: ReadSubsetOption = s.parse().unwrap();
         let packs = subset.apply_with_rng(test_packs, &mut rng);
         let test_size = size(&packs);
 
         match subset {
-            ReadSubset::All => assert_eq!(test_size, total_size),
-            ReadSubset::Percentage(s) => assert!(test_size <= (total_size as f64 * s) as u64),
-            ReadSubset::Size(size) => {
+            ReadSubsetOption::All => assert_eq!(test_size, total_size),
+            ReadSubsetOption::Percentage(s) => assert!(test_size <= (total_size as f64 * s) as u64),
+            ReadSubsetOption::Size(size) => {
                 assert!(test_size < size && size < test_size + PACK_SIZE as u64)
             }
             _ => {}
@@ -674,19 +679,19 @@ mod tests {
         let test_packs = test_packs(&mut thread_rng());
         let mut all_packs: BTreeSet<_> = test_packs.iter().map(|pack| pack.id).collect();
 
-        let mut remove = |s: &str| {
-            let subset: ReadSubset = s.parse().unwrap();
+        let mut run_with = |s: &str| {
+            let subset: ReadSubsetOption = s.parse().unwrap();
             let packs = subset.apply(test_packs.clone());
             for pack in packs {
                 assert!(all_packs.remove(&pack.id));
             }
         };
 
-        remove("1/5");
-        remove("2/5");
-        remove("3/5");
-        remove("4/5");
-        remove("5/5");
+        run_with("1/5");
+        run_with("2/5");
+        run_with("3/5");
+        run_with("4/5");
+        run_with("5/5");
 
         assert!(all_packs.is_empty());
     }
