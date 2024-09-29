@@ -607,7 +607,7 @@ impl SnapshotFile {
         }
         // sort back to original order
         Ok(ids
-            .into_iter()
+            .iter()
             .filter_map(|id| snaps.remove_entry(&SnapshotId::from(*id)))
             .map(Self::set_id)
             .collect())
