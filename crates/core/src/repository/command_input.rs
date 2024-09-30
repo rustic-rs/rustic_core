@@ -165,20 +165,32 @@ pub enum OnFailure {
 
 impl OnFailure {
     fn eval<T>(self, res: RusticResult<T>) -> RusticResult<Option<T>> {
-        match res {
-            Err(err) => match self {
+        let res = self.display_result(res);
+        match (res, self) {
+            (Err(err), Self::Error) => Err(err),
+            (Err(_), _) => Ok(None),
+            (Ok(res), _) => Ok(Some(res)),
+        }
+    }
+
+    /// Displays a result depending on the defined error handling which still yielding the same result
+    /// # Note
+    ///
+    /// This can be used where an error might occur, but in that
+    /// case we have to abort.
+    pub fn display_result<T>(self, res: RusticResult<T>) -> RusticResult<T> {
+        if let Err(err) = &res {
+            match self {
                 Self::Error => {
                     error!("{err}");
-                    Err(err)
                 }
                 Self::Warn => {
                     warn!("{err}");
-                    Ok(None)
                 }
-                Self::Ignore => Ok(None),
-            },
-            Ok(res) => Ok(Some(res)),
+                Self::Ignore => {}
+            }
         }
+        res
     }
 
     /// Handle a status of a called command depending on the defined error handling

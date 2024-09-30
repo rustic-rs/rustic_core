@@ -1,6 +1,3 @@
-// Note: we need a fully qualified Vec here for clap, see https://github.com/clap-rs/clap/issues/4481
-#![allow(unused_qualifications)]
-
 mod command_input;
 mod warm_up;
 
@@ -18,7 +15,7 @@ use std::{
 use bytes::Bytes;
 use derive_setters::Setters;
 use log::{debug, error, info};
-use serde_with::{serde_as, DisplayFromStr, OneOrMany};
+use serde_with::{serde_as, DisplayFromStr};
 
 use crate::{
     backend::{
@@ -31,8 +28,8 @@ use crate::{
         FileType, ReadBackend, WriteBackend,
     },
     blob::{
-        tree::{FindMatches, FindNode, NodeStreamer, TreeStreamerOptions as LsOptions},
-        BlobType,
+        tree::{FindMatches, FindNode, NodeStreamer, TreeId, TreeStreamerOptions as LsOptions},
+        BlobId, BlobType, PackedId,
     },
     commands::{
         self,
@@ -53,16 +50,17 @@ use crate::{
     },
     crypto::aespoly1305::Key,
     error::{CommandErrorKind, KeyFileErrorKind, RepositoryErrorKind, RusticErrorKind},
-    id::Id,
     index::{
         binarysorted::{IndexCollector, IndexType},
         GlobalIndex, IndexEntry, ReadGlobalIndex, ReadIndex,
     },
     progress::{NoProgressBars, Progress, ProgressBars},
     repofile::{
+        configfile::ConfigId,
         keyfile::find_key_in_backend,
-        snapshotfile::{SnapshotGroup, SnapshotGroupCriterion},
-        ConfigFile, PathList, RepoFile, SnapshotFile, SnapshotSummary, Tree,
+        packfile::PackId,
+        snapshotfile::{SnapshotGroup, SnapshotGroupCriterion, SnapshotId},
+        ConfigFile, KeyId, PathList, RepoFile, RepoId, SnapshotFile, SnapshotSummary, Tree,
     },
     repository::warm_up::{warm_up, warm_up_wait},
     vfs::OpenFile,
@@ -120,13 +118,8 @@ pub struct RepositoryOptions {
         global = true,
         env = "RUSTIC_PASSWORD_COMMAND",
         conflicts_with_all = &["password", "password_file"],
-        value_parser = clap::builder::ValueParser::new(shell_words::split),
-        default_value = "",
     ))]
-    #[cfg_attr(feature = "merge", merge(strategy = merge::vec::overwrite_empty))]
-    #[serde_as(as = "OneOrMany<_>")]
-    // Note: we need a fully qualified Vec here for clap, see https://github.com/clap-rs/clap/issues/4481
-    pub password_command: std::vec::Vec<String>,
+    pub password_command: Option<CommandInput>,
 
     /// Don't use a cache.
     #[cfg_attr(feature = "clap", clap(long, global = true, env = "RUSTIC_NO_CACHE"))]
@@ -152,18 +145,11 @@ pub struct RepositoryOptions {
     pub warm_up: bool,
 
     /// Warm up needed data pack files by running the command with %id replaced by pack id
-    #[cfg_attr(feature = "clap", clap(
-        long,
-        global = true,
-        conflicts_with = "warm_up", 
-        value_parser = clap::builder::ValueParser::new(shell_words::split),
-        action = clap::ArgAction::Set,
-        default_value = "",
-    ))]
-    #[cfg_attr(feature = "merge", merge(strategy = merge::vec::overwrite_empty))]
-    #[serde_as(as = "OneOrMany<_>")]
-    // Note: we need a fully qualified Vec here for clap, see https://github.com/clap-rs/clap/issues/4481
-    pub warm_up_command: std::vec::Vec<String>,
+    #[cfg_attr(
+        feature = "clap",
+        clap(long, global = true, conflicts_with = "warm_up",)
+    )]
+    pub warm_up_command: Option<CommandInput>,
 
     /// Duration (e.g. 10m) to wait after warm up
     #[cfg_attr(feature = "clap", clap(long, global = true, value_name = "DURATION"))]
@@ -200,10 +186,10 @@ impl RepositoryOptions {
                 );
                 Ok(Some(read_password_from_reader(&mut file)?))
             }
-            (_, _, command) if !command.is_empty() => {
+            (_, _, Some(command)) if command.is_set() => {
                 debug!("commands: {command:?}");
-                let command = Command::new(&command[0])
-                    .args(&command[1..])
+                let command = Command::new(command.command())
+                    .args(command.args())
                     .stdout(Stdio::piped())
                     .spawn();
 
@@ -360,11 +346,11 @@ impl<P> Repository<P, ()> {
         let mut be = backends.repository();
         let be_hot = backends.repo_hot();
 
-        if !opts.warm_up_command.is_empty() {
-            if opts.warm_up_command.iter().all(|c| !c.contains("%id")) {
+        if let Some(warm_up) = &opts.warm_up_command {
+            if warm_up.args().iter().all(|c| !c.contains("%id")) {
                 return Err(RepositoryErrorKind::NoIDSpecified.into());
             }
-            info!("using warm-up command {:?}", opts.warm_up_command);
+            info!("using warm-up command {warm_up}");
         }
 
         let be_cold = be.clone();
@@ -429,14 +415,14 @@ impl<P, S> Repository<P, S> {
     ///
     /// [`RepositoryErrorKind::ListingRepositoryConfigFileFailed`]: crate::error::RepositoryErrorKind::ListingRepositoryConfigFileFailed
     /// [`RepositoryErrorKind::MoreThanOneRepositoryConfig`]: crate::error::RepositoryErrorKind::MoreThanOneRepositoryConfig
-    pub fn config_id(&self) -> RusticResult<Option<Id>> {
+    pub fn config_id(&self) -> RusticResult<Option<ConfigId>> {
         let config_ids = self
             .be
             .list(FileType::Config)
             .map_err(|_| RepositoryErrorKind::ListingRepositoryConfigFileFailed)?;
 
         match config_ids.len() {
-            1 => Ok(Some(config_ids[0])),
+            1 => Ok(Some(ConfigId::from(config_ids[0]))),
             0 => Ok(None),
             _ => Err(RepositoryErrorKind::MoreThanOneRepositoryConfig(self.name.clone()).into()),
         }
@@ -755,12 +741,13 @@ impl<P, S> Repository<P, S> {
     /// # Errors
     ///
     // TODO: Document errors
-    pub fn list(&self, tpe: FileType) -> RusticResult<impl Iterator<Item = Id>> {
+    pub fn list<T: RepoId>(&self) -> RusticResult<impl Iterator<Item = T>> {
         Ok(self
             .be
-            .list(tpe)
+            .list(T::TYPE)
             .map_err(RusticErrorKind::Backend)?
-            .into_iter())
+            .into_iter()
+            .map(Into::into))
     }
 }
 
@@ -788,7 +775,7 @@ impl<P: ProgressBars, S> Repository<P, S> {
     /// # Returns
     ///
     /// The result of the warm up
-    pub fn warm_up(&self, packs: impl ExactSizeIterator<Item = Id>) -> RusticResult<()> {
+    pub fn warm_up(&self, packs: impl ExactSizeIterator<Item = PackId>) -> RusticResult<()> {
         warm_up(self, packs)
     }
 
@@ -805,7 +792,7 @@ impl<P: ProgressBars, S> Repository<P, S> {
     ///
     /// [`RepositoryErrorKind::FromSplitError`]: crate::error::RepositoryErrorKind::FromSplitError
     /// [`RepositoryErrorKind::FromThreadPoolbilderError`]: crate::error::RepositoryErrorKind::FromThreadPoolbilderError
-    pub fn warm_up_wait(&self, packs: impl ExactSizeIterator<Item = Id>) -> RusticResult<()> {
+    pub fn warm_up_wait(&self, packs: impl ExactSizeIterator<Item = PackId>) -> RusticResult<()> {
         warm_up_wait(self, packs)
     }
 
@@ -915,7 +902,7 @@ impl<P, S: Open> Repository<P, S> {
     /// * [`CommandErrorKind::FromJsonError`] - If the key could not be serialized.
     ///
     /// [`CommandErrorKind::FromJsonError`]: crate::error::CommandErrorKind::FromJsonError
-    pub fn add_key(&self, pass: &str, opts: &KeyOptions) -> RusticResult<Id> {
+    pub fn add_key(&self, pass: &str, opts: &KeyOptions) -> RusticResult<KeyId> {
         opts.add_key(self, pass)
     }
 
@@ -1059,8 +1046,31 @@ impl<P: ProgressBars, S: Open> Repository<P, S> {
     ///
     // TODO: Document errors
     pub fn get_snapshots<T: AsRef<str>>(&self, ids: &[T]) -> RusticResult<Vec<SnapshotFile>> {
+        self.update_snapshots(Vec::new(), ids)
+    }
+
+    /// Update the given snapshots.
+    ///
+    /// # Arguments
+    ///
+    /// * `current` - The existing snapshots
+    /// * `ids` - The ids of the snapshots to get
+    ///
+    /// # Notes
+    ///
+    /// `ids` may contain part of snapshots id which will be resolved.
+    /// However, "latest" is not supported in this function.
+    ///
+    /// # Errors
+    ///
+    // TODO: Document errors
+    pub fn update_snapshots<T: AsRef<str>>(
+        &self,
+        current: Vec<SnapshotFile>,
+        ids: &[T],
+    ) -> RusticResult<Vec<SnapshotFile>> {
         let p = self.pb.progress_counter("getting snapshots...");
-        let result = SnapshotFile::from_ids(self.dbe(), ids, &p);
+        let result = SnapshotFile::update_from_ids(self.dbe(), current, ids, &p);
         p.finish();
         result
     }
@@ -1072,6 +1082,22 @@ impl<P: ProgressBars, S: Open> Repository<P, S> {
     // TODO: Document errors
     pub fn get_all_snapshots(&self) -> RusticResult<Vec<SnapshotFile>> {
         self.get_matching_snapshots(|_| true)
+    }
+
+    /// Update existing snapshots to all from the repository
+    ///
+    /// # Arguments
+    ///
+    /// * `current` - The existing snapshots
+    ///
+    /// # Errors
+    ///
+    // TODO: Document errors
+    pub fn update_all_snapshots(
+        &self,
+        current: Vec<SnapshotFile>,
+    ) -> RusticResult<Vec<SnapshotFile>> {
+        self.update_matching_snapshots(current, |_| true)
     }
 
     /// Get all snapshots from the repository respecting the given `filter`
@@ -1090,8 +1116,29 @@ impl<P: ProgressBars, S: Open> Repository<P, S> {
         &self,
         filter: impl FnMut(&SnapshotFile) -> bool,
     ) -> RusticResult<Vec<SnapshotFile>> {
+        self.update_matching_snapshots(Vec::new(), filter)
+    }
+
+    /// Update existing snapshots to all from the repository respecting the given `filter`
+    ///
+    /// # Arguments
+    ///
+    /// * `current` - The existing snapshots
+    /// * `filter` - The filter to use
+    ///
+    /// # Errors
+    ///
+    /// # Note
+    ///  The result is not sorted and may come in random order!
+    ///
+    // TODO: Document errors
+    pub fn update_matching_snapshots(
+        &self,
+        current: Vec<SnapshotFile>,
+        filter: impl FnMut(&SnapshotFile) -> bool,
+    ) -> RusticResult<Vec<SnapshotFile>> {
         let p = self.pb.progress_counter("getting snapshots...");
-        let result = SnapshotFile::all_from_backend(self.dbe(), filter, &p);
+        let result = SnapshotFile::update_from_backend(self.dbe(), current, filter, &p);
         p.finish();
         result
     }
@@ -1157,7 +1204,7 @@ impl<P: ProgressBars, S: Open> Repository<P, S> {
     /// # Panics
     ///
     /// If the files could not be deleted.
-    pub fn delete_snapshots(&self, ids: &[Id]) -> RusticResult<()> {
+    pub fn delete_snapshots(&self, ids: &[SnapshotId]) -> RusticResult<()> {
         if self.config().append_only == Some(true) {
             return Err(CommandErrorKind::NotAllowedWithAppendOnly(
                 "snapshots removal".to_string(),
@@ -1165,8 +1212,7 @@ impl<P: ProgressBars, S: Open> Repository<P, S> {
             .into());
         }
         let p = self.pb.progress_counter("removing snapshots...");
-        self.dbe()
-            .delete_list(FileType::Snapshot, true, ids.iter(), p)?;
+        self.dbe().delete_list(true, ids.iter(), p)?;
         Ok(())
     }
 
@@ -1183,14 +1229,14 @@ impl<P: ProgressBars, S: Open> Repository<P, S> {
     /// [`CryptBackendErrorKind::SerializingToJsonByteVectorFailed`]: crate::error::CryptBackendErrorKind::SerializingToJsonByteVectorFailed
     pub fn save_snapshots(&self, mut snaps: Vec<SnapshotFile>) -> RusticResult<()> {
         for snap in &mut snaps {
-            snap.id = Id::default();
+            snap.id = SnapshotId::default();
         }
         let p = self.pb.progress_counter("saving snapshots...");
         self.dbe().save_list(snaps.iter(), p)?;
         Ok(())
     }
 
-    /// Check the repository for errors or inconsistencies
+    /// Check the repository and all snapshot trees for errors or inconsistencies
     ///
     /// # Arguments
     ///
@@ -1200,7 +1246,26 @@ impl<P: ProgressBars, S: Open> Repository<P, S> {
     ///
     // TODO: Document errors
     pub fn check(&self, opts: CheckOptions) -> RusticResult<()> {
-        opts.run(self)
+        let trees = self
+            .get_all_snapshots()?
+            .into_iter()
+            .map(|snap| snap.tree)
+            .collect();
+
+        opts.run(self, trees)
+    }
+
+    /// Check the repository and given trees for errors or inconsistencies
+    ///
+    /// # Arguments
+    ///
+    /// * `opts` - The options to use
+    ///
+    /// # Errors
+    ///
+    // TODO: Document errors
+    pub fn check_with_trees(&self, opts: CheckOptions, trees: Vec<TreeId>) -> RusticResult<()> {
+        opts.run(self, trees)
     }
 
     /// Get the plan about what should be pruned and/or repacked.
@@ -1371,7 +1436,7 @@ impl<P: ProgressBars, S: Open> Repository<P, S> {
     /// An iterator over all files of the given type
     pub fn stream_files<F: RepoFile>(
         &self,
-    ) -> RusticResult<impl Iterator<Item = RusticResult<(Id, F)>>> {
+    ) -> RusticResult<impl Iterator<Item = RusticResult<(F::Id, F)>>> {
         Ok(self
             .dbe()
             .stream_all::<F>(&self.pb.progress_hidden())?
@@ -1416,13 +1481,19 @@ pub trait IndexedTree: Open {
     /// The used index
     type I: ReadGlobalIndex;
 
-    /// Returns the used indexs
+    /// Returns the used indexes
     fn index(&self) -> &Self::I;
+
+    /// Turn the repository into the `Open` state
+    fn into_open(self) -> impl Open;
 }
 
 /// A repository which is indexed such that all tree blobs are contained in the index
 /// and additionally the `Id`s of data blobs are also contained in the index.
-pub trait IndexedIds: IndexedTree {}
+pub trait IndexedIds: IndexedTree {
+    /// Turn the repository into the `IndexedTree` state by reading and storing a size-optimized index
+    fn into_indexed_tree(self) -> impl IndexedTree;
+}
 
 impl<P, S: IndexedTree> IndexedTree for Repository<P, S> {
     type I = S::I;
@@ -1430,14 +1501,18 @@ impl<P, S: IndexedTree> IndexedTree for Repository<P, S> {
     fn index(&self) -> &Self::I {
         self.status.index()
     }
+
+    fn into_open(self) -> impl Open {
+        self.status.into_open()
+    }
 }
 
 #[derive(Clone, Copy, Debug)]
 /// Defines a weighted cache with weight equal to the length of the blob size
 pub(crate) struct BytesWeighter;
 
-impl quick_cache::Weighter<Id, Bytes> for BytesWeighter {
-    fn weight(&self, _key: &Id, val: &Bytes) -> u64 {
+impl quick_cache::Weighter<BlobId, Bytes> for BytesWeighter {
+    fn weight(&self, _key: &BlobId, val: &Bytes) -> u64 {
         u64::try_from(val.len())
             .expect("weight overflow in cache should not happen")
             // Be cautions out about zero weights!
@@ -1464,7 +1539,7 @@ pub trait IndexedFull: IndexedIds {
     /// and the function is called.
     fn get_blob_or_insert_with(
         &self,
-        id: &Id,
+        id: &BlobId,
         with: impl FnOnce() -> RusticResult<Bytes>,
     ) -> RusticResult<Bytes>;
 }
@@ -1488,6 +1563,12 @@ pub struct IndexedStatus<T, S: Open> {
 #[derive(Debug, Clone, Copy)]
 /// A type of an index, that only contains [`Id`]s.
 ///
+/// Used for the [`IndexedTrees`] state of a repository in [`IndexedStatus`].
+pub struct TreeIndex;
+
+#[derive(Debug, Clone, Copy)]
+/// A type of an index, that only contains [`Id`]s.
+///
 /// Used for the [`IndexedIds`] state of a repository in [`IndexedStatus`].
 pub struct IdIndex;
 
@@ -1497,7 +1578,7 @@ pub struct IdIndex;
 /// As we usually use this to access data blobs from the repository, we also have defined a blob cache for
 /// repositories with full index.
 pub struct FullIndex {
-    cache: quick_cache::sync::Cache<Id, Bytes, BytesWeighter>,
+    cache: quick_cache::sync::Cache<BlobId, Bytes, BytesWeighter>,
 }
 
 impl<T, S: Open> IndexedTree for IndexedStatus<T, S> {
@@ -1506,18 +1587,40 @@ impl<T, S: Open> IndexedTree for IndexedStatus<T, S> {
     fn index(&self) -> &Self::I {
         &self.index
     }
+
+    fn into_open(self) -> impl Open {
+        self.open
+    }
 }
 
-impl<S: Open> IndexedIds for IndexedStatus<IdIndex, S> {}
+impl<S: Open> IndexedIds for IndexedStatus<IdIndex, S> {
+    fn into_indexed_tree(self) -> impl IndexedTree {
+        Self {
+            index: self.index.drop_data(),
+            ..self
+        }
+    }
+}
 
-impl<S: Open> IndexedIds for IndexedStatus<FullIndex, S> {}
+impl<S: Open> IndexedIds for IndexedStatus<FullIndex, S> {
+    fn into_indexed_tree(self) -> impl IndexedTree {
+        Self {
+            index: self.index.drop_data(),
+            ..self
+        }
+    }
+}
 
-impl<P, S: IndexedFull> IndexedIds for Repository<P, S> {}
+impl<P, S: IndexedFull> IndexedIds for Repository<P, S> {
+    fn into_indexed_tree(self) -> impl IndexedTree {
+        self.status.into_indexed_tree()
+    }
+}
 
 impl<S: Open> IndexedFull for IndexedStatus<FullIndex, S> {
     fn get_blob_or_insert_with(
         &self,
-        id: &Id,
+        id: &BlobId,
         with: impl FnOnce() -> RusticResult<Bytes>,
     ) -> RusticResult<Bytes> {
         self.index_data.cache.get_or_insert_with(id, with)
@@ -1533,7 +1636,7 @@ impl<P, S: IndexedFull> IndexedFull for Repository<P, S> {
     /// * `with` - The function which fetches the blob from the repository if it is not contained in the cache
     fn get_blob_or_insert_with(
         &self,
-        id: &Id,
+        id: &BlobId,
         with: impl FnOnce() -> RusticResult<Bytes>,
     ) -> RusticResult<Bytes> {
         self.status.get_blob_or_insert_with(id, with)
@@ -1567,11 +1670,12 @@ impl<P, S: IndexedFull> Repository<P, S> {
     /// * [`RepositoryErrorKind::IdNotFound`] - If the id is not found in the index
     ///
     /// [`RepositoryErrorKind::IdNotFound`]: crate::error::RepositoryErrorKind::IdNotFound
-    pub fn get_index_entry(&self, tpe: BlobType, id: &Id) -> RusticResult<IndexEntry> {
+    pub fn get_index_entry<T: PackedId>(&self, id: &T) -> RusticResult<IndexEntry> {
+        let blob_id: BlobId = (*id).into();
         let ie = self
             .index()
-            .get_id(tpe, id)
-            .ok_or_else(|| RepositoryErrorKind::IdNotFound(*id))?;
+            .get_id(T::TYPE, &blob_id)
+            .ok_or_else(|| RepositoryErrorKind::IdNotFound(blob_id))?;
         Ok(ie)
     }
 
@@ -1628,7 +1732,7 @@ impl<P, S: IndexedTree> Repository<P, S> {
     ///
     /// [`TreeErrorKind::BlobIdNotFound`]: crate::error::TreeErrorKind::BlobIdNotFound
     /// [`TreeErrorKind::DeserializingTreeFailed`]: crate::error::TreeErrorKind::DeserializingTreeFailed
-    pub fn get_tree(&self, id: &Id) -> RusticResult<Tree> {
+    pub fn get_tree(&self, id: &TreeId) -> RusticResult<Tree> {
         Tree::from_backend(self.dbe(), self.index(), *id)
     }
 
@@ -1651,7 +1755,7 @@ impl<P, S: IndexedTree> Repository<P, S> {
     /// [`TreeErrorKind::NotADirectory`]: crate::error::TreeErrorKind::NotADirectory
     /// [`TreeErrorKind::PathNotFound`]: crate::error::TreeErrorKind::PathNotFound
     /// [`TreeErrorKind::PathIsNotUtf8Conform`]: crate::error::TreeErrorKind::PathIsNotUtf8Conform
-    pub fn node_from_path(&self, root_tree: Id, path: &Path) -> RusticResult<Node> {
+    pub fn node_from_path(&self, root_tree: TreeId, path: &Path) -> RusticResult<Node> {
         Tree::node_from_path(self.dbe(), self.index(), root_tree, Path::new(path))
     }
 
@@ -1666,7 +1770,7 @@ impl<P, S: IndexedTree> Repository<P, S> {
     /// if loading trees from the backend fails
     pub fn find_nodes_from_path(
         &self,
-        ids: impl IntoIterator<Item = Id>,
+        ids: impl IntoIterator<Item = TreeId>,
         path: &Path,
     ) -> RusticResult<FindNode> {
         Tree::find_nodes_from_path(self.dbe(), self.index(), ids, path)
@@ -1683,10 +1787,22 @@ impl<P, S: IndexedTree> Repository<P, S> {
     /// if loading trees from the backend fails
     pub fn find_matching_nodes(
         &self,
-        ids: impl IntoIterator<Item = Id>,
+        ids: impl IntoIterator<Item = TreeId>,
         matches: &impl Fn(&Path, &Node) -> bool,
     ) -> RusticResult<FindMatches> {
         Tree::find_matching_nodes(self.dbe(), self.index(), ids, matches)
+    }
+
+    /// drop the `Repository` index leaving an `Open` `Repository`
+    pub fn drop_index(self) -> Repository<P, impl Open> {
+        Repository {
+            name: self.name,
+            be: self.be,
+            be_hot: self.be_hot,
+            opts: self.opts,
+            pb: self.pb,
+            status: self.status.into_open(),
+        }
     }
 }
 
@@ -1830,10 +1946,10 @@ impl<P: ProgressBars, S: IndexedTree> Repository<P, S> {
     /// This method returns the blob [`Id`] of the merged tree.
     pub fn merge_trees(
         &self,
-        trees: &[Id],
+        trees: &[TreeId],
         cmp: &impl Fn(&Node, &Node) -> Ordering,
         summary: &mut SnapshotSummary,
-    ) -> RusticResult<Id> {
+    ) -> RusticResult<TreeId> {
         commands::merge::merge_trees(self, trees, cmp, summary)
     }
 
@@ -1910,8 +2026,20 @@ impl<P, S: IndexedFull> Repository<P, S> {
     /// The cached blob in bytes.
     ///
     /// [`IndexErrorKind::BlobInIndexNotFound`]: crate::error::IndexErrorKind::BlobInIndexNotFound
-    pub fn get_blob_cached(&self, id: &Id, tpe: BlobType) -> RusticResult<Bytes> {
+    pub fn get_blob_cached(&self, id: &BlobId, tpe: BlobType) -> RusticResult<Bytes> {
         self.get_blob_or_insert_with(id, || self.index().blob_from_backend(self.dbe(), tpe, id))
+    }
+
+    /// drop the data pack information from the `Repository` index leaving an `IndexedTree` `Repository`
+    pub fn drop_data_from_index(self) -> Repository<P, impl IndexedTree> {
+        Repository {
+            name: self.name,
+            be: self.be,
+            be_hot: self.be_hot,
+            opts: self.opts,
+            pb: self.pb,
+            status: self.status.into_indexed_tree(),
+        }
     }
 }
 

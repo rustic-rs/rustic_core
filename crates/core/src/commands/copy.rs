@@ -5,7 +5,7 @@ use rayon::prelude::{IntoParallelRefIterator, ParallelBridge, ParallelIterator};
 
 use crate::{
     backend::{decrypt::DecryptWriteBackend, node::NodeType},
-    blob::{packer::Packer, tree::TreeStreamerOnce, BlobType},
+    blob::{packer::Packer, tree::TreeStreamerOnce, BlobId, BlobType},
     error::RusticResult,
     index::{indexer::Indexer, ReadIndex},
     progress::{Progress, ProgressBars},
@@ -84,7 +84,7 @@ pub(crate) fn copy<'a, Q, R: IndexedFull, P: ProgressBars, S: IndexedIds>(
             if !index_dest.has_tree(id) {
                 let data = index.get_tree(id).unwrap().read_data(be)?;
                 p.inc(data.len() as u64);
-                tree_packer.add(data, *id)?;
+                tree_packer.add(data, BlobId::from(**id))?;
             }
             Ok(())
         })?;
@@ -103,7 +103,7 @@ pub(crate) fn copy<'a, Q, R: IndexedFull, P: ProgressBars, S: IndexedIds>(
                                 if !index_dest.has_data(id) {
                                     let data = index.get_data(id).unwrap().read_data(be)?;
                                     p.inc(data.len() as u64);
-                                    data_packer.add(data, *id)?;
+                                    data_packer.add(data, BlobId::from(**id))?;
                                 }
                                 Ok(())
                             },
@@ -116,7 +116,7 @@ pub(crate) fn copy<'a, Q, R: IndexedFull, P: ProgressBars, S: IndexedIds>(
                         if !index_dest.has_tree(&id) {
                             let data = index.get_tree(&id).unwrap().read_data(be)?;
                             p.inc(data.len() as u64);
-                            tree_packer.add(data, id)?;
+                            tree_packer.add(data, BlobId::from(*id))?;
                         }
                     }
 

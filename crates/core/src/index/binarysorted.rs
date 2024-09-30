@@ -2,17 +2,19 @@ use rayon::prelude::*;
 use std::num::NonZeroU32;
 
 use crate::{
-    blob::{BlobType, BlobTypeMap},
-    id::Id,
+    blob::{BlobId, BlobType, BlobTypeMap},
     index::{IndexEntry, ReadIndex},
-    repofile::indexfile::{IndexBlob, IndexPack},
+    repofile::{
+        indexfile::{IndexBlob, IndexPack},
+        packfile::PackId,
+    },
 };
 
 /// A sorted entry in the index.
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) struct SortedEntry {
     /// The ID of the entry.
-    id: Id,
+    id: BlobId,
     /// The index of the pack containing the entry.
     pack_idx: usize,
     /// The offset of the entry in the pack.
@@ -38,7 +40,7 @@ pub enum IndexType {
 #[derive(Debug)]
 pub(crate) enum EntriesVariants {
     None,
-    Ids(Vec<Id>),
+    Ids(Vec<BlobId>),
     FullEntries(Vec<SortedEntry>),
 }
 
@@ -50,7 +52,7 @@ impl Default for EntriesVariants {
 
 #[derive(Default, Debug)]
 pub(crate) struct TypeIndexCollector {
-    packs: Vec<(Id, u32)>,
+    packs: Vec<(PackId, u32)>,
     entries: EntriesVariants,
     total_size: u64,
 }
@@ -67,13 +69,30 @@ pub struct PackIndexes {
 
 #[derive(Debug)]
 pub(crate) struct TypeIndex {
-    packs: Vec<Id>,
+    packs: Vec<PackId>,
     entries: EntriesVariants,
     total_size: u64,
 }
 
 #[derive(Debug)]
 pub struct Index(BlobTypeMap<TypeIndex>);
+
+impl Index {
+    /// drop all index entries related to data blobs
+    pub(crate) fn drop_data(self) -> Self {
+        Self(self.0.map(|blob_type, i| {
+            if blob_type == BlobType::Data {
+                TypeIndex {
+                    packs: Vec::new(),
+                    entries: EntriesVariants::None,
+                    total_size: 0,
+                }
+            } else {
+                i
+            }
+        }))
+    }
+}
 
 impl IndexCollector {
     #[must_use]
@@ -91,12 +110,12 @@ impl IndexCollector {
     }
 
     #[must_use]
-    pub fn tree_packs(&self) -> &Vec<(Id, u32)> {
+    pub fn tree_packs(&self) -> &Vec<(PackId, u32)> {
         &self.0[BlobType::Tree].packs
     }
 
     #[must_use]
-    pub fn data_packs(&self) -> &Vec<(Id, u32)> {
+    pub fn data_packs(&self) -> &Vec<(PackId, u32)> {
         &self.0[BlobType::Data].packs
     }
 
@@ -229,7 +248,7 @@ impl IntoIterator for Index {
 }
 
 impl ReadIndex for Index {
-    fn get_id(&self, blob_type: BlobType, id: &Id) -> Option<IndexEntry> {
+    fn get_id(&self, blob_type: BlobType, id: &BlobId) -> Option<IndexEntry> {
         let EntriesVariants::FullEntries(vec) = &self.0[blob_type].entries else {
             // get_id() only gives results if index contains full entries
             return None;
@@ -251,7 +270,7 @@ impl ReadIndex for Index {
         self.0[blob_type].total_size
     }
 
-    fn has(&self, blob_type: BlobType, id: &Id) -> bool {
+    fn has(&self, blob_type: BlobType, id: &BlobId) -> bool {
         match &self.0[blob_type].entries {
             EntriesVariants::FullEntries(entries) => {
                 entries.binary_search_by_key(id, |e| e.id).is_ok()
@@ -266,7 +285,7 @@ impl ReadIndex for Index {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::repofile::indexfile::IndexFile;
+    use crate::{repofile::indexfile::IndexFile, RusticResult};
 
     const JSON_INDEX: &str = r#"
 {"packs":[{"id":"217f145b63fbc10267f5a686186689ea3389bed0d6a54b50ffc84d71f99eb7fa",
@@ -329,37 +348,24 @@ mod tests {
         collector.into_index()
     }
 
-    /// Parses a hex string into an ID.
-    ///
-    /// # Arguments
-    ///
-    /// * `s` - The hex string to parse.
-    ///
-    /// # Panics
-    ///
-    /// If the string is not a valid hexadecimal string.
-    fn parse(s: &str) -> Id {
-        Id::from_hex(s).unwrap()
-    }
-
     #[test]
-    fn all_index_types() {
+    fn all_index_types() -> RusticResult<()> {
         for it in [IndexType::OnlyTrees, IndexType::DataIds, IndexType::Full] {
             let index = index(it);
 
-            let id = parse("0000000000000000000000000000000000000000000000000000000000000000");
+            let id = "0000000000000000000000000000000000000000000000000000000000000000".parse()?;
             assert!(!index.has(BlobType::Data, &id));
             assert!(index.get_id(BlobType::Data, &id).is_none());
             assert!(!index.has(BlobType::Tree, &id));
             assert!(index.get_id(BlobType::Tree, &id).is_none());
 
-            let id = parse("aac5e908151e5652b7570108127b96e6bae22bcdda1d3d867f63ed1555fc8aef");
-            assert!(!index.has(BlobType::Data, &id,));
+            let id = "aac5e908151e5652b7570108127b96e6bae22bcdda1d3d867f63ed1555fc8aef".parse()?;
+            assert!(!index.has(BlobType::Data, &id));
             assert!(index.get_id(BlobType::Data, &id).is_none());
             assert!(!index.has(BlobType::Tree, &id));
             assert!(index.get_id(BlobType::Tree, &id).is_none());
 
-            let id = parse("2ef8decbd2a17d9bfb1b35cfbdcd368175ea86d05dd93a4751fdacbe5213e611");
+            let id = "2ef8decbd2a17d9bfb1b35cfbdcd368175ea86d05dd93a4751fdacbe5213e611".parse()?;
             assert!(!index.has(BlobType::Data, &id));
             assert!(index.get_id(BlobType::Data, &id).is_none());
             assert!(index.has(BlobType::Tree, &id));
@@ -367,60 +373,64 @@ mod tests {
                 index.get_id(BlobType::Tree, &id),
                 Some(IndexEntry {
                     blob_type: BlobType::Tree,
-                    pack: parse("8431a27d38dd7d192dc37abd43a85d6dc4298de72fc8f583c5d7cdd09fa47274"),
+                    pack: "8431a27d38dd7d192dc37abd43a85d6dc4298de72fc8f583c5d7cdd09fa47274"
+                        .parse()?,
                     offset: 794,
                     length: 592,
                     uncompressed_length: Some(NonZeroU32::new(1912).unwrap()),
                 }),
             );
         }
+        Ok(())
     }
 
     #[test]
-    fn only_trees() {
+    fn only_trees() -> RusticResult<()> {
         let index = index(IndexType::OnlyTrees);
 
-        let id = parse("fac5e908151e565267570108127b96e6bae22bcdda1d3d867f63ed1555fc8aef");
+        let id = "fac5e908151e565267570108127b96e6bae22bcdda1d3d867f63ed1555fc8aef".parse()?;
         assert!(!index.has(BlobType::Data, &id));
         assert!(index.get_id(BlobType::Data, &id).is_none());
         assert!(!index.has(BlobType::Tree, &id));
         assert!(index.get_id(BlobType::Tree, &id).is_none());
 
-        let id = parse("620b2cef43d4c7aab3d7c911a3c0e872d2e0e70f170201002b8af8fb98c59da5");
+        let id = "620b2cef43d4c7aab3d7c911a3c0e872d2e0e70f170201002b8af8fb98c59da5".parse()?;
         assert!(!index.has(BlobType::Data, &id));
         assert!(index.get_id(BlobType::Data, &id).is_none());
         assert!(!index.has(BlobType::Tree, &id));
         assert!(index.get_id(BlobType::Tree, &id).is_none());
+        Ok(())
     }
 
     #[test]
-    fn full_trees() {
+    fn full_trees() -> RusticResult<()> {
         let index = index(IndexType::DataIds);
 
-        let id = parse("fac5e908151e565267570108127b96e6bae22bcdda1d3d867f63ed1555fc8aef");
+        let id = "fac5e908151e565267570108127b96e6bae22bcdda1d3d867f63ed1555fc8aef".parse()?;
         assert!(index.has(BlobType::Data, &id));
         assert!(index.get_id(BlobType::Data, &id).is_none());
         assert!(!index.has(BlobType::Tree, &id));
         assert!(index.get_id(BlobType::Tree, &id).is_none());
 
-        let id = parse("620b2cef43d4c7aab3d7c911a3c0e872d2e0e70f170201002b8af8fb98c59da5");
+        let id = "620b2cef43d4c7aab3d7c911a3c0e872d2e0e70f170201002b8af8fb98c59da5".parse()?;
         assert!(index.has(BlobType::Data, &id));
         assert!(index.get_id(BlobType::Data, &id).is_none());
         assert!(!index.has(BlobType::Tree, &id));
         assert!(index.get_id(BlobType::Tree, &id).is_none());
+        Ok(())
     }
 
     #[test]
-    fn full() {
+    fn full() -> RusticResult<()> {
         let index = index(IndexType::Full);
 
-        let id = parse("fac5e908151e565267570108127b96e6bae22bcdda1d3d867f63ed1555fc8aef");
+        let id = "fac5e908151e565267570108127b96e6bae22bcdda1d3d867f63ed1555fc8aef".parse()?;
         assert!(index.has(BlobType::Data, &id));
         assert_eq!(
             index.get_id(BlobType::Data, &id),
             Some(IndexEntry {
                 blob_type: BlobType::Data,
-                pack: parse("217f145b63fbc10267f5a686186689ea3389bed0d6a54b50ffc84d71f99eb7fa"),
+                pack: "217f145b63fbc10267f5a686186689ea3389bed0d6a54b50ffc84d71f99eb7fa".parse()?,
                 offset: 5185,
                 length: 2095,
                 uncompressed_length: Some(NonZeroU32::new(6411).unwrap()),
@@ -429,13 +439,13 @@ mod tests {
         assert!(!index.has(BlobType::Tree, &id));
         assert!(index.get_id(BlobType::Tree, &id).is_none());
 
-        let id = parse("620b2cef43d4c7aab3d7c911a3c0e872d2e0e70f170201002b8af8fb98c59da5");
+        let id = "620b2cef43d4c7aab3d7c911a3c0e872d2e0e70f170201002b8af8fb98c59da5".parse()?;
         assert!(index.has(BlobType::Data, &id));
         assert_eq!(
             index.get_id(BlobType::Data, &id),
             Some(IndexEntry {
                 blob_type: BlobType::Data,
-                pack: parse("3b25ec6d16401c31099c259311562160b1b5efbcf70bd69d0463104d3b8148fc"),
+                pack: "3b25ec6d16401c31099c259311562160b1b5efbcf70bd69d0463104d3b8148fc".parse()?,
                 offset: 6324,
                 length: 1413,
                 uncompressed_length: Some(NonZeroU32::new(3752).unwrap()),
@@ -443,5 +453,6 @@ mod tests {
         );
         assert!(!index.has(BlobType::Tree, &id));
         assert!(index.get_id(BlobType::Tree, &id).is_none());
+        Ok(())
     }
 }

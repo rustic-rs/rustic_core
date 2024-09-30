@@ -17,6 +17,7 @@ use strum::EnumString;
 pub use crate::vfs::webdavfs::WebDavFS;
 
 use crate::{
+    blob::{tree::TreeId, BlobId, DataId},
     error::VfsErrorKind,
     repofile::{BlobType, Metadata, Node, NodeType, SnapshotFile},
 };
@@ -24,7 +25,7 @@ use crate::{
     index::ReadIndex,
     repository::{IndexedFull, IndexedTree, Repository},
     vfs::format::FormattedSnapshot,
-    Id, RusticResult,
+    RusticResult,
 };
 
 #[derive(Debug, Clone, Copy)]
@@ -53,7 +54,7 @@ enum VfsTree {
     /// A symlink to the given link target
     Link(OsString),
     /// A repository tree; id of the tree
-    RusticTree(Id),
+    RusticTree(TreeId),
     /// A purely virtual tree containing subtrees
     VirtualTree(BTreeMap<OsString, VfsTree>),
 }
@@ -64,7 +65,7 @@ enum VfsPath<'a> {
     /// Path is the given symlink
     Link(&'a OsString),
     /// Path is within repository, give the tree [`Id`] and remaining path.
-    RusticPath(&'a Id, PathBuf),
+    RusticPath(&'a TreeId, PathBuf),
     /// Path is the given virtual tree
     VirtualTree(&'a BTreeMap<OsString, VfsTree>),
 }
@@ -229,7 +230,7 @@ impl Vfs {
         // to handle identical trees
         let mut last_parent = None;
         let mut last_name = None;
-        let mut last_tree = Id::default();
+        let mut last_tree = TreeId::default();
 
         // to handle "latest" entries
         let mut dirs_for_link = BTreeMap::new();
@@ -421,7 +422,7 @@ pub struct OpenFile {
 #[derive(Debug)]
 struct BlobInfo {
     // [`Id`] of the blob
-    id: Id,
+    id: DataId,
 
     // the start position of this blob within the file
     starts_at: usize,
@@ -462,7 +463,7 @@ impl OpenFile {
 
         // content is assumed to be partioned, so we add a starts_at:MAX entry
         content.push(BlobInfo {
-            id: Id::default(),
+            id: DataId::default(),
             starts_at: usize::MAX,
         });
 
@@ -497,7 +498,7 @@ impl OpenFile {
         let mut result = BytesMut::with_capacity(length);
 
         while length > 0 && i < self.content.len() {
-            let data = repo.get_blob_cached(&self.content[i].id, BlobType::Data)?;
+            let data = repo.get_blob_cached(&BlobId::from(*self.content[i].id), BlobType::Data)?;
             if offset > data.len() {
                 // we cannot read behind the blob. This only happens if offset is too large to fit in the last blob
                 break;

@@ -8,9 +8,8 @@ use log::warn;
 use crate::{
     archiver::tree::TreeType,
     backend::{decrypt::DecryptReadBackend, node::Node},
-    blob::tree::Tree,
+    blob::tree::{Tree, TreeId},
     error::{ArchiverErrorKind, RusticResult},
-    id::Id,
     index::ReadGlobalIndex,
 };
 
@@ -19,13 +18,13 @@ use crate::{
 /// # Type Parameters
 ///
 /// * `O` - The type of the `TreeType`.
-pub(crate) type ItemWithParent<O> = TreeType<(O, ParentResult<()>), ParentResult<Id>>;
+pub(crate) type ItemWithParent<O> = TreeType<(O, ParentResult<()>), ParentResult<TreeId>>;
 
 /// The `Parent` is responsible for finding the parent tree of a given tree.
 #[derive(Debug)]
 pub struct Parent {
     /// The tree id of the parent tree.
-    tree_id: Option<Id>,
+    tree_id: Option<TreeId>,
     /// The parent tree.
     tree: Option<Tree>,
     /// The current node index.
@@ -92,7 +91,7 @@ impl Parent {
     pub(crate) fn new(
         be: &impl DecryptReadBackend,
         index: &impl ReadGlobalIndex,
-        tree_id: Option<Id>,
+        tree_id: Option<TreeId>,
         ignore_ctime: bool,
         ignore_inode: bool,
     ) -> Self {
@@ -235,7 +234,7 @@ impl Parent {
     }
 
     // TODO: add documentation!
-    pub(crate) fn tree_id(&self) -> Option<Id> {
+    pub(crate) fn tree_id(&self) -> Option<TreeId> {
         self.tree_id
     }
 

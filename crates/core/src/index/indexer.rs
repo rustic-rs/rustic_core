@@ -8,8 +8,8 @@ use log::warn;
 
 use crate::{
     backend::decrypt::DecryptWriteBackend,
+    blob::BlobId,
     error::RusticResult,
-    id::Id,
     repofile::indexfile::{IndexFile, IndexPack},
 };
 
@@ -39,7 +39,7 @@ where
     /// The time the indexer was created.
     created: SystemTime,
     /// The set of indexed blob ids.
-    indexed: Option<BTreeSet<Id>>,
+    indexed: Option<BTreeSet<BlobId>>,
 }
 
 impl<BE: DecryptWriteBackend> Indexer<BE> {
@@ -192,7 +192,7 @@ impl<BE: DecryptWriteBackend> Indexer<BE> {
     /// # Arguments
     ///
     /// * `id` - The id to check.
-    pub fn has(&self, id: &Id) -> bool {
+    pub fn has(&self, id: &BlobId) -> bool {
         self.indexed
             .as_ref()
             .map_or(false, |indexed| indexed.contains(id))

@@ -289,7 +289,7 @@ impl ReadBackend for RestBackend {
                     .unwrap_or_default();
                 Ok(list
                     .into_iter()
-                    .filter_map(|i| match Id::from_hex(&i.name) {
+                    .filter_map(|i| match i.name.parse::<Id>() {
                         Ok(id) => Some((id, i.size)),
                         Err(_) => None,
                     })

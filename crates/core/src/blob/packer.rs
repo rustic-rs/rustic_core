@@ -17,15 +17,14 @@ use crate::{
         decrypt::{DecryptFullBackend, DecryptWriteBackend},
         FileType,
     },
-    blob::BlobType,
+    blob::{BlobId, BlobType},
     crypto::{hasher::hash, CryptoKey},
     error::{PackerErrorKind, RusticErrorKind, RusticResult},
-    id::Id,
     index::indexer::SharedIndexer,
     repofile::{
         configfile::ConfigFile,
         indexfile::{IndexBlob, IndexPack},
-        packfile::{PackHeaderLength, PackHeaderRef},
+        packfile::{PackHeaderLength, PackHeaderRef, PackId},
         snapshotfile::SnapshotSummary,
     },
 };
@@ -167,7 +166,7 @@ pub struct Packer<BE: DecryptWriteBackend> {
     /// The shared indexer containing the backend.
     indexer: SharedIndexer<BE>,
     /// The sender to send blobs to the raw packer.
-    sender: Sender<(Bytes, Id, Option<u32>)>,
+    sender: Sender<(Bytes, BlobId, Option<u32>)>,
     /// The receiver to receive the status from the raw packer.
     finish: Receiver<RusticResult<PackerStats>>,
 }
@@ -230,7 +229,7 @@ impl<BE: DecryptWriteBackend> Packer<BE> {
                     .readahead_scoped(scope)
                     .parallel_map_scoped(
                         scope,
-                        |(data, id, size_limit): (Bytes, Id, Option<u32>)| {
+                        |(data, id, size_limit): (Bytes, BlobId, Option<u32>)| {
                             let (data, data_len, uncompressed_length) = be.process_data(&data)?;
                             Ok((
                                 data,
@@ -278,7 +277,7 @@ impl<BE: DecryptWriteBackend> Packer<BE> {
     /// * [`PackerErrorKind::SendingCrossbeamMessageFailed`] - If sending the message to the raw packer fails.
     ///
     /// [`PackerErrorKind::SendingCrossbeamMessageFailed`]: crate::error::PackerErrorKind::SendingCrossbeamMessageFailed
-    pub fn add(&self, data: Bytes, id: Id) -> RusticResult<()> {
+    pub fn add(&self, data: Bytes, id: BlobId) -> RusticResult<()> {
         // compute size limit based on total size and size bounds
         self.add_with_sizelimit(data, id, None)
     }
@@ -296,7 +295,12 @@ impl<BE: DecryptWriteBackend> Packer<BE> {
     /// * [`PackerErrorKind::SendingCrossbeamMessageFailed`] - If sending the message to the raw packer fails.
     ///
     /// [`PackerErrorKind::SendingCrossbeamMessageFailed`]: crate::error::PackerErrorKind::SendingCrossbeamMessageFailed
-    fn add_with_sizelimit(&self, data: Bytes, id: Id, size_limit: Option<u32>) -> RusticResult<()> {
+    fn add_with_sizelimit(
+        &self,
+        data: Bytes,
+        id: BlobId,
+        size_limit: Option<u32>,
+    ) -> RusticResult<()> {
         self.sender
             .send((data, id, size_limit))
             .map_err(PackerErrorKind::SendingCrossbeamMessageFailed)?;
@@ -320,7 +324,7 @@ impl<BE: DecryptWriteBackend> Packer<BE> {
     fn add_raw(
         &self,
         data: &[u8],
-        id: &Id,
+        id: &BlobId,
         data_len: u64,
         uncompressed_length: Option<NonZeroU32>,
         size_limit: Option<u32>,
@@ -516,7 +520,7 @@ impl<BE: DecryptWriteBackend> RawPacker<BE> {
     fn add_raw(
         &mut self,
         data: &[u8],
-        id: &Id,
+        id: &BlobId,
         data_len: u64,
         uncompressed_length: Option<NonZeroU32>,
         size_limit: Option<u32>,
@@ -616,7 +620,7 @@ impl<BE: DecryptWriteBackend> RawPacker<BE> {
         Ok(())
     }
 
-    fn has(&self, id: &Id) -> bool {
+    fn has(&self, id: &BlobId) -> bool {
         self.index.blobs.iter().any(|b| &b.id == id)
     }
 }
@@ -637,7 +641,7 @@ pub(crate) struct FileWriterHandle<BE: DecryptWriteBackend> {
 
 impl<BE: DecryptWriteBackend> FileWriterHandle<BE> {
     // TODO: add documentation
-    fn process(&self, load: (Bytes, Id, IndexPack)) -> RusticResult<IndexPack> {
+    fn process(&self, load: (Bytes, PackId, IndexPack)) -> RusticResult<IndexPack> {
         let (file, id, mut index) = load;
         index.id = id;
         self.be
@@ -688,7 +692,7 @@ impl Actor {
                     .readahead_scoped(scope)
                     .map(|(file, index): (Bytes, IndexPack)| {
                         let id = hash(&file);
-                        (file, id, index)
+                        (file, PackId::from(id), index)
                     })
                     .readahead_scoped(scope)
                     .map(|load| fwh.process(load))
@@ -797,7 +801,7 @@ impl<BE: DecryptFullBackend> Repacker<BE> {
     ///
     /// If the blob could not be added
     /// If reading the blob from the backend fails
-    pub fn add_fast(&self, pack_id: &Id, blob: &IndexBlob) -> RusticResult<()> {
+    pub fn add_fast(&self, pack_id: &PackId, blob: &IndexBlob) -> RusticResult<()> {
         let data = self
             .be
             .read_partial(
@@ -829,7 +833,7 @@ impl<BE: DecryptFullBackend> Repacker<BE> {
     ///
     /// If the blob could not be added
     /// If reading the blob from the backend fails
-    pub fn add(&self, pack_id: &Id, blob: &IndexBlob) -> RusticResult<()> {
+    pub fn add(&self, pack_id: &PackId, blob: &IndexBlob) -> RusticResult<()> {
         let data = self.be.read_encrypted_partial(
             FileType::Pack,
             pack_id,

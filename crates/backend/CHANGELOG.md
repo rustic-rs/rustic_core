@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.3.0](https://github.com/rustic-rs/rustic_core/compare/rustic_backend-v0.2.1...rustic_backend-v0.3.0) - 2024-09-23
+
+### Added
+
+- [**breaking**] Use CommandInput for commands ([#269](https://github.com/rustic-rs/rustic_core/pull/269))
+
+### Other
+
+- remove readme versions in usage section for easier release due to release PR ([#271](https://github.com/rustic-rs/rustic_core/pull/271))
+- [**breaking**] Use different Id types ([#256](https://github.com/rustic-rs/rustic_core/pull/256))
+- *(deps)* Update opendal ([#268](https://github.com/rustic-rs/rustic_core/pull/268))
+
 ## [0.2.1](https://github.com/rustic-rs/rustic_core/compare/rustic_backend-v0.2.0...rustic_backend-v0.2.1) - 2024-09-06
 
 ### Added

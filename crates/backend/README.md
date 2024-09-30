@@ -44,7 +44,7 @@ Add this to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-rustic_backend = "0.1"
+rustic_backend = "*"
 ```
 
 ## Crate features

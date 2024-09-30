@@ -16,6 +16,7 @@ use crate::{
     backend::{FileType, ReadBackend, WriteBackend},
     error::{CacheBackendErrorKind, RusticResult},
     id::Id,
+    repofile::configfile::RepositoryId,
 };
 
 /// Backend that caches data.
@@ -235,12 +236,14 @@ impl Cache {
     ///
     /// [`CacheBackendErrorKind::NoCacheDirectory`]: crate::error::CacheBackendErrorKind::NoCacheDirectory
     /// [`CacheBackendErrorKind::FromIoError`]: crate::error::CacheBackendErrorKind::FromIoError
-    pub fn new(id: Id, path: Option<PathBuf>) -> RusticResult<Self> {
-        let mut path = path.unwrap_or({
+    pub fn new(id: RepositoryId, path: Option<PathBuf>) -> RusticResult<Self> {
+        let mut path = if let Some(p) = path {
+            p
+        } else {
             let mut dir = cache_dir().ok_or_else(|| CacheBackendErrorKind::NoCacheDirectory)?;
             dir.push("rustic");
             dir
-        });
+        };
         fs::create_dir_all(&path).map_err(CacheBackendErrorKind::FromIoError)?;
         cachedir::ensure_tag(&path).map_err(CacheBackendErrorKind::FromIoError)?;
         path.push(id.to_hex());
@@ -318,7 +321,7 @@ impl Cache {
             })
             .map(|e| {
                 (
-                    Id::from_hex(e.file_name().to_str().unwrap()).unwrap(),
+                    e.file_name().to_str().unwrap().parse().unwrap(),
                     // handle errors in metadata by returning a size of 0
                     e.metadata().map_or(0, |m| m.len().try_into().unwrap_or(0)),
                 )

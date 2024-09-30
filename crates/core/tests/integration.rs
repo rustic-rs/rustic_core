@@ -34,14 +34,11 @@ use insta::{
 use pretty_assertions::assert_eq;
 use rstest::{fixture, rstest};
 use rustic_core::{
-    repofile::SnapshotFile, BackupOptions, CheckOptions, ConfigOptions, FindMatches, FindNode,
-    FullIndex, IndexedFull, IndexedStatus, KeyOptions, LimitOption, LsOptions, NoProgressBars,
-    OpenStatus, ParentOptions, PathList, Repository, RepositoryBackends, RepositoryOptions,
+    repofile::{Metadata, Node, PackId, SnapshotFile},
+    BackupOptions, CheckOptions, CommandInput, ConfigOptions, FindMatches, FindNode, FullIndex,
+    IndexedFull, IndexedStatus, KeyOptions, LimitOption, LsOptions, NoProgressBars, OpenStatus,
+    ParentOptions, PathList, PruneOptions, Repository, RepositoryBackends, RepositoryOptions,
     RusticResult, SnapshotGroupCriterion, SnapshotOptions, StringList,
-};
-use rustic_core::{
-    repofile::{Metadata, Node},
-    PruneOptions,
 };
 use serde::Serialize;
 
@@ -175,6 +172,22 @@ fn assert_with_win<T: Serialize>(test: &str, snap: T) {
     assert_ron_snapshot!(format!("{test}-nix"), snap);
 }
 
+#[test]
+fn repo_with_commands() -> Result<()> {
+    let be = InMemoryBackend::new();
+    let be = RepositoryBackends::new(Arc::new(be), None);
+    let command: CommandInput = "echo test".parse()?;
+    let warm_up: CommandInput = "echo %id".parse()?;
+    let options = RepositoryOptions::default()
+        .password_command(command)
+        .warm_up_command(warm_up);
+    let repo = Repository::new(&options, &be)?;
+    let key_opts = KeyOptions::default();
+    let config_opts = &ConfigOptions::default();
+    let _repo = repo.init(&key_opts, config_opts)?;
+    Ok(())
+}
+
 #[rstest]
 fn test_backup_with_tar_gz_passes(
     tar_gz_testdata: Result<TestSource>,
@@ -219,7 +232,7 @@ fn test_backup_with_tar_gz_passes(
     let all_snapshots = repo.get_all_snapshots()?;
     assert_eq!(vec![first_snapshot.clone()], all_snapshots);
     // save list of pack files
-    let packs1: Vec<_> = repo.list(rustic_core::FileType::Pack)?.collect();
+    let packs1: Vec<PackId> = repo.list()?.collect();
 
     // re-read index
     let repo = repo.to_indexed_ids()?;
@@ -234,14 +247,14 @@ fn test_backup_with_tar_gz_passes(
     assert_eq!(first_snapshot.tree, second_snapshot.tree);
 
     // pack files should be unchanged
-    let packs2: Vec<_> = repo.list(rustic_core::FileType::Pack)?.collect();
+    let packs2: Vec<_> = repo.list()?.collect();
     assert_eq!(packs1, packs2);
 
     // re-read index
     let repo = repo.to_indexed_ids()?;
     // third backup with tags and explicitely given parent
     let snap = SnapshotOptions::default()
-        .tag([StringList::from_str("a,b")?])
+        .tags([StringList::from_str("a,b")?])
         .to_snapshot()?;
     let opts = opts.parent_opts(ParentOptions::default().parent(second_snapshot.id.to_string()));
     let third_snapshot = repo.backup(&opts, paths, snap)?;
@@ -261,7 +274,9 @@ fn test_backup_with_tar_gz_passes(
     );
 
     // pack files should be unchanged
-    let packs3: Vec<_> = repo.list(rustic_core::FileType::Pack)?.collect();
+    let packs2: Vec<_> = repo.list()?.collect();
+    assert_eq!(packs1, packs2);
+    let packs3: Vec<_> = repo.list()?.collect();
     assert_eq!(packs1, packs3);
 
     // Check if snapshots can be retrieved
@@ -272,7 +287,7 @@ fn test_backup_with_tar_gz_passes(
     // reverse order
     all_snapshots.reverse();
     ids.reverse();
-    let snaps = repo.get_snapshots(&ids)?;
+    let snaps = repo.update_snapshots(snaps, &ids)?;
     assert_eq!(snaps, all_snapshots);
 
     // get snapshot group
@@ -324,14 +339,14 @@ fn test_backup_dry_run_with_tar_gz_passes(
     // check that repo is still empty
     let snaps = repo.get_all_snapshots()?;
     assert_eq!(snaps.len(), 0);
-    assert_eq!(repo.list(rustic_core::FileType::Pack)?.count(), 0);
-    assert_eq!(repo.list(rustic_core::FileType::Index)?.count(), 0);
+    assert_eq!(repo.list::<PackId>()?.count(), 0);
+    assert_eq!(repo.list::<PackId>()?.count(), 0);
 
     // first real backup
     let opts = opts.dry_run(false);
     let first_snapshot = repo.backup(&opts, paths, SnapshotFile::default())?;
     assert_eq!(snap_dry_run.tree, first_snapshot.tree);
-    let packs: Vec<_> = repo.list(rustic_core::FileType::Pack)?.collect();
+    let packs: Vec<_> = repo.list::<PackId>()?.collect();
 
     // tree of first backup
     // re-read index
@@ -356,7 +371,7 @@ fn test_backup_dry_run_with_tar_gz_passes(
     // check that no data has been added
     let snaps = repo.get_all_snapshots()?;
     assert_eq!(snaps, vec![first_snapshot]);
-    let packs_dry_run: Vec<_> = repo.list(rustic_core::FileType::Pack)?.collect();
+    let packs_dry_run: Vec<PackId> = repo.list()?.collect();
     assert_eq!(packs_dry_run, packs);
 
     // re-read index
@@ -365,6 +380,36 @@ fn test_backup_dry_run_with_tar_gz_passes(
     let opts = opts.dry_run(false);
     let second_snapshot = repo.backup(&opts, paths, SnapshotFile::default())?;
     assert_eq!(snap_dry_run.tree, second_snapshot.tree);
+    Ok(())
+}
+
+#[rstest]
+fn test_backup_stdin_command(
+    set_up_repo: Result<RepoOpen>,
+    insta_snapshotfile_redaction: Settings,
+) -> Result<()> {
+    // Fixtures
+    let repo = set_up_repo?.to_indexed_ids()?;
+    let paths = PathList::from_string("-")?;
+
+    let cmd: CommandInput = "echo test".parse()?;
+    let opts = BackupOptions::default()
+        .stdin_filename("test")
+        .stdin_command(cmd);
+    // backup data from cmd
+    let snapshot = repo.backup(&opts, &paths, SnapshotFile::default())?;
+    insta_snapshotfile_redaction.bind(|| {
+        assert_with_win("stdin-command-summary", &snapshot);
+    });
+
+    // re-read index
+    let repo = repo.to_indexed()?;
+
+    // check content
+    let node = repo.node_from_snapshot_path("latest:test", |_| true)?;
+    let mut content = Vec::new();
+    repo.dump(&node, &mut content)?;
+    assert_eq!(content, b"test\n");
     Ok(())
 }
 
@@ -483,6 +528,8 @@ fn test_prune(
     let paths = PathList::from_iter(Some(source.0.path().join("0/0/9/3")));
     let _ = repo.backup(&opts, &paths, SnapshotFile::default())?;
 
+    // drop index
+    let repo = repo.drop_index();
     repo.delete_snapshots(&[snapshot1.id])?;
 
     // get prune plan

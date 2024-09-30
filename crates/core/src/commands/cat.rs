@@ -4,9 +4,8 @@ use bytes::Bytes;
 
 use crate::{
     backend::{decrypt::DecryptReadBackend, FileType, FindInBackend},
-    blob::{tree::Tree, BlobType},
+    blob::{tree::Tree, BlobId, BlobType},
     error::{CommandErrorKind, RusticResult},
-    id::Id,
     index::ReadIndex,
     progress::ProgressBars,
     repofile::SnapshotFile,
@@ -72,7 +71,7 @@ pub(crate) fn cat_blob<P, S: IndexedFull>(
     tpe: BlobType,
     id: &str,
 ) -> RusticResult<Bytes> {
-    let id = Id::from_hex(id)?;
+    let id = id.parse()?;
     let data = repo.index().blob_from_backend(repo.dbe(), tpe, &id)?;
 
     Ok(data)
@@ -118,6 +117,6 @@ pub(crate) fn cat_tree<P: ProgressBars, S: IndexedTree>(
         .ok_or_else(|| CommandErrorKind::PathIsNoDir(path.to_string()))?;
     let data = repo
         .index()
-        .blob_from_backend(repo.dbe(), BlobType::Tree, &id)?;
+        .blob_from_backend(repo.dbe(), BlobType::Tree, &BlobId::from(*id))?;
     Ok(data)
 }

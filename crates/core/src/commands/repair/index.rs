@@ -12,9 +12,8 @@ use crate::{
     error::{CommandErrorKind, RusticErrorKind, RusticResult},
     index::{binarysorted::IndexCollector, indexer::Indexer, GlobalIndex},
     progress::{Progress, ProgressBars},
-    repofile::{IndexFile, IndexPack, PackHeader, PackHeaderRef},
+    repofile::{packfile::PackId, IndexFile, IndexPack, PackHeader, PackHeaderRef},
     repository::{Open, Repository},
-    Id,
 };
 
 #[cfg_attr(feature = "clap", derive(clap::Parser))]
@@ -111,8 +110,8 @@ impl RepairIndexOptions {
 }
 
 struct PackChecker {
-    packs: HashMap<Id, u32>,
-    packs_to_read: Vec<(Id, Option<u32>, u32)>,
+    packs: HashMap<PackId, u32>,
+    packs_to_read: Vec<(PackId, Option<u32>, u32)>,
 }
 
 impl PackChecker {
@@ -123,6 +122,7 @@ impl PackChecker {
             .list_with_size(FileType::Pack)
             .map_err(RusticErrorKind::Backend)?
             .into_iter()
+            .map(|(id, size)| (PackId::from(id), size))
             .collect();
         p.finish();
 
@@ -165,7 +165,7 @@ impl PackChecker {
         (new_index, changed)
     }
 
-    fn into_pack_to_read(mut self) -> Vec<(Id, Option<u32>, u32)> {
+    fn into_pack_to_read(mut self) -> Vec<(PackId, Option<u32>, u32)> {
         // add packs which are listed but not contained in the index
         self.packs_to_read
             .extend(self.packs.into_iter().map(|(id, size)| (id, None, size)));

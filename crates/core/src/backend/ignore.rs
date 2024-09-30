@@ -6,7 +6,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use serde_with::{serde_as, DisplayFromStr, OneOrMany};
+use serde_with::{serde_as, DisplayFromStr};
 
 use bytesize::ByteSize;
 #[cfg(not(windows))]
@@ -68,28 +68,24 @@ pub struct LocalSourceSaveOptions {
 /// [`LocalSourceFilterOptions`] allow to filter a local source by various criteria.
 pub struct LocalSourceFilterOptions {
     /// Glob pattern to exclude/include (can be specified multiple times)
-    #[cfg_attr(feature = "clap", clap(long))]
+    #[cfg_attr(feature = "clap", clap(long = "glob", value_name = "GLOB"))]
     #[cfg_attr(feature = "merge", merge(strategy = merge::vec::overwrite_empty))]
-    #[serde_as(as = "OneOrMany<_>")]
-    pub glob: Vec<String>,
+    pub globs: Vec<String>,
 
     /// Same as --glob pattern but ignores the casing of filenames
-    #[cfg_attr(feature = "clap", clap(long, value_name = "GLOB"))]
+    #[cfg_attr(feature = "clap", clap(long = "iglob", value_name = "GLOB"))]
     #[cfg_attr(feature = "merge", merge(strategy = merge::vec::overwrite_empty))]
-    #[serde_as(as = "OneOrMany<_>")]
-    pub iglob: Vec<String>,
+    pub iglobs: Vec<String>,
 
     /// Read glob patterns to exclude/include from this file (can be specified multiple times)
-    #[cfg_attr(feature = "clap", clap(long, value_name = "FILE"))]
+    #[cfg_attr(feature = "clap", clap(long = "glob-file", value_name = "FILE"))]
     #[cfg_attr(feature = "merge", merge(strategy = merge::vec::overwrite_empty))]
-    #[serde_as(as = "OneOrMany<_>")]
-    pub glob_file: Vec<String>,
+    pub glob_files: Vec<String>,
 
     /// Same as --glob-file ignores the casing of filenames in patterns
-    #[cfg_attr(feature = "clap", clap(long, value_name = "FILE"))]
+    #[cfg_attr(feature = "clap", clap(long = "iglob-file", value_name = "FILE"))]
     #[cfg_attr(feature = "merge", merge(strategy = merge::vec::overwrite_empty))]
-    #[serde_as(as = "OneOrMany<_>")]
-    pub iglob_file: Vec<String>,
+    pub iglob_files: Vec<String>,
 
     /// Ignore files based on .gitignore files
     #[cfg_attr(feature = "clap", clap(long))]
@@ -102,15 +98,16 @@ pub struct LocalSourceFilterOptions {
     pub no_require_git: bool,
 
     /// Treat the provided filename like a .gitignore file (can be specified multiple times)
-    #[cfg_attr(feature = "clap", clap(long, value_name = "FILE"))]
+    #[cfg_attr(
+        feature = "clap",
+        clap(long = "custom-ignorefile", value_name = "FILE")
+    )]
     #[cfg_attr(feature = "merge", merge(strategy = merge::vec::overwrite_empty))]
-    #[serde_as(as = "OneOrMany<_>")]
-    pub custom_ignorefile: Vec<String>,
+    pub custom_ignorefiles: Vec<String>,
 
     /// Exclude contents of directories containing this filename (can be specified multiple times)
     #[cfg_attr(feature = "clap", clap(long, value_name = "FILE"))]
     #[cfg_attr(feature = "merge", merge(strategy = merge::vec::overwrite_empty))]
-    #[serde_as(as = "OneOrMany<_>")]
     pub exclude_if_present: Vec<String>,
 
     /// Exclude other file systems, don't cross filesystem boundaries and subvolumes
@@ -157,13 +154,13 @@ impl LocalSource {
 
         let mut override_builder = OverrideBuilder::new("");
 
-        for g in &filter_opts.glob {
+        for g in &filter_opts.globs {
             _ = override_builder
                 .add(g)
                 .map_err(IgnoreErrorKind::GenericError)?;
         }
 
-        for file in &filter_opts.glob_file {
+        for file in &filter_opts.glob_files {
             for line in std::fs::read_to_string(file)
                 .map_err(|err| IgnoreErrorKind::ErrorGlob {
                     file: file.into(),
@@ -180,13 +177,13 @@ impl LocalSource {
         _ = override_builder
             .case_insensitive(true)
             .map_err(IgnoreErrorKind::GenericError)?;
-        for g in &filter_opts.iglob {
+        for g in &filter_opts.iglobs {
             _ = override_builder
                 .add(g)
                 .map_err(IgnoreErrorKind::GenericError)?;
         }
 
-        for file in &filter_opts.iglob_file {
+        for file in &filter_opts.iglob_files {
             for line in std::fs::read_to_string(file)
                 .map_err(|err| IgnoreErrorKind::ErrorGlob {
                     file: file.into(),
@@ -200,7 +197,7 @@ impl LocalSource {
             }
         }
 
-        for file in &filter_opts.custom_ignorefile {
+        for file in &filter_opts.custom_ignorefiles {
             _ = walk_builder.add_custom_ignore_filename(file);
         }
 

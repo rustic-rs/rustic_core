@@ -12,7 +12,7 @@ use crate::{
     crypto::aespoly1305::Key,
     error::{RusticErrorKind, RusticResult},
     id::Id,
-    repofile::ConfigFile,
+    repofile::{configfile::RepositoryId, ConfigFile},
     repository::Repository,
 };
 
@@ -46,7 +46,7 @@ pub(crate) fn init<P, S>(
     config_opts: &ConfigOptions,
 ) -> RusticResult<(Key, ConfigFile)> {
     // Create config first to allow catching errors from here without writing anything
-    let repo_id = Id::random();
+    let repo_id = RepositoryId::from(Id::random());
     let chunker_poly = random_poly()?;
     let mut config = ConfigFile::new(2, repo_id, chunker_poly);
     if repo.be_hot.is_some() {

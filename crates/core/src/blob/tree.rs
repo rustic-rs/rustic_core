@@ -21,9 +21,10 @@ use crate::{
         decrypt::DecryptReadBackend,
         node::{Metadata, Node, NodeType},
     },
+    blob::BlobType,
     crypto::hasher::hash,
     error::{RusticResult, TreeErrorKind},
-    id::Id,
+    impl_blobid,
     index::ReadGlobalIndex,
     progress::Progress,
     repofile::snapshotfile::SnapshotSummary,
@@ -36,6 +37,7 @@ pub(super) mod constants {
 
 pub(crate) type TreeStreamItem = RusticResult<(PathBuf, Tree)>;
 type NodeStreamItem = RusticResult<(PathBuf, Node)>;
+impl_blobid!(TreeId, BlobType::Tree);
 
 #[derive(Default, Serialize, Deserialize, Clone, Debug)]
 /// A [`Tree`] is a list of [`Node`]s
@@ -79,10 +81,10 @@ impl Tree {
     /// # Returns
     ///
     /// A tuple of the serialized tree as `Vec<u8>` and the tree's ID
-    pub(crate) fn serialize(&self) -> RusticResult<(Vec<u8>, Id)> {
+    pub(crate) fn serialize(&self) -> RusticResult<(Vec<u8>, TreeId)> {
         let mut chunk = serde_json::to_vec(&self).map_err(TreeErrorKind::SerializingTreeFailed)?;
         chunk.push(b'\n'); // for whatever reason, restic adds a newline, so to be compatible...
-        let id = hash(&chunk);
+        let id = hash(&chunk).into();
         Ok((chunk, id))
     }
 
@@ -107,7 +109,7 @@ impl Tree {
     pub(crate) fn from_backend(
         be: &impl DecryptReadBackend,
         index: &impl ReadGlobalIndex,
-        id: Id,
+        id: TreeId,
     ) -> RusticResult<Self> {
         let data = index
             .get_tree(&id)
@@ -137,7 +139,7 @@ impl Tree {
     pub(crate) fn node_from_path(
         be: &impl DecryptReadBackend,
         index: &impl ReadGlobalIndex,
-        id: Id,
+        id: TreeId,
         path: &Path,
     ) -> RusticResult<Node> {
         let mut node = Node::new_node(OsStr::new(""), NodeType::Dir, Metadata::default());
@@ -163,16 +165,16 @@ impl Tree {
     pub(crate) fn find_nodes_from_path(
         be: &impl DecryptReadBackend,
         index: &impl ReadGlobalIndex,
-        ids: impl IntoIterator<Item = Id>,
+        ids: impl IntoIterator<Item = TreeId>,
         path: &Path,
     ) -> RusticResult<FindNode> {
         // helper function which is recursively called
         fn find_node_from_component(
             be: &impl DecryptReadBackend,
             index: &impl ReadGlobalIndex,
-            tree_id: Id,
+            tree_id: TreeId,
             path_comp: &[OsString],
-            results_cache: &mut [BTreeMap<Id, Option<usize>>],
+            results_cache: &mut [BTreeMap<TreeId, Option<usize>>],
             nodes: &mut BTreeMap<Node, usize>,
             idx: usize,
         ) -> RusticResult<Option<usize>> {
@@ -247,14 +249,14 @@ impl Tree {
     pub(crate) fn find_matching_nodes(
         be: &impl DecryptReadBackend,
         index: &impl ReadGlobalIndex,
-        ids: impl IntoIterator<Item = Id>,
+        ids: impl IntoIterator<Item = TreeId>,
         matches: &impl Fn(&Path, &Node) -> bool,
     ) -> RusticResult<FindMatches> {
         // internal state used to save match information in find_matching_nodes
         #[derive(Default)]
         struct MatchInternalState {
             // we cache all results
-            cache: BTreeMap<(Id, PathBuf), Vec<(usize, usize)>>,
+            cache: BTreeMap<(TreeId, PathBuf), Vec<(usize, usize)>>,
             nodes: BTreeMap<Node, usize>,
             paths: BTreeMap<PathBuf, usize>,
         }
@@ -273,7 +275,7 @@ impl Tree {
         fn find_matching_nodes_recursive(
             be: &impl DecryptReadBackend,
             index: &impl ReadGlobalIndex,
-            tree_id: Id,
+            tree_id: TreeId,
             path: &Path,
             state: &mut MatchInternalState,
             matches: &impl Fn(&Path, &Node) -> bool,
@@ -636,9 +638,9 @@ where
 #[derive(Debug)]
 pub struct TreeStreamerOnce<P> {
     /// The visited tree IDs
-    visited: BTreeSet<Id>,
+    visited: BTreeSet<TreeId>,
     /// The queue to send tree IDs to
-    queue_in: Option<Sender<(PathBuf, Id, usize)>>,
+    queue_in: Option<Sender<(PathBuf, TreeId, usize)>>,
     /// The queue to receive trees from
     queue_out: Receiver<RusticResult<(PathBuf, Tree, usize)>>,
     /// The progress indicator
@@ -671,7 +673,7 @@ impl<P: Progress> TreeStreamerOnce<P> {
     pub fn new<BE: DecryptReadBackend, I: ReadGlobalIndex>(
         be: &BE,
         index: &I,
-        ids: Vec<Id>,
+        ids: Vec<TreeId>,
         p: P,
     ) -> RusticResult<Self> {
         p.set_length(ids.len() as u64);
@@ -730,7 +732,7 @@ impl<P: Progress> TreeStreamerOnce<P> {
     /// * [`TreeErrorKind::SendingCrossbeamMessageFailed`] - If sending the message fails.
     ///
     /// [`TreeErrorKind::SendingCrossbeamMessageFailed`]: crate::error::TreeErrorKind::SendingCrossbeamMessageFailed
-    fn add_pending(&mut self, path: PathBuf, id: Id, count: usize) -> RusticResult<bool> {
+    fn add_pending(&mut self, path: PathBuf, id: TreeId, count: usize) -> RusticResult<bool> {
         if self.visited.insert(id) {
             self.queue_in
                 .as_ref()
@@ -799,11 +801,11 @@ impl<P: Progress> Iterator for TreeStreamerOnce<P> {
 pub(crate) fn merge_trees(
     be: &impl DecryptReadBackend,
     index: &impl ReadGlobalIndex,
-    trees: &[Id],
+    trees: &[TreeId],
     cmp: &impl Fn(&Node, &Node) -> Ordering,
-    save: &impl Fn(Tree) -> RusticResult<(Id, u64)>,
+    save: &impl Fn(Tree) -> RusticResult<(TreeId, u64)>,
     summary: &mut SnapshotSummary,
-) -> RusticResult<Id> {
+) -> RusticResult<TreeId> {
     // We store nodes with the index of the tree in an Binary Heap where we sort only by node name
     struct SortedNode(Node, usize);
     impl PartialEq for SortedNode {
@@ -909,7 +911,7 @@ pub(crate) fn merge_nodes(
     index: &impl ReadGlobalIndex,
     nodes: Vec<Node>,
     cmp: &impl Fn(&Node, &Node) -> Ordering,
-    save: &impl Fn(Tree) -> RusticResult<(Id, u64)>,
+    save: &impl Fn(Tree) -> RusticResult<(TreeId, u64)>,
     summary: &mut SnapshotSummary,
 ) -> RusticResult<Node> {
     let trees: Vec<_> = nodes

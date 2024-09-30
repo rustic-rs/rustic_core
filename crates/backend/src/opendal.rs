@@ -171,8 +171,7 @@ impl ReadBackend for OpenDALBackend {
             .call()?
             .into_iter()
             .filter(|e| e.metadata().is_file())
-            .map(|e| Id::from_hex(e.name()))
-            .filter_map(Result::ok)
+            .filter_map(|e| e.name().parse().ok())
             .collect())
     }
 
@@ -201,10 +200,7 @@ impl ReadBackend for OpenDALBackend {
             .into_iter()
             .filter(|e| e.metadata().is_file())
             .map(|e| -> Result<(Id, u32)> {
-                Ok((
-                    Id::from_hex(e.name())?,
-                    e.metadata().content_length().try_into()?,
-                ))
+                Ok((e.name().parse()?, e.metadata().content_length().try_into()?))
             })
             .filter_map(Result::ok)
             .collect())

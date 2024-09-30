@@ -38,7 +38,7 @@ Add this to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-rustic_core = "0.2"
+rustic_core = "*"
 ```
 
 ## Crate features

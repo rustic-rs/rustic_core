@@ -218,7 +218,7 @@ impl<'a, BE: DecryptFullBackend, I: ReadGlobalIndex> Archiver<'a, BE, I> {
 
         if !skip_identical_parent || Some(self.snap.tree) != self.parent.tree_id() {
             let id = self.be.save_file(&self.snap)?;
-            self.snap.id = id;
+            self.snap.id = id.into();
         }
 
         p.finish();
