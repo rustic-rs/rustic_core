@@ -237,11 +237,13 @@ impl Cache {
     /// [`CacheBackendErrorKind::NoCacheDirectory`]: crate::error::CacheBackendErrorKind::NoCacheDirectory
     /// [`CacheBackendErrorKind::FromIoError`]: crate::error::CacheBackendErrorKind::FromIoError
     pub fn new(id: RepositoryId, path: Option<PathBuf>) -> RusticResult<Self> {
-        let mut path = path.unwrap_or({
+        let mut path = if let Some(p) = path {
+            p
+        } else {
             let mut dir = cache_dir().ok_or_else(|| CacheBackendErrorKind::NoCacheDirectory)?;
             dir.push("rustic");
             dir
-        });
+        };
         fs::create_dir_all(&path).map_err(CacheBackendErrorKind::FromIoError)?;
         cachedir::ensure_tag(&path).map_err(CacheBackendErrorKind::FromIoError)?;
         path.push(id.to_hex());
