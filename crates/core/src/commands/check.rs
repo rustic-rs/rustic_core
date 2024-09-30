@@ -55,8 +55,7 @@ impl ReadSubsetOption {
         rng: &mut impl Rng,
     ) -> Vec<IndexPack> {
         fn id_matches_n_m(id: &Id, n: u32, m: u32) -> bool {
-            let short_id: u32 = id.transmute();
-            short_id % m == n % m
+            id.as_u32() % m == n % m
         }
 
         let mut total_size: u64 = 0;

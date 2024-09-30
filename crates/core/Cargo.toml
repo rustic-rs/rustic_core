@@ -106,7 +106,6 @@ gethostname = "0.5.0"
 humantime = "2.1.0"
 itertools = "0.13.0"
 quick_cache = "0.6.2"
-safe-transmute = "0.11.3"
 shell-words = "1.1.0"
 strum = { version = "0.26.3", features = ["derive"] }
 zstd = "0.13.2"

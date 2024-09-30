@@ -5,7 +5,6 @@ use std::{fmt, io::Read, ops::Deref, path::Path, str::FromStr};
 use binrw::{BinRead, BinWrite};
 use derive_more::{Constructor, Display};
 use rand::{thread_rng, RngCore};
-use safe_transmute::{transmute_one, TriviallyTransmutable};
 use serde_derive::{Deserialize, Serialize};
 
 use crate::{crypto::hasher::hash, error::IdErrorKind, RusticError, RusticResult};
@@ -177,8 +176,9 @@ impl Id {
         r.read_exact(&mut vec).is_ok() && self == &hash(&vec)
     }
 
-    pub(crate) fn transmute<T: TriviallyTransmutable>(&self) -> T {
-        transmute_one(&self.0).unwrap()
+    /// returns the first 4 bytes as u32 (interpreted as little endian)
+    pub fn as_u32(&self) -> u32 {
+        u32::from_le_bytes([self.0[0], self.0[1], self.0[2], self.0[3]])
     }
 }
 
