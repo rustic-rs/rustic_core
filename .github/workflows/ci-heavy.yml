@@ -256,7 +256,7 @@ jobs:
         run: cargo hack check --rust-version -p ${{ matrix.crate }}
 
   result:
-    name: Result (CI-heavy)
+    name: Result (CI)
     runs-on: ubuntu-latest
     needs:
       - docs
