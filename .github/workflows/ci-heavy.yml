@@ -155,7 +155,7 @@ jobs:
         with:
           toolchain: ${{ matrix.rust }}
       - name: install cargo-hack
-        uses: taiki-e/install-action@9f6abfd69f96f90a7b19dfc77c689c9678cbf978 # v2
+        uses: taiki-e/install-action@9bef7e9c3d7c7aa986ef19933b0722880ae377e0 # v2
         with:
           tool: cargo-hack
       - uses: Swatinem/rust-cache@23bce251a8cd2ffc3c1075eaa2367cf899916d84 # v2
@@ -248,7 +248,7 @@ jobs:
     steps:
       - uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4
       - name: Install cargo-hack
-        uses: taiki-e/install-action@9f6abfd69f96f90a7b19dfc77c689c9678cbf978 # v2
+        uses: taiki-e/install-action@9bef7e9c3d7c7aa986ef19933b0722880ae377e0 # v2
         with:
           tool: cargo-hack
 
