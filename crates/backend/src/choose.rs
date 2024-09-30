@@ -50,31 +50,18 @@ pub struct BackendOptions {
 
     /// Other options for this repository (hot and cold part)
     #[cfg_attr(feature = "clap", clap(skip))]
-    #[cfg_attr(feature = "merge", merge(strategy = extend))]
+    #[cfg_attr(feature = "merge", merge(strategy = conflate::hashmap::ignore))]
     pub options: HashMap<String, String>,
 
     /// Other options for the hot repository
     #[cfg_attr(feature = "clap", clap(skip))]
-    #[cfg_attr(feature = "merge", merge(strategy = extend))]
+    #[cfg_attr(feature = "merge", merge(strategy = conflate::hashmap::ignore))]
     pub options_hot: HashMap<String, String>,
 
     /// Other options for the cold repository
     #[cfg_attr(feature = "clap", clap(skip))]
-    #[cfg_attr(feature = "merge", merge(strategy = extend))]
+    #[cfg_attr(feature = "merge", merge(strategy = conflate::hashmap::ignore))]
     pub options_cold: HashMap<String, String>,
-}
-
-/// Overwrite the left value with the right value
-///
-/// This is used for merging config values, e.g. [`BackendOptions`].
-///
-/// # Arguments
-///
-/// * `left` - The left value
-/// * `right` - The right value
-#[cfg(feature = "merge")]
-pub fn extend<A, T: Extend<A> + IntoIterator<Item = A>>(left: &mut T, right: T) {
-    left.extend(right);
 }
 
 impl BackendOptions {
