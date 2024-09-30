@@ -177,6 +177,7 @@ impl Id {
     }
 
     /// returns the first 4 bytes as u32 (interpreted as little endian)
+    #[must_use]
     pub fn as_u32(&self) -> u32 {
         u32::from_le_bytes([self.0[0], self.0[1], self.0[2], self.0[3]])
     }
