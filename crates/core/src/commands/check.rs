@@ -676,7 +676,7 @@ mod tests {
             ReadSubsetOption::IdSubSet(_) => {}
         };
 
-        let ids: Vec<_> = packs.iter().map(|pack| pack.id).collect();
+        let ids: Vec<_> = packs.iter().map(|pack| (pack.id, pack.size)).collect();
         assert_ron_snapshot!(s, ids);
     }
 
