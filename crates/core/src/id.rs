@@ -108,10 +108,16 @@ impl Id {
 
     /// Generate a random `Id`.
     #[must_use]
-    pub fn random() -> Self {
+    pub fn random_from_rng(rng: &mut impl RngCore) -> Self {
         let mut id = Self::default();
-        thread_rng().fill_bytes(&mut id.0);
+        rng.fill_bytes(&mut id.0);
         id
+    }
+
+    /// Generate a random `Id`.
+    #[must_use]
+    pub fn random() -> Self {
+        Self::random_from_rng(&mut thread_rng())
     }
 
     /// Convert to [`HexId`].
@@ -168,6 +174,12 @@ impl Id {
         // check if SHA256 matches
         let mut vec = vec![0; length];
         r.read_exact(&mut vec).is_ok() && self == &hash(&vec)
+    }
+
+    /// returns the first 4 bytes as u32 (interpreted as little endian)
+    #[must_use]
+    pub fn as_u32(&self) -> u32 {
+        u32::from_le_bytes([self.0[0], self.0[1], self.0[2], self.0[3]])
     }
 }
 

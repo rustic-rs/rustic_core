@@ -8,7 +8,7 @@
 use std::{
     error::Error,
     ffi::OsString,
-    num::{ParseIntError, TryFromIntError},
+    num::{ParseFloatError, ParseIntError, TryFromIntError},
     ops::RangeInclusive,
     path::{PathBuf, StripPrefixError},
     process::ExitStatus,
@@ -185,6 +185,8 @@ pub enum CommandErrorKind {
     PackNotExisting(PackId),
     /// pack {0} got no decision what to do
     NoDecision(PackId),
+    /// {0:?}
+    FromParseFloatError(#[from] ParseFloatError),
     /// {0:?}
     FromParseIntError(#[from] ParseIntError),
     /// {0}
