@@ -287,7 +287,7 @@ fn test_backup_with_tar_gz_passes(
     // reverse order
     all_snapshots.reverse();
     ids.reverse();
-    let snaps = repo.get_snapshots(&ids)?;
+    let snaps = repo.update_snapshots(snaps, &ids)?;
     assert_eq!(snaps, all_snapshots);
 
     // get snapshot group
