@@ -31,6 +31,7 @@ use crate::{
 };
 
 #[derive(Clone, Copy, Debug, Default)]
+#[non_exhaustive]
 /// Options to specify which subset of packs will be read
 pub enum ReadSubsetOption {
     #[default]
@@ -119,6 +120,7 @@ impl FromStr for ReadSubsetOption {
 #[cfg_attr(feature = "clap", derive(clap::Parser))]
 #[derive(Clone, Copy, Debug, Default, Setters)]
 #[setters(into)]
+#[non_exhaustive]
 /// Options for the `check` command
 pub struct CheckOptions {
     /// Don't verify the data saved in the cache

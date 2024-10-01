@@ -44,6 +44,7 @@ type Filenames = Vec<PathBuf>;
 #[cfg_attr(feature = "clap", derive(clap::Parser))]
 #[derive(Debug, Copy, Clone, Default, Setters)]
 #[setters(into)]
+#[non_exhaustive]
 /// Options for the `restore` command
 pub struct RestoreOptions {
     /// Remove all files/dirs in destination which are not contained in snapshot.
@@ -68,6 +69,7 @@ pub struct RestoreOptions {
 }
 
 #[derive(Default, Debug, Clone, Copy)]
+#[non_exhaustive]
 /// Statistics for files or directories
 pub struct FileDirStats {
     /// Number of files or directories to restore
@@ -83,6 +85,7 @@ pub struct FileDirStats {
 }
 
 #[derive(Default, Debug, Clone, Copy)]
+#[non_exhaustive]
 /// Restore statistics
 pub struct RestoreStats {
     /// file statistics

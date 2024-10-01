@@ -396,6 +396,7 @@ impl IntoIterator for Tree {
 #[derive(Derivative, Clone, Debug, Setters)]
 #[derivative(Default)]
 #[setters(into)]
+#[non_exhaustive]
 /// Options for listing the `Nodes` of a `Tree`
 pub struct TreeStreamerOptions {
     /// Glob pattern to exclude/include (can be specified multiple times)
