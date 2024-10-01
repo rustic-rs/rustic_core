@@ -46,6 +46,7 @@ pub struct LocalSource {
 #[derive(serde::Deserialize, serde::Serialize, Default, Clone, Copy, Debug, Setters)]
 #[serde(default, rename_all = "kebab-case", deny_unknown_fields)]
 #[setters(into)]
+#[non_exhaustive]
 /// [`LocalSourceSaveOptions`] describes how entries from a local source will be saved in the repository.
 pub struct LocalSourceSaveOptions {
     /// Save access time for files and directories
@@ -65,6 +66,7 @@ pub struct LocalSourceSaveOptions {
 #[derive(serde::Deserialize, serde::Serialize, Default, Clone, Debug, Setters)]
 #[serde(default, rename_all = "kebab-case", deny_unknown_fields)]
 #[setters(into)]
+#[non_exhaustive]
 /// [`LocalSourceFilterOptions`] allow to filter a local source by various criteria.
 pub struct LocalSourceFilterOptions {
     /// Glob pattern to exclude/include (can be specified multiple times)

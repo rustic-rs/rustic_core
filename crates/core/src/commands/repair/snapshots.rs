@@ -24,6 +24,7 @@ use crate::{
 #[cfg_attr(feature = "clap", derive(clap::Parser))]
 #[derive(Debug, Setters)]
 #[setters(into)]
+#[non_exhaustive]
 /// Options for the `repair snapshots` command
 pub struct RepairSnapshotsOptions {
     /// Also remove defect snapshots

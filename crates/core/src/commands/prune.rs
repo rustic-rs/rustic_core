@@ -53,6 +53,7 @@ pub(super) mod constants {
 #[cfg_attr(feature = "clap", derive(clap::Parser))]
 #[derive(Debug, Clone, Setters)]
 #[setters(into)]
+#[non_exhaustive]
 /// Options for the `prune` command
 pub struct PruneOptions {
     /// Define maximum data to repack in % of reposize or as size (e.g. '5b', '2 kB', '3M', '4TiB') or 'unlimited'
@@ -248,6 +249,7 @@ impl PruneOptions {
 
 /// Enum to specify a size limit
 #[derive(Clone, Copy, Debug)]
+#[non_exhaustive]
 pub enum LimitOption {
     /// Size in bytes
     Size(ByteSize),
