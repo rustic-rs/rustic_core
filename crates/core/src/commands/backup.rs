@@ -32,7 +32,7 @@ use clap::ValueHint;
 /// `backup` subcommand
 #[serde_as]
 #[cfg_attr(feature = "clap", derive(clap::Parser))]
-#[cfg_attr(feature = "merge", derive(merge::Merge))]
+#[cfg_attr(feature = "merge", derive(conflate::Merge))]
 #[derive(Clone, Default, Debug, Deserialize, Serialize, Setters)]
 #[serde(default, rename_all = "kebab-case", deny_unknown_fields)]
 #[setters(into)]
@@ -43,6 +43,7 @@ pub struct ParentOptions {
     /// Group snapshots by any combination of host,label,paths,tags to find a suitable parent (default: host,label,paths)
     #[cfg_attr(feature = "clap", clap(long, short = 'g', value_name = "CRITERION",))]
     #[serde_as(as = "Option<DisplayFromStr>")]
+    #[cfg_attr(feature = "merge", merge(strategy = conflate::option::overwrite_none))]
     pub group_by: Option<SnapshotGroupCriterion>,
 
     /// Snapshot to use as parent
@@ -50,26 +51,27 @@ pub struct ParentOptions {
         feature = "clap",
         clap(long, value_name = "SNAPSHOT", conflicts_with = "force",)
     )]
+    #[cfg_attr(feature = "merge", merge(strategy = conflate::option::overwrite_none))]
     pub parent: Option<String>,
 
     /// Skip writing of snapshot if nothing changed w.r.t. the parent snapshot.
     #[cfg_attr(feature = "clap", clap(long))]
-    #[cfg_attr(feature = "merge", merge(strategy = merge::bool::overwrite_false))]
+    #[cfg_attr(feature = "merge", merge(strategy = conflate::bool::overwrite_false))]
     pub skip_identical_parent: bool,
 
     /// Use no parent, read all files
     #[cfg_attr(feature = "clap", clap(long, short, conflicts_with = "parent",))]
-    #[cfg_attr(feature = "merge", merge(strategy = merge::bool::overwrite_false))]
+    #[cfg_attr(feature = "merge", merge(strategy = conflate::bool::overwrite_false))]
     pub force: bool,
 
     /// Ignore ctime changes when checking for modified files
     #[cfg_attr(feature = "clap", clap(long, conflicts_with = "force",))]
-    #[cfg_attr(feature = "merge", merge(strategy = merge::bool::overwrite_false))]
+    #[cfg_attr(feature = "merge", merge(strategy = conflate::bool::overwrite_false))]
     pub ignore_ctime: bool,
 
     /// Ignore inode number changes when checking for modified files
     #[cfg_attr(feature = "clap", clap(long, conflicts_with = "force",))]
-    #[cfg_attr(feature = "merge", merge(strategy = merge::bool::overwrite_false))]
+    #[cfg_attr(feature = "merge", merge(strategy = conflate::bool::overwrite_false))]
     pub ignore_inode: bool,
 }
 
@@ -127,7 +129,7 @@ impl ParentOptions {
 }
 
 #[cfg_attr(feature = "clap", derive(clap::Parser))]
-#[cfg_attr(feature = "merge", derive(merge::Merge))]
+#[cfg_attr(feature = "merge", derive(conflate::Merge))]
 #[derive(Clone, Default, Debug, Deserialize, Serialize, Setters)]
 #[serde(default, rename_all = "kebab-case", deny_unknown_fields)]
 #[setters(into)]
@@ -144,20 +146,22 @@ pub struct BackupOptions {
 
     /// Call the given command and use its output as stdin
     #[cfg_attr(feature = "clap", clap(long, value_name = "COMMAND"))]
+    #[cfg_attr(feature = "merge", merge(strategy = conflate::option::overwrite_none))]
     pub stdin_command: Option<CommandInput>,
 
     /// Manually set backup path in snapshot
     #[cfg_attr(feature = "clap", clap(long, value_name = "PATH", value_hint = ValueHint::DirPath))]
+    #[cfg_attr(feature = "merge", merge(strategy = conflate::option::overwrite_none))]
     pub as_path: Option<PathBuf>,
 
     /// Don't scan the backup source for its size - this disables ETA estimation for backup.
     #[cfg_attr(feature = "clap", clap(long))]
-    #[cfg_attr(feature = "merge", merge(strategy = merge::bool::overwrite_false))]
+    #[cfg_attr(feature = "merge", merge(strategy = conflate::bool::overwrite_false))]
     pub no_scan: bool,
 
     /// Dry-run mode: Don't write any data or snapshot
     #[cfg_attr(feature = "clap", clap(long))]
-    #[cfg_attr(feature = "merge", merge(strategy = merge::bool::overwrite_false))]
+    #[cfg_attr(feature = "merge", merge(strategy = conflate::bool::overwrite_false))]
     pub dry_run: bool,
 
     #[cfg_attr(feature = "clap", clap(flatten))]

@@ -42,7 +42,7 @@ pub struct LocalSource {
 
 #[serde_as]
 #[cfg_attr(feature = "clap", derive(clap::Parser))]
-#[cfg_attr(feature = "merge", derive(merge::Merge))]
+#[cfg_attr(feature = "merge", derive(conflate::Merge))]
 #[derive(serde::Deserialize, serde::Serialize, Default, Clone, Copy, Debug, Setters)]
 #[serde(default, rename_all = "kebab-case", deny_unknown_fields)]
 #[setters(into)]
@@ -50,18 +50,18 @@ pub struct LocalSource {
 pub struct LocalSourceSaveOptions {
     /// Save access time for files and directories
     #[cfg_attr(feature = "clap", clap(long))]
-    #[cfg_attr(feature = "merge", merge(strategy = merge::bool::overwrite_false))]
+    #[cfg_attr(feature = "merge", merge(strategy = conflate::bool::overwrite_false))]
     pub with_atime: bool,
 
     /// Don't save device ID for files and directories
     #[cfg_attr(feature = "clap", clap(long))]
-    #[cfg_attr(feature = "merge", merge(strategy = merge::bool::overwrite_false))]
+    #[cfg_attr(feature = "merge", merge(strategy = conflate::bool::overwrite_false))]
     pub ignore_devid: bool,
 }
 
 #[serde_as]
 #[cfg_attr(feature = "clap", derive(clap::Parser))]
-#[cfg_attr(feature = "merge", derive(merge::Merge))]
+#[cfg_attr(feature = "merge", derive(conflate::Merge))]
 #[derive(serde::Deserialize, serde::Serialize, Default, Clone, Debug, Setters)]
 #[serde(default, rename_all = "kebab-case", deny_unknown_fields)]
 #[setters(into)]
@@ -69,32 +69,32 @@ pub struct LocalSourceSaveOptions {
 pub struct LocalSourceFilterOptions {
     /// Glob pattern to exclude/include (can be specified multiple times)
     #[cfg_attr(feature = "clap", clap(long = "glob", value_name = "GLOB"))]
-    #[cfg_attr(feature = "merge", merge(strategy = merge::vec::overwrite_empty))]
+    #[cfg_attr(feature = "merge", merge(strategy = conflate::vec::overwrite_empty))]
     pub globs: Vec<String>,
 
     /// Same as --glob pattern but ignores the casing of filenames
     #[cfg_attr(feature = "clap", clap(long = "iglob", value_name = "GLOB"))]
-    #[cfg_attr(feature = "merge", merge(strategy = merge::vec::overwrite_empty))]
+    #[cfg_attr(feature = "merge", merge(strategy = conflate::vec::overwrite_empty))]
     pub iglobs: Vec<String>,
 
     /// Read glob patterns to exclude/include from this file (can be specified multiple times)
     #[cfg_attr(feature = "clap", clap(long = "glob-file", value_name = "FILE"))]
-    #[cfg_attr(feature = "merge", merge(strategy = merge::vec::overwrite_empty))]
+    #[cfg_attr(feature = "merge", merge(strategy = conflate::vec::overwrite_empty))]
     pub glob_files: Vec<String>,
 
     /// Same as --glob-file ignores the casing of filenames in patterns
     #[cfg_attr(feature = "clap", clap(long = "iglob-file", value_name = "FILE"))]
-    #[cfg_attr(feature = "merge", merge(strategy = merge::vec::overwrite_empty))]
+    #[cfg_attr(feature = "merge", merge(strategy = conflate::vec::overwrite_empty))]
     pub iglob_files: Vec<String>,
 
     /// Ignore files based on .gitignore files
     #[cfg_attr(feature = "clap", clap(long))]
-    #[cfg_attr(feature = "merge", merge(strategy = merge::bool::overwrite_false))]
+    #[cfg_attr(feature = "merge", merge(strategy = conflate::bool::overwrite_false))]
     pub git_ignore: bool,
 
     /// Do not require a git repository to apply git-ignore rule
     #[cfg_attr(feature = "clap", clap(long))]
-    #[cfg_attr(feature = "merge", merge(strategy = merge::bool::overwrite_false))]
+    #[cfg_attr(feature = "merge", merge(strategy = conflate::bool::overwrite_false))]
     pub no_require_git: bool,
 
     /// Treat the provided filename like a .gitignore file (can be specified multiple times)
@@ -102,22 +102,23 @@ pub struct LocalSourceFilterOptions {
         feature = "clap",
         clap(long = "custom-ignorefile", value_name = "FILE")
     )]
-    #[cfg_attr(feature = "merge", merge(strategy = merge::vec::overwrite_empty))]
+    #[cfg_attr(feature = "merge", merge(strategy = conflate::vec::overwrite_empty))]
     pub custom_ignorefiles: Vec<String>,
 
     /// Exclude contents of directories containing this filename (can be specified multiple times)
     #[cfg_attr(feature = "clap", clap(long, value_name = "FILE"))]
-    #[cfg_attr(feature = "merge", merge(strategy = merge::vec::overwrite_empty))]
+    #[cfg_attr(feature = "merge", merge(strategy = conflate::vec::overwrite_empty))]
     pub exclude_if_present: Vec<String>,
 
     /// Exclude other file systems, don't cross filesystem boundaries and subvolumes
     #[cfg_attr(feature = "clap", clap(long, short = 'x'))]
-    #[cfg_attr(feature = "merge", merge(strategy = merge::bool::overwrite_false))]
+    #[cfg_attr(feature = "merge", merge(strategy = conflate::bool::overwrite_false))]
     pub one_file_system: bool,
 
     /// Maximum size of files to be backed up. Larger files will be excluded.
     #[cfg_attr(feature = "clap", clap(long, value_name = "SIZE"))]
     #[serde_as(as = "Option<DisplayFromStr>")]
+    #[cfg_attr(feature = "merge", merge(strategy = conflate::option::overwrite_none))]
     pub exclude_larger_than: Option<ByteSize>,
 }
 

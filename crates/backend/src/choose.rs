@@ -27,7 +27,7 @@ use clap::ValueHint;
 
 /// Options for a backend.
 #[cfg_attr(feature = "clap", derive(clap::Parser))]
-#[cfg_attr(feature = "merge", derive(merge::Merge))]
+#[cfg_attr(feature = "merge", derive(conflate::Merge))]
 #[derive(Clone, Default, Debug, serde::Deserialize, serde::Serialize, Setters)]
 #[serde(default, rename_all = "kebab-case", deny_unknown_fields)]
 #[setters(into, strip_option)]
@@ -37,6 +37,7 @@ pub struct BackendOptions {
         feature = "clap",
         clap(short, long, global = true, visible_alias = "repo", env = "RUSTIC_REPOSITORY", value_hint = ValueHint::DirPath)
     )]
+    #[cfg_attr(feature = "merge", merge(strategy = conflate::option::overwrite_none))]
     pub repository: Option<String>,
 
     /// Repository to use as hot storage
@@ -44,6 +45,7 @@ pub struct BackendOptions {
         feature = "clap",
         clap(long, global = true, alias = "repository_hot", env = "RUSTIC_REPO_HOT")
     )]
+    #[cfg_attr(feature = "merge", merge(strategy = conflate::option::overwrite_none))]
     pub repo_hot: Option<String>,
 
     /// Other options for this repository (hot and cold part)

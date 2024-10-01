@@ -80,7 +80,7 @@ mod constants {
 /// Options for using and opening a [`Repository`]
 #[serde_as]
 #[cfg_attr(feature = "clap", derive(clap::Parser))]
-#[cfg_attr(feature = "merge", derive(merge::Merge))]
+#[cfg_attr(feature = "merge", derive(conflate::Merge))]
 #[derive(Clone, Default, Debug, serde::Deserialize, serde::Serialize, Setters)]
 #[serde(default, rename_all = "kebab-case", deny_unknown_fields)]
 #[setters(into, strip_option)]
@@ -95,6 +95,7 @@ pub struct RepositoryOptions {
         clap(long, global = true, env = "RUSTIC_PASSWORD", hide_env_values = true)
     )]
     // TODO: Security related: use `secrecy` library (#663)
+    #[cfg_attr(feature = "merge", merge(strategy = conflate::option::overwrite_none))]
     pub password: Option<String>,
 
     /// File to read the password from
@@ -109,6 +110,7 @@ pub struct RepositoryOptions {
             value_hint = ValueHint::FilePath,
         )
     )]
+    #[cfg_attr(feature = "merge", merge(strategy = conflate::option::overwrite_none))]
     pub password_file: Option<PathBuf>,
 
     /// Command to read the password from. Password is read from stdout
@@ -118,11 +120,12 @@ pub struct RepositoryOptions {
         env = "RUSTIC_PASSWORD_COMMAND",
         conflicts_with_all = &["password", "password_file"],
     ))]
+    #[cfg_attr(feature = "merge", merge(strategy = conflate::option::overwrite_none))]
     pub password_command: Option<CommandInput>,
 
     /// Don't use a cache.
     #[cfg_attr(feature = "clap", clap(long, global = true, env = "RUSTIC_NO_CACHE"))]
-    #[cfg_attr(feature = "merge", merge(strategy = merge::bool::overwrite_false))]
+    #[cfg_attr(feature = "merge", merge(strategy = conflate::bool::overwrite_false))]
     pub no_cache: bool,
 
     /// Use this dir as cache dir instead of the standard cache dir
@@ -136,11 +139,12 @@ pub struct RepositoryOptions {
             value_hint = ValueHint::DirPath,
         )
     )]
+    #[cfg_attr(feature = "merge", merge(strategy = conflate::option::overwrite_none))]
     pub cache_dir: Option<PathBuf>,
 
     /// Warm up needed data pack files by only requesting them without processing
     #[cfg_attr(feature = "clap", clap(long, global = true))]
-    #[cfg_attr(feature = "merge", merge(strategy = merge::bool::overwrite_false))]
+    #[cfg_attr(feature = "merge", merge(strategy = conflate::bool::overwrite_false))]
     pub warm_up: bool,
 
     /// Warm up needed data pack files by running the command with %id replaced by pack id
@@ -148,11 +152,13 @@ pub struct RepositoryOptions {
         feature = "clap",
         clap(long, global = true, conflicts_with = "warm_up",)
     )]
+    #[cfg_attr(feature = "merge", merge(strategy = conflate::option::overwrite_none))]
     pub warm_up_command: Option<CommandInput>,
 
     /// Duration (e.g. 10m) to wait after warm up
     #[cfg_attr(feature = "clap", clap(long, global = true, value_name = "DURATION"))]
     #[serde_as(as = "Option<DisplayFromStr>")]
+    #[cfg_attr(feature = "merge", merge(strategy = conflate::option::overwrite_none))]
     pub warm_up_wait: Option<humantime::Duration>,
 }
 
