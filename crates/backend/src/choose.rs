@@ -31,6 +31,7 @@ use clap::ValueHint;
 #[derive(Clone, Default, Debug, serde::Deserialize, serde::Serialize, Setters)]
 #[serde(default, rename_all = "kebab-case", deny_unknown_fields)]
 #[setters(into, strip_option)]
+#[non_exhaustive]
 pub struct BackendOptions {
     /// Repository to use
     #[cfg_attr(
