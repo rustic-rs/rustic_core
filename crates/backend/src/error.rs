@@ -6,6 +6,7 @@ use thiserror::Error;
 
 /// [`BackendAccessErrorKind`] describes the errors that can be returned by the various Backends
 #[derive(Error, Debug, Display)]
+#[non_exhaustive]
 pub enum BackendAccessErrorKind {
     /// backend {0:?} is not supported!
     BackendNotSupported(String),
@@ -38,6 +39,7 @@ pub enum BackendAccessErrorKind {
 
 /// [`RcloneErrorKind`] describes the errors that can be returned by a backend provider
 #[derive(Error, Debug, Display)]
+#[non_exhaustive]
 pub enum RcloneErrorKind {
     /// 'rclone version' doesn't give any output
     NoOutputForRcloneVersion,
@@ -61,6 +63,7 @@ pub enum RcloneErrorKind {
 
 /// [`RestErrorKind`] describes the errors that can be returned while dealing with the REST API
 #[derive(Error, Debug, Display)]
+#[non_exhaustive]
 pub enum RestErrorKind {
     /// value `{0:?}` not supported for option retry!
     NotSupportedForRetry(String),
@@ -83,6 +86,7 @@ pub enum RestErrorKind {
 
 /// [`LocalBackendErrorKind`] describes the errors that can be returned by an action on the filesystem in Backends
 #[derive(Error, Debug, Display)]
+#[non_exhaustive]
 pub enum LocalBackendErrorKind {
     /// directory creation failed: `{0:?}`
     DirectoryCreationFailed(#[from] std::io::Error),

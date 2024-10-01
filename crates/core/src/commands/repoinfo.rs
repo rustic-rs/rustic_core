@@ -12,6 +12,7 @@ use crate::{
 };
 
 #[derive(Default, Clone, Debug, Serialize, Deserialize)]
+#[non_exhaustive]
 /// Index information from `repoinfo`
 pub struct IndexInfos {
     /// Infos about blobs
@@ -25,6 +26,7 @@ pub struct IndexInfos {
 }
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize)]
+#[non_exhaustive]
 /// Information about blobs within `repoinfo`
 pub struct BlobInfo {
     /// Blob type
@@ -57,6 +59,7 @@ impl BlobInfo {
 
 #[skip_serializing_none]
 #[derive(Clone, Copy, Debug, Serialize, Deserialize)]
+#[non_exhaustive]
 /// Information about packs within `repoinfo`
 pub struct PackInfo {
     /// Packs of the given blob type
@@ -155,6 +158,7 @@ pub(crate) fn collect_index_infos<P: ProgressBars, S: Open>(
 
 #[skip_serializing_none]
 #[derive(Default, Clone, Debug, Serialize, Deserialize)]
+#[non_exhaustive]
 /// Information about repository files
 pub struct RepoFileInfos {
     /// Repository files
@@ -164,6 +168,7 @@ pub struct RepoFileInfos {
 }
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize)]
+#[non_exhaustive]
 /// Information about a repository files of a given [`FileType`]
 pub struct RepoFileInfo {
     /// The type of the files

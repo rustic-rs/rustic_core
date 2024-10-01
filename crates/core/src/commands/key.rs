@@ -12,6 +12,7 @@ use crate::{
 #[cfg_attr(feature = "clap", derive(clap::Parser))]
 #[derive(Debug, Clone, Default, Setters)]
 #[setters(into)]
+#[non_exhaustive]
 /// Options for the `key` command. These are used when creating a new key.
 pub struct KeyOptions {
     /// Set 'hostname' in public key information

@@ -84,6 +84,7 @@ mod constants {
 #[derive(Clone, Default, Debug, serde::Deserialize, serde::Serialize, Setters)]
 #[serde(default, rename_all = "kebab-case", deny_unknown_fields)]
 #[setters(into, strip_option)]
+#[non_exhaustive]
 pub struct RepositoryOptions {
     /// Password of the repository
     ///
