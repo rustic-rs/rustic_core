@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.4.0](https://github.com/rustic-rs/rustic_core/compare/rustic_backend-v0.3.0...rustic_backend-v0.4.0) - 2024-10-02
+
+### Fixed
+
+- Add #[non_exhaustive] to pub structs which may be extended in future ([#293](https://github.com/rustic-rs/rustic_core/pull/293))
+- *(backend)* [**breaking**] Use correct merge stratgy for repository options ([#291](https://github.com/rustic-rs/rustic_core/pull/291))
+
+### Other
+
+- *(deps)* update dependencies ([#292](https://github.com/rustic-rs/rustic_core/pull/292))
+- *(deps)* use conflate instead of merge crate ([#284](https://github.com/rustic-rs/rustic_core/pull/284))
+
 ## [0.3.0](https://github.com/rustic-rs/rustic_core/compare/rustic_backend-v0.2.1...rustic_backend-v0.3.0) - 2024-09-23
 
 ### Added

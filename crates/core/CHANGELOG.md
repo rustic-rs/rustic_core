@@ -2,6 +2,23 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.5.0](https://github.com/rustic-rs/rustic_core/compare/rustic_core-v0.4.0...rustic_core-v0.5.0) - 2024-10-02
+
+### Added
+
+- Add read-data-subset to CheckOptions; allow to check given trees ([#262](https://github.com/rustic-rs/rustic_core/pull/262))
+- Add Repository method to update snapshot collections ([#260](https://github.com/rustic-rs/rustic_core/pull/260))
+
+### Fixed
+
+- Add #[non_exhaustive] to pub structs which may be extended in future ([#293](https://github.com/rustic-rs/rustic_core/pull/293))
+- Don't query the default cache directory when a custom one is set ([#285](https://github.com/rustic-rs/rustic_core/pull/285))
+
+### Other
+
+- *(deps)* update dependencies ([#292](https://github.com/rustic-rs/rustic_core/pull/292))
+- *(deps)* use conflate instead of merge crate ([#284](https://github.com/rustic-rs/rustic_core/pull/284))
+
 ## [0.4.0](https://github.com/rustic-rs/rustic_core/compare/rustic_core-v0.3.1...rustic_core-v0.4.0) - 2024-09-23
 
 ### Added
