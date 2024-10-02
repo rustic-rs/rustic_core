@@ -15,16 +15,12 @@ defaults:
     shell: bash
 
 on:
-  push:
-    # Runs when a commit is pushed to the main branch
-    branches:
-      - main
   merge_group:
     # Runs in a merge group
     types: [checks_requested]
   schedule:
-    # Run every Sunday at midnight
-    - cron: "0 0 * * 0"
+    # Run every day at midnight
+    - cron: "0 0 * * *"
 
 jobs:
   fmt:
