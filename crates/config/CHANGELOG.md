@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 ## [unreleased]
 
+## [0.2.2](https://github.com/rustic-rs/rustic_core/compare/rustic_config-v0.2.1...rustic_config-v0.2.2) - 2024-10-03
+
+### Fixed
+
+- *(docs)* left over from migration to `conflate` crate ([#296](https://github.com/rustic-rs/rustic_core/pull/296))
+
 ## [0.2.1](https://github.com/rustic-rs/rustic_core/compare/rustic_config-v0.2.0...rustic_config-v0.2.1) - 2024-09-23
 
 ### Other
