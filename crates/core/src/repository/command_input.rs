@@ -224,3 +224,24 @@ impl OnFailure {
 fn split(s: &str) -> RusticResult<Vec<String>> {
     Ok(shell_words::split(s).map_err(|err| RusticErrorKind::Command(err.into()))?)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rstest::rstest;
+
+    #[rstest]
+    #[case("echo hello", "echo", &["hello"])]
+    #[case("echo hello >> /tmp/hello", "echo", &["hello", ">>", "/tmp/hello"])]
+    fn test_command_input_passes(
+        #[case] input: &str,
+        #[case] command: &str,
+        #[case] args: &[&str],
+    ) {
+        let cmd = CommandInput::from_str(input).unwrap();
+        assert_eq!(cmd.command(), command);
+        assert_eq!(cmd.args(), args);
+        assert_eq!(cmd.on_failure(), OnFailure::default());
+        assert_eq!(cmd.to_string(), input);
+    }
+}
