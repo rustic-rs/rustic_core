@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.5.1](https://github.com/rustic-rs/rustic_core/compare/rustic_core-v0.5.0...rustic_core-v0.5.1) - 2024-10-03
+
+### Fixed
+
+- fix check without --read-data ([#299](https://github.com/rustic-rs/rustic_core/pull/299))
+- *(docs)* left over from migration to `conflate` crate ([#296](https://github.com/rustic-rs/rustic_core/pull/296))
+
 ## [0.5.0](https://github.com/rustic-rs/rustic_core/compare/rustic_core-v0.4.0...rustic_core-v0.5.0) - 2024-10-02
 
 ### Added

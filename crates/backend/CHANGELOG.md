@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.4.1](https://github.com/rustic-rs/rustic_core/compare/rustic_backend-v0.4.0...rustic_backend-v0.4.1) - 2024-10-03
+
+### Fixed
+
+- *(docs)* left over from migration to `conflate` crate ([#296](https://github.com/rustic-rs/rustic_core/pull/296))
+
 ## [0.4.0](https://github.com/rustic-rs/rustic_core/compare/rustic_backend-v0.3.0...rustic_backend-v0.4.0) - 2024-10-02
 
 ### Fixed
