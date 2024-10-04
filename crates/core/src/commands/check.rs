@@ -185,7 +185,7 @@ impl CheckOptions {
             }
         }
 
-        let index_collector = check_packs(be, hot_be, self.read_data, pb)?;
+        let index_collector = check_packs(be, hot_be, pb)?;
 
         if let Some(cache) = &cache {
             let p = pb.progress_spinner("cleaning up packs from cache...");
@@ -363,16 +363,11 @@ fn check_cache_files(
 fn check_packs(
     be: &impl DecryptReadBackend,
     hot_be: &Option<impl ReadBackend>,
-    read_data: bool,
     pb: &impl ProgressBars,
 ) -> RusticResult<IndexCollector> {
     let mut packs = HashMap::new();
     let mut tree_packs = HashMap::new();
-    let mut index_collector = IndexCollector::new(if read_data {
-        IndexType::Full
-    } else {
-        IndexType::DataIds
-    });
+    let mut index_collector = IndexCollector::new(IndexType::Full);
 
     let p = pb.progress_counter("reading index...");
     for index in be.stream_all::<IndexFile>(&p)? {
