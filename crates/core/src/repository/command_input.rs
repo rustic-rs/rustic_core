@@ -146,7 +146,7 @@ impl FromStr for _CommandInput {
 
 impl Display for _CommandInput {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let s = self.iter().join(" ");
+        let s = shell_words::join(self.iter());
         f.write_str(&s)
     }
 }
@@ -243,6 +243,7 @@ mod tests {
 
     #[rstest]
     #[case("echo hello", "echo", &["hello"])]
+    #[case("sh -c 'echo bla >> out'", "sh", &["-c", "echo", "bla", ">>", "out"])]
     #[case("echo hello >> /tmp/hello", "echo", &["hello", ">>", "/tmp/hello"])]
     #[case("test -f /tmp/hello --key 'some value' arg1 arg2", "test", &["-f", "/tmp/hello", "--key", "some value", "arg1", "arg2"])]
     #[cfg(windows)]
