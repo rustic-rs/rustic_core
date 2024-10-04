@@ -4,6 +4,7 @@ use std::{
     str::FromStr,
 };
 
+use itertools::Itertools;
 use log::{debug, error, trace, warn};
 use serde::{Deserialize, Serialize, Serializer};
 use serde_with::{serde_as, DisplayFromStr, PickFirst};
@@ -145,7 +146,7 @@ impl FromStr for _CommandInput {
 
 impl Display for _CommandInput {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let s = shell_words::join(self.iter());
+        let s = self.iter().join(" ");
         f.write_str(&s)
     }
 }
