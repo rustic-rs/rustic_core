@@ -419,7 +419,7 @@ fn check_packs(
 
     if let Some(hot_be) = hot_be {
         let p = pb.progress_spinner("listing packs in hot repo...");
-        check_packs_list(hot_be, tree_packs)?;
+        check_packs_list_hot(hot_be, tree_packs, &packs)?;
         p.finish();
     }
 
@@ -431,7 +431,7 @@ fn check_packs(
 }
 
 // TODO: Add documentation
-/// Checks if all packs in the backend are also in the index
+///Checks if all packs in the backend are also in the index
 ///
 /// # Arguments
 ///
@@ -457,6 +457,46 @@ fn check_packs_list(be: &impl ReadBackend, mut packs: HashMap<PackId, u32>) -> R
 
     for (id, _) in packs {
         error!("pack {id} is referenced by the index but not present! To repair: 'rustic repair index'.",);
+    }
+    Ok(())
+}
+
+///Checks if all packs in the backend are also in the index
+///
+/// # Arguments
+///
+/// * `be` - The backend to check
+/// * `packs` - The packs to check
+///
+/// # Errors
+///
+/// If a pack is missing or has a different size
+fn check_packs_list_hot(
+    be: &impl ReadBackend,
+    mut treepacks: HashMap<PackId, u32>,
+    packs: &HashMap<PackId, u32>,
+) -> RusticResult<()> {
+    for (id, size) in be
+        .list_with_size(FileType::Pack)
+        .map_err(RusticErrorKind::Backend)?
+    {
+        match treepacks.remove(&PackId::from(id)) {
+            None => {
+                if packs.contains_key(&PackId::from(id)) {
+                    warn!("hot pack {id} is a data pack. This should not happen.");
+                } else {
+                    warn!("hot pack {id} not referenced in index. Can be a parallel backup job. To repair: 'rustic repair index'.");
+                }
+            }
+            Some(index_size) if index_size != size => {
+                error!("hot pack {id}: size computed by index: {index_size}, actual size: {size}. To repair: 'rustic repair index'.");
+            }
+            _ => {} //everything ok
+        }
+    }
+
+    for (id, _) in treepacks {
+        error!("tree pack {id} is referenced by the index but not present in hot repo! To repair: 'rustic repair index'.",);
     }
     Ok(())
 }
