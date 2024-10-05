@@ -1,7 +1,7 @@
 use std::collections::BTreeSet;
 
-use tracing::trace;
 use rayon::prelude::{IntoParallelRefIterator, ParallelBridge, ParallelIterator};
+use tracing::trace;
 
 use crate::{
     backend::{decrypt::DecryptWriteBackend, node::NodeType},

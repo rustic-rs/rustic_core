@@ -15,9 +15,9 @@ use derive_more::Add;
 use derive_setters::Setters;
 use enumset::{EnumSet, EnumSetType};
 use itertools::Itertools;
-use tracing::{info, warn};
 use rayon::prelude::{IntoParallelIterator, ParallelIterator};
 use serde::{Deserialize, Serialize};
+use tracing::{info, warn};
 
 use crate::{
     backend::{

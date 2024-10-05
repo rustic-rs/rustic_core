@@ -4,13 +4,13 @@ use std::{collections::HashMap, path::PathBuf, str::FromStr, sync::OnceLock};
 use anyhow::{anyhow, Error, Result};
 use bytes::Bytes;
 use bytesize::ByteSize;
-use tracing::trace;
 use opendal::{
     layers::{BlockingLayer, ConcurrentLimitLayer, LoggingLayer, RetryLayer, ThrottleLayer},
     BlockingOperator, ErrorKind, Metakey, Operator, Scheme,
 };
 use rayon::prelude::{IntoParallelIterator, ParallelIterator};
 use tokio::runtime::Runtime;
+use tracing::trace;
 
 use rustic_core::{FileType, Id, ReadBackend, WriteBackend, ALL_FILE_TYPES};
 

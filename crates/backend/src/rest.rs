@@ -4,13 +4,13 @@ use std::time::Duration;
 use anyhow::Result;
 use backoff::{backoff::Backoff, ExponentialBackoff, ExponentialBackoffBuilder};
 use bytes::Bytes;
-use tracing::{trace, warn};
 use reqwest::{
     blocking::{Client, ClientBuilder, Response},
     header::{HeaderMap, HeaderValue},
     Url,
 };
 use serde::Deserialize;
+use tracing::{trace, warn};
 
 use crate::error::RestErrorKind;
 

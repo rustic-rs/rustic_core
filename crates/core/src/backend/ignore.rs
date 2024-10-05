@@ -16,9 +16,9 @@ use chrono::TimeZone;
 use chrono::{DateTime, Local, Utc};
 use derive_setters::Setters;
 use ignore::{overrides::OverrideBuilder, DirEntry, Walk, WalkBuilder};
-use tracing::warn;
 #[cfg(not(windows))]
 use nix::unistd::{Gid, Group, Uid, User};
+use tracing::warn;
 
 #[cfg(not(windows))]
 use crate::backend::node::ExtendedAttribute;

@@ -6,8 +6,8 @@ pub(crate) mod tree_archiver;
 use std::path::{Path, PathBuf};
 
 use chrono::Local;
-use tracing::warn;
 use pariter::{scope, IteratorExt};
+use tracing::warn;
 
 use crate::{
     archiver::{

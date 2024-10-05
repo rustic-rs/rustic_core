@@ -8,12 +8,12 @@ use std::{
 use anyhow::Result;
 use bytes::Bytes;
 use constants::DEFAULT_COMMAND;
-use tracing::{debug, info};
 use rand::{
     distributions::{Alphanumeric, DistString},
     thread_rng,
 };
 use semver::{BuildMetadata, Prerelease, Version, VersionReq};
+use tracing::{debug, info};
 
 use crate::{error::RcloneErrorKind, rest::RestBackend};
 

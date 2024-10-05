@@ -1,8 +1,8 @@
 use std::process::Command;
 use std::thread::sleep;
 
-use tracing::{debug, error, warn};
 use rayon::ThreadPoolBuilder;
+use tracing::{debug, error, warn};
 
 use crate::{
     backend::{FileType, ReadBackend},
