@@ -1196,9 +1196,14 @@ impl Display for PathList {
         if !self.0.is_empty() {
             write!(f, "{:?}", self.0[0])?;
         }
-        for p in &self.0[1..] {
-            write!(f, ",{p:?}")?;
+
+        // Guard against out of bounds access
+        if self.0.len() > 1 {
+            for p in &self.0[1..] {
+                write!(f, ",{p:?}")?;
+            }
         }
+
         Ok(())
     }
 }
