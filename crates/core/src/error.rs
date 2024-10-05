@@ -229,6 +229,8 @@ pub enum CommandErrorKind {
     NoKeepOption,
     /// {0:?}
     FromParseError(#[from] shell_words::ParseError),
+    /// No locking capability configured for the backend
+    NoLockingConfigured,
 }
 
 /// [`CryptoErrorKind`] describes the errors that can happen while dealing with Cryptographic functions

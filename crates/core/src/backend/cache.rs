@@ -8,6 +8,7 @@ use std::{
 
 use anyhow::Result;
 use bytes::Bytes;
+use chrono::{DateTime, Local};
 use dirs::cache_dir;
 use log::{trace, warn};
 use walkdir::WalkDir;
@@ -209,6 +210,14 @@ impl WriteBackend for CachedBackend {
             }
         }
         self.be.remove(tpe, id, cacheable)
+    }
+
+    fn can_lock(&self) -> bool {
+        self.be.can_lock()
+    }
+
+    fn lock(&self, tpe: FileType, id: &Id, until: Option<DateTime<Local>>) -> Result<()> {
+        self.be.lock(tpe, id, until)
     }
 }
 
