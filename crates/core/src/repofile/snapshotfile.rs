@@ -12,7 +12,7 @@ use derive_setters::Setters;
 use dunce::canonicalize;
 use gethostname::gethostname;
 use itertools::Itertools;
-use log::info;
+use tracing::info;
 use path_dedot::ParseDot;
 use serde_derive::{Deserialize, Serialize};
 use serde_with::{serde_as, skip_serializing_none, DisplayFromStr};

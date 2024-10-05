@@ -1,5 +1,5 @@
 use integer_sqrt::IntegerSquareRoot;
-use log::warn;
+use tracing::warn;
 
 use std::{
     num::NonZeroU32,

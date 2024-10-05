@@ -4,7 +4,7 @@ use std::{collections::HashMap, path::PathBuf, str::FromStr, sync::OnceLock};
 use anyhow::{anyhow, Error, Result};
 use bytes::Bytes;
 use bytesize::ByteSize;
-use log::trace;
+use tracing::trace;
 use opendal::{
     layers::{BlockingLayer, ConcurrentLimitLayer, LoggingLayer, RetryLayer, ThrottleLayer},
     BlockingOperator, ErrorKind, Metakey, Operator, Scheme,

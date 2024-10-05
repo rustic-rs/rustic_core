@@ -12,7 +12,7 @@ use bytes::Bytes;
 use cached::proc_macro::cached;
 use filetime::{set_symlink_file_times, FileTime};
 #[cfg(not(windows))]
-use log::warn;
+use tracing::warn;
 #[cfg(not(windows))]
 use nix::sys::stat::{mknod, Mode, SFlag};
 #[cfg(not(windows))]

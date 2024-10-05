@@ -8,7 +8,7 @@ use std::{
 use anyhow::Result;
 use bytes::Bytes;
 use constants::DEFAULT_COMMAND;
-use log::{debug, info};
+use tracing::{debug, info};
 use rand::{
     distributions::{Alphanumeric, DistString},
     thread_rng,

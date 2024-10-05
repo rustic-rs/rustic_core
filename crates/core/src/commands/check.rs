@@ -7,7 +7,7 @@ use std::{
 use bytes::Bytes;
 use bytesize::ByteSize;
 use derive_setters::Setters;
-use log::{debug, error, warn};
+use tracing::{debug, error, warn};
 use rand::{prelude::SliceRandom, thread_rng, Rng};
 use rayon::prelude::{IntoParallelIterator, ParallelIterator};
 use zstd::stream::decode_all;

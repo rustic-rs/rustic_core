@@ -4,7 +4,7 @@ use std::{
     str::FromStr,
 };
 
-use log::{debug, error, trace, warn};
+use tracing::{debug, error, trace, warn};
 use serde::{Deserialize, Serialize, Serializer};
 use serde_with::{serde_as, DisplayFromStr, PickFirst};
 

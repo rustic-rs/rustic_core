@@ -4,7 +4,7 @@ use std::time::Duration;
 use anyhow::Result;
 use backoff::{backoff::Backoff, ExponentialBackoff, ExponentialBackoffBuilder};
 use bytes::Bytes;
-use log::{trace, warn};
+use tracing::{trace, warn};
 use reqwest::{
     blocking::{Client, ClientBuilder, Response},
     header::{HeaderMap, HeaderValue},

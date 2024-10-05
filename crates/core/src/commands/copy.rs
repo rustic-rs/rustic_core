@@ -1,6 +1,6 @@
 use std::collections::BTreeSet;
 
-use log::trace;
+use tracing::trace;
 use rayon::prelude::{IntoParallelRefIterator, ParallelBridge, ParallelIterator};
 
 use crate::{

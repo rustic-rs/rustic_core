@@ -1,6 +1,6 @@
 use std::borrow::Cow;
 
-use log::info;
+use tracing::info;
 
 /// Trait to report progress information for any rustic action which supports that.
 ///

@@ -16,7 +16,7 @@ use chrono::TimeZone;
 use chrono::{DateTime, Local, Utc};
 use derive_setters::Setters;
 use ignore::{overrides::OverrideBuilder, DirEntry, Walk, WalkBuilder};
-use log::warn;
+use tracing::warn;
 #[cfg(not(windows))]
 use nix::unistd::{Gid, Group, Uid, User};
 

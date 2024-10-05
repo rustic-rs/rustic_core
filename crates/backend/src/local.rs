@@ -8,7 +8,7 @@ use std::{
 use aho_corasick::AhoCorasick;
 use anyhow::Result;
 use bytes::Bytes;
-use log::{debug, trace, warn};
+use tracing::{debug, trace, warn};
 use walkdir::WalkDir;
 
 use rustic_core::{CommandInput, FileType, Id, ReadBackend, WriteBackend, ALL_FILE_TYPES};

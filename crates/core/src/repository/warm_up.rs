@@ -1,7 +1,7 @@
 use std::process::Command;
 use std::thread::sleep;
 
-use log::{debug, error, warn};
+use tracing::{debug, error, warn};
 use rayon::ThreadPoolBuilder;
 
 use crate::{
