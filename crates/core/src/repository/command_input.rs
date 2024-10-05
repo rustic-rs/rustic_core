@@ -4,14 +4,15 @@ use std::{
     str::FromStr,
 };
 
+use itertools::Itertools;
 use log::{debug, error, trace, warn};
 use serde::{Deserialize, Serialize, Serializer};
 use serde_with::{serde_as, DisplayFromStr, PickFirst};
 
-use crate::{
-    error::{RepositoryErrorKind, RusticErrorKind},
-    RusticError, RusticResult,
-};
+use crate::{error::RepositoryErrorKind, RusticError, RusticResult};
+
+#[cfg(not(windows))]
+use crate::error::RusticErrorKind;
 
 /// A command to be called which can be given as CLI option as well as in config files
 /// `CommandInput` implements Serialize/Deserialize as well as FromStr.
@@ -220,7 +221,42 @@ impl OnFailure {
 }
 
 /// helper to split arguments
-// TODO: Maybe use special parser (winsplit?) for windows?
+#[cfg(not(windows))]
 fn split(s: &str) -> RusticResult<Vec<String>> {
     Ok(shell_words::split(s).map_err(|err| RusticErrorKind::Command(err.into()))?)
+}
+
+/// helper to split arguments
+///
+// We keep the return type as `RusticResult<Vec<String>>` to keep the internal api
+// consistent with the other platforms.
+#[allow(clippy::unnecessary_wraps)]
+#[cfg(windows)]
+fn split(s: &str) -> RusticResult<Vec<String>> {
+    Ok(winsplit::split(s))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rstest::rstest;
+
+    #[rstest]
+    #[case("echo hello", "echo", &["hello"])]
+    #[case("sh -c 'echo bla >> out'", "sh", &["-c", "echo", "bla", ">>", "out"])]
+    #[case("echo hello >> /tmp/hello", "echo", &["hello", ">>", "/tmp/hello"])]
+    #[case("test -f /tmp/hello --key 'some value' arg1 arg2", "test", &["-f", "/tmp/hello", "--key", "some value", "arg1", "arg2"])]
+    #[cfg(windows)]
+    #[case("C:\\ProgramFiles\\Example\\example.exe --key 'some value' arg1 arg2", "C:\\ProgramFiles\\Example\\example.exe", &["--key", "some value", "arg1", "arg2"])]
+    fn test_command_input_parsing_passes(
+        #[case] input: &str,
+        #[case] command: &str,
+        #[case] args: &[&str],
+    ) {
+        let cmd = CommandInput::from_str(input).unwrap();
+        assert_eq!(command, cmd.command());
+        assert_eq!(args, cmd.args());
+        assert_eq!(OnFailure::default(), cmd.on_failure());
+        assert_eq!(input, cmd.to_string());
+    }
 }
