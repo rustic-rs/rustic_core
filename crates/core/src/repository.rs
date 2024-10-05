@@ -13,6 +13,7 @@ use std::{
 };
 
 use bytes::Bytes;
+use chrono::{DateTime, Local};
 use derive_setters::Setters;
 use log::{debug, error, info};
 use serde_with::{serde_as, DisplayFromStr};
@@ -23,6 +24,7 @@ use crate::{
         decrypt::{DecryptBackend, DecryptReadBackend, DecryptWriteBackend},
         hotcold::HotColdBackend,
         local_destination::LocalDestination,
+        lock::LockBackend,
         node::Node,
         warm_up::WarmUpAccessBackend,
         FileType, ReadBackend, WriteBackend,
@@ -39,6 +41,7 @@ use crate::{
         copy::CopySnapshot,
         forget::{ForgetGroups, KeepOptions},
         key::KeyOptions,
+        lock::lock_repo,
         prune::{PruneOptions, PrunePlan},
         repair::{
             index::{index_checked_from_collector, RepairIndexOptions},
@@ -151,7 +154,7 @@ pub struct RepositoryOptions {
     /// Warm up needed data pack files by running the command with %id replaced by pack id
     #[cfg_attr(
         feature = "clap",
-        clap(long, global = true, conflicts_with = "warm_up",)
+        clap(long, global = true, conflicts_with = "warm_up")
     )]
     #[cfg_attr(feature = "merge", merge(strategy = conflate::option::overwrite_none))]
     pub warm_up_command: Option<CommandInput>,
@@ -161,6 +164,11 @@ pub struct RepositoryOptions {
     #[serde_as(as = "Option<DisplayFromStr>")]
     #[cfg_attr(feature = "merge", merge(strategy = conflate::option::overwrite_none))]
     pub warm_up_wait: Option<humantime::Duration>,
+
+    /// Lock files by running the command with %id replaced by pack id, %type by the file type, %path by file path and %until by the until date
+    #[cfg_attr(feature = "clap", clap(long, global = true))]
+    #[cfg_attr(feature = "merge", merge(strategy = conflate::option::overwrite_none))]
+    pub lock_command: Option<CommandInput>,
 }
 
 impl RepositoryOptions {
@@ -358,6 +366,10 @@ impl<P> Repository<P, ()> {
 
         if opts.warm_up {
             be = WarmUpAccessBackend::new_warm_up(be);
+        }
+
+        if let Some(lock_command) = opts.lock_command.as_ref() {
+            be = LockBackend::new_lock(be, lock_command.clone());
         }
 
         let mut name = be.location();
@@ -1193,6 +1205,19 @@ impl<P: ProgressBars, S: Open> Repository<P, S> {
     /// The plan about what should be pruned and/or repacked.
     pub fn prune_plan(&self, opts: &PruneOptions) -> RusticResult<PrunePlan> {
         opts.get_plan(self)
+    }
+
+    /// Lock the complete repository, i.e. everything in the storage backend.
+    ///
+    /// # Arguments
+    ///
+    /// * `until` - until when to lock. None means lock forever.
+    ///
+    /// # Errors
+    ///
+    // TODO: Document errors
+    pub fn lock_repo(&self, until: Option<DateTime<Local>>) -> RusticResult<()> {
+        lock_repo(self, until)
     }
 
     /// Turn the repository into the `IndexedFull` state by reading and storing the index

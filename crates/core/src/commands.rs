@@ -12,6 +12,7 @@ pub mod dump;
 pub mod forget;
 pub mod init;
 pub mod key;
+pub mod lock;
 pub mod merge;
 pub mod prune;
 /// The `repair` command.

@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use anyhow::Result;
 use bytes::Bytes;
+use chrono::{DateTime, Local};
 
 use crate::{
     backend::{FileType, ReadBackend, WriteBackend},
@@ -97,5 +98,13 @@ impl WriteBackend for HotColdBackend {
             self.be_hot.remove(tpe, id, cacheable)?;
         }
         Ok(())
+    }
+
+    fn can_lock(&self) -> bool {
+        self.be.can_lock()
+    }
+
+    fn lock(&self, tpe: FileType, id: &Id, until: Option<DateTime<Local>>) -> Result<()> {
+        self.be.lock(tpe, id, until)
     }
 }

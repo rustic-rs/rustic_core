@@ -2,6 +2,7 @@ use std::{num::NonZeroU32, sync::Arc};
 
 use anyhow::Result;
 use bytes::Bytes;
+use chrono::{DateTime, Local};
 use crossbeam_channel::{unbounded, Receiver};
 use rayon::prelude::*;
 use zstd::stream::{copy_encode, decode_all, encode_all};
@@ -577,6 +578,14 @@ impl<C: CryptoKey> WriteBackend for DecryptBackend<C> {
 
     fn remove(&self, tpe: FileType, id: &Id, cacheable: bool) -> Result<()> {
         self.be.remove(tpe, id, cacheable)
+    }
+
+    fn can_lock(&self) -> bool {
+        self.be.can_lock()
+    }
+
+    fn lock(&self, tpe: FileType, id: &Id, until: Option<DateTime<Local>>) -> Result<()> {
+        self.be.lock(tpe, id, until)
     }
 }
 
