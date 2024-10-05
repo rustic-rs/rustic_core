@@ -426,7 +426,7 @@ fn check_packs(
 }
 
 // TODO: Add documentation
-///Checks if all packs in the backend are also in the index
+/// Checks if all packs in the backend are also in the index
 ///
 /// # Arguments
 ///
