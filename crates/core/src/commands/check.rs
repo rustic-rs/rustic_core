@@ -456,7 +456,7 @@ fn check_packs_list(be: &impl ReadBackend, mut packs: HashMap<PackId, u32>) -> R
     Ok(())
 }
 
-///Checks if all packs in the backend are also in the index
+/// Checks if all packs in the backend are also in the index
 ///
 /// # Arguments
 ///
