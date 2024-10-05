@@ -41,7 +41,7 @@ use crate::{
         copy::CopySnapshot,
         forget::{ForgetGroups, KeepOptions},
         key::KeyOptions,
-        lock::lock_repo,
+        lock::{lock_all_files, lock_repo},
         prune::{PruneOptions, PrunePlan},
         repair::{
             index::{index_checked_from_collector, RepairIndexOptions},
@@ -66,7 +66,7 @@ use crate::{
     },
     repository::warm_up::{warm_up, warm_up_wait},
     vfs::OpenFile,
-    RepositoryBackends, RusticResult,
+    LockOptions, RepositoryBackends, RusticResult,
 };
 
 #[cfg(feature = "clap")]
@@ -1149,13 +1149,12 @@ impl<P: ProgressBars, S: Open> Repository<P, S> {
     /// * [`CryptBackendErrorKind::SerializingToJsonByteVectorFailed`] - If the file could not be serialized to json.
     ///
     /// [`CryptBackendErrorKind::SerializingToJsonByteVectorFailed`]: crate::error::CryptBackendErrorKind::SerializingToJsonByteVectorFailed
-    pub fn save_snapshots(&self, mut snaps: Vec<SnapshotFile>) -> RusticResult<()> {
+    pub fn save_snapshots(&self, mut snaps: Vec<SnapshotFile>) -> RusticResult<Vec<SnapshotId>> {
         for snap in &mut snaps {
             snap.id = SnapshotId::default();
         }
         let p = self.pb.progress_counter("saving snapshots...");
-        self.dbe().save_list(snaps.iter(), p)?;
-        Ok(())
+        self.dbe().save_list(snaps.iter(), p)
     }
 
     /// Check the repository and all snapshot trees for errors or inconsistencies
@@ -1218,6 +1217,36 @@ impl<P: ProgressBars, S: Open> Repository<P, S> {
     // TODO: Document errors
     pub fn lock_repo(&self, until: Option<DateTime<Local>>) -> RusticResult<()> {
         lock_repo(self, until)
+    }
+
+    /// Lock all repository files of the given type
+    ///
+    /// # Arguments
+    ///
+    /// * `file_type` - the file type to lock
+    /// * `until` - until when to lock. None means lock forever.
+    ///
+    /// # Errors
+    ///
+    // TODO: Document errors
+    pub fn lock_repo_files<ID: RepoId>(&self, until: Option<DateTime<Local>>) -> RusticResult<()> {
+        lock_all_files::<P, S, ID>(self, until)
+    }
+
+    /// Lock snapshot and pack files needed for the given snapshots
+    ///
+    /// # Arguments
+    ///
+    /// * `opts` - The lock options to use
+    /// * `snaps` - The snapshots to lock
+    /// * `until` - until when to lock. None means lock forever.
+    ///
+    /// # Errors
+    ///
+    // TODO: Document errors
+    pub fn lock_snaphots(&self, opts: &LockOptions, snaps: &[SnapshotFile]) -> RusticResult<()> {
+        let now = Local::now();
+        opts.lock(self, snaps, now)
     }
 
     /// Turn the repository into the `IndexedFull` state by reading and storing the index

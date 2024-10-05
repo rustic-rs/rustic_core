@@ -4,7 +4,7 @@ use log::trace;
 use rayon::prelude::{IntoParallelRefIterator, ParallelBridge, ParallelIterator};
 
 use crate::{
-    backend::{decrypt::DecryptWriteBackend, node::NodeType},
+    backend::node::NodeType,
     blob::{packer::Packer, tree::TreeStreamerOnce, BlobId, BlobType},
     error::RusticResult,
     index::{indexer::Indexer, ReadIndex},
@@ -130,8 +130,7 @@ pub(crate) fn copy<'a, Q, R: IndexedFull, P: ProgressBars, S: IndexedIds>(
     _ = tree_packer.finalize()?;
     indexer.write().unwrap().finalize()?;
 
-    let p = pb.progress_counter("saving snapshots...");
-    be_dest.save_list(snaps.iter(), p)?;
+    let _ = repo_dest.save_snapshots(snaps)?;
     Ok(())
 }
 

@@ -261,12 +261,33 @@ pub enum DeleteOption {
     Never,
     /// Remove this snapshot after the given timestamp, but prevent removing it before.
     After(DateTime<Local>),
+    /// This snapshot is locked forever. This is similar to Never, but additionally indicates that we have a permanent lock on the
+    /// backend for the snapshot file
+    LockedForever,
+    /// This snapshot pack is locked until the given timestamp and we have a temporary lock on the backend for the snapshot file
+    LockedUntil(DateTime<Local>),
+}
+
+impl From<Option<DateTime<Local>>> for DeleteOption {
+    fn from(value: Option<DateTime<Local>>) -> Self {
+        value.map_or(Self::LockedForever, Self::LockedUntil)
+    }
 }
 
 impl DeleteOption {
     /// Returns whether the delete option is set to `NotSet`.
     const fn is_not_set(&self) -> bool {
         matches!(self, Self::NotSet)
+    }
+
+    /// Returns whether a lock exists which extends the given time, where `None` means "forever"
+    #[must_use]
+    pub fn is_locked(&self, time: Option<DateTime<Local>>) -> bool {
+        match (self, time) {
+            (Self::LockedForever, _) => true,
+            (Self::LockedUntil(locktime), Some(time)) => locktime >= &time,
+            _ => false,
+        }
     }
 }
 
@@ -816,7 +837,7 @@ impl SnapshotFile {
         matches!(self.delete,DeleteOption::After(time) if time < now)
     }
 
-    /// Returns whether a snapshot must be kept now
+    /// Returns whether a snapshot must be kept at the given time
     ///
     /// # Arguments
     ///
@@ -824,10 +845,20 @@ impl SnapshotFile {
     #[must_use]
     pub fn must_keep(&self, now: DateTime<Local>) -> bool {
         match self.delete {
-            DeleteOption::Never => true,
-            DeleteOption::After(time) if time >= now => true,
-            _ => false,
+            DeleteOption::Never | DeleteOption::LockedForever => true,
+            DeleteOption::After(time) | DeleteOption::LockedUntil(time) => time >= now,
+            DeleteOption::NotSet => false,
         }
+    }
+
+    /// Returns whether a snapshot is locked at the given time
+    ///
+    /// # Arguments
+    ///
+    /// * `now` - The current time
+    #[must_use]
+    pub fn is_locked(&self, now: DateTime<Local>) -> bool {
+        self.delete.is_locked(Some(now))
     }
 
     /// Modifies the snapshot setting/adding/removing tag(s) and modifying [`DeleteOption`]s.

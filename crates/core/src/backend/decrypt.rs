@@ -284,15 +284,18 @@ pub trait DecryptWriteBackend: WriteBackend + Clone + 'static {
         &self,
         list: I,
         p: impl Progress,
-    ) -> RusticResult<()> {
+    ) -> RusticResult<Vec<F::Id>> {
         p.set_length(list.len() as u64);
-        list.par_bridge().try_for_each(|file| -> RusticResult<_> {
-            _ = self.save_file(file)?;
-            p.inc(1);
-            Ok(())
-        })?;
+        let ids = list
+            .par_bridge()
+            .map(|file| -> RusticResult<F::Id> {
+                let id = self.save_file(file)?.into();
+                p.inc(1);
+                Ok(id)
+            })
+            .collect::<RusticResult<_>>()?;
         p.finish();
-        Ok(())
+        Ok(ids)
     }
 
     /// Deletes the given list of files.

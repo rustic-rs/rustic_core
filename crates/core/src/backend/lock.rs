@@ -95,7 +95,7 @@ impl WriteBackend for LockBackend {
     }
 
     fn lock(&self, tpe: FileType, id: &Id, until: Option<DateTime<Local>>) -> Result<()> {
-        let until = until.map_or_else(String::new, |u| u.to_rfc3339().to_string());
+        let until = until.map_or_else(String::new, |u| u.to_rfc3339());
         let path = path(tpe, id);
         let args = self.command.args().iter().map(|c| {
             c.replace("%id", &id.to_hex())
