@@ -5,6 +5,8 @@
 // use std::error::Error as StdError;
 // use std::fmt;
 
+pub mod collector;
+
 use std::{
     error::Error,
     ffi::OsString,
