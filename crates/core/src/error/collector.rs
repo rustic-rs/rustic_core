@@ -6,14 +6,7 @@ use log::{error, info, warn};
 /// A rustic issue result
 ///
 /// rustic issue results are used to return a result along with possible issues.
-#[derive(Debug)]
-pub enum RusticIssueResult<T> {
-    /// For when we return a result along with possible issues
-    Ok(T, Option<Vec<RusticIssue>>),
-
-    /// For when we abort and return only the errors that occurred
-    Err(Vec<RusticError>),
-}
+pub type RusticIssueResult<T> = Result<(T, Option<Vec<RusticIssue>>), Vec<RusticError>>;
 
 /// A rustic issue
 ///
