@@ -6,13 +6,13 @@ use log::{error, info, warn};
 /// A rustic issue result
 ///
 /// rustic issue results are used to return a result along with possible issues.
-pub type RusticIssueResult<T> = Result<(T, Option<Vec<RusticIssue>>), Vec<RusticError>>;
+pub(crate) type RusticIssueResult<T> = Result<(T, Option<Vec<RusticIssue>>), Vec<RusticError>>;
 
 /// A rustic issue
 ///
 /// An issue is a message that can be logged to the user.
 #[derive(Debug)]
-pub enum RusticIssue {
+pub(crate) enum RusticIssue {
     /// An error issue, indicating that something went wrong irrecoverably
     Error(RusticError),
 
@@ -49,7 +49,7 @@ impl RusticIssue {
 ///
 /// Warning messages are used to indicate that something might be wrong.
 #[derive(Debug, Clone, From)]
-pub struct RusticWarning(String);
+pub(crate) struct RusticWarning(String);
 
 impl RusticWarning {
     pub fn new(message: &str) -> Self {
@@ -67,7 +67,7 @@ impl From<&str> for RusticWarning {
 ///
 /// Info messages are used to provide additional information to the user.
 #[derive(Debug, Clone, From)]
-pub struct RusticInfo(String);
+pub(crate) struct RusticInfo(String);
 
 impl RusticInfo {
     pub fn new(message: &str) -> Self {
@@ -82,7 +82,7 @@ impl From<&str> for RusticInfo {
 }
 
 #[derive(Debug, Default)]
-pub struct RusticIssueCollector {
+pub(crate) struct RusticIssueCollector {
     /// The errors collected
     errors: Option<Vec<RusticError>>,
 
