@@ -24,19 +24,19 @@ pub(crate) enum RusticIssue {
 }
 
 impl RusticIssue {
-    pub fn new_error(error: RusticErrorKind) -> Self {
+    pub(crate) fn new_error(error: RusticErrorKind) -> Self {
         Self::Error(error.into())
     }
 
-    pub fn new_warning(message: &str) -> Self {
+    pub(crate) fn new_warning(message: &str) -> Self {
         Self::Warning(message.into())
     }
 
-    pub fn new_info(message: &str) -> Self {
+    pub(crate) fn new_info(message: &str) -> Self {
         Self::Info(message.into())
     }
 
-    pub fn log(&self) {
+    pub(crate) fn log(&self) {
         match self {
             Self::Error(error) => error!("{}", error),
             Self::Warning(warning) => warn!("{}", warning.0),
@@ -52,7 +52,7 @@ impl RusticIssue {
 pub(crate) struct RusticWarning(String);
 
 impl RusticWarning {
-    pub fn new(message: &str) -> Self {
+    pub(crate) fn new(message: &str) -> Self {
         Self(message.to_owned())
     }
 }
@@ -70,7 +70,7 @@ impl From<&str> for RusticWarning {
 pub(crate) struct RusticInfo(String);
 
 impl RusticInfo {
-    pub fn new(message: &str) -> Self {
+    pub(crate) fn new(message: &str) -> Self {
         Self(message.to_owned())
     }
 }
@@ -97,7 +97,7 @@ pub(crate) struct RusticIssueCollector {
 }
 
 impl RusticIssueCollector {
-    pub fn new(log: bool) -> Self {
+    pub(crate) fn new(log: bool) -> Self {
         Self {
             errors: None,
             warnings: None,
@@ -106,7 +106,7 @@ impl RusticIssueCollector {
         }
     }
 
-    pub fn add(&mut self, issue: RusticIssue) {
+    pub(crate) fn add(&mut self, issue: RusticIssue) {
         match issue {
             RusticIssue::Error(error) => self.add_error(error.0),
             RusticIssue::Warning(warning) => self.add_warning(&warning.0),
@@ -114,7 +114,7 @@ impl RusticIssueCollector {
         }
     }
 
-    pub fn add_error(&mut self, error: RusticErrorKind) {
+    pub(crate) fn add_error(&mut self, error: RusticErrorKind) {
         if self.log {
             error!("{error}");
         }
@@ -126,7 +126,7 @@ impl RusticIssueCollector {
         }
     }
 
-    pub fn add_warning(&mut self, message: &str) {
+    pub(crate) fn add_warning(&mut self, message: &str) {
         if self.log {
             warn!("{message}");
         }
@@ -138,7 +138,7 @@ impl RusticIssueCollector {
         }
     }
 
-    pub fn add_info(&mut self, message: &str) {
+    pub(crate) fn add_info(&mut self, message: &str) {
         if self.log {
             warn!("{message}");
         }
@@ -150,37 +150,37 @@ impl RusticIssueCollector {
         }
     }
 
-    pub fn has_errors(&self) -> bool {
+    pub(crate) fn has_errors(&self) -> bool {
         self.errors.is_some()
     }
 
-    pub fn has_warnings(&self) -> bool {
+    pub(crate) fn has_warnings(&self) -> bool {
         self.warnings.is_some()
     }
 
-    pub fn has_info(&self) -> bool {
+    pub(crate) fn has_info(&self) -> bool {
         self.info.is_some()
     }
 
-    pub fn get_errors(&self) -> Option<Vec<&RusticError>> {
+    pub(crate) fn get_errors(&self) -> Option<Vec<&RusticError>> {
         self.errors.as_ref().map(|errors| errors.iter().collect())
     }
 
-    pub fn get_warnings(&self) -> Option<Vec<RusticWarning>> {
+    pub(crate) fn get_warnings(&self) -> Option<Vec<RusticWarning>> {
         self.warnings.clone()
     }
 
-    pub fn get_info(&self) -> Option<Vec<RusticInfo>> {
+    pub(crate) fn get_info(&self) -> Option<Vec<RusticInfo>> {
         self.info.clone()
     }
 
-    pub fn log_all(&self) {
+    pub(crate) fn log_all(&self) {
         self.log_all_errors();
         self.log_all_warnings();
         self.log_all_info();
     }
 
-    pub fn log_all_errors(&self) {
+    pub(crate) fn log_all_errors(&self) {
         if let Some(errors) = &self.errors {
             for error in errors {
                 error!("{}", error);
@@ -188,7 +188,7 @@ impl RusticIssueCollector {
         }
     }
 
-    pub fn log_all_warnings(&self) {
+    pub(crate) fn log_all_warnings(&self) {
         if let Some(warnings) = &self.warnings {
             for warning in warnings {
                 warn!("{}", warning.0);
@@ -196,7 +196,7 @@ impl RusticIssueCollector {
         }
     }
 
-    pub fn log_all_info(&self) {
+    pub(crate) fn log_all_info(&self) {
         if let Some(info) = &self.info {
             for info in info {
                 info!("{}", info.0);
