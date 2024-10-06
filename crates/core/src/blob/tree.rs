@@ -690,7 +690,7 @@ impl<P: Progress> TreeStreamerOnce<P> {
             let _join_handle = std::thread::spawn(move || {
                 for (path, id, count) in in_rx {
                     if let Err(err) = out_tx
-                        .send(Tree::from_backend(&be, &index, id).map(|tree| (path, tree, count)))
+                        .try_send(Tree::from_backend(&be, &index, id).map(|tree| (path, tree, count)))
                     {
                         panic!("
                         Sending tree {id} on channel failed: {err}. 
