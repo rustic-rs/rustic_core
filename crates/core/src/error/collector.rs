@@ -3,16 +3,38 @@ use derive_more::From;
 use crate::{error::RusticErrorKind, RusticError};
 use log::{error, info, warn};
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub enum RusticIssue {
     /// An error issue, indicating that something went wrong irrecoverably
-    Error,
+    Error(RusticError),
 
     /// A warning issue, indicating that something might be wrong
-    Warning,
+    Warning(RusticWarning),
 
     /// An info issue, indicating additional information
-    Info,
+    Info(RusticInfo),
+}
+
+impl RusticIssue {
+    pub fn new_error(error: RusticErrorKind) -> Self {
+        Self::Error(error.into())
+    }
+
+    pub fn new_warning(message: &str) -> Self {
+        Self::Warning(message.into())
+    }
+
+    pub fn new_info(message: &str) -> Self {
+        Self::Info(message.into())
+    }
+
+    pub fn log(&self) {
+        match self {
+            Self::Error(error) => error!("{}", error),
+            Self::Warning(warning) => warn!("{}", warning.0),
+            Self::Info(info) => info!("{}", info.0),
+        }
+    }
 }
 
 /// A rustic warning message
@@ -27,6 +49,12 @@ impl RusticWarning {
     }
 }
 
+impl From<&str> for RusticWarning {
+    fn from(message: &str) -> Self {
+        Self::new(message)
+    }
+}
+
 /// A rustic info message
 ///
 /// Info messages are used to provide additional information to the user.
@@ -36,6 +64,12 @@ pub struct RusticInfo(String);
 impl RusticInfo {
     pub fn new(message: &str) -> Self {
         Self(message.to_owned())
+    }
+}
+
+impl From<&str> for RusticInfo {
+    fn from(message: &str) -> Self {
+        Self::new(message)
     }
 }
 
@@ -61,6 +95,14 @@ impl RusticIssueCollector {
             warnings: None,
             info: None,
             log,
+        }
+    }
+
+    pub fn add(&mut self, issue: RusticIssue) {
+        match issue {
+            RusticIssue::Error(error) => self.add_error(error.0),
+            RusticIssue::Warning(warning) => self.add_warning(&warning.0),
+            RusticIssue::Info(info) => self.add_info(&info.0),
         }
     }
 
@@ -130,14 +172,6 @@ impl RusticIssueCollector {
         self.log_all_info();
     }
 
-    pub fn log_specific(&self, issue: &RusticIssue) {
-        match issue {
-            RusticIssue::Error => self.log_all_errors(),
-            RusticIssue::Warning => self.log_all_warnings(),
-            RusticIssue::Info => self.log_all_info(),
-        }
-    }
-
     pub fn log_all_errors(&self) {
         if let Some(errors) = &self.errors {
             for error in errors {
@@ -169,12 +203,28 @@ mod tests {
     use crate::error::RusticErrorKind;
 
     #[test]
+    fn test_add_issue() {
+        let mut collector = RusticIssueCollector::default();
+
+        let issue = RusticIssue::new_error(RusticErrorKind::StdIo(std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            "test",
+        )));
+
+        collector.add(issue);
+        assert!(collector.has_errors());
+        assert!(!collector.has_warnings());
+        assert!(!collector.has_info());
+    }
+
+    #[test]
     fn test_add_error() {
         let mut collector = RusticIssueCollector::default();
         collector.add_error(RusticErrorKind::StdIo(std::io::Error::new(
             std::io::ErrorKind::NotFound,
             "test",
         )));
+
         assert!(collector.has_errors());
         assert!(!collector.has_warnings());
         assert!(!collector.has_info());
