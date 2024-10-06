@@ -690,10 +690,7 @@ impl<P: Progress> TreeStreamerOnce<P> {
             let out_tx = out_tx.clone();
             let _join_handle = std::thread::spawn(move || {
                 for (path, id, count) in in_rx {
-                    debug!(
-                        "Loading tree {id} from {} with count {count}",
-                        path.display()
-                    );
+                    debug!("Loading tree {id} from {path:?} with count {count}");
 
                     if let Err(err) = out_tx.try_send(
                         Tree::from_backend(&be, &index, id).map(|tree| (path, tree, count)),
