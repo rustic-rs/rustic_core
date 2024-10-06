@@ -13,7 +13,6 @@ use derive_setters::Setters;
 use ignore::overrides::{Override, OverrideBuilder};
 use ignore::Match;
 
-use log::error;
 use serde::{Deserialize, Deserializer};
 use serde_derive::Serialize;
 
@@ -693,7 +692,11 @@ impl<P: Progress> TreeStreamerOnce<P> {
                     if let Err(err) = out_tx
                         .send(Tree::from_backend(&be, &index, id).map(|tree| (path, tree, count)))
                     {
-                        error!("Error sending tree {id} from backend: {err}");
+                        panic!("
+                        Sending tree {id} on channel failed: {err}. 
+                        
+                        This should not happen! Please report it to the developers: https://github.com/rustic-rs/rustic_core/issues/new
+                        ");
                     }
                 }
             });
