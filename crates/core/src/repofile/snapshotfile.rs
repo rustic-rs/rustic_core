@@ -1193,16 +1193,11 @@ pub struct PathList(Vec<PathBuf>);
 
 impl Display for PathList {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let string = self
-            .0
+        self.0
             .iter()
             .map(|p| p.to_string_lossy())
-            .collect::<Vec<_>>()
-            .join(",");
-
-        write!(f, "{string}")?;
-
-        Ok(())
+            .format(",")
+            .fmt(f)
     }
 }
 
