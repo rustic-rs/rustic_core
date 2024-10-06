@@ -3,6 +3,21 @@ use derive_more::From;
 use crate::{error::RusticErrorKind, RusticError};
 use log::{error, info, warn};
 
+/// A rustic issue result
+///
+/// rustic issue results are used to return a result along with possible issues.
+#[derive(Debug)]
+pub enum RusticIssueResult<T> {
+    /// For when we return a result along with possible issues
+    Ok(T, Option<Vec<RusticIssue>>),
+
+    /// For when we abort and return only the errors that occurred
+    Err(Vec<RusticError>),
+}
+
+/// A rustic issue
+///
+/// An issue is a message that can be logged to the user.
 #[derive(Debug)]
 pub enum RusticIssue {
     /// An error issue, indicating that something went wrong irrecoverably
