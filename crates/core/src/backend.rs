@@ -358,7 +358,15 @@ pub trait WriteBackend: ReadBackend {
     /// If the file could not be read.
     fn lock(&self, tpe: FileType, id: &Id, until: Option<DateTime<Local>>) -> RusticResult<()> {
         debug!("no locking implemented. {tpe:?}, {id}, {until:?}");
-        Ok(())
+
+        if self.can_lock() {
+            unimplemented!("Using default implementation. No locking implemented in backend.");
+        } else {
+            Err(RusticError::new(
+                ErrorKind::Backend,
+                "No locking configured on backend.",
+            ))
+        }
     }
 }
 

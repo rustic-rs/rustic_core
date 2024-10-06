@@ -2,7 +2,7 @@ use std::{process::Command, sync::Arc};
 
 use bytes::Bytes;
 use chrono::{DateTime, Local};
-use log::{debug, warn};
+use log::debug;
 
 use crate::{
     CommandInput, ErrorKind, RusticError, RusticResult,
@@ -67,7 +67,7 @@ impl ReadBackend for LockBackend {
     }
 }
 
-fn path(tpe: FileType, id: &Id) -> String {
+fn path_to_id_from_file_type(tpe: FileType, id: &Id) -> String {
     let hex_id = id.to_hex();
     match tpe {
         FileType::Config => "config".into(),
@@ -94,15 +94,26 @@ impl WriteBackend for LockBackend {
     }
 
     fn lock(&self, tpe: FileType, id: &Id, until: Option<DateTime<Local>>) -> RusticResult<()> {
+        if !self.can_lock() {
+            return Err(RusticError::new(
+                ErrorKind::Backend,
+                "No locking configured on backend.",
+            ));
+        }
+
         let until = until.map_or_else(String::new, |u| u.to_rfc3339());
-        let path = path(tpe, id);
+
+        let path = path_to_id_from_file_type(tpe, id);
+
         let args = self.command.args().iter().map(|c| {
             c.replace("%id", &id.to_hex())
                 .replace("%type", tpe.dirname())
                 .replace("%path", &path)
                 .replace("%until", &until)
         });
+
         debug!("calling {:?}...", self.command);
+
         let status = Command::new(self.command.command())
             .args(args)
             .status()
@@ -115,9 +126,17 @@ impl WriteBackend for LockBackend {
                 .attach_context("tpe", tpe.to_string())
                 .attach_context("id", id.to_string())
             })?;
+
         if !status.success() {
-            warn!("lock command was not successful for {tpe:?}, id: {id}. {status}");
+            return Err(RusticError::new(
+                ErrorKind::Backend,
+                "lock command was not successful for {tpe}, id: {id}. {status}",
+            )
+            .attach_context("tpe", tpe.to_string())
+            .attach_context("id", id.to_string())
+            .attach_context("status", status.to_string()));
         }
+
         Ok(())
     }
 }

@@ -643,6 +643,13 @@ impl<C: CryptoKey> WriteBackend for DecryptBackend<C> {
     }
 
     fn lock(&self, tpe: FileType, id: &Id, until: Option<DateTime<Local>>) -> RusticResult<()> {
+        if !self.can_lock() {
+            return Err(RusticError::new(
+                ErrorKind::Backend,
+                "No locking configured on backend.",
+            ));
+        }
+
         self.be.lock(tpe, id, until)
     }
 }

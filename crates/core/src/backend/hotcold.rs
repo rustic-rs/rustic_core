@@ -4,6 +4,7 @@ use bytes::Bytes;
 use chrono::{DateTime, Local};
 
 use crate::{
+    ErrorKind, RusticError,
     backend::{FileType, ReadBackend, WriteBackend},
     error::RusticResult,
     id::Id,
@@ -105,6 +106,12 @@ impl WriteBackend for HotColdBackend {
     }
 
     fn lock(&self, tpe: FileType, id: &Id, until: Option<DateTime<Local>>) -> RusticResult<()> {
+        if !self.can_lock() {
+            return Err(RusticError::new(
+                ErrorKind::Backend,
+                "No locking configured on backend.",
+            ));
+        }
         self.be.lock(tpe, id, until)
     }
 }

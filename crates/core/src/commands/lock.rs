@@ -35,8 +35,8 @@ pub fn lock_all_files<P: ProgressBars, S, ID: RepoId + std::fmt::Debug>(
 ) -> RusticResult<()> {
     if !repo.be.can_lock() {
         return Err(RusticError::new(
-            ErrorKind::Internal,
-            "Tried to call lock_all_files on a backend which isn't able to lock.",
+            ErrorKind::Backend,
+            "No locking configured on backend.",
         ));
     }
 
@@ -71,9 +71,9 @@ fn lock_files<P: ProgressBars, S, ID: RepoId + std::fmt::Debug>(
     pool.in_place_scope(|scope| {
         for id in ids {
             scope.spawn(move |_| {
-                if let Err(e) = backend.lock(ID::TYPE, id, until) {
-                    // FIXME: Use error handling
-                    error!("lock failed for {:?} {id:?}. {e}", ID::TYPE);
+                if let Err(err) = backend.lock(ID::TYPE, id, until) {
+                    // FIXME: Use error handling, e.g. use a channel to collect the errors
+                    error!("lock failed for {:?} {id:?}. {err}", ID::TYPE);
                 }
                 p.inc(1);
             });
