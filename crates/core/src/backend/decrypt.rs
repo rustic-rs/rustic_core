@@ -585,6 +585,10 @@ impl<C: CryptoKey> WriteBackend for DecryptBackend<C> {
     }
 
     fn lock(&self, tpe: FileType, id: &Id, until: Option<DateTime<Local>>) -> Result<()> {
+        if !self.can_lock() {
+            return Err(anyhow::anyhow!("No locking configured."));
+        }
+
         self.be.lock(tpe, id, until)
     }
 }

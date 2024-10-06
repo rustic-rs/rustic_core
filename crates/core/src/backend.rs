@@ -358,7 +358,12 @@ pub trait WriteBackend: ReadBackend {
     /// If the file could not be read.
     fn lock(&self, tpe: FileType, id: &Id, until: Option<DateTime<Local>>) -> Result<()> {
         debug!("no locking implemented. {tpe:?}, {id}, {until:?}");
-        Ok(())
+
+        if self.can_lock() {
+            unimplemented!("Using default implementation. No locking implemented in backend.");
+        } else {
+            Err(anyhow::anyhow!("No locking configured."))
+        }
     }
 }
 

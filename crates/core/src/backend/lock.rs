@@ -3,7 +3,7 @@ use std::{process::Command, sync::Arc};
 use anyhow::Result;
 use bytes::Bytes;
 use chrono::{DateTime, Local};
-use log::{debug, warn};
+use log::{debug, error};
 
 use crate::{
     backend::{FileType, ReadBackend, WriteBackend},
@@ -68,7 +68,7 @@ impl ReadBackend for LockBackend {
     }
 }
 
-fn path(tpe: FileType, id: &Id) -> String {
+fn path_to_id_from_file_type(tpe: FileType, id: &Id) -> String {
     let hex_id = id.to_hex();
     match tpe {
         FileType::Config => "config".into(),
@@ -95,19 +95,33 @@ impl WriteBackend for LockBackend {
     }
 
     fn lock(&self, tpe: FileType, id: &Id, until: Option<DateTime<Local>>) -> Result<()> {
+        if !self.can_lock() {
+            return Err(anyhow::anyhow!("No locking configured."));
+        }
+
         let until = until.map_or_else(String::new, |u| u.to_rfc3339());
-        let path = path(tpe, id);
+
+        let path = path_to_id_from_file_type(tpe, id);
+
         let args = self.command.args().iter().map(|c| {
             c.replace("%id", &id.to_hex())
                 .replace("%type", tpe.dirname())
                 .replace("%path", &path)
                 .replace("%until", &until)
         });
+
         debug!("calling {:?}...", self.command);
+
         let status = Command::new(self.command.command()).args(args).status()?;
+
         if !status.success() {
-            warn!("lock command was not successful for {tpe:?}, id: {id}. {status}");
+            error!("lock command was not successful for {tpe:?}, id: {id}. {status}");
+
+            return Err(anyhow::anyhow!(
+                "lock command was not successful for {tpe:?}, id: {id}. {status}"
+            ));
         }
+
         Ok(())
     }
 }
