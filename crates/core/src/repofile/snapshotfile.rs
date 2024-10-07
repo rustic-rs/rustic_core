@@ -1193,13 +1193,11 @@ pub struct PathList(Vec<PathBuf>);
 
 impl Display for PathList {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        if !self.0.is_empty() {
-            write!(f, "{:?}", self.0[0])?;
-        }
-        for p in &self.0[1..] {
-            write!(f, ",{p:?}")?;
-        }
-        Ok(())
+        self.0
+            .iter()
+            .map(|p| p.to_string_lossy())
+            .format(",")
+            .fmt(f)
     }
 }
 
@@ -1367,5 +1365,15 @@ mod tests {
         assert_eq!(crit.label, is_label);
         assert_eq!(crit.paths, is_path);
         assert_eq!(crit.tags, is_tags);
+    }
+
+    #[rstest]
+    #[case(vec![], "")]
+    #[case(vec!["test"], "test")]
+    #[case(vec!["test", "test", "test"], "test,test,test")]
+    fn test_display_path_list_passes(#[case] input: Vec<&str>, #[case] expected: &str) {
+        let path_list = PathList::from_iter(input);
+        let result = path_list.to_string();
+        assert_eq!(expected, &result);
     }
 }
