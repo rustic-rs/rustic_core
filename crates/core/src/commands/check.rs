@@ -6,6 +6,7 @@ use std::{
 
 use bytes::Bytes;
 use bytesize::ByteSize;
+use crossbeam_channel::Sender;
 use derive_setters::Setters;
 use log::{debug, error, warn};
 use rand::{prelude::SliceRandom, thread_rng, Rng};
@@ -16,7 +17,7 @@ use crate::{
     backend::{cache::Cache, decrypt::DecryptReadBackend, node::NodeType, FileType, ReadBackend},
     blob::{tree::TreeStreamerOnce, BlobId, BlobType},
     crypto::hasher::hash,
-    error::{CommandErrorKind, RusticErrorKind, RusticResult},
+    error::{CheckErrorKind, CommandErrorKind, RusticErrorKind, RusticResult},
     id::Id,
     index::{
         binarysorted::{IndexCollector, IndexType},
@@ -156,10 +157,12 @@ pub struct CheckOptions {
 /// # Panics
 ///
 // TODO: Add panics
+#[allow(clippy::needless_pass_by_value)]
 pub(crate) fn check_repository<P: ProgressBars, S: Open>(
     repo: &Repository<P, S>,
     opts: CheckOptions,
     trees: Vec<TreeId>,
+    err_send: Sender<CheckErrorKind>,
 ) -> RusticResult<()> {
     let be = repo.dbe();
     let cache = repo.cache();
@@ -179,18 +182,18 @@ pub(crate) fn check_repository<P: ProgressBars, S: Open>(
 
                 let p = pb.progress_bytes(format!("checking {file_type:?} in cache..."));
                 // TODO: Make concurrency (20) customizable
-                check_cache_files(20, cache, raw_be, file_type, &p)?;
+                check_cache_files(20, cache, raw_be, file_type, &p, &err_send)?;
             }
         }
     }
 
     if let Some(hot_be) = hot_be {
         for file_type in [FileType::Snapshot, FileType::Index] {
-            check_hot_files(raw_be, hot_be, file_type, pb)?;
+            check_hot_files(raw_be, hot_be, file_type, pb, &err_send)?;
         }
     }
 
-    let index_collector = check_packs(be, hot_be, pb)?;
+    let index_collector = check_packs(be, hot_be, pb, &err_send)?;
 
     if let Some(cache) = &cache {
         let p = pb.progress_spinner("cleaning up packs from cache...");
@@ -207,7 +210,7 @@ pub(crate) fn check_repository<P: ProgressBars, S: Open>(
         if !opts.trust_cache {
             let p = pb.progress_bytes("checking packs in cache...");
             // TODO: Make concurrency (5) customizable
-            check_cache_files(5, cache, raw_be, FileType::Pack, &p)?;
+            check_cache_files(5, cache, raw_be, FileType::Pack, &p, &err_send)?;
         }
     }
 
@@ -232,13 +235,19 @@ pub(crate) fn check_repository<P: ProgressBars, S: Open>(
         packs.into_par_iter().for_each(|pack| {
             let id = pack.id;
             let data = be.read_full(FileType::Pack, &id).unwrap();
-            match check_pack(be, pack, data, &p) {
+            match check_pack(be, pack, data, &p, &err_send) {
                 Ok(()) => {}
-                Err(err) => error!("Error reading pack {id} : {err}",),
+                Err(err) => {
+                    let _ = err_send.send(CheckErrorKind::ErrorReadingPack {
+                        id,
+                        source: Box::new(err),
+                    });
+                }
             }
         });
         p.finish();
     }
+
     Ok(())
 }
 
@@ -259,6 +268,7 @@ fn check_hot_files(
     be_hot: &impl ReadBackend,
     file_type: FileType,
     pb: &impl ProgressBars,
+    err_send: &Sender<CheckErrorKind>,
 ) -> RusticResult<()> {
     let p = pb.progress_spinner(format!("checking {file_type:?} in hot repo..."));
     let mut files = be
@@ -273,18 +283,25 @@ fn check_hot_files(
 
     for (id, size_hot) in files_hot {
         match files.remove(&id) {
-            None => error!("hot file Type: {file_type:?}, Id: {id} does not exist in repo"),
+            None => {
+                let _ = err_send.send(CheckErrorKind::NoColdFile { id, file_type });
+            }
             Some(size) if size != size_hot => {
-                // TODO: This should be an actual error not a log entry
-                error!("Type: {file_type:?}, Id: {id}: hot size: {size_hot}, actual size: {size}");
+                let _ = err_send.send(CheckErrorKind::HotFileSizeMismatch {
+                    id,
+                    file_type,
+                    size_hot,
+                    size,
+                });
             }
             _ => {} //everything ok
         }
     }
 
     for (id, _) in files {
-        error!("hot file Type: {file_type:?}, Id: {id} is missing!",);
+        let _ = err_send.send(CheckErrorKind::NoHotFile { id, file_type });
     }
+
     p.finish();
 
     Ok(())
@@ -309,6 +326,7 @@ fn check_cache_files(
     be: &impl ReadBackend,
     file_type: FileType,
     p: &impl Progress,
+    err_send: &Sender<CheckErrorKind>,
 ) -> RusticResult<()> {
     let files = cache.list_with_size(file_type)?;
 
@@ -328,15 +346,21 @@ fn check_cache_files(
                 be.read_full(file_type, &id),
             ) {
                 (Err(err), _) => {
-                    error!("Error reading cached file Type: {file_type:?}, Id: {id} : {err}");
+                    let _ = err_send.send(CheckErrorKind::ErrorReadingCache {
+                        id,
+                        file_type,
+                        source: Box::new(err),
+                    });
                 }
                 (_, Err(err)) => {
-                    error!("Error reading file Type: {file_type:?}, Id: {id} : {err}");
+                    let _ = err_send.send(CheckErrorKind::ErrorReadingFile {
+                        id,
+                        file_type,
+                        source: Box::new(RusticErrorKind::Backend(err).into()),
+                    });
                 }
                 (Ok(Some(data_cached)), Ok(data)) if data_cached != data => {
-                    error!(
-                        "Cached file Type: {file_type:?}, Id: {id} is not identical to backend!"
-                    );
+                    let _ = err_send.send(CheckErrorKind::CacheMismatch { id, file_type });
                 }
                 (Ok(_), Ok(_)) => {} // everything ok
             }
@@ -345,6 +369,7 @@ fn check_cache_files(
         });
 
     p.finish();
+
     Ok(())
 }
 
@@ -368,6 +393,7 @@ fn check_packs(
     be: &impl DecryptReadBackend,
     hot_be: &Option<impl ReadBackend>,
     pb: &impl ProgressBars,
+    err_send: &Sender<CheckErrorKind>,
 ) -> RusticResult<IndexCollector> {
     let mut packs = HashMap::new();
     let mut tree_packs = HashMap::new();
@@ -388,7 +414,7 @@ fn check_packs(
 
             // Check if time is set _
             if check_time && p.time.is_none() {
-                error!("pack {}: No time is set! Run prune to correct this!", p.id);
+                let _ = err_send.send(CheckErrorKind::PackTimeNotSet { id: p.id });
             }
 
             // check offsests in index
@@ -397,17 +423,21 @@ fn check_packs(
             blobs.sort_unstable();
             for blob in blobs {
                 if blob.tpe != blob_type {
-                    error!(
-                        "pack {}: blob {} blob type does not match: type: {:?}, expected: {:?}",
-                        p.id, blob.id, blob.tpe, blob_type
-                    );
+                    let _ = err_send.send(CheckErrorKind::PackBlobTypesMismatch {
+                        id: p.id,
+                        blob_id: blob.id,
+                        blob_type: blob.tpe,
+                        expected: blob_type,
+                    });
                 }
 
                 if blob.offset != expected_offset {
-                    error!(
-                        "pack {}: blob {} offset in index: {}, expected: {}",
-                        p.id, blob.id, blob.offset, expected_offset
-                    );
+                    let _ = err_send.send(CheckErrorKind::PackBlobOffsetMismatch {
+                        id: p.id,
+                        blob_id: blob.id,
+                        offset: blob.offset,
+                        expected: expected_offset,
+                    });
                 }
                 expected_offset += blob.length;
             }
@@ -418,12 +448,12 @@ fn check_packs(
 
     if let Some(hot_be) = hot_be {
         let p = pb.progress_spinner("listing packs in hot repo...");
-        check_packs_list_hot(hot_be, tree_packs, &packs)?;
+        check_packs_list_hot(hot_be, tree_packs, &packs, err_send)?;
         p.finish();
     }
 
     let p = pb.progress_spinner("listing packs...");
-    check_packs_list(be, packs)?;
+    check_packs_list(be, packs, err_send)?;
     p.finish();
 
     Ok(index_collector)
@@ -440,7 +470,11 @@ fn check_packs(
 /// # Errors
 ///
 /// If a pack is missing or has a different size
-fn check_packs_list(be: &impl ReadBackend, mut packs: HashMap<PackId, u32>) -> RusticResult<()> {
+fn check_packs_list(
+    be: &impl ReadBackend,
+    mut packs: HashMap<PackId, u32>,
+    err_send: &Sender<CheckErrorKind>,
+) -> RusticResult<()> {
     for (id, size) in be
         .list_with_size(FileType::Pack)
         .map_err(RusticErrorKind::Backend)?
@@ -448,15 +482,22 @@ fn check_packs_list(be: &impl ReadBackend, mut packs: HashMap<PackId, u32>) -> R
         match packs.remove(&PackId::from(id)) {
             None => warn!("pack {id} not referenced in index. Can be a parallel backup job. To repair: 'rustic repair index'."),
             Some(index_size) if index_size != size => {
-                error!("pack {id}: size computed by index: {index_size}, actual size: {size}. To repair: 'rustic repair index'.");
+                let _ = err_send.send(
+                    CheckErrorKind::PackSizeMismatchIndex {
+                        id,
+                        index_size,
+                        size,
+                    }
+                );
             }
             _ => {} //everything ok
         }
     }
 
     for (id, _) in packs {
-        error!("pack {id} is referenced by the index but not present! To repair: 'rustic repair index'.",);
+        let _ = err_send.send(CheckErrorKind::NoPack { id });
     }
+
     Ok(())
 }
 
@@ -470,10 +511,12 @@ fn check_packs_list(be: &impl ReadBackend, mut packs: HashMap<PackId, u32>) -> R
 /// # Errors
 ///
 /// If a pack is missing or has a different size
+// TODO: Error handling!
 fn check_packs_list_hot(
     be: &impl ReadBackend,
     mut treepacks: HashMap<PackId, u32>,
     packs: &HashMap<PackId, u32>,
+    _err_send: &Sender<CheckErrorKind>,
 ) -> RusticResult<()> {
     for (id, size) in be
         .list_with_size(FileType::Pack)
@@ -601,20 +644,25 @@ fn check_pack(
     index_pack: IndexPack,
     mut data: Bytes,
     p: &impl Progress,
+    err_send: &Sender<CheckErrorKind>,
 ) -> RusticResult<()> {
     let id = index_pack.id;
     let size = index_pack.pack_size();
     if data.len() != size as usize {
-        error!(
-            "pack {id}: data size does not match expected size. Read: {} bytes, expected: {size} bytes",
-            data.len()
-        );
+        let _ = err_send.send(CheckErrorKind::PackSizeMismatch {
+            id,
+            size: data.len(),
+            expected: size as usize,
+        });
         return Ok(());
     }
 
-    let comp_id = PackId::from(hash(&data));
-    if id != comp_id {
-        error!("pack {id}: Hash mismatch. Computed hash: {comp_id}");
+    let computed_id = PackId::from(hash(&data));
+    if id != computed_id {
+        let _ = err_send.send(CheckErrorKind::PackHashMismatch {
+            id,
+            computed: computed_id,
+        });
         return Ok(());
     }
 
@@ -622,7 +670,11 @@ fn check_pack(
     let header_len = PackHeaderRef::from_index_pack(&index_pack).size();
     let pack_header_len = PackHeaderLength::from_binary(&data.split_off(data.len() - 4))?.to_u32();
     if pack_header_len != header_len {
-        error!("pack {id}: Header length in pack file doesn't match index. In pack: {pack_header_len}, calculated: {header_len}");
+        let _ = err_send.send(CheckErrorKind::PackHeaderLengthMismatch {
+            id,
+            length: pack_header_len,
+            computed: header_len,
+        });
         return Ok(());
     }
 
@@ -633,7 +685,7 @@ fn check_pack(
     let mut blobs = index_pack.blobs;
     blobs.sort_unstable_by_key(|b| b.offset);
     if pack_blobs != blobs {
-        error!("pack {id}: Header from pack file does not match the index");
+        let _ = err_send.send(CheckErrorKind::PackHeaderMismatchIndex { id });
         debug!("pack file header: {pack_blobs:?}");
         debug!("index: {:?}", blobs);
         return Ok(());
@@ -649,14 +701,18 @@ fn check_pack(
         if let Some(length) = blob.uncompressed_length {
             blob_data = decode_all(&*blob_data).unwrap();
             if blob_data.len() != length.get() as usize {
-                error!("pack {id}, blob {blob_id}: Actual uncompressed length does not fit saved uncompressed length");
+                let _ = err_send.send(CheckErrorKind::PackBlobLengthMismatch { id, blob_id });
                 return Ok(());
             }
         }
 
-        let comp_id = BlobId::from(hash(&blob_data));
-        if blob.id != comp_id {
-            error!("pack {id}, blob {blob_id}: Hash mismatch. Computed hash: {comp_id}");
+        let computed_id = BlobId::from(hash(&blob_data));
+        if blob.id != computed_id {
+            let _ = err_send.send(CheckErrorKind::PackBlobHashMismatch {
+                id,
+                blob_id,
+                computed: computed_id,
+            });
             return Ok(());
         }
         p.inc(blob.length.into());
