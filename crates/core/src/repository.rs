@@ -39,7 +39,7 @@ use crate::{
         copy::CopySnapshot,
         forget::{ForgetGroups, KeepOptions},
         key::{add_current_key_to_repo, KeyOptions},
-        prune::{PruneOptions, PrunePlan},
+        prune::{prune_repository, PruneOptions, PrunePlan},
         repair::{
             index::{index_checked_from_collector, repair_index, RepairIndexOptions},
             snapshots::{repair_snapshots, RepairSnapshotsOptions},
@@ -1192,7 +1192,29 @@ impl<P: ProgressBars, S: Open> Repository<P, S> {
     ///
     /// The plan about what should be pruned and/or repacked.
     pub fn prune_plan(&self, opts: &PruneOptions) -> RusticResult<PrunePlan> {
-        opts.get_plan(self)
+        PrunePlan::from_prune_options(self, opts)
+    }
+
+    /// Perform the pruning on the repository.
+    ///
+    /// # Arguments
+    ///
+    /// * `opts` - The options for the pruning
+    /// * `prune_plan` - The plan about what should be pruned and/or repacked
+    ///
+    /// # Errors
+    ///
+    /// * [`CommandErrorKind::NotAllowedWithAppendOnly`] - If the repository is in append-only mode
+    /// * [`CommandErrorKind::NoDecision`] - If a pack has no decision
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(())` - If the pruning was successful
+    ///
+    /// # Panics
+    ///
+    pub fn prune(&self, opts: &PruneOptions, prune_plan: PrunePlan) -> RusticResult<()> {
+        prune_repository(self, opts, prune_plan)
     }
 
     /// Turn the repository into the `IndexedFull` state by reading and storing the index
