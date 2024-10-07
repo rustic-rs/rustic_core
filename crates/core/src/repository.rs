@@ -38,7 +38,7 @@ use crate::{
         config::ConfigOptions,
         copy::CopySnapshot,
         forget::{ForgetGroups, KeepOptions},
-        key::KeyOptions,
+        key::{add_current_key_to_repo, KeyOptions},
         prune::{PruneOptions, PrunePlan},
         repair::{
             index::{index_checked_from_collector, RepairIndexOptions},
@@ -840,7 +840,7 @@ impl<P, S: Open> Repository<P, S> {
     ///
     /// [`CommandErrorKind::FromJsonError`]: crate::error::CommandErrorKind::FromJsonError
     pub fn add_key(&self, pass: &str, opts: &KeyOptions) -> RusticResult<KeyId> {
-        opts.add_key(self, pass)
+        add_current_key_to_repo(self, opts, pass)
     }
 
     /// Update the repository config by applying the given [`ConfigOptions`]
