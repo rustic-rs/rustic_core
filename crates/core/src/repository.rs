@@ -34,7 +34,7 @@ use crate::{
     commands::{
         self,
         backup::BackupOptions,
-        check::CheckOptions,
+        check::{check_repository, CheckOptions},
         config::ConfigOptions,
         copy::CopySnapshot,
         forget::{ForgetGroups, KeepOptions},
@@ -1162,7 +1162,7 @@ impl<P: ProgressBars, S: Open> Repository<P, S> {
             .map(|snap| snap.tree)
             .collect();
 
-        opts.run(self, trees)
+        check_repository(self, opts, trees)
     }
 
     /// Check the repository and given trees for errors or inconsistencies
@@ -1175,7 +1175,7 @@ impl<P: ProgressBars, S: Open> Repository<P, S> {
     ///
     // TODO: Document errors
     pub fn check_with_trees(&self, opts: CheckOptions, trees: Vec<TreeId>) -> RusticResult<()> {
-        opts.run(self, trees)
+        check_repository(self, opts, trees)
     }
 
     /// Get the plan about what should be pruned and/or repacked.
