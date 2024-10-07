@@ -92,13 +92,12 @@ fn warm_up_command<P: ProgressBars>(
     let p = pb.progress_counter("warming up packs...");
     p.set_length(packs.len() as u64);
     for pack in packs {
-        let args: Vec<_> = command
+        let args = command
             .args()
             .iter()
-            .map(|c| c.replace("%id", &pack.to_hex()))
-            .collect();
+            .map(|c| c.replace("%id", &pack.to_hex()));
         debug!("calling {command:?}...");
-        let status = Command::new(command.command()).args(&args).status()?;
+        let status = Command::new(command.command()).args(args).status()?;
         if !status.success() {
             warn!("warm-up command was not successful for pack {pack:?}. {status}");
         }
