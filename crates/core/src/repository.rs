@@ -41,8 +41,8 @@ use crate::{
         key::{add_current_key_to_repo, KeyOptions},
         prune::{PruneOptions, PrunePlan},
         repair::{
-            index::{index_checked_from_collector, RepairIndexOptions},
-            snapshots::RepairSnapshotsOptions,
+            index::{index_checked_from_collector, repair_index, RepairIndexOptions},
+            snapshots::{repair_snapshots, RepairSnapshotsOptions},
         },
         repoinfo::{IndexInfos, RepoFileInfos},
         restore::{RestoreOptions, RestorePlan},
@@ -1365,7 +1365,7 @@ impl<P: ProgressBars, S: Open> Repository<P, S> {
     ///
     // TODO: Document errors
     pub fn repair_index(&self, opts: &RepairIndexOptions, dry_run: bool) -> RusticResult<()> {
-        opts.repair(self, dry_run)
+        repair_index(self, *opts, dry_run)
     }
 }
 
@@ -2064,6 +2064,6 @@ impl<P: ProgressBars, S: IndexedFull> Repository<P, S> {
         snapshots: Vec<SnapshotFile>,
         dry_run: bool,
     ) -> RusticResult<()> {
-        opts.repair(self, snapshots, dry_run)
+        repair_snapshots(self, opts, snapshots, dry_run)
     }
 }
