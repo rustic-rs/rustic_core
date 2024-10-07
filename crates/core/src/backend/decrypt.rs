@@ -2,6 +2,7 @@ use std::{num::NonZeroU32, sync::Arc};
 
 use anyhow::Result;
 use bytes::Bytes;
+use chrono::{DateTime, Local};
 use crossbeam_channel::{unbounded, Receiver};
 use rayon::prelude::*;
 use zstd::stream::{copy_encode, decode_all, encode_all};
@@ -283,15 +284,18 @@ pub trait DecryptWriteBackend: WriteBackend + Clone + 'static {
         &self,
         list: I,
         p: impl Progress,
-    ) -> RusticResult<()> {
+    ) -> RusticResult<Vec<F::Id>> {
         p.set_length(list.len() as u64);
-        list.par_bridge().try_for_each(|file| -> RusticResult<_> {
-            _ = self.save_file(file)?;
-            p.inc(1);
-            Ok(())
-        })?;
+        let ids = list
+            .par_bridge()
+            .map(|file| -> RusticResult<F::Id> {
+                let id = self.save_file(file)?.into();
+                p.inc(1);
+                Ok(id)
+            })
+            .collect::<RusticResult<_>>()?;
         p.finish();
-        Ok(())
+        Ok(ids)
     }
 
     /// Deletes the given list of files.
@@ -577,6 +581,14 @@ impl<C: CryptoKey> WriteBackend for DecryptBackend<C> {
 
     fn remove(&self, tpe: FileType, id: &Id, cacheable: bool) -> Result<()> {
         self.be.remove(tpe, id, cacheable)
+    }
+
+    fn can_lock(&self) -> bool {
+        self.be.can_lock()
+    }
+
+    fn lock(&self, tpe: FileType, id: &Id, until: Option<DateTime<Local>>) -> Result<()> {
+        self.be.lock(tpe, id, until)
     }
 }
 

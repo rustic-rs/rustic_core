@@ -96,13 +96,13 @@ ForgetResult([
   ("2014-09-05T10:20:30Z", false, []),
   ("2014-09-02T10:20:30Z", false, []),
   ("2014-09-01T10:29:37Z", true, [
-    "snapshot",
+    "delete mark",
   ]),
   ("2014-09-01T10:28:37Z", false, [
-    "snapshot",
+    "delete mark",
   ]),
   ("2014-09-01T10:25:37Z", true, [
-    "snapshot",
+    "delete mark",
   ]),
   ("2014-09-01T10:20:30Z", false, []),
   ("2014-08-22T10:20:30Z", false, []),

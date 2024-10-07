@@ -59,6 +59,39 @@ impl IndexFile {
     }
 }
 
+/// Options for locking packfiles.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Default, Copy)]
+pub enum LockOption {
+    /// No lock set.
+    #[default]
+    NotSet,
+    /// The pack is locked forever and we have a permanent lock on the backend for the packfile
+    LockedForever,
+    /// The pack is locked until the given timestamp and we have a temporary lock on the backend for the packfile
+    LockedUntil(DateTime<Local>),
+}
+
+impl From<Option<DateTime<Local>>> for LockOption {
+    fn from(value: Option<DateTime<Local>>) -> Self {
+        value.map_or(Self::LockedForever, Self::LockedUntil)
+    }
+}
+
+impl LockOption {
+    /// Returns whether the delete option is set to `NotSet`.
+    const fn is_not_set(&self) -> bool {
+        matches!(self, Self::NotSet)
+    }
+
+    pub fn is_locked(&self, time: Option<DateTime<Local>>) -> bool {
+        match (self, time) {
+            (Self::LockedForever, _) => true,
+            (Self::LockedUntil(locktime), Some(time)) => locktime >= &time,
+            _ => false,
+        }
+    }
+}
+
 #[skip_serializing_none]
 #[derive(Serialize, Deserialize, Default, Debug, Clone)]
 /// Index information about a `pack`
@@ -69,6 +102,9 @@ pub struct IndexPack {
     pub blobs: Vec<IndexBlob>,
     /// The pack creation time or time when the pack was marked for deletion
     pub time: Option<DateTime<Local>>,
+    /// Indication if the pack file is locked in the backend
+    #[serde(default, skip_serializing_if = "LockOption::is_not_set")]
+    pub lock: LockOption,
     /// The pack size
     pub size: Option<u32>,
 }

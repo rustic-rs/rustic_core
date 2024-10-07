@@ -38,8 +38,8 @@ use crate::{
     },
     progress::{Progress, ProgressBars},
     repofile::{
-        indexfile::IndexId, packfile::PackId, HeaderEntry, IndexBlob, IndexFile, IndexPack,
-        SnapshotFile, SnapshotId,
+        indexfile::IndexId, indexfile::LockOption, packfile::PackId, HeaderEntry, IndexBlob,
+        IndexFile, IndexPack, SnapshotFile, SnapshotId,
     },
     repository::{Open, Repository},
 };
@@ -285,6 +285,7 @@ pub enum PackStatus {
     HasUnusedBlobs,
     HasUsedBlobs,
     Marked,
+    Locked,
 }
 
 #[derive(Debug, Clone, Copy, Serialize)]
@@ -498,6 +499,8 @@ struct PrunePack {
     to_do: PackToDo,
     /// The time the pack was created
     time: Option<DateTime<Local>>,
+    /// Locking information
+    lock: LockOption,
     /// The blobs in the pack
     blobs: Vec<IndexBlob>,
 }
@@ -517,6 +520,7 @@ impl PrunePack {
             delete_mark,
             to_do: PackToDo::Undecided,
             time: p.time,
+            lock: p.lock,
             blobs: p.blobs,
         }
     }
@@ -545,6 +549,7 @@ impl PrunePack {
             id: self.id,
             time: self.time,
             size: None,
+            lock: self.lock,
             blobs: self.blobs,
         }
     }
@@ -559,6 +564,7 @@ impl PrunePack {
             id: self.id,
             time: Some(time),
             size: None,
+            lock: self.lock,
             blobs: self.blobs,
         }
     }
@@ -814,12 +820,21 @@ impl PrunePlan {
                         _ = status.insert(PackStatus::NotCompressed);
                     }
                     let size_mismatch = !pack_sizer[pack.blob_type].size_ok(pack.size);
+
                     if pack_sizer[pack.blob_type].is_too_small(pack.size) {
                         _ = status.insert(PackStatus::TooSmall);
                     }
                     if pack_sizer[pack.blob_type].is_too_large(pack.size) {
                         _ = status.insert(PackStatus::TooLarge);
                     }
+
+                    if pack.lock.is_locked(Some(self.time)) {
+                        _ = status.insert(PackStatus::Locked);
+                        // keep packs which are locked
+                        pack.set_todo(PackToDo::Keep, &pi, status, &mut self.stats);
+                        continue;
+                    }
+
                     match (pack.delete_mark, pi.used_blobs, pi.unused_blobs) {
                         (false, 0, _) => {
                             // unused pack
@@ -1181,6 +1196,7 @@ impl PrunePlan {
                         id,
                         size: Some(size),
                         time: Some(Local::now()),
+                        lock: LockOption::NotSet,
                         blobs: Vec::new(),
                     };
                     indexer.write().unwrap().add_remove(pack)?;

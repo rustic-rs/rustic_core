@@ -540,10 +540,12 @@ impl KeepOptions {
 
         while let Some(sn) = iter.next() {
             let (keep, reasons) = {
-                if sn.must_keep(now) {
-                    (true, vec!["snapshot"])
+                if sn.is_locked(now) {
+                    (true, vec!["locked"])
+                } else if sn.must_keep(now) {
+                    (true, vec!["delete mark"])
                 } else if sn.must_delete(now) {
-                    (false, vec!["snapshot"])
+                    (false, vec!["delete mark"])
                 } else {
                     let reasons =
                         group_keep.matches(&sn, last.as_ref(), iter.peek().is_some(), latest_time);
