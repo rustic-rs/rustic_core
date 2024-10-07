@@ -45,7 +45,7 @@ use crate::{
             snapshots::{repair_snapshots, RepairSnapshotsOptions},
         },
         repoinfo::{IndexInfos, RepoFileInfos},
-        restore::{RestoreOptions, RestorePlan},
+        restore::{collect_and_prepare, restore_repository, RestoreOptions, RestorePlan},
     },
     crypto::aespoly1305::Key,
     error::{CommandErrorKind, KeyFileErrorKind, RepositoryErrorKind, RusticErrorKind},
@@ -1816,7 +1816,7 @@ impl<P: ProgressBars, S: IndexedTree> Repository<P, S> {
         node_streamer: impl Iterator<Item = RusticResult<(PathBuf, Node)>>,
         dest: &LocalDestination,
     ) -> RusticResult<()> {
-        opts.restore(restore_infos, self, node_streamer, dest)
+        restore_repository(restore_infos, self, *opts, node_streamer, dest)
     }
 
     /// Merge the given trees.
@@ -2008,7 +2008,7 @@ impl<P: ProgressBars, S: IndexedFull> Repository<P, S> {
         dest: &LocalDestination,
         dry_run: bool,
     ) -> RusticResult<RestorePlan> {
-        opts.collect_and_prepare(self, node_streamer, dest, dry_run)
+        collect_and_prepare(self, *opts, node_streamer, dest, dry_run)
     }
 
     /// Copy the given `snapshots` to `repo_dest`.
