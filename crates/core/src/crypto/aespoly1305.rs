@@ -111,7 +111,7 @@ impl CryptoKey for Key {
         res.extend_from_slice(data);
         let tag = Aes256CtrPoly1305Aes::new(&self.0)
             .encrypt_in_place_detached(&nonce, &[], &mut res[16..])
-            .map_err(CryptoErrorKind::DataDecryptionFailed)?;
+            .map_err(CryptoErrorKind::DataEncryptionFailed)?;
         res.extend_from_slice(&tag);
         Ok(res)
     }

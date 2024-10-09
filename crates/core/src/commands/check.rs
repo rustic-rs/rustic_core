@@ -182,6 +182,7 @@ pub(crate) fn check_repository<P: ProgressBars, S: Open>(
 
                 let p = pb.progress_bytes(format!("checking {file_type:?} in cache..."));
                 // TODO: Make concurrency (20) customizable
+
                 check_cache_files(20, cache, raw_be, file_type, &p, &err_send)?;
             }
         }
