@@ -540,7 +540,7 @@ fn test_prune(
     let plan = repo.prune_plan(&prune_opts)?;
     // TODO: Snapshot-test the plan (currently doesn't impl Serialize)
     // assert_ron_snapshot!("prune", plan);
-    plan.do_prune(&repo, &prune_opts)?;
+    repo.prune(&prune_opts, plan)?;
 
     // run check
     let check_opts = CheckOptions::default().read_data(true);
@@ -549,7 +549,7 @@ fn test_prune(
     if !instant_delete {
         // re-run if we only marked pack files. As keep-delete = 0, they should be removed here
         let plan = repo.prune_plan(&prune_opts)?;
-        plan.do_prune(&repo, &prune_opts)?;
+        repo.prune(&prune_opts, plan)?;
         repo.check(check_opts)?;
     }
 
