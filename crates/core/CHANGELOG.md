@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.5.2](https://github.com/rustic-rs/rustic_core/compare/rustic_core-v0.5.1...rustic_core-v0.5.2) - 2024-10-09
+
+### Fixed
+
+- *(errors)* use correct error variant for data encryption ([#323](https://github.com/rustic-rs/rustic_core/pull/323))
+- *(errors)* handle out of bounds access in PathList display ([#313](https://github.com/rustic-rs/rustic_core/pull/313))
+- *(errors)* better error message for hot/cold repo in check ([#297](https://github.com/rustic-rs/rustic_core/pull/297))
+
+### Other
+
+- *(commands)* decouple logic from option structs for check, prune, repair, key, and restore ([#317](https://github.com/rustic-rs/rustic_core/pull/317))
+- *(errors)* improve message and add logging when sending tree from backend panics ([#314](https://github.com/rustic-rs/rustic_core/pull/314))
+
 ## [0.5.1](https://github.com/rustic-rs/rustic_core/compare/rustic_core-v0.5.0...rustic_core-v0.5.1) - 2024-10-03
 
 ### Fixed
