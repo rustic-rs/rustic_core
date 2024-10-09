@@ -9,7 +9,10 @@ use std::{
     io::{BufRead, BufReader, Write},
     path::{Path, PathBuf},
     process::{Command, Stdio},
-    sync::Arc,
+    sync::{
+        atomic::{AtomicBool, Ordering as AtomicOrdering},
+        Arc,
+    },
 };
 
 use bytes::Bytes;
@@ -1155,6 +1158,9 @@ impl<P: ProgressBars, S: Open> Repository<P, S> {
     /// # Errors
     ///
     // TODO: Document errors
+    /// # Panics
+    ///
+    /// If the error handling thread panicked
     pub fn check(&self, opts: CheckOptions) -> RusticResult<()> {
         let trees = self
             .get_all_snapshots()?
@@ -1162,7 +1168,27 @@ impl<P: ProgressBars, S: Open> Repository<P, S> {
             .map(|snap| snap.tree)
             .collect();
 
-        check_repository(self, opts, trees)
+        let (err_send, err_recv) = crossbeam_channel::unbounded();
+
+        let errors_occurred = Arc::new(AtomicBool::new(false));
+        let errors_occurred_clone = errors_occurred.clone();
+
+        let err_handle = std::thread::spawn(move || {
+            for err in err_recv {
+                errors_occurred_clone.store(true, AtomicOrdering::Relaxed);
+                error!("{}", err);
+            }
+        });
+
+        check_repository(self, opts, trees, err_send)?;
+
+        err_handle.join().expect("Error handling thread panicked");
+
+        if errors_occurred.load(AtomicOrdering::Relaxed) {
+            Err(CommandErrorKind::CheckFailed.into())
+        } else {
+            Ok(())
+        }
     }
 
     /// Check the repository and given trees for errors or inconsistencies
@@ -1174,8 +1200,31 @@ impl<P: ProgressBars, S: Open> Repository<P, S> {
     /// # Errors
     ///
     // TODO: Document errors
+    /// # Panics
+    ///
+    /// If the error handling thread panicked
     pub fn check_with_trees(&self, opts: CheckOptions, trees: Vec<TreeId>) -> RusticResult<()> {
-        check_repository(self, opts, trees)
+        let (err_send, err_recv) = crossbeam_channel::unbounded();
+
+        let errors_occurred = Arc::new(AtomicBool::new(false));
+        let errors_occurred_clone = errors_occurred.clone();
+
+        let err_handle = std::thread::spawn(move || {
+            for err in err_recv {
+                errors_occurred_clone.store(true, AtomicOrdering::Relaxed);
+                error!("{}", err);
+            }
+        });
+
+        check_repository(self, opts, trees, err_send)?;
+
+        err_handle.join().expect("Error handling thread panicked");
+
+        if errors_occurred.load(AtomicOrdering::Relaxed) {
+            Err(CommandErrorKind::CheckFailed.into())
+        } else {
+            Ok(())
+        }
     }
 
     /// Get the plan about what should be pruned and/or repacked.
