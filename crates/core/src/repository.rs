@@ -34,18 +34,18 @@ use crate::{
     commands::{
         self,
         backup::BackupOptions,
-        check::CheckOptions,
+        check::{check_repository, CheckOptions},
         config::ConfigOptions,
         copy::CopySnapshot,
         forget::{ForgetGroups, KeepOptions},
-        key::KeyOptions,
-        prune::{PruneOptions, PrunePlan},
+        key::{add_current_key_to_repo, KeyOptions},
+        prune::{prune_repository, PruneOptions, PrunePlan},
         repair::{
-            index::{index_checked_from_collector, RepairIndexOptions},
-            snapshots::RepairSnapshotsOptions,
+            index::{index_checked_from_collector, repair_index, RepairIndexOptions},
+            snapshots::{repair_snapshots, RepairSnapshotsOptions},
         },
         repoinfo::{IndexInfos, RepoFileInfos},
-        restore::{RestoreOptions, RestorePlan},
+        restore::{collect_and_prepare, restore_repository, RestoreOptions, RestorePlan},
     },
     crypto::aespoly1305::Key,
     error::{CommandErrorKind, KeyFileErrorKind, RepositoryErrorKind, RusticErrorKind},
@@ -840,7 +840,7 @@ impl<P, S: Open> Repository<P, S> {
     ///
     /// [`CommandErrorKind::FromJsonError`]: crate::error::CommandErrorKind::FromJsonError
     pub fn add_key(&self, pass: &str, opts: &KeyOptions) -> RusticResult<KeyId> {
-        opts.add_key(self, pass)
+        add_current_key_to_repo(self, opts, pass)
     }
 
     /// Update the repository config by applying the given [`ConfigOptions`]
@@ -1162,7 +1162,7 @@ impl<P: ProgressBars, S: Open> Repository<P, S> {
             .map(|snap| snap.tree)
             .collect();
 
-        opts.run(self, trees)
+        check_repository(self, opts, trees)
     }
 
     /// Check the repository and given trees for errors or inconsistencies
@@ -1175,7 +1175,7 @@ impl<P: ProgressBars, S: Open> Repository<P, S> {
     ///
     // TODO: Document errors
     pub fn check_with_trees(&self, opts: CheckOptions, trees: Vec<TreeId>) -> RusticResult<()> {
-        opts.run(self, trees)
+        check_repository(self, opts, trees)
     }
 
     /// Get the plan about what should be pruned and/or repacked.
@@ -1192,7 +1192,29 @@ impl<P: ProgressBars, S: Open> Repository<P, S> {
     ///
     /// The plan about what should be pruned and/or repacked.
     pub fn prune_plan(&self, opts: &PruneOptions) -> RusticResult<PrunePlan> {
-        opts.get_plan(self)
+        PrunePlan::from_prune_options(self, opts)
+    }
+
+    /// Perform the pruning on the repository.
+    ///
+    /// # Arguments
+    ///
+    /// * `opts` - The options for the pruning
+    /// * `prune_plan` - The plan about what should be pruned and/or repacked
+    ///
+    /// # Errors
+    ///
+    /// * [`CommandErrorKind::NotAllowedWithAppendOnly`] - If the repository is in append-only mode
+    /// * [`CommandErrorKind::NoDecision`] - If a pack has no decision
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(())` - If the pruning was successful
+    ///
+    /// # Panics
+    ///
+    pub fn prune(&self, opts: &PruneOptions, prune_plan: PrunePlan) -> RusticResult<()> {
+        prune_repository(self, opts, prune_plan)
     }
 
     /// Turn the repository into the `IndexedFull` state by reading and storing the index
@@ -1365,7 +1387,7 @@ impl<P: ProgressBars, S: Open> Repository<P, S> {
     ///
     // TODO: Document errors
     pub fn repair_index(&self, opts: &RepairIndexOptions, dry_run: bool) -> RusticResult<()> {
-        opts.repair(self, dry_run)
+        repair_index(self, *opts, dry_run)
     }
 }
 
@@ -1816,7 +1838,7 @@ impl<P: ProgressBars, S: IndexedTree> Repository<P, S> {
         node_streamer: impl Iterator<Item = RusticResult<(PathBuf, Node)>>,
         dest: &LocalDestination,
     ) -> RusticResult<()> {
-        opts.restore(restore_infos, self, node_streamer, dest)
+        restore_repository(restore_infos, self, *opts, node_streamer, dest)
     }
 
     /// Merge the given trees.
@@ -2008,7 +2030,7 @@ impl<P: ProgressBars, S: IndexedFull> Repository<P, S> {
         dest: &LocalDestination,
         dry_run: bool,
     ) -> RusticResult<RestorePlan> {
-        opts.collect_and_prepare(self, node_streamer, dest, dry_run)
+        collect_and_prepare(self, *opts, node_streamer, dest, dry_run)
     }
 
     /// Copy the given `snapshots` to `repo_dest`.
@@ -2064,6 +2086,6 @@ impl<P: ProgressBars, S: IndexedFull> Repository<P, S> {
         snapshots: Vec<SnapshotFile>,
         dry_run: bool,
     ) -> RusticResult<()> {
-        opts.repair(self, snapshots, dry_run)
+        repair_snapshots(self, opts, snapshots, dry_run)
     }
 }
