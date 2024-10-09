@@ -14,8 +14,8 @@ use std::{
 
 use bytes::Bytes;
 use derive_setters::Setters;
-use log::{debug, error, info};
 use serde_with::{serde_as, DisplayFromStr};
+use tracing::{debug, error, info};
 
 use crate::{
     backend::{

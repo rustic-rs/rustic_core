@@ -1,7 +1,7 @@
 use std::num::NonZeroU32;
 
 use binrw::{io::Cursor, BinRead, BinWrite};
-use log::trace;
+use tracing::trace;
 
 use crate::{
     backend::{decrypt::DecryptReadBackend, FileType},

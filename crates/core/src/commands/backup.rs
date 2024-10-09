@@ -1,6 +1,6 @@
 //! `backup` subcommand
 use derive_setters::Setters;
-use log::info;
+use tracing::info;
 
 use std::path::PathBuf;
 

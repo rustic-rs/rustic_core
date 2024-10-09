@@ -1,7 +1,7 @@
 //! `restore` subcommand
 
 use derive_setters::Setters;
-use log::{debug, error, info, trace, warn};
+use tracing::{debug, error, info, trace, warn};
 
 use std::{
     cmp::Ordering,

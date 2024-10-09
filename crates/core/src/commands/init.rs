@@ -1,6 +1,6 @@
 //! `init` subcommand
 
-use log::info;
+use tracing::info;
 
 use crate::{
     backend::WriteBackend,

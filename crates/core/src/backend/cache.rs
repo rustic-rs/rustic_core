@@ -9,7 +9,7 @@ use std::{
 use anyhow::Result;
 use bytes::Bytes;
 use dirs::cache_dir;
-use log::{trace, warn};
+use tracing::{trace, warn};
 use walkdir::WalkDir;
 
 use crate::{

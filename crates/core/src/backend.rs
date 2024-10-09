@@ -15,7 +15,7 @@ use std::{io::Read, ops::Deref, path::PathBuf, sync::Arc};
 use anyhow::Result;
 use bytes::Bytes;
 use enum_map::Enum;
-use log::trace;
+use tracing::trace;
 
 #[cfg(test)]
 use mockall::mock;
