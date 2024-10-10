@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.5.3](https://github.com/rustic-rs/rustic_core/compare/rustic_core-v0.5.2...rustic_core-v0.5.3) - 2024-10-10
+
+### Other
+
+- Revert "refactor(errors): improve message and add logging when sending tree from backend panics" ([#325](https://github.com/rustic-rs/rustic_core/pull/325))
+
 ## [0.5.2](https://github.com/rustic-rs/rustic_core/compare/rustic_core-v0.5.1...rustic_core-v0.5.2) - 2024-10-09
 
 ### Fixed
