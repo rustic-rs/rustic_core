@@ -13,7 +13,6 @@ use derive_setters::Setters;
 use ignore::overrides::{Override, OverrideBuilder};
 use ignore::Match;
 
-use log::debug;
 use serde::{Deserialize, Deserializer};
 use serde_derive::Serialize;
 
@@ -690,17 +689,9 @@ impl<P: Progress> TreeStreamerOnce<P> {
             let out_tx = out_tx.clone();
             let _join_handle = std::thread::spawn(move || {
                 for (path, id, count) in in_rx {
-                    debug!("Loading tree {id} from {path:?} with count {count}");
-
-                    if let Err(err) = out_tx.try_send(
-                        Tree::from_backend(&be, &index, id).map(|tree| (path, tree, count)),
-                    ) {
-                        panic!("
-                        Sending tree {id} on channel failed: {err}. 
-                        
-                        This should not happen! Please report it to the developers: https://github.com/rustic-rs/rustic_core/issues/new
-                        ");
-                    }
+                    out_tx
+                        .send(Tree::from_backend(&be, &index, id).map(|tree| (path, tree, count)))
+                        .unwrap();
                 }
             });
         }
