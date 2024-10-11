@@ -1,11 +1,13 @@
 //! `check` subcommand
 use std::{
     collections::{BTreeSet, HashMap},
+    fmt::Debug,
     str::FromStr,
 };
 
 use bytes::Bytes;
 use bytesize::ByteSize;
+use chrono::{Datelike, Local, NaiveDateTime, Timelike};
 use derive_setters::Setters;
 use log::{debug, error, warn};
 use rand::{prelude::SliceRandom, thread_rng, Rng};
@@ -95,6 +97,47 @@ impl ReadSubsetOption {
     }
 }
 
+/// parses n/m inclding named settings depending on current date
+fn parse_n_m(now: NaiveDateTime, n_in: &str, m_in: &str) -> Result<(u32, u32), CommandErrorKind> {
+    let is_leap_year = |dt: NaiveDateTime| {
+        let year = dt.year();
+        year % 4 == 0 && (year % 25 != 0 || year % 16 == 0)
+    };
+
+    let days_of_month = |dt: NaiveDateTime| match dt.month() {
+        1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
+        4 | 6 | 9 | 11 => 30,
+        2 if is_leap_year(dt) => 29,
+        2 => 28,
+        _ => panic!("invalid month, should not happen"),
+    };
+
+    let days_of_year = |dt: NaiveDateTime| if is_leap_year(dt) { 366 } else { 365 };
+
+    let n = match n_in {
+        "hourly" => now.ordinal0() * 24 + now.hour(),
+        "daily" => now.ordinal0(),
+        "weekly" => now.iso_week().week0(),
+        "monthly" => now.month0(),
+        n => n.parse()?,
+    };
+
+    let m = match (n_in, m_in) {
+        ("hourly", "day") => 24,
+        ("hourly", "week") => 24 * 7,
+        ("hourly", "month") | (_, "month_hours") => 24 * days_of_month(now),
+        ("hourly", "year") | (_, "year_hours") => 24 * days_of_year(now),
+        ("daily", "week") => 7,
+        ("daily", "month") | (_, "month_days") => days_of_month(now),
+        ("daily", "year") | (_, "year_days") => days_of_year(now),
+        ("weekly", "month") => 4,
+        ("weekly", "year") => 52,
+        ("monthly", "year") => 12,
+        (_, m) => m.parse()?,
+    };
+    Ok((n % m, m))
+}
+
 impl FromStr for ReadSubsetOption {
     type Err = CommandErrorKind;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
@@ -104,8 +147,8 @@ impl FromStr for ReadSubsetOption {
             // try to read percentage
             Self::Percentage(p.parse()?)
         } else if let Some((n, m)) = s.split_once('/') {
-            // try to read n/m
-            Self::IdSubSet((n.parse()?, m.parse()?))
+            let now = Local::now().naive_local();
+            Self::IdSubSet(parse_n_m(now, n, m)?)
         } else {
             Self::Size(
                 ByteSize::from_str(s)
@@ -131,8 +174,11 @@ pub struct CheckOptions {
     #[cfg_attr(feature = "clap", clap(long))]
     pub read_data: bool,
 
-    /// Read and check pack files
-    #[cfg_attr(feature = "clap", clap(long, default_value = "all"))]
+    /// Read only a subset of the data. Allowed values: "all", "n/m" for specific part, "x%" or a size for a random subset.
+    #[cfg_attr(
+        feature = "clap",
+        clap(long, default_value = "all", requires = "read_data")
+    )]
     pub read_data_subset: ReadSubsetOption,
 }
 
@@ -221,6 +267,7 @@ pub(crate) fn check_repository<P: ProgressBars, S: Open>(
             .into_iter()
             .filter(|p| packs.contains(&p.id));
 
+        debug!("using read-data-subset {:?}", opts.read_data_subset);
         let packs = opts.read_data_subset.apply(packs);
 
         repo.warm_up_wait(packs.iter().map(|pack| pack.id))?;
@@ -719,6 +766,47 @@ mod tests {
 
         let ids: Vec<_> = packs.iter().map(|pack| (pack.id, pack.size)).collect();
         assert_ron_snapshot!(s, ids);
+    }
+
+    #[rstest]
+    #[case("5", "12")]
+    #[case("29", "28")]
+    #[case("15", "month_hours")]
+    #[case("4", "month_days")]
+    #[case("hourly", "day")]
+    #[case("hourly", "week")]
+    #[case("hourly", "month")]
+    #[case("hourly", "year")]
+    #[case("hourly", "20")]
+    #[case("daily", "week")]
+    #[case("daily", "month")]
+    #[case("daily", "year")]
+    #[case("daily", "15")]
+    #[case("weekly", "month")]
+    #[case("weekly", "year")]
+    #[case("weekly", "10")]
+    #[case("monthly", "year")]
+    #[case("monthly", "5")]
+    fn test_parse_n_m(#[case] n: &str, #[case] m: &str) {
+        let now: NaiveDateTime = "2024-10-11T12:00:00".parse().unwrap();
+        let res = parse_n_m(now, n, m).unwrap();
+        let now: NaiveDateTime = "2024-10-11T13:00:00".parse().unwrap();
+        let res_1h = parse_n_m(now, n, m).unwrap();
+        let now: NaiveDateTime = "2024-10-12T12:00:00".parse().unwrap();
+        let res_1d = parse_n_m(now, n, m).unwrap();
+        let now: NaiveDateTime = "2024-10-18T12:00:00".parse().unwrap();
+        let res_1w = parse_n_m(now, n, m).unwrap();
+        let now: NaiveDateTime = "2024-11-11T12:00:00".parse().unwrap();
+        let res_1m = parse_n_m(now, n, m).unwrap();
+        let now: NaiveDateTime = "2025-10-11T12:00:00".parse().unwrap();
+        let res_1y = parse_n_m(now, n, m).unwrap();
+        let now: NaiveDateTime = "2020-02-02T12:00:00".parse().unwrap();
+        let res2 = parse_n_m(now, n, m).unwrap();
+
+        assert_ron_snapshot!(
+            format!("n_m_{n}_{m}"),
+            (res, res_1h, res_1d, res_1w, res_1m, res_1y, res2)
+        );
     }
 
     fn test_read_subset_n_m() {
