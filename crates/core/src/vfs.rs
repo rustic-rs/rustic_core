@@ -476,7 +476,7 @@ impl OpenFile {
     ///
     /// * `repo` - The repository to read the `OpenFile` from
     /// * `offset` - The offset to read the `OpenFile` from
-    /// * `length` - The length until to read the `OpenFile`
+    /// * `length` - The length of the content to read from the `OpenFile`
     ///
     /// # Errors
     ///
@@ -484,7 +484,9 @@ impl OpenFile {
     ///
     /// # Returns
     ///
-    /// The read bytes from the given offset and length
+    /// The read bytes from the given offset and length.
+    /// If offset is behind the end of the file, an empty `Bytes` is returned.
+    /// If length is too large, the result up to the end of the file is returned.
     pub fn read_at<P, S: IndexedFull>(
         &self,
         repo: &Repository<P, S>,
@@ -497,7 +499,7 @@ impl OpenFile {
         offset -= self.content[i].starts_at;
         let mut result = BytesMut::with_capacity(length);
 
-        while length > 0 && i < self.content.len() {
+        while length > 0 && i < self.content.len() - 1 {
             let data = repo.get_blob_cached(&BlobId::from(*self.content[i].id), BlobType::Data)?;
             if offset > data.len() {
                 // we cannot read behind the blob. This only happens if offset is too large to fit in the last blob
