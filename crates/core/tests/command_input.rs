@@ -4,6 +4,7 @@ use std::fs::File;
 use anyhow::Result;
 use rustic_core::CommandInput;
 use serde::{Deserialize, Serialize};
+
 #[cfg(not(windows))]
 use tempfile::tempdir;
 

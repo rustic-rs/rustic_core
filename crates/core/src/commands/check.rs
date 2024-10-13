@@ -136,106 +136,110 @@ pub struct CheckOptions {
     pub read_data_subset: ReadSubsetOption,
 }
 
-impl CheckOptions {
-    /// Runs the `check` command
-    ///
-    /// # Type Parameters
-    ///
-    /// * `P` - The progress bar type.
-    /// * `S` - The state the repository is in.
-    ///
-    /// # Arguments
-    ///
-    /// * `repo` - The repository to check
-    ///
-    /// # Errors
-    ///
-    /// If the repository is corrupted
-    pub(crate) fn run<P: ProgressBars, S: Open>(
-        self,
-        repo: &Repository<P, S>,
-        trees: Vec<TreeId>,
-    ) -> RusticResult<()> {
-        let be = repo.dbe();
-        let cache = repo.cache();
-        let hot_be = &repo.be_hot;
-        let raw_be = repo.dbe();
-        let pb = &repo.pb;
-        if !self.trust_cache {
-            if let Some(cache) = &cache {
-                for file_type in [FileType::Snapshot, FileType::Index] {
-                    // list files in order to clean up the cache
-                    //
-                    // This lists files here and later when reading index / checking snapshots
-                    // TODO: Only list the files once...
-                    _ = be
-                        .list_with_size(file_type)
-                        .map_err(RusticErrorKind::Backend)?;
-
-                    let p = pb.progress_bytes(format!("checking {file_type:?} in cache..."));
-                    // TODO: Make concurrency (20) customizable
-                    check_cache_files(20, cache, raw_be, file_type, &p)?;
-                }
-            }
-        }
-
-        if let Some(hot_be) = hot_be {
-            for file_type in [FileType::Snapshot, FileType::Index] {
-                check_hot_files(raw_be, hot_be, file_type, pb)?;
-            }
-        }
-
-        let index_collector = check_packs(be, hot_be, pb)?;
-
+/// Runs the `check` command
+///
+/// # Type Parameters
+///
+/// * `P` - The progress bar type.
+/// * `S` - The state the repository is in.
+///
+/// # Arguments
+///
+/// * `repo` - The repository to check
+/// * `opts` - The check options to use
+/// * `trees` - The trees to check
+///
+/// # Errors
+///
+/// If the repository is corrupted
+///
+/// # Panics
+///
+// TODO: Add panics
+pub(crate) fn check_repository<P: ProgressBars, S: Open>(
+    repo: &Repository<P, S>,
+    opts: CheckOptions,
+    trees: Vec<TreeId>,
+) -> RusticResult<()> {
+    let be = repo.dbe();
+    let cache = repo.cache();
+    let hot_be = &repo.be_hot;
+    let raw_be = repo.dbe();
+    let pb = &repo.pb;
+    if !opts.trust_cache {
         if let Some(cache) = &cache {
-            let p = pb.progress_spinner("cleaning up packs from cache...");
-            let ids: Vec<_> = index_collector
-                .tree_packs()
-                .iter()
-                .map(|(id, size)| (**id, *size))
-                .collect();
-            if let Err(err) = cache.remove_not_in_list(FileType::Pack, &ids) {
-                warn!("Error in cache backend removing pack files: {err}");
-            }
-            p.finish();
+            for file_type in [FileType::Snapshot, FileType::Index] {
+                // list files in order to clean up the cache
+                //
+                // This lists files here and later when reading index / checking snapshots
+                // TODO: Only list the files once...
+                _ = be
+                    .list_with_size(file_type)
+                    .map_err(RusticErrorKind::Backend)?;
 
-            if !self.trust_cache {
-                let p = pb.progress_bytes("checking packs in cache...");
-                // TODO: Make concurrency (5) customizable
-                check_cache_files(5, cache, raw_be, FileType::Pack, &p)?;
+                let p = pb.progress_bytes(format!("checking {file_type:?} in cache..."));
+                // TODO: Make concurrency (20) customizable
+                check_cache_files(20, cache, raw_be, file_type, &p)?;
             }
         }
-
-        let index_be = GlobalIndex::new_from_index(index_collector.into_index());
-
-        let packs = check_trees(be, &index_be, trees, pb)?;
-
-        if self.read_data {
-            let packs = index_be
-                .into_index()
-                .into_iter()
-                .filter(|p| packs.contains(&p.id));
-
-            let packs = self.read_data_subset.apply(packs);
-
-            repo.warm_up_wait(packs.iter().map(|pack| pack.id))?;
-
-            let total_pack_size = packs.iter().map(|pack| u64::from(pack.pack_size())).sum();
-            let p = pb.progress_bytes("reading pack data...");
-            p.set_length(total_pack_size);
-
-            packs.into_par_iter().for_each(|pack| {
-                let id = pack.id;
-                let data = be.read_full(FileType::Pack, &id).unwrap();
-                match check_pack(be, pack, data, &p) {
-                    Ok(()) => {}
-                    Err(err) => error!("Error reading pack {id} : {err}",),
-                }
-            });
-            p.finish();
-        }
-        Ok(())
     }
+
+    if let Some(hot_be) = hot_be {
+        for file_type in [FileType::Snapshot, FileType::Index] {
+            check_hot_files(raw_be, hot_be, file_type, pb)?;
+        }
+    }
+
+    let index_collector = check_packs(be, hot_be, pb)?;
+
+    if let Some(cache) = &cache {
+        let p = pb.progress_spinner("cleaning up packs from cache...");
+        let ids: Vec<_> = index_collector
+            .tree_packs()
+            .iter()
+            .map(|(id, size)| (**id, *size))
+            .collect();
+        if let Err(err) = cache.remove_not_in_list(FileType::Pack, &ids) {
+            warn!("Error in cache backend removing pack files: {err}");
+        }
+        p.finish();
+
+        if !opts.trust_cache {
+            let p = pb.progress_bytes("checking packs in cache...");
+            // TODO: Make concurrency (5) customizable
+            check_cache_files(5, cache, raw_be, FileType::Pack, &p)?;
+        }
+    }
+
+    let index_be = GlobalIndex::new_from_index(index_collector.into_index());
+
+    let packs = check_trees(be, &index_be, trees, pb)?;
+
+    if opts.read_data {
+        let packs = index_be
+            .into_index()
+            .into_iter()
+            .filter(|p| packs.contains(&p.id));
+
+        let packs = opts.read_data_subset.apply(packs);
+
+        repo.warm_up_wait(packs.iter().map(|pack| pack.id))?;
+
+        let total_pack_size = packs.iter().map(|pack| u64::from(pack.pack_size())).sum();
+        let p = pb.progress_bytes("reading pack data...");
+        p.set_length(total_pack_size);
+
+        packs.into_par_iter().for_each(|pack| {
+            let id = pack.id;
+            let data = be.read_full(FileType::Pack, &id).unwrap();
+            match check_pack(be, pack, data, &p) {
+                Ok(()) => {}
+                Err(err) => error!("Error reading pack {id} : {err}",),
+            }
+        });
+        p.finish();
+    }
+    Ok(())
 }
 
 /// Checks if all files in the backend are also in the hot backend
