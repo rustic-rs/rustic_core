@@ -88,8 +88,13 @@ pub enum RestErrorKind {
 #[derive(Error, Debug, Display)]
 #[non_exhaustive]
 pub enum LocalBackendErrorKind {
-    /// directory creation failed: `{0:?}`
-    DirectoryCreationFailed(#[from] std::io::Error),
+    /// Creating directory failed: `{path}` : `{source}`
+    DirectoryCreationFailed {
+        /// Path to directory
+        path: std::path::PathBuf,
+        /// Source of the error
+        source: std::io::Error,
+    },
     /// querying metadata failed: `{0:?}`
     QueryingMetadataFailed(std::io::Error),
     /// querying WalkDir metadata failed: `{0:?}`

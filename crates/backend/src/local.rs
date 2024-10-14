@@ -309,15 +309,30 @@ impl WriteBackend for LocalBackend {
     /// [`LocalBackendErrorKind::DirectoryCreationFailed`]: LocalBackendErrorKind::DirectoryCreationFailed
     fn create(&self) -> Result<()> {
         trace!("creating repo at {:?}", self.path);
-        fs::create_dir_all(&self.path).map_err(LocalBackendErrorKind::DirectoryCreationFailed)?;
+        fs::create_dir_all(&self.path).map_err(|err| {
+            LocalBackendErrorKind::DirectoryCreationFailed {
+                path: self.path.clone(),
+                source: err,
+            }
+        })?;
 
         for tpe in ALL_FILE_TYPES {
-            fs::create_dir_all(self.path.join(tpe.dirname()))
-                .map_err(LocalBackendErrorKind::DirectoryCreationFailed)?;
+            let filename = self.path.join(tpe.dirname());
+            fs::create_dir_all(&filename).map_err(|err| {
+                LocalBackendErrorKind::DirectoryCreationFailed {
+                    path: filename.clone(),
+                    source: err,
+                }
+            })?;
         }
         for i in 0u8..=255 {
-            fs::create_dir_all(self.path.join("data").join(hex::encode([i])))
-                .map_err(LocalBackendErrorKind::DirectoryCreationFailed)?;
+            let filename = self.path.join("data").join(hex::encode([i]));
+            fs::create_dir_all(&filename).map_err(|err| {
+                LocalBackendErrorKind::DirectoryCreationFailed {
+                    path: filename.clone(),
+                    source: err,
+                }
+            })?;
         }
         Ok(())
     }
@@ -334,6 +349,7 @@ impl WriteBackend for LocalBackend {
     /// # Errors
     ///
     /// * [`LocalBackendErrorKind::OpeningFileForWritingFailed`] - If the file could not be opened for writing.
+    /// * [`LocalBackendErrorKind::DirectoryCreationFailed`] - If the parent directory could not be created.
     /// * [`LocalBackendErrorKind::FromTryIntError`] - If the length of the bytes could not be converted to u64.
     /// * [`LocalBackendErrorKind::SettingFileLengthFailed`] - If the length of the file could not be set.
     /// * [`LocalBackendErrorKind::CouldNotWriteToBuffer`] - If the bytes could not be written to the file.
@@ -344,13 +360,19 @@ impl WriteBackend for LocalBackend {
     /// [`LocalBackendErrorKind::SettingFileLengthFailed`]: LocalBackendErrorKind::SettingFileLengthFailed
     /// [`LocalBackendErrorKind::CouldNotWriteToBuffer`]: LocalBackendErrorKind::CouldNotWriteToBuffer
     /// [`LocalBackendErrorKind::SyncingOfOsMetadataFailed`]: LocalBackendErrorKind::SyncingOfOsMetadataFailed
+    /// [`LocalBackendErrorKind::DirectoryCreationFailed`]: LocalBackendErrorKind::DirectoryCreationFailed
     fn write_bytes(&self, tpe: FileType, id: &Id, _cacheable: bool, buf: Bytes) -> Result<()> {
         trace!("writing tpe: {:?}, id: {}", &tpe, &id);
         let filename = self.path(tpe, id);
 
         // create parent directory if it does not exist
         if let Some(parent) = filename.parent() {
-            fs::create_dir_all(parent).map_err(LocalBackendErrorKind::DirectoryCreationFailed)?;
+            fs::create_dir_all(parent).map_err(|err| {
+                LocalBackendErrorKind::DirectoryCreationFailed {
+                    path: parent.to_path_buf(),
+                    source: err,
+                }
+            })?;
         }
 
         let mut file = fs::OpenOptions::new()
