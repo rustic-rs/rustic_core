@@ -355,13 +355,14 @@ impl ReadBackend for LocalBackend {
         length: u32,
     ) -> RusticResult<Bytes> {
         trace!("reading tpe: {tpe:?}, id: {id}, offset: {offset}, length: {length}");
-        let mut file = File::open(self.path(tpe, id)).map_err(|err| {
+        let filename = self.path(tpe, id);
+        let mut file = File::open(filename).map_err(|err| {
             RusticError::with_source(
                 ErrorKind::Backend,
                 "Failed to open the file `{path}`. Please check the file and try again.",
                 err,
             )
-            .attach_context("path", self.path(tpe, id).to_string_lossy())
+            .attach_context("path", filename.to_string_lossy())
         })?;
         _ = file.seek(SeekFrom::Start(offset.into())).map_err(|err| {
             RusticError::with_source(
@@ -468,6 +469,18 @@ impl WriteBackend for LocalBackend {
     ) -> RusticResult<()> {
         trace!("writing tpe: {:?}, id: {}", &tpe, &id);
         let filename = self.path(tpe, id);
+
+        // create parent directory if it does not exist
+        if let Some(parent) = filename.parent() {
+            fs::create_dir_all(parent).map_err(|err| {
+                RusticError::with_source(
+                    ErrorKind::InputOutput,
+                    "Failed to create directories `{path}`. Please check the file and try again.",
+                    err,
+                )
+                .attach_context("path", parent.to_string_lossy())
+            })?;
+        }
 
         let mut file = fs::OpenOptions::new()
             .create(true)
