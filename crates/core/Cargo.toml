@@ -1,6 +1,6 @@
 [package]
 name = "rustic_core"
-version = "0.5.1"
+version = "0.5.3"
 authors = ["the rustic-rs team"]
 categories = ["data-structures", "encoding", "filesystem"]
 documentation = "https://docs.rs/rustic_core"
