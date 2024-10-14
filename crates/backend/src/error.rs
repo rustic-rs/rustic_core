@@ -117,8 +117,20 @@ pub enum LocalBackendErrorKind {
     FromWalkdirError(#[from] walkdir::Error),
     /// removing file failed: `{0:?}`
     FileRemovalFailed(std::io::Error),
-    /// opening file failed: `{0:?}`
-    OpeningFileFailed(std::io::Error),
+    /// Writing to file failed: `{path}` : `{source}`
+    OpeningFileForPartialReadingFailed {
+        /// Path to file
+        path: std::path::PathBuf,
+        /// Source of the error
+        source: std::io::Error,
+    },
+    /// Writing to file failed: `{path}` : `{source}`
+    OpeningFileForWritingFailed {
+        /// Path to file
+        path: std::path::PathBuf,
+        /// Source of the error
+        source: std::io::Error,
+    },
     /// setting file length failed: `{0:?}`
     SettingFileLengthFailed(std::io::Error),
     /// can't jump to position in file: `{0:?}`
