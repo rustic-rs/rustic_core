@@ -169,6 +169,30 @@ impl LocalBackend {
         }
         Ok(())
     }
+
+    /// Returns the parent path of the given file type and id.
+    ///
+    /// # Arguments
+    ///
+    /// * `tpe` - The type of the file.
+    /// * `id` - The id of the file.
+    ///
+    /// # Returns
+    ///
+    /// The parent path of the file.
+    ///
+    /// # Errors
+    ///
+    /// * [`LocalBackendErrorKind::FileDoesNotHaveParent`] - If the file does not have a parent.
+    ///
+    /// [`LocalBackendErrorKind::FileDoesNotHaveParent`]: LocalBackendErrorKind::FileDoesNotHaveParent
+    fn parent_path(&self, tpe: FileType, id: &Id) -> Result<PathBuf> {
+        let path = self.path(tpe, id);
+        path.parent().map_or(
+            Err(LocalBackendErrorKind::FileDoesNotHaveParent(path.clone()).into()),
+            |path| Ok(path.to_path_buf()),
+        )
+    }
 }
 
 impl ReadBackend for LocalBackend {
