@@ -58,7 +58,7 @@ impl Display for RusticError {
         }
 
         if let Some(existing_issue_url) = &self.existing_issue_url {
-            write!(f, "\n\nA related issue might be, please check it for a possible workaround and/or guidance: {}", existing_issue_url)?;
+            write!(f, "\n\nThis might be a related issue, please check it for a possible workaround and/or further guidance: {}", existing_issue_url)?;
         }
 
         if let Some(backtrace) = &self.backtrace {
