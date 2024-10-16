@@ -9,7 +9,7 @@ use log::warn;
 use crate::{
     backend::decrypt::DecryptWriteBackend,
     blob::BlobId,
-    index::IndexResult,
+    index::{IndexErrorKind, IndexResult},
     repofile::indexfile::{IndexFile, IndexPack},
 };
 
@@ -117,7 +117,10 @@ impl<BE: DecryptWriteBackend> Indexer<BE> {
     /// [`CryptBackendErrorKind::SerializingToJsonByteVectorFailed`]: crate::error::CryptBackendErrorKind::SerializingToJsonByteVectorFailed
     pub fn save(&self) -> IndexResult<()> {
         if (self.file.packs.len() + self.file.packs_to_delete.len()) > 0 {
-            _ = self.be.save_file(&self.file)?;
+            _ = self
+                .be
+                .save_file(&self.file)
+                .map_err(|err| IndexErrorKind::SavingIndexFileFailed { source: err })?;
         }
         Ok(())
     }
