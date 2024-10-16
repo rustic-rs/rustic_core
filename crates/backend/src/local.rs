@@ -136,6 +136,27 @@ impl LocalBackend {
         }
         Ok(())
     }
+
+    /// Returns the parent path of the given file type and id.
+    ///
+    /// # Arguments
+    ///
+    /// * `tpe` - The type of the file.
+    /// * `id` - The id of the file.
+    ///
+    /// # Returns
+    ///
+    /// The parent path of the file or `None` if the file does not have a parent.
+    ///
+    /// # Errors
+    ///
+    /// * [`LocalBackendErrorKind::FileDoesNotHaveParent`] - If the file does not have a parent.
+    ///
+    /// [`LocalBackendErrorKind::FileDoesNotHaveParent`]: LocalBackendErrorKind::FileDoesNotHaveParent
+    fn parent_path(&self, tpe: FileType, id: &Id) -> Option<PathBuf> {
+        let path = self.path(tpe, id);
+        path.parent().map(Path::to_path_buf)
+    }
 }
 
 impl ReadBackend for LocalBackend {
@@ -259,12 +280,12 @@ impl ReadBackend for LocalBackend {
     ///
     /// # Errors
     ///
-    /// * [`LocalBackendErrorKind::OpeningFileFailed`] - If the file could not be opened.
+    /// * [`LocalBackendErrorKind::OpeningFileForPartialReadingFailed`] - If the file could not be opened for partial reading.
     /// * [`LocalBackendErrorKind::CouldNotSeekToPositionInFile`] - If the file could not be seeked to the given position.
     /// * [`LocalBackendErrorKind::FromTryIntError`] - If the length of the file could not be converted to u32.
     /// * [`LocalBackendErrorKind::ReadingExactLengthOfFileFailed`] - If the length of the file could not be read.
     ///
-    /// [`LocalBackendErrorKind::OpeningFileFailed`]: LocalBackendErrorKind::OpeningFileFailed
+    /// [`LocalBackendErrorKind::OpeningFileForPartialReadingFailed`]: LocalBackendErrorKind::OpeningFileForPartialReadingFailed
     /// [`LocalBackendErrorKind::CouldNotSeekToPositionInFile`]: LocalBackendErrorKind::CouldNotSeekToPositionInFile
     /// [`LocalBackendErrorKind::FromTryIntError`]: LocalBackendErrorKind::FromTryIntError
     /// [`LocalBackendErrorKind::ReadingExactLengthOfFileFailed`]: LocalBackendErrorKind::ReadingExactLengthOfFileFailed
@@ -277,8 +298,13 @@ impl ReadBackend for LocalBackend {
         length: u32,
     ) -> Result<Bytes> {
         trace!("reading tpe: {tpe:?}, id: {id}, offset: {offset}, length: {length}");
-        let mut file =
-            File::open(self.path(tpe, id)).map_err(LocalBackendErrorKind::OpeningFileFailed)?;
+        let filename = self.path(tpe, id);
+        let mut file = File::open(&filename).map_err(|err| {
+            LocalBackendErrorKind::OpeningFileForPartialReadingFailed {
+                path: filename,
+                source: err,
+            }
+        })?;
         _ = file
             .seek(SeekFrom::Start(offset.into()))
             .map_err(LocalBackendErrorKind::CouldNotSeekToPositionInFile)?;
@@ -304,15 +330,30 @@ impl WriteBackend for LocalBackend {
     /// [`LocalBackendErrorKind::DirectoryCreationFailed`]: LocalBackendErrorKind::DirectoryCreationFailed
     fn create(&self) -> Result<()> {
         trace!("creating repo at {:?}", self.path);
-        fs::create_dir_all(&self.path).map_err(LocalBackendErrorKind::DirectoryCreationFailed)?;
+        fs::create_dir_all(&self.path).map_err(|err| {
+            LocalBackendErrorKind::DirectoryCreationFailed {
+                path: self.path.clone(),
+                source: err,
+            }
+        })?;
 
         for tpe in ALL_FILE_TYPES {
-            fs::create_dir_all(self.path.join(tpe.dirname()))
-                .map_err(LocalBackendErrorKind::DirectoryCreationFailed)?;
+            let filename = self.path.join(tpe.dirname());
+            fs::create_dir_all(&filename).map_err(|err| {
+                LocalBackendErrorKind::DirectoryCreationFailed {
+                    path: filename.clone(),
+                    source: err,
+                }
+            })?;
         }
         for i in 0u8..=255 {
-            fs::create_dir_all(self.path.join("data").join(hex::encode([i])))
-                .map_err(LocalBackendErrorKind::DirectoryCreationFailed)?;
+            let filename = self.path.join("data").join(hex::encode([i]));
+            fs::create_dir_all(&filename).map_err(|err| {
+                LocalBackendErrorKind::DirectoryCreationFailed {
+                    path: filename.clone(),
+                    source: err,
+                }
+            })?;
         }
         Ok(())
     }
@@ -328,26 +369,44 @@ impl WriteBackend for LocalBackend {
     ///
     /// # Errors
     ///
-    /// * [`LocalBackendErrorKind::OpeningFileFailed`] - If the file could not be opened.
+    /// * [`LocalBackendErrorKind::OpeningFileForWritingFailed`] - If the file could not be opened for writing.
+    /// * [`LocalBackendErrorKind::DirectoryCreationFailed`] - If the parent directory could not be created.
     /// * [`LocalBackendErrorKind::FromTryIntError`] - If the length of the bytes could not be converted to u64.
     /// * [`LocalBackendErrorKind::SettingFileLengthFailed`] - If the length of the file could not be set.
     /// * [`LocalBackendErrorKind::CouldNotWriteToBuffer`] - If the bytes could not be written to the file.
     /// * [`LocalBackendErrorKind::SyncingOfOsMetadataFailed`] - If the metadata of the file could not be synced.
     ///
-    /// [`LocalBackendErrorKind::OpeningFileFailed`]: LocalBackendErrorKind::OpeningFileFailed
+    /// [`LocalBackendErrorKind::OpeningFileForWritingFailed`]: LocalBackendErrorKind::OpeningFileForWritingFailed
     /// [`LocalBackendErrorKind::FromTryIntError`]: LocalBackendErrorKind::FromTryIntError
     /// [`LocalBackendErrorKind::SettingFileLengthFailed`]: LocalBackendErrorKind::SettingFileLengthFailed
     /// [`LocalBackendErrorKind::CouldNotWriteToBuffer`]: LocalBackendErrorKind::CouldNotWriteToBuffer
     /// [`LocalBackendErrorKind::SyncingOfOsMetadataFailed`]: LocalBackendErrorKind::SyncingOfOsMetadataFailed
+    /// [`LocalBackendErrorKind::DirectoryCreationFailed`]: LocalBackendErrorKind::DirectoryCreationFailed
     fn write_bytes(&self, tpe: FileType, id: &Id, _cacheable: bool, buf: Bytes) -> Result<()> {
         trace!("writing tpe: {:?}, id: {}", &tpe, &id);
         let filename = self.path(tpe, id);
+
+        // create parent directory if it does not exist
+        // we ignore a `None` here, because the file should have a parent
+        if let Some(parent) = self.parent_path(tpe, id) {
+            fs::create_dir_all(&parent).map_err(|err| {
+                LocalBackendErrorKind::DirectoryCreationFailed {
+                    path: parent,
+                    source: err,
+                }
+            })?;
+        }
+
         let mut file = fs::OpenOptions::new()
             .create(true)
             .truncate(true)
             .write(true)
             .open(&filename)
-            .map_err(LocalBackendErrorKind::OpeningFileFailed)?;
+            .map_err(|err| LocalBackendErrorKind::OpeningFileForWritingFailed {
+                path: filename.clone(),
+                source: err,
+            })?;
+
         file.set_len(
             buf.len()
                 .try_into()
