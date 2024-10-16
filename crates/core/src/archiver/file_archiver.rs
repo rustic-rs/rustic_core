@@ -5,6 +5,7 @@ use crate::{
         parent::{ItemWithParent, ParentResult},
         tree::TreeType,
         tree_archiver::TreeItem,
+        ArchiverErrorKind, ArchiverResult,
     },
     backend::{
         decrypt::DecryptWriteBackend,
@@ -18,7 +19,6 @@ use crate::{
     cdc::rolling_hash::Rabin64,
     chunker::ChunkIter,
     crypto::hasher::hash,
-    error::{ArchiverErrorKind, RusticResult},
     index::{indexer::SharedIndexer, ReadGlobalIndex},
     progress::Progress,
     repofile::configfile::ConfigFile,
@@ -65,7 +65,7 @@ impl<'a, BE: DecryptWriteBackend, I: ReadGlobalIndex> FileArchiver<'a, BE, I> {
         index: &'a I,
         indexer: SharedIndexer<BE>,
         config: &ConfigFile,
-    ) -> RusticResult<Self> {
+    ) -> ArchiverResult<Self> {
         let poly = config.poly()?;
 
         let data_packer = Packer::new(
@@ -75,7 +75,9 @@ impl<'a, BE: DecryptWriteBackend, I: ReadGlobalIndex> FileArchiver<'a, BE, I> {
             config,
             index.total_size(BlobType::Data),
         )?;
+
         let rabin = Rabin64::new_with_polynom(6, poly);
+
         Ok(Self {
             index,
             data_packer,
@@ -107,7 +109,7 @@ impl<'a, BE: DecryptWriteBackend, I: ReadGlobalIndex> FileArchiver<'a, BE, I> {
         &self,
         item: ItemWithParent<Option<O>>,
         p: &impl Progress,
-    ) -> RusticResult<TreeItem> {
+    ) -> ArchiverResult<TreeItem> {
         Ok(match item {
             TreeType::NewTree(item) => TreeType::NewTree(item),
             TreeType::EndTree => TreeType::EndTree,
@@ -135,7 +137,7 @@ impl<'a, BE: DecryptWriteBackend, I: ReadGlobalIndex> FileArchiver<'a, BE, I> {
         r: impl Read + Send + 'static,
         node: Node,
         p: &impl Progress,
-    ) -> RusticResult<(Node, u64)> {
+    ) -> ArchiverResult<(Node, u64)> {
         let chunks: Vec<_> = ChunkIter::new(
             r,
             usize::try_from(node.meta.size)
@@ -153,7 +155,7 @@ impl<'a, BE: DecryptWriteBackend, I: ReadGlobalIndex> FileArchiver<'a, BE, I> {
             p.inc(size);
             Ok((DataId::from(id), size))
         })
-        .collect::<RusticResult<_>>()?;
+        .collect::<ArchiverResult<_>>()?;
 
         let filesize = chunks.iter().map(|x| x.1).sum();
         let content = chunks.into_iter().map(|x| x.0).collect();
@@ -172,7 +174,7 @@ impl<'a, BE: DecryptWriteBackend, I: ReadGlobalIndex> FileArchiver<'a, BE, I> {
     /// # Panics
     ///
     /// If the channel could not be dropped
-    pub(crate) fn finalize(self) -> RusticResult<PackerStats> {
+    pub(crate) fn finalize(self) -> ArchiverResult<PackerStats> {
         self.data_packer.finalize()
     }
 }

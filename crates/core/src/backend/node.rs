@@ -2,6 +2,7 @@ use std::{
     cmp::Ordering,
     ffi::{OsStr, OsString},
     fmt::Debug,
+    num::ParseIntError,
     path::Path,
     str::FromStr,
 };
@@ -11,11 +12,9 @@ use std::fmt::Write;
 #[cfg(not(windows))]
 use std::os::unix::ffi::OsStrExt;
 
-#[cfg(not(windows))]
-use crate::RusticResult;
-
 use chrono::{DateTime, Local};
 use derive_more::Constructor;
+use displaydoc::Display;
 use serde_aux::prelude::*;
 use serde_derive::{Deserialize, Serialize};
 use serde_with::{
@@ -23,11 +22,27 @@ use serde_with::{
     formats::Padded,
     serde_as, skip_serializing_none, DefaultOnNull,
 };
-
-#[cfg(not(windows))]
-use crate::error::NodeErrorKind;
+use thiserror::Error;
 
 use crate::blob::{tree::TreeId, DataId};
+
+/// [`NodeErrorKind`] describes the errors that can be returned by an action utilizing a node in Backends
+#[derive(Error, Debug, Display)]
+pub enum NodeErrorKind {
+    /// Parsing integer failed: `{0:?}`
+    FromParseIntError(#[from] ParseIntError),
+    /// Unexpected EOF
+    #[cfg(not(windows))]
+    UnexpectedEOF,
+    /// Invalid unicode
+    #[cfg(not(windows))]
+    InvalidUnicode,
+    /// Unrecognized Escape
+    #[cfg(not(windows))]
+    UnrecognizedEscape,
+}
+
+pub(crate) type NodeResult<T> = Result<T, NodeErrorKind>;
 
 #[derive(
     Default, Serialize, Deserialize, Clone, Debug, PartialEq, Eq, Constructor, PartialOrd, Ord,
@@ -399,7 +414,7 @@ fn escape_filename(name: &OsStr) -> String {
 ///
 /// * `s` - The escaped filename
 // inspired by the enquote crate
-fn unescape_filename(s: &str) -> RusticResult<OsString> {
+fn unescape_filename(s: &str) -> NodeResult<OsString> {
     let mut chars = s.chars();
     let mut u = Vec::new();
     loop {

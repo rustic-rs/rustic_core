@@ -1,10 +1,24 @@
+use std::num::ParseIntError;
+
+use displaydoc::Display;
 use serde_derive::{Deserialize, Serialize};
 use serde_with::skip_serializing_none;
+use thiserror::Error;
 
 use crate::{
-    backend::FileType, blob::BlobType, define_new_id_struct, error::ConfigFileErrorKind,
-    impl_repofile, repofile::RepoFile, RusticResult,
+    backend::FileType, blob::BlobType, define_new_id_struct, impl_repofile, repofile::RepoFile,
 };
+
+/// [`ConfigFileErrorKind`] describes the errors that can be returned for `ConfigFile`s
+#[derive(Error, Debug, Display)]
+pub enum ConfigFileErrorKind {
+    /// config version not supported!
+    ConfigVersionNotSupported,
+    /// Parsing Polynomial in config failed: `{0:?}`
+    ParsingFailedForPolynomial(#[from] ParseIntError),
+}
+
+pub(crate) type ConfigResult<T> = Result<T, ConfigFileErrorKind>;
 
 pub(super) mod constants {
 
@@ -134,7 +148,7 @@ impl ConfigFile {
     /// * [`ConfigFileErrorKind::ParsingFailedForPolynomial`] - If the polynomial could not be parsed
     ///
     /// [`ConfigFileErrorKind::ParsingFailedForPolynomial`]: crate::error::ConfigFileErrorKind::ParsingFailedForPolynomial
-    pub fn poly(&self) -> RusticResult<u64> {
+    pub fn poly(&self) -> ConfigResult<u64> {
         Ok(u64::from_str_radix(&self.chunker_polynomial, 16)
             .map_err(ConfigFileErrorKind::ParsingFailedForPolynomial)?)
     }
@@ -146,7 +160,7 @@ impl ConfigFile {
     /// * [`ConfigFileErrorKind::ConfigVersionNotSupported`] - If the version is not supported
     ///
     /// [`ConfigFileErrorKind::ConfigVersionNotSupported`]: crate::error::ConfigFileErrorKind::ConfigVersionNotSupported
-    pub fn zstd(&self) -> RusticResult<Option<i32>> {
+    pub fn zstd(&self) -> ConfigResult<Option<i32>> {
         match (self.version, self.compression) {
             (1, _) | (2, Some(0)) => Ok(None),
             (2, None) => Ok(Some(0)), // use default (=0) zstd compression

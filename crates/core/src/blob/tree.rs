@@ -4,17 +4,18 @@ use std::{
     ffi::{OsStr, OsString},
     mem,
     path::{Component, Path, PathBuf, Prefix},
-    str,
+    str::{self, Utf8Error},
 };
 
 use crossbeam_channel::{bounded, unbounded, Receiver, Sender};
 use derivative::Derivative;
 use derive_setters::Setters;
+use displaydoc::Display;
 use ignore::overrides::{Override, OverrideBuilder};
 use ignore::Match;
-
 use serde::{Deserialize, Deserializer};
 use serde_derive::Serialize;
+use thiserror::Error;
 
 use crate::{
     backend::{
@@ -23,20 +24,52 @@ use crate::{
     },
     blob::BlobType,
     crypto::hasher::hash,
-    error::{RusticResult, TreeErrorKind},
     impl_blobid,
     index::ReadGlobalIndex,
     progress::Progress,
     repofile::snapshotfile::SnapshotSummary,
 };
 
+/// [`TreeErrorKind`] describes the errors that can come up dealing with Trees
+#[derive(Error, Debug, Display)]
+pub enum TreeErrorKind {
+    /// blob `{0}` not found in index
+    BlobIdNotFound(TreeId),
+    /// `{0:?}` is not a directory
+    NotADirectory(OsString),
+    /// Path `{0:?}` not found
+    PathNotFound(OsString),
+    /// path should not contain current or parent dir
+    ContainsCurrentOrParentDirectory,
+    /// serde_json couldn't serialize the tree: `{0:?}`
+    SerializingTreeFailed(#[from] serde_json::Error),
+    /// serde_json couldn't deserialize tree from bytes of JSON text: `{0:?}`
+    DeserializingTreeFailed(serde_json::Error),
+    /// reading blob data failed `{0:?}`
+    ReadingBlobDataFailed(#[from] IndexErrorKind),
+    /// slice is not UTF-8: `{0:?}`
+    PathIsNotUtf8Conform(#[from] Utf8Error),
+    /// error in building nodestreamer: `{0:?}`
+    BuildingNodeStreamerFailed(#[from] ignore::Error),
+    /// failed to read file string from glob file: `{0:?}`
+    ReadingFileStringFromGlobsFailed(#[from] std::io::Error),
+    /// [`crossbeam_channel::SendError`]
+    #[error(transparent)]
+    SendingCrossbeamMessageFailed(#[from] crossbeam_channel::SendError<(PathBuf, TreeId, usize)>),
+    /// [`crossbeam_channel::RecvError`]
+    #[error(transparent)]
+    ReceivingCrossbreamMessageFailed(#[from] crossbeam_channel::RecvError),
+}
+
+pub(crate) type TreeResult<T> = Result<T, TreeErrorKind>;
+
 pub(super) mod constants {
     /// The maximum number of trees that are loaded in parallel
     pub(super) const MAX_TREE_LOADER: usize = 4;
 }
 
-pub(crate) type TreeStreamItem = RusticResult<(PathBuf, Tree)>;
-type NodeStreamItem = RusticResult<(PathBuf, Node)>;
+pub(crate) type TreeStreamItem = TreeResult<(PathBuf, Tree)>;
+type NodeStreamItem = TreeResult<(PathBuf, Node)>;
 impl_blobid!(TreeId, BlobType::Tree);
 
 #[derive(Default, Serialize, Deserialize, Clone, Debug)]
@@ -81,7 +114,7 @@ impl Tree {
     /// # Returns
     ///
     /// A tuple of the serialized tree as `Vec<u8>` and the tree's ID
-    pub(crate) fn serialize(&self) -> RusticResult<(Vec<u8>, TreeId)> {
+    pub(crate) fn serialize(&self) -> TreeResult<(Vec<u8>, TreeId)> {
         let mut chunk = serde_json::to_vec(&self).map_err(TreeErrorKind::SerializingTreeFailed)?;
         chunk.push(b'\n'); // for whatever reason, restic adds a newline, so to be compatible...
         let id = hash(&chunk).into();
@@ -110,7 +143,7 @@ impl Tree {
         be: &impl DecryptReadBackend,
         index: &impl ReadGlobalIndex,
         id: TreeId,
-    ) -> RusticResult<Self> {
+    ) -> TreeResult<Self> {
         let data = index
             .get_tree(&id)
             .ok_or_else(|| TreeErrorKind::BlobIdNotFound(id))?
@@ -141,7 +174,7 @@ impl Tree {
         index: &impl ReadGlobalIndex,
         id: TreeId,
         path: &Path,
-    ) -> RusticResult<Node> {
+    ) -> TreeResult<Node> {
         let mut node = Node::new_node(OsStr::new(""), NodeType::Dir, Metadata::default());
         node.subtree = Some(id);
 
@@ -167,7 +200,7 @@ impl Tree {
         index: &impl ReadGlobalIndex,
         ids: impl IntoIterator<Item = TreeId>,
         path: &Path,
-    ) -> RusticResult<FindNode> {
+    ) -> TreeResult<FindNode> {
         // helper function which is recursively called
         fn find_node_from_component(
             be: &impl DecryptReadBackend,
@@ -177,7 +210,7 @@ impl Tree {
             results_cache: &mut [BTreeMap<TreeId, Option<usize>>],
             nodes: &mut BTreeMap<Node, usize>,
             idx: usize,
-        ) -> RusticResult<Option<usize>> {
+        ) -> TreeResult<Option<usize>> {
             if let Some(result) = results_cache[idx].get(&tree_id) {
                 return Ok(*result);
             }
@@ -217,7 +250,7 @@ impl Tree {
         let path_comp: Vec<_> = path
             .components()
             .filter_map(|p| comp_to_osstr(p).transpose())
-            .collect::<RusticResult<_>>()?;
+            .collect::<TreeResult<_>>()?;
 
         // caching all results
         let mut results_cache = vec![BTreeMap::new(); path_comp.len()];
@@ -236,7 +269,7 @@ impl Tree {
                     0,
                 )
             })
-            .collect::<RusticResult<_>>()?;
+            .collect::<TreeResult<_>>()?;
 
         // sort nodes by index and return a Vec
         let mut nodes: Vec<_> = nodes.into_iter().collect();
@@ -251,7 +284,7 @@ impl Tree {
         index: &impl ReadGlobalIndex,
         ids: impl IntoIterator<Item = TreeId>,
         matches: &impl Fn(&Path, &Node) -> bool,
-    ) -> RusticResult<FindMatches> {
+    ) -> TreeResult<FindMatches> {
         // internal state used to save match information in find_matching_nodes
         #[derive(Default)]
         struct MatchInternalState {
@@ -279,7 +312,7 @@ impl Tree {
             path: &Path,
             state: &mut MatchInternalState,
             matches: &impl Fn(&Path, &Node) -> bool,
-        ) -> RusticResult<Vec<(usize, usize)>> {
+        ) -> TreeResult<Vec<(usize, usize)>> {
             let mut result = Vec::new();
             if let Some(result) = state.cache.get(&(tree_id, path.to_path_buf())) {
                 return Ok(result.clone());
@@ -314,7 +347,7 @@ impl Tree {
             .map(|id| {
                 find_matching_nodes_recursive(be, index, id, &initial_path, &mut state, matches)
             })
-            .collect::<RusticResult<_>>()?;
+            .collect::<TreeResult<_>>()?;
 
         // sort paths by index and return a Vec
         let mut paths: Vec<_> = state.paths.into_iter().collect();
@@ -366,7 +399,7 @@ pub struct FindMatches {
 ///
 /// [`TreeErrorKind::ContainsCurrentOrParentDirectory`]: crate::error::TreeErrorKind::ContainsCurrentOrParentDirectory
 /// [`TreeErrorKind::PathIsNotUtf8Conform`]: crate::error::TreeErrorKind::PathIsNotUtf8Conform
-pub(crate) fn comp_to_osstr(p: Component<'_>) -> RusticResult<Option<OsString>> {
+pub(crate) fn comp_to_osstr(p: Component<'_>) -> TreeResult<Option<OsString>> {
     let s = match p {
         Component::RootDir => None,
         Component::Prefix(p) => match p.kind() {
@@ -473,7 +506,7 @@ where
     /// [`TreeErrorKind::BlobIdNotFound`]: crate::error::TreeErrorKind::BlobIdNotFound
     /// [`TreeErrorKind::DeserializingTreeFailed`]: crate::error::TreeErrorKind::DeserializingTreeFailed
     #[allow(unused)]
-    pub fn new(be: BE, index: &'a I, node: &Node) -> RusticResult<Self> {
+    pub fn new(be: BE, index: &'a I, node: &Node) -> TreeResult<Self> {
         Self::new_streamer(be, index, node, None, true)
     }
 
@@ -499,7 +532,7 @@ where
         node: &Node,
         overrides: Option<Override>,
         recursive: bool,
-    ) -> RusticResult<Self> {
+    ) -> TreeResult<Self> {
         let inner = if node.is_dir() {
             Tree::from_backend(&be, index, node.subtree.unwrap())?
                 .nodes
@@ -538,7 +571,7 @@ where
         index: &'a I,
         node: &Node,
         opts: &TreeStreamerOptions,
-    ) -> RusticResult<Self> {
+    ) -> TreeResult<Self> {
         let mut override_builder = OverrideBuilder::new("");
 
         for g in &opts.glob {
@@ -643,7 +676,7 @@ pub struct TreeStreamerOnce<P> {
     /// The queue to send tree IDs to
     queue_in: Option<Sender<(PathBuf, TreeId, usize)>>,
     /// The queue to receive trees from
-    queue_out: Receiver<RusticResult<(PathBuf, Tree, usize)>>,
+    queue_out: Receiver<TreeResult<(PathBuf, Tree, usize)>>,
     /// The progress indicator
     p: P,
     /// The number of trees that are not yet finished
@@ -676,7 +709,7 @@ impl<P: Progress> TreeStreamerOnce<P> {
         index: &I,
         ids: Vec<TreeId>,
         p: P,
-    ) -> RusticResult<Self> {
+    ) -> TreeResult<Self> {
         p.set_length(ids.len() as u64);
 
         let (out_tx, out_rx) = bounded(constants::MAX_TREE_LOADER);
@@ -733,7 +766,7 @@ impl<P: Progress> TreeStreamerOnce<P> {
     /// * [`TreeErrorKind::SendingCrossbeamMessageFailed`] - If sending the message fails.
     ///
     /// [`TreeErrorKind::SendingCrossbeamMessageFailed`]: crate::error::TreeErrorKind::SendingCrossbeamMessageFailed
-    fn add_pending(&mut self, path: PathBuf, id: TreeId, count: usize) -> RusticResult<bool> {
+    fn add_pending(&mut self, path: PathBuf, id: TreeId, count: usize) -> TreeResult<bool> {
         if self.visited.insert(id) {
             self.queue_in
                 .as_ref()
@@ -804,9 +837,9 @@ pub(crate) fn merge_trees(
     index: &impl ReadGlobalIndex,
     trees: &[TreeId],
     cmp: &impl Fn(&Node, &Node) -> Ordering,
-    save: &impl Fn(Tree) -> RusticResult<(TreeId, u64)>,
+    save: &impl Fn(Tree) -> TreeResult<(TreeId, u64)>,
     summary: &mut SnapshotSummary,
-) -> RusticResult<TreeId> {
+) -> TreeResult<TreeId> {
     // We store nodes with the index of the tree in an Binary Heap where we sort only by node name
     struct SortedNode(Node, usize);
     impl PartialEq for SortedNode {
@@ -829,7 +862,7 @@ pub(crate) fn merge_trees(
     let mut tree_iters: Vec<_> = trees
         .iter()
         .map(|id| Tree::from_backend(be, index, *id).map(IntoIterator::into_iter))
-        .collect::<RusticResult<_>>()?;
+        .collect::<TreeResult<_>>()?;
 
     // fill Heap with first elements from all trees
     let mut elems = BinaryHeap::new();
@@ -912,9 +945,9 @@ pub(crate) fn merge_nodes(
     index: &impl ReadGlobalIndex,
     nodes: Vec<Node>,
     cmp: &impl Fn(&Node, &Node) -> Ordering,
-    save: &impl Fn(Tree) -> RusticResult<(TreeId, u64)>,
+    save: &impl Fn(Tree) -> TreeResult<(TreeId, u64)>,
     summary: &mut SnapshotSummary,
-) -> RusticResult<Node> {
+) -> TreeResult<Node> {
     let trees: Vec<_> = nodes
         .iter()
         .filter(|node| node.is_dir())

@@ -9,8 +9,10 @@ use std::{
 };
 
 use bytes::{Bytes, BytesMut};
+use displaydoc::Display;
 use runtime_format::FormatArgs;
 use strum::EnumString;
+use thiserror::Error;
 
 #[cfg(feature = "webdav")]
 /// A struct which enables `WebDAV` access to a [`Vfs`] using [`dav-server`]
@@ -18,15 +20,26 @@ pub use crate::vfs::webdavfs::WebDavFS;
 
 use crate::{
     blob::{tree::TreeId, BlobId, DataId},
-    error::VfsErrorKind,
-    repofile::{BlobType, Metadata, Node, NodeType, SnapshotFile},
-};
-use crate::{
     index::ReadIndex,
+    repofile::{BlobType, Metadata, Node, NodeType, SnapshotFile},
     repository::{IndexedFull, IndexedTree, Repository},
     vfs::format::FormattedSnapshot,
-    RusticResult,
 };
+
+/// [`VfsErrorKind`] describes the errors that can be returned from the Virtual File System
+#[derive(Error, Debug, Display)]
+pub enum VfsErrorKind {
+    /// No directory entries for symlink found: `{0:?}`
+    NoDirectoryEntriesForSymlinkFound(OsString),
+    /// Directory exists as non-virtual directory
+    DirectoryExistsAsNonVirtual,
+    /// Only normal paths allowed
+    OnlyNormalPathsAreAllowed,
+    /// Name `{0:?}`` doesn't exist
+    NameDoesNotExist(OsString),
+}
+
+pub(crate) type VfsResult<T> = Result<T, VfsErrorKind>;
 
 #[derive(Debug, Clone, Copy)]
 /// `IdenticalSnapshot` describes how to handle identical snapshots.
@@ -94,7 +107,7 @@ impl VfsTree {
     ///
     /// [`VfsErrorKind::DirectoryExistsAsNonVirtual`]: crate::error::VfsErrorKind::DirectoryExistsAsNonVirtual
     /// [`VfsErrorKind::OnlyNormalPathsAreAllowed`]: crate::error::VfsErrorKind::OnlyNormalPathsAreAllowed
-    fn add_tree(&mut self, path: &Path, new_tree: Self) -> RusticResult<()> {
+    fn add_tree(&mut self, path: &Path, new_tree: Self) -> VfsResult<()> {
         let mut tree = self;
         let mut components = path.components();
         let Some(Component::Normal(last)) = components.next_back() else {
@@ -137,7 +150,7 @@ impl VfsTree {
     /// # Returns
     ///
     /// If the path is within a real repository tree, this returns the [`VfsTree::RusticTree`] and the remaining path
-    fn get_path(&self, path: &Path) -> RusticResult<VfsPath<'_>> {
+    fn get_path(&self, path: &Path) -> VfsResult<VfsPath<'_>> {
         let mut tree = self;
         let mut components = path.components();
         loop {
@@ -223,7 +236,7 @@ impl Vfs {
         time_template: &str,
         latest_option: Latest,
         id_snap_option: IdenticalSnapshot,
-    ) -> RusticResult<Self> {
+    ) -> VfsResult<Self> {
         snapshots.sort_unstable();
         let mut tree = VfsTree::new();
 
@@ -319,7 +332,7 @@ impl Vfs {
         &self,
         repo: &Repository<P, S>,
         path: &Path,
-    ) -> RusticResult<Node> {
+    ) -> VfsResult<Node> {
         let meta = Metadata::default();
         match self.tree.get_path(path)? {
             VfsPath::RusticPath(tree_id, path) => Ok(repo.node_from_path(*tree_id, &path)?),
@@ -363,7 +376,7 @@ impl Vfs {
         &self,
         repo: &Repository<P, S>,
         path: &Path,
-    ) -> RusticResult<Vec<Node>> {
+    ) -> VfsResult<Vec<Node>> {
         let result = match self.tree.get_path(path)? {
             VfsPath::RusticPath(tree_id, path) => {
                 let node = repo.node_from_path(*tree_id, &path)?;
@@ -492,7 +505,7 @@ impl OpenFile {
         repo: &Repository<P, S>,
         mut offset: usize,
         mut length: usize,
-    ) -> RusticResult<Bytes> {
+    ) -> VfsResult<Bytes> {
         // find the start of relevant blobs => find the largest index such that self.content[i].starts_at <= offset, but
         // self.content[i+1] > offset  (note that a last dummy element has been added)
         let mut i = self.content.partition_point(|c| c.starts_at <= offset) - 1;

@@ -5,9 +5,8 @@ use zstd::decode_all;
 use crate::{
     backend::{
         decrypt::{DecryptFullBackend, DecryptReadBackend, DecryptWriteBackend},
-        FileType, ReadBackend, WriteBackend,
+        CryptBackendResult, FileType, ReadBackend, WriteBackend,
     },
-    error::{CryptBackendErrorKind, RusticErrorKind, RusticResult},
     id::Id,
 };
 
@@ -37,7 +36,7 @@ impl<BE: DecryptFullBackend> DryRunBackend<BE> {
 }
 
 impl<BE: DecryptFullBackend> DecryptReadBackend for DryRunBackend<BE> {
-    fn decrypt(&self, data: &[u8]) -> RusticResult<Vec<u8>> {
+    fn decrypt(&self, data: &[u8]) -> CryptBackendResult<Vec<u8>> {
         self.be.decrypt(data)
     }
 
@@ -59,7 +58,7 @@ impl<BE: DecryptFullBackend> DecryptReadBackend for DryRunBackend<BE> {
     ///
     /// [`CryptBackendErrorKind::DecryptionNotSupportedForBackend`]: crate::error::CryptBackendErrorKind::DecryptionNotSupportedForBackend
     /// [`CryptBackendErrorKind::DecodingZstdCompressedDataFailed`]: crate::error::CryptBackendErrorKind::DecodingZstdCompressedDataFailed
-    fn read_encrypted_full(&self, tpe: FileType, id: &Id) -> RusticResult<Bytes> {
+    fn read_encrypted_full(&self, tpe: FileType, id: &Id) -> CryptBackendResult<Bytes> {
         let decrypted =
             self.decrypt(&self.read_full(tpe, id).map_err(RusticErrorKind::Backend)?)?;
         Ok(match decrypted.first() {
@@ -104,7 +103,7 @@ impl<BE: DecryptFullBackend> DecryptWriteBackend for DryRunBackend<BE> {
         self.be.key()
     }
 
-    fn hash_write_full(&self, tpe: FileType, data: &[u8]) -> RusticResult<Id> {
+    fn hash_write_full(&self, tpe: FileType, data: &[u8]) -> CryptBackendResult<Id> {
         if self.dry_run {
             Ok(Id::default())
         } else {
@@ -115,7 +114,7 @@ impl<BE: DecryptFullBackend> DecryptWriteBackend for DryRunBackend<BE> {
     fn process_data(
         &self,
         data: &[u8],
-    ) -> RusticResult<(Vec<u8>, u32, Option<std::num::NonZeroU32>)> {
+    ) -> CryptBackendResult<(Vec<u8>, u32, Option<std::num::NonZeroU32>)> {
         self.be.process_data(data)
     }
 

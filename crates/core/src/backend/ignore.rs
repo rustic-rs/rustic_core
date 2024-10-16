@@ -6,8 +6,6 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use serde_with::{serde_as, DisplayFromStr};
-
 use bytesize::ByteSize;
 #[cfg(not(windows))]
 use cached::proc_macro::cached;
@@ -15,21 +13,53 @@ use cached::proc_macro::cached;
 use chrono::TimeZone;
 use chrono::{DateTime, Local, Utc};
 use derive_setters::Setters;
+use displaydoc::Display;
 use ignore::{overrides::OverrideBuilder, DirEntry, Walk, WalkBuilder};
 use log::warn;
 #[cfg(not(windows))]
 use nix::unistd::{Gid, Group, Uid, User};
+use serde_with::{serde_as, DisplayFromStr};
+use thiserror::Error;
 
 #[cfg(not(windows))]
 use crate::backend::node::ExtendedAttribute;
 
-use crate::{
-    backend::{
-        node::{Metadata, Node, NodeType},
-        ReadSource, ReadSourceEntry, ReadSourceOpen,
-    },
-    error::{IgnoreErrorKind, RusticResult},
+use crate::backend::{
+    node::{Metadata, Node, NodeType},
+    ReadSource, ReadSourceEntry, ReadSourceOpen,
 };
+
+/// [`IgnoreErrorKind`] describes the errors that can be returned by a Ignore action in Backends
+#[derive(Error, Debug, Display)]
+pub enum IgnoreErrorKind {
+    /// generic Ignore error: `{0:?}`
+    GenericError(#[from] ignore::Error),
+    /// Error reading glob file `{file:?}`: `{source:?}`
+    ErrorGlob {
+        file: PathBuf,
+        source: std::io::Error,
+    },
+    /// Unable to open file `{file:?}`: `{source:?}`
+    UnableToOpenFile {
+        file: PathBuf,
+        source: std::io::Error,
+    },
+    /// Error getting xattrs for `{path:?}`: `{source:?}`
+    ErrorXattr {
+        path: PathBuf,
+        source: std::io::Error,
+    },
+    /// Error reading link target for `{path:?}`: `{source:?}`
+    ErrorLink {
+        path: PathBuf,
+        source: std::io::Error,
+    },
+    /// [`std::num::TryFromIntError`]
+    #[error(transparent)]
+    FromTryFromIntError(#[from] TryFromIntError),
+}
+
+pub(crate) type IgnoreResult<T> = Result<T, IgnoreErrorKind>;
 
 /// A [`LocalSource`] is a source from local paths which is used to be read from (i.e. to backup it).
 #[derive(Debug)]
@@ -148,7 +178,7 @@ impl LocalSource {
         save_opts: LocalSourceSaveOptions,
         filter_opts: &LocalSourceFilterOptions,
         backup_paths: &[impl AsRef<Path>],
-    ) -> RusticResult<Self> {
+    ) -> IgnoreResult<Self> {
         let mut walk_builder = WalkBuilder::new(&backup_paths[0]);
 
         for path in &backup_paths[1..] {
@@ -258,7 +288,7 @@ impl ReadSourceOpen for OpenFile {
     /// * [`IgnoreErrorKind::UnableToOpenFile`] - If the file could not be opened.
     ///
     /// [`IgnoreErrorKind::UnableToOpenFile`]: crate::error::IgnoreErrorKind::UnableToOpenFile
-    fn open(self) -> RusticResult<Self::Reader> {
+    fn open(self) -> IgnoreResult<Self::Reader> {
         let path = self.0;
         File::open(&path).map_err(|err| {
             IgnoreErrorKind::UnableToOpenFile {
@@ -283,7 +313,7 @@ impl ReadSource for LocalSource {
     /// # Errors
     ///
     /// If the size could not be determined.
-    fn size(&self) -> RusticResult<Option<u64>> {
+    fn size(&self) -> IgnoreResult<Option<u64>> {
         let mut size = 0;
         for entry in self.builder.build() {
             if let Err(e) = entry.and_then(|e| e.metadata()).map(|m| {
@@ -318,7 +348,7 @@ pub struct LocalSourceWalker {
 }
 
 impl Iterator for LocalSourceWalker {
-    type Item = RusticResult<ReadSourceEntry<OpenFile>>;
+    type Item = IgnoreResult<ReadSourceEntry<OpenFile>>;
 
     fn next(&mut self) -> Option<Self::Item> {
         match self.walker.next() {
@@ -360,7 +390,7 @@ fn map_entry(
     entry: DirEntry,
     with_atime: bool,
     _ignore_devid: bool,
-) -> RusticResult<ReadSourceEntry<OpenFile>> {
+) -> IgnoreResult<ReadSourceEntry<OpenFile>> {
     let name = entry.file_name();
     let m = entry.metadata().map_err(IgnoreErrorKind::GenericError)?;
 
@@ -473,7 +503,7 @@ fn get_group_by_gid(gid: u32) -> Option<String> {
 }
 
 #[cfg(all(not(windows), target_os = "openbsd"))]
-fn list_extended_attributes(path: &Path) -> RusticResult<Vec<ExtendedAttribute>> {
+fn list_extended_attributes(path: &Path) -> IgnoreResult<Vec<ExtendedAttribute>> {
     Ok(vec![])
 }
 
@@ -487,7 +517,7 @@ fn list_extended_attributes(path: &Path) -> RusticResult<Vec<ExtendedAttribute>>
 ///
 /// * [`IgnoreErrorKind::ErrorXattr`] - if Xattr couldn't be listed or couldn't be read
 #[cfg(all(not(windows), not(target_os = "openbsd")))]
-fn list_extended_attributes(path: &Path) -> RusticResult<Vec<ExtendedAttribute>> {
+fn list_extended_attributes(path: &Path) -> IgnoreResult<Vec<ExtendedAttribute>> {
     xattr::list(path)
         .map_err(|err| IgnoreErrorKind::ErrorXattr {
             path: path.to_path_buf(),
@@ -502,7 +532,7 @@ fn list_extended_attributes(path: &Path) -> RusticResult<Vec<ExtendedAttribute>>
                 })?,
             })
         })
-        .collect::<RusticResult<Vec<ExtendedAttribute>>>()
+        .collect::<IgnoreResult<Vec<ExtendedAttribute>>>()
 }
 
 /// Maps a [`DirEntry`] to a [`ReadSourceEntry`].
@@ -527,7 +557,7 @@ fn map_entry(
     entry: DirEntry,
     with_atime: bool,
     ignore_devid: bool,
-) -> RusticResult<ReadSourceEntry<OpenFile>> {
+) -> IgnoreResult<ReadSourceEntry<OpenFile>> {
     let name = entry.file_name();
     let m = entry.metadata().map_err(IgnoreErrorKind::GenericError)?;
 

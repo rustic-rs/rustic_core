@@ -4,7 +4,7 @@ use aes256ctr_poly1305aes::{
 };
 use rand::{thread_rng, RngCore};
 
-use crate::{crypto::CryptoKey, error::CryptoErrorKind, error::RusticResult};
+use crate::crypto::{CryptoErrorKind, CryptoKey, CryptoResult};
 
 pub(crate) type Nonce = aead::Nonce<Aes256CtrPoly1305Aes>;
 pub(crate) type AeadKey = aes256ctr_poly1305aes::Key;
@@ -82,7 +82,7 @@ impl CryptoKey for Key {
     /// # Errors
     ///
     /// If the MAC couldn't be checked.
-    fn decrypt_data(&self, data: &[u8]) -> RusticResult<Vec<u8>> {
+    fn decrypt_data(&self, data: &[u8]) -> CryptoResult<Vec<u8>> {
         if data.len() < 16 {
             return Err(CryptoErrorKind::CryptoKeyTooShort)?;
         }
@@ -90,7 +90,7 @@ impl CryptoKey for Key {
         let nonce = Nonce::from_slice(&data[0..16]);
         Aes256CtrPoly1305Aes::new(&self.0)
             .decrypt(nonce, &data[16..])
-            .map_err(|err| CryptoErrorKind::DataDecryptionFailed(err).into())
+            .map_err(|err| CryptoErrorKind::DataDecryptionFailed(err))
     }
 
     /// Returns the encrypted+MACed data from the given data.
@@ -102,7 +102,7 @@ impl CryptoKey for Key {
     /// # Errors
     ///
     /// If the data could not be encrypted.
-    fn encrypt_data(&self, data: &[u8]) -> RusticResult<Vec<u8>> {
+    fn encrypt_data(&self, data: &[u8]) -> CryptoResult<Vec<u8>> {
         let mut nonce = Nonce::default();
         thread_rng().fill_bytes(&mut nonce);
 

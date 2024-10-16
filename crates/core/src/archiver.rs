@@ -3,11 +3,13 @@ pub(crate) mod parent;
 pub(crate) mod tree;
 pub(crate) mod tree_archiver;
 
-use std::path::{Path, PathBuf};
+use std::path::{Path, PathBuf, StripPrefixError};
 
 use chrono::Local;
+use displaydoc::Display;
 use log::warn;
 use pariter::{scope, IteratorExt};
+use thiserror::Error;
 
 use crate::{
     archiver::{
@@ -16,10 +18,53 @@ use crate::{
     },
     backend::{decrypt::DecryptFullBackend, ReadSource, ReadSourceEntry},
     blob::BlobType,
-    index::{indexer::Indexer, indexer::SharedIndexer, ReadGlobalIndex},
+    index::{
+        indexer::{Indexer, SharedIndexer},
+        ReadGlobalIndex,
+    },
     repofile::{configfile::ConfigFile, snapshotfile::SnapshotFile},
     Progress, RusticResult,
 };
+
+/// [`ArchiverErrorKind`] describes the errors that can be returned from the archiver
+#[derive(Error, Debug, Display)]
+pub enum ArchiverErrorKind {
+    /// tree stack empty
+    TreeStackEmpty,
+    /// cannot open file
+    OpeningFileFailed,
+    /// option should contain a value, but contained `None`
+    UnpackingTreeTypeOptionalFailed,
+    /// couldn't get size for archive: `{0:?}`
+    CouldNotGetSizeForArchive(#[from] BackendAccessErrorKind),
+    /// couldn't determine size for item in Archiver
+    CouldNotDetermineSize,
+    /// failed to save index: `{0:?}`
+    IndexSavingFailed(#[from] IndexErrorKind),
+    /// failed to save file in backend: `{0:?}`
+    FailedToSaveFileInBackend(#[from] CryptBackendErrorKind),
+    /// finalizing SnapshotSummary failed: `{0:?}`
+    FinalizingSnapshotSummaryFailed(#[from] SnapshotFileErrorKind),
+    /// [`PackerErrorKind`]
+    #[error(transparent)]
+    FromPacker(#[from] PackerErrorKind),
+    /// [`TreeErrorKind`]
+    #[error(transparent)]
+    FromTree(#[from] TreeErrorKind),
+    /// [`ConfigFileErrorKind`]
+    #[error(transparent)]
+    FromConfigFile(#[from] ConfigFileErrorKind),
+    /// [`std::io::Error`]
+    #[error(transparent)]
+    FromStdIo(#[from] std::io::Error),
+    /// [`StripPrefixError`]
+    #[error(transparent)]
+    FromStripPrefix(#[from] StripPrefixError),
+    /// conversion from `u64` to `usize` failed: `{0:?}`
+    ConversionFromU64ToUsizeFailed(TryFromIntError),
+}
+
+pub(crate) type ArchiverResult<T> = Result<T, ArchiverErrorKind>;
 
 /// The `Archiver` is responsible for archiving files and trees.
 /// It will read the file, chunk it, and write the chunks to the backend.
@@ -77,7 +122,7 @@ impl<'a, BE: DecryptFullBackend, I: ReadGlobalIndex> Archiver<'a, BE, I> {
         config: &ConfigFile,
         parent: Parent,
         mut snap: SnapshotFile,
-    ) -> RusticResult<Self> {
+    ) -> ArchiverResult<Self> {
         let indexer = Indexer::new(be.clone()).into_shared();
         let mut summary = snap.summary.take().unwrap_or_default();
         summary.backup_start = Local::now();
@@ -129,7 +174,7 @@ impl<'a, BE: DecryptFullBackend, I: ReadGlobalIndex> Archiver<'a, BE, I> {
         skip_identical_parent: bool,
         no_scan: bool,
         p: &impl Progress,
-    ) -> RusticResult<SnapshotFile>
+    ) -> ArchiverResult<SnapshotFile>
     where
         R: ReadSource + 'static,
         <R as ReadSource>::Open: Send,

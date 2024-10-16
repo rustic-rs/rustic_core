@@ -4,14 +4,13 @@ use bytesize::ByteSize;
 use log::{debug, trace};
 
 use crate::{
-    archiver::{parent::ParentResult, tree::TreeType},
+    archiver::{parent::ParentResult, tree::TreeType, ArchiverErrorKind, ArchiverResult},
     backend::{decrypt::DecryptWriteBackend, node::Node},
     blob::{
         packer::Packer,
         tree::{Tree, TreeId},
         BlobType,
     },
-    error::{ArchiverErrorKind, RusticResult},
     index::{indexer::SharedIndexer, ReadGlobalIndex},
     repofile::{configfile::ConfigFile, snapshotfile::SnapshotSummary},
 };
@@ -68,7 +67,7 @@ impl<'a, BE: DecryptWriteBackend, I: ReadGlobalIndex> TreeArchiver<'a, BE, I> {
         indexer: SharedIndexer<BE>,
         config: &ConfigFile,
         summary: SnapshotSummary,
-    ) -> RusticResult<Self> {
+    ) -> ArchiverResult<Self> {
         let tree_packer = Packer::new(
             be,
             BlobType::Tree,
@@ -97,7 +96,7 @@ impl<'a, BE: DecryptWriteBackend, I: ReadGlobalIndex> TreeArchiver<'a, BE, I> {
     ///
     /// [`ArchiverErrorKind::TreeStackEmpty`]: crate::error::ArchiverErrorKind::TreeStackEmpty
     // TODO: Add more errors!
-    pub(crate) fn add(&mut self, item: TreeItem) -> RusticResult<()> {
+    pub(crate) fn add(&mut self, item: TreeItem) -> ArchiverResult<()> {
         match item {
             TreeType::NewTree((path, node, parent)) => {
                 trace!("entering {path:?}");
@@ -171,7 +170,11 @@ impl<'a, BE: DecryptWriteBackend, I: ReadGlobalIndex> TreeArchiver<'a, BE, I> {
     /// The id of the tree.
     ///
     /// [`PackerErrorKind::SendingCrossbeamMessageFailed`]: crate::error::PackerErrorKind::SendingCrossbeamMessageFailed
-    fn backup_tree(&mut self, path: &Path, parent: &ParentResult<TreeId>) -> RusticResult<TreeId> {
+    fn backup_tree(
+        &mut self,
+        path: &Path,
+        parent: &ParentResult<TreeId>,
+    ) -> ArchiverResult<TreeId> {
         let (chunk, id) = self.tree.serialize()?;
         let dirsize = chunk.len() as u64;
         let dirsize_bytes = ByteSize(dirsize).to_string_as(true);
@@ -223,7 +226,7 @@ impl<'a, BE: DecryptWriteBackend, I: ReadGlobalIndex> TreeArchiver<'a, BE, I> {
     pub(crate) fn finalize(
         mut self,
         parent_tree: Option<TreeId>,
-    ) -> RusticResult<(TreeId, SnapshotSummary)> {
+    ) -> ArchiverResult<(TreeId, SnapshotSummary)> {
         let parent = parent_tree.map_or(ParentResult::NotFound, ParentResult::Matched);
         let id = self.backup_tree(&PathBuf::new(), &parent)?;
         let stats = self.tree_packer.finalize()?;

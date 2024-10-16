@@ -9,15 +9,42 @@ use std::{
 use anyhow::Result;
 use bytes::Bytes;
 use dirs::cache_dir;
+use displaydoc::Display;
 use log::{trace, warn};
+use thiserror::Error;
 use walkdir::WalkDir;
 
 use crate::{
     backend::{FileType, ReadBackend, WriteBackend},
-    error::{CacheBackendErrorKind, RusticResult},
     id::Id,
     repofile::configfile::RepositoryId,
 };
+
+/// [`CacheBackendErrorKind`] describes the errors that can be returned by a Caching action in Backends
+#[derive(Error, Debug, Display)]
+pub enum CacheBackendErrorKind {
+    /// no cache dir
+    NoCacheDirectory,
+    /// [`std::io::Error`]
+    #[error(transparent)]
+    FromIoError(#[from] std::io::Error),
+    /// setting option on CacheBackend failed
+    SettingOptionOnCacheBackendFailed,
+    /// listing with size on CacheBackend failed
+    ListingWithSizeOnCacheBackendFailed,
+    /// fully reading from CacheBackend failed
+    FullyReadingFromCacheBackendFailed,
+    /// partially reading from CacheBackend failed
+    PartiallyReadingFromBackendDataFailed,
+    /// creating data on CacheBackend failed
+    CreatingDataOnCacheBackendFailed,
+    /// writing bytes on CacheBackend failed
+    WritingBytesOnCacheBackendFailed,
+    /// removing data on CacheBackend failed
+    RemovingDataOnCacheBackendFailed,
+}
+
+pub(crate) type CacheBackendResult<T> = Result<T, CacheBackendErrorKind>;
 
 /// Backend that caches data.
 ///
@@ -236,7 +263,7 @@ impl Cache {
     ///
     /// [`CacheBackendErrorKind::NoCacheDirectory`]: crate::error::CacheBackendErrorKind::NoCacheDirectory
     /// [`CacheBackendErrorKind::FromIoError`]: crate::error::CacheBackendErrorKind::FromIoError
-    pub fn new(id: RepositoryId, path: Option<PathBuf>) -> RusticResult<Self> {
+    pub fn new(id: RepositoryId, path: Option<PathBuf>) -> CacheBackendResult<Self> {
         let mut path = if let Some(p) = path {
             p
         } else {
@@ -303,7 +330,7 @@ impl Cache {
     /// [`CacheBackendErrorKind::FromIoError`]: crate::error::CacheBackendErrorKind::FromIoError
     /// [`IdErrorKind::HexError`]: crate::error::IdErrorKind::HexError
     #[allow(clippy::unnecessary_wraps)]
-    pub fn list_with_size(&self, tpe: FileType) -> RusticResult<HashMap<Id, u32>> {
+    pub fn list_with_size(&self, tpe: FileType) -> CacheBackendResult<HashMap<Id, u32>> {
         let path = self.path.join(tpe.dirname());
 
         let walker = WalkDir::new(path)
@@ -342,7 +369,11 @@ impl Cache {
     /// * [`CacheBackendErrorKind::FromIoError`] - If the cache directory could not be read.
     ///
     /// [`CacheBackendErrorKind::FromIoError`]: crate::error::CacheBackendErrorKind::FromIoError
-    pub fn remove_not_in_list(&self, tpe: FileType, list: &Vec<(Id, u32)>) -> RusticResult<()> {
+    pub fn remove_not_in_list(
+        &self,
+        tpe: FileType,
+        list: &Vec<(Id, u32)>,
+    ) -> CacheBackendResult<()> {
         let mut list_cache = self.list_with_size(tpe)?;
         // remove present files from the cache list
         for (id, size) in list {
@@ -372,7 +403,7 @@ impl Cache {
     /// * [`CacheBackendErrorKind::FromIoError`] - If the file could not be read.
     ///
     /// [`CacheBackendErrorKind::FromIoError`]: crate::error::CacheBackendErrorKind::FromIoError
-    pub fn read_full(&self, tpe: FileType, id: &Id) -> RusticResult<Option<Bytes>> {
+    pub fn read_full(&self, tpe: FileType, id: &Id) -> CacheBackendResult<Option<Bytes>> {
         trace!("cache reading tpe: {:?}, id: {}", &tpe, &id);
         match fs::read(self.path(tpe, id)) {
             Ok(data) => {
@@ -404,7 +435,7 @@ impl Cache {
         id: &Id,
         offset: u32,
         length: u32,
-    ) -> RusticResult<Option<Bytes>> {
+    ) -> CacheBackendResult<Option<Bytes>> {
         trace!(
             "cache reading tpe: {:?}, id: {}, offset: {}",
             &tpe,
@@ -439,7 +470,7 @@ impl Cache {
     /// * [`CacheBackendErrorKind::FromIoError`] - If the file could not be written.
     ///
     /// [`CacheBackendErrorKind::FromIoError`]: crate::error::CacheBackendErrorKind::FromIoError
-    pub fn write_bytes(&self, tpe: FileType, id: &Id, buf: &Bytes) -> RusticResult<()> {
+    pub fn write_bytes(&self, tpe: FileType, id: &Id, buf: &Bytes) -> CacheBackendResult<()> {
         trace!("cache writing tpe: {:?}, id: {}", &tpe, &id);
         fs::create_dir_all(self.dir(tpe, id)).map_err(CacheBackendErrorKind::FromIoError)?;
         let filename = self.path(tpe, id);
@@ -466,7 +497,7 @@ impl Cache {
     /// * [`CacheBackendErrorKind::FromIoError`] - If the file could not be removed.
     ///
     /// [`CacheBackendErrorKind::FromIoError`]: crate::error::CacheBackendErrorKind::FromIoError
-    pub fn remove(&self, tpe: FileType, id: &Id) -> RusticResult<()> {
+    pub fn remove(&self, tpe: FileType, id: &Id) -> CacheBackendResult<()> {
         trace!("cache writing tpe: {:?}, id: {}", &tpe, &id);
         let filename = self.path(tpe, id);
         fs::remove_file(filename).map_err(CacheBackendErrorKind::FromIoError)?;

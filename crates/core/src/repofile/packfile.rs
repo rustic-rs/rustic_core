@@ -1,17 +1,45 @@
 use std::num::NonZeroU32;
 
 use binrw::{io::Cursor, BinRead, BinWrite};
+use displaydoc::Display;
 use log::trace;
+use thiserror::Error;
 
 use crate::{
     backend::{decrypt::DecryptReadBackend, FileType},
     blob::BlobType,
-    error::{PackFileErrorKind, RusticErrorKind},
     id::Id,
     impl_repoid,
     repofile::indexfile::{IndexBlob, IndexPack},
-    RusticResult,
 };
+
+/// [`PackFileErrorKind`] describes the errors that can be returned for `PackFile`s
+#[derive(Error, Debug, Display)]
+pub enum PackFileErrorKind {
+    /// Failed reading binary representation of the pack header: `{0:?}`
+    ReadingBinaryRepresentationFailed(binrw::Error),
+    /// Failed writing binary representation of the pack header: `{0:?}`
+    WritingBinaryRepresentationFailed(binrw::Error),
+    /// Read header length is too large! Length: `{size_real}`, file size: `{pack_size}`
+    HeaderLengthTooLarge { size_real: u32, pack_size: u32 },
+    /// Read header length doesn't match header contents! Length: `{size_real}`, computed: `{size_computed}`
+    HeaderLengthDoesNotMatchHeaderContents { size_real: u32, size_computed: u32 },
+    /// pack size computed from header doesn't match real pack isch! Computed: `{size_computed}`, real: `{size_real}`
+    HeaderPackSizeComputedDoesNotMatchRealPackFile { size_real: u32, size_computed: u32 },
+    /// partially reading the pack header from packfile failed: `{0:?}`
+    ListingKeyFilesFailed(#[from] BackendAccessErrorKind),
+    /// decrypting from binary failed
+    BinaryDecryptionFailed,
+    /// Partial read of PackFile failed
+    PartialReadOfPackfileFailed,
+    /// writing Bytes failed
+    WritingBytesFailed,
+    /// [`CryptBackendErrorKind`]
+    #[error(transparent)]
+    PackDecryptionFailed(#[from] CryptBackendErrorKind),
+}
+
+pub(crate) type PackFileResult<T> = Result<T, PackFileErrorKind>;
 
 impl_repoid!(PackId, FileType::Pack);
 
@@ -57,7 +85,7 @@ impl PackHeaderLength {
     /// * [`PackFileErrorKind::ReadingBinaryRepresentationFailed`] - If reading the binary representation failed
     ///
     /// [`PackFileErrorKind::ReadingBinaryRepresentationFailed`]: crate::error::PackFileErrorKind::ReadingBinaryRepresentationFailed
-    pub(crate) fn from_binary(data: &[u8]) -> RusticResult<Self> {
+    pub(crate) fn from_binary(data: &[u8]) -> PackFileResult<Self> {
         let mut reader = Cursor::new(data);
         Ok(
             Self::read(&mut reader)
@@ -72,7 +100,7 @@ impl PackHeaderLength {
     /// * [`PackFileErrorKind::WritingBinaryRepresentationFailed`] - If writing the binary representation failed
     ///
     /// [`PackFileErrorKind::WritingBinaryRepresentationFailed`]: crate::error::PackFileErrorKind::WritingBinaryRepresentationFailed
-    pub(crate) fn to_binary(self) -> RusticResult<Vec<u8>> {
+    pub(crate) fn to_binary(self) -> PackFileResult<Vec<u8>> {
         let mut writer = Cursor::new(Vec::with_capacity(4));
         self.write(&mut writer)
             .map_err(PackFileErrorKind::WritingBinaryRepresentationFailed)?;
@@ -223,7 +251,7 @@ impl PackHeader {
     /// * [`PackFileErrorKind::ReadingBinaryRepresentationFailed`] - If reading the binary representation failed
     ///
     /// [`PackFileErrorKind::ReadingBinaryRepresentationFailed`]: crate::error::PackFileErrorKind::ReadingBinaryRepresentationFailed
-    pub(crate) fn from_binary(pack: &[u8]) -> RusticResult<Self> {
+    pub(crate) fn from_binary(pack: &[u8]) -> PackFileResult<Self> {
         let mut reader = Cursor::new(pack);
         let mut offset = 0;
         let mut blobs = Vec::new();
@@ -266,7 +294,7 @@ impl PackHeader {
         id: PackId,
         size_hint: Option<u32>,
         pack_size: u32,
-    ) -> RusticResult<Self> {
+    ) -> PackFileResult<Self> {
         // guess the header size from size_hint and pack_size
         // If the guess is too small, we have to re-read. If the guess is too large, we have to have read too much
         // but this should normally not matter too much. So we try to overguess here...
@@ -384,7 +412,7 @@ impl<'a> PackHeaderRef<'a> {
     /// * [`PackFileErrorKind::WritingBinaryRepresentationFailed`] - If writing the binary representation failed
     ///
     /// [`PackFileErrorKind::WritingBinaryRepresentationFailed`]: crate::error::PackFileErrorKind::WritingBinaryRepresentationFailed
-    pub(crate) fn to_binary(&self) -> RusticResult<Vec<u8>> {
+    pub(crate) fn to_binary(&self) -> PackFileResult<Vec<u8>> {
         let mut writer = Cursor::new(Vec::with_capacity(self.pack_size() as usize));
         // collect header entries
         for blob in self.0 {

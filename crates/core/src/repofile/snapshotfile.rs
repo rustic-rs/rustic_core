@@ -1,14 +1,16 @@
 use std::{
     cmp::Ordering,
     collections::{BTreeMap, BTreeSet},
+    ffi::OsString,
     fmt::{self, Display},
     path::{Path, PathBuf},
     str::FromStr,
 };
 
-use chrono::{DateTime, Duration, Local};
+use chrono::{DateTime, Duration, Local, OutOfRangeError};
 use derivative::Derivative;
 use derive_setters::Setters;
+use displaydoc::Display;
 use dunce::canonicalize;
 use gethostname::gethostname;
 use itertools::Itertools;
@@ -16,11 +18,11 @@ use log::info;
 use path_dedot::ParseDot;
 use serde_derive::{Deserialize, Serialize};
 use serde_with::{serde_as, skip_serializing_none, DisplayFromStr};
+use thiserror::Error;
 
 use crate::{
     backend::{decrypt::DecryptReadBackend, FileType, FindInBackend},
     blob::tree::TreeId,
-    error::{RusticError, RusticErrorKind, RusticResult, SnapshotFileErrorKind},
     impl_repofile,
     progress::Progress,
     repofile::RepoFile,
@@ -29,6 +31,37 @@ use crate::{
 
 #[cfg(feature = "clap")]
 use clap::ValueHint;
+
+/// [`SnapshotFileErrorKind`] describes the errors that can be returned for `SnapshotFile`s
+#[derive(Error, Debug, Display)]
+pub enum SnapshotFileErrorKind {
+    /// non-unicode hostname `{0:?}`
+    NonUnicodeHostname(OsString),
+    /// non-unicode path `{0:?}`
+    NonUnicodePath(PathBuf),
+    /// no snapshots found
+    NoSnapshotsFound,
+    /// value `{0:?}` not allowed
+    ValueNotAllowed(String),
+    /// datetime out of range: `{0:?}`
+    OutOfRange(#[from] OutOfRangeError),
+    /// reading the description file failed: `{0:?}`
+    ReadingDescriptionFailed(#[from] std::io::Error),
+    /// getting the SnapshotFile from the backend failed
+    GettingSnapshotFileFailed,
+    /// getting the SnapshotFile by ID failed
+    GettingSnapshotFileByIdFailed,
+    /// unpacking SnapshotFile result failed
+    UnpackingSnapshotFileResultFailed,
+    /// collecting IDs failed: `{0:?}`
+    FindingIdsFailed(Vec<String>),
+    /// removing dots from paths failed: `{0:?}`
+    RemovingDotsFromPathFailed(std::io::Error),
+    /// canonicalizing path failed: `{0:?}`
+    CanonicalizingPathFailed(std::io::Error),
+}
+
+pub(crate) type SnapshotFileResult<T> = Result<T, SnapshotFileErrorKind>;
 
 /// Options for creating a new [`SnapshotFile`] structure for a new backup snapshot.
 ///
@@ -117,7 +150,7 @@ impl SnapshotOptions {
     /// The modified [`SnapshotOptions`]
     ///
     /// [`SnapshotFileErrorKind::NonUnicodeTag`]: crate::error::SnapshotFileErrorKind::NonUnicodeTag
-    pub fn add_tags(mut self, tag: &str) -> RusticResult<Self> {
+    pub fn add_tags(mut self, tag: &str) -> SnapshotFileResult<Self> {
         self.tags.push(StringList::from_str(tag)?);
         Ok(self)
     }
@@ -133,7 +166,7 @@ impl SnapshotOptions {
     /// The new [`SnapshotFile`]
     ///
     /// [`SnapshotFileErrorKind::NonUnicodeHostname`]: crate::error::SnapshotFileErrorKind::NonUnicodeHostname
-    pub fn to_snapshot(&self) -> RusticResult<SnapshotFile> {
+    pub fn to_snapshot(&self) -> SnapshotFileResult<SnapshotFile> {
         SnapshotFile::from_options(self)
     }
 }
@@ -235,7 +268,7 @@ impl SnapshotSummary {
     /// * [`SnapshotFileErrorKind::OutOfRange`] - If the time is not in the range of `Local::now()`
     ///
     /// [`SnapshotFileErrorKind::OutOfRange`]: crate::error::SnapshotFileErrorKind::OutOfRange
-    pub(crate) fn finalize(&mut self, snap_time: DateTime<Local>) -> RusticResult<()> {
+    pub(crate) fn finalize(&mut self, snap_time: DateTime<Local>) -> SnapshotFileResult<()> {
         let end_time = Local::now();
         self.backup_duration = (end_time - self.backup_start)
             .to_std()
@@ -366,7 +399,7 @@ impl SnapshotFile {
     /// [`SnapshotFileErrorKind::NonUnicodeHostname`]: crate::error::SnapshotFileErrorKind::NonUnicodeHostname
     /// [`SnapshotFileErrorKind::OutOfRange`]: crate::error::SnapshotFileErrorKind::OutOfRange
     /// [`SnapshotFileErrorKind::ReadingDescriptionFailed`]: crate::error::SnapshotFileErrorKind::ReadingDescriptionFailed
-    pub fn from_options(opts: &SnapshotOptions) -> RusticResult<Self> {
+    pub fn from_options(opts: &SnapshotOptions) -> SnapshotFileResult<Self> {
         let hostname = if let Some(host) = &opts.host {
             host.clone()
         } else {
@@ -441,7 +474,7 @@ impl SnapshotFile {
     ///
     /// * `be` - The backend to use
     /// * `id` - The id of the snapshot
-    fn from_backend<B: DecryptReadBackend>(be: &B, id: &SnapshotId) -> RusticResult<Self> {
+    fn from_backend<B: DecryptReadBackend>(be: &B, id: &SnapshotId) -> SnapshotFileResult<Self> {
         Ok(Self::set_id((*id, be.get_file(id)?)))
     }
 
@@ -468,7 +501,7 @@ impl SnapshotFile {
         string: &str,
         predicate: impl FnMut(&Self) -> bool + Send + Sync,
         p: &impl Progress,
-    ) -> RusticResult<Self> {
+    ) -> SnapshotFileResult<Self> {
         match string {
             "latest" => Self::latest(be, predicate, p),
             _ => Self::from_id(be, string),
@@ -492,7 +525,7 @@ impl SnapshotFile {
         be: &B,
         predicate: impl FnMut(&Self) -> bool + Send + Sync,
         p: &impl Progress,
-    ) -> RusticResult<Self> {
+    ) -> SnapshotFileResult<Self> {
         p.set_title("getting latest snapshot...");
         let mut latest: Option<Self> = None;
         let mut pred = predicate;
@@ -530,7 +563,7 @@ impl SnapshotFile {
     /// [`IdErrorKind::HexError`]: crate::error::IdErrorKind::HexError
     /// [`BackendAccessErrorKind::NoSuitableIdFound`]: crate::error::BackendAccessErrorKind::NoSuitableIdFound
     /// [`BackendAccessErrorKind::IdNotUnique`]: crate::error::BackendAccessErrorKind::IdNotUnique
-    pub(crate) fn from_id<B: DecryptReadBackend>(be: &B, id: &str) -> RusticResult<Self> {
+    pub(crate) fn from_id<B: DecryptReadBackend>(be: &B, id: &str) -> SnapshotFileResult<Self> {
         info!("getting snapshot...");
         let id = be.find_id(FileType::Snapshot, id)?;
         Self::from_backend(be, &SnapshotId::from(id))
@@ -557,7 +590,7 @@ impl SnapshotFile {
         be: &B,
         ids: &[T],
         p: &impl Progress,
-    ) -> RusticResult<Vec<Self>> {
+    ) -> SnapshotFileResult<Vec<Self>> {
         Self::update_from_ids(be, Vec::new(), ids, p)
     }
 
@@ -583,7 +616,7 @@ impl SnapshotFile {
         current: Vec<Self>,
         ids: &[T],
         p: &impl Progress,
-    ) -> RusticResult<Vec<Self>> {
+    ) -> SnapshotFileResult<Vec<Self>> {
         let ids = be.find_ids(FileType::Snapshot, ids)?;
         Self::fill_missing(be, current, &ids, |_| true, p)
     }
@@ -595,7 +628,7 @@ impl SnapshotFile {
         ids: &[Id],
         mut filter: F,
         p: &impl Progress,
-    ) -> RusticResult<Vec<Self>>
+    ) -> SnapshotFileResult<Vec<Self>>
     where
         B: DecryptReadBackend,
         F: FnMut(&Self) -> bool,
@@ -690,7 +723,7 @@ impl SnapshotFile {
         filter: F,
         crit: SnapshotGroupCriterion,
         p: &impl Progress,
-    ) -> RusticResult<Vec<(SnapshotGroup, Vec<Self>)>>
+    ) -> SnapshotFileResult<Vec<(SnapshotGroup, Vec<Self>)>>
     where
         B: DecryptReadBackend,
         F: FnMut(&Self) -> bool,
@@ -704,7 +737,7 @@ impl SnapshotFile {
         filter: F,
         crit: SnapshotGroupCriterion,
         p: &impl Progress,
-    ) -> RusticResult<Vec<(SnapshotGroup, Vec<Self>)>>
+    ) -> SnapshotFileResult<Vec<(SnapshotGroup, Vec<Self>)>>
     where
         B: DecryptReadBackend,
         F: FnMut(&Self) -> bool,
@@ -729,7 +762,7 @@ impl SnapshotFile {
         be: &B,
         filter: F,
         p: &impl Progress,
-    ) -> RusticResult<Vec<Self>>
+    ) -> SnapshotFileResult<Vec<Self>>
     where
         B: DecryptReadBackend,
         F: FnMut(&Self) -> bool,
@@ -747,7 +780,7 @@ impl SnapshotFile {
         current: Vec<Self>,
         filter: F,
         p: &impl Progress,
-    ) -> RusticResult<Vec<Self>>
+    ) -> SnapshotFileResult<Vec<Self>>
     where
         B: DecryptReadBackend,
         F: FnMut(&Self) -> bool,
@@ -947,7 +980,7 @@ impl Default for SnapshotGroupCriterion {
 
 impl FromStr for SnapshotGroupCriterion {
     type Err = RusticError;
-    fn from_str(s: &str) -> RusticResult<Self> {
+    fn from_str(s: &str) -> SnapshotFileResult<Self> {
         let mut crit = Self::new();
         for val in s.split(',') {
             match val {
@@ -1053,7 +1086,7 @@ pub struct StringList(pub(crate) BTreeSet<String>);
 
 impl FromStr for StringList {
     type Err = RusticError;
-    fn from_str(s: &str) -> RusticResult<Self> {
+    fn from_str(s: &str) -> SnapshotFileResult<Self> {
         Ok(Self(s.split(',').map(ToString::to_string).collect()))
     }
 }
@@ -1137,7 +1170,7 @@ impl StringList {
     /// * [`SnapshotFileErrorKind::NonUnicodePath`] - If a path is not valid unicode
     ///
     /// [`SnapshotFileErrorKind::NonUnicodePath`]: crate::error::SnapshotFileErrorKind::NonUnicodePath
-    pub(crate) fn set_paths<T: AsRef<Path>>(&mut self, paths: &[T]) -> RusticResult<()> {
+    pub(crate) fn set_paths<T: AsRef<Path>>(&mut self, paths: &[T]) -> SnapshotFileResult<()> {
         self.0 = paths
             .iter()
             .map(|p| {
@@ -1146,7 +1179,7 @@ impl StringList {
                     .ok_or_else(|| SnapshotFileErrorKind::NonUnicodePath(p.as_ref().to_path_buf()))?
                     .to_string())
             })
-            .collect::<RusticResult<BTreeSet<_>>>()?;
+            .collect::<SnapshotFileResult<BTreeSet<_>>>()?;
         Ok(())
     }
 
@@ -1217,7 +1250,7 @@ impl PathList {
     ///
     /// # Errors
     /// no errors can occur here
-    pub fn from_string(source: &str) -> RusticResult<Self> {
+    pub fn from_string(source: &str) -> SnapshotFileResult<Self> {
         Ok(Self(vec![source.into()]))
     }
 
@@ -1248,7 +1281,7 @@ impl PathList {
     ///
     /// [`SnapshotFileErrorKind::RemovingDotsFromPathFailed`]: crate::error::SnapshotFileErrorKind::RemovingDotsFromPathFailed
     /// [`SnapshotFileErrorKind::CanonicalizingPathFailed`]: crate::error::SnapshotFileErrorKind::CanonicalizingPathFailed
-    pub fn sanitize(mut self) -> RusticResult<Self> {
+    pub fn sanitize(mut self) -> SnapshotFileResult<Self> {
         for path in &mut self.0 {
             *path = sanitize_dot(path)?;
         }
@@ -1285,7 +1318,7 @@ impl PathList {
 }
 
 // helper function to sanitize paths containing dots
-fn sanitize_dot(path: &Path) -> RusticResult<PathBuf> {
+fn sanitize_dot(path: &Path) -> SnapshotFileResult<PathBuf> {
     if path == Path::new(".") || path == Path::new("./") {
         return Ok(PathBuf::from("."));
     }

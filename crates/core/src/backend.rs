@@ -14,8 +14,10 @@ use std::{io::Read, ops::Deref, path::PathBuf, sync::Arc};
 
 use anyhow::Result;
 use bytes::Bytes;
+use displaydoc::Display;
 use enum_map::Enum;
 use log::trace;
+use thiserror::Error;
 
 #[cfg(test)]
 use mockall::mock;
@@ -24,10 +26,102 @@ use serde_derive::{Deserialize, Serialize};
 
 use crate::{
     backend::node::{Metadata, Node, NodeType},
-    error::{BackendAccessErrorKind, RusticErrorKind},
     id::Id,
-    RusticResult,
 };
+
+/// [`BackendAccessErrorKind`] describes the errors that can be returned by the various Backends
+#[derive(Error, Debug, Display)]
+pub enum BackendAccessErrorKind {
+    /// General Backend Error: {0:?}
+    #[error(transparent)]
+    General(#[from] anyhow::Error),
+    /// backend `{0:?}` is not supported!
+    BackendNotSupported(String),
+    /// backend `{0}` cannot be loaded: {1:?}
+    BackendLoadError(String, anyhow::Error),
+    /// no suitable id found for `{0}`
+    NoSuitableIdFound(String),
+    /// id `{0}` is not unique
+    IdNotUnique(String),
+    /// [`std::io::Error`]
+    #[error(transparent)]
+    FromIoError(#[from] std::io::Error),
+    /// [`std::num::TryFromIntError`]
+    #[error(transparent)]
+    FromTryIntError(#[from] TryFromIntError),
+    /// [`LocalDestinationErrorKind`]
+    #[error(transparent)]
+    FromLocalError(#[from] LocalDestinationErrorKind),
+    /// [`IdErrorKind`]
+    #[error(transparent)]
+    FromIdError(#[from] IdErrorKind),
+    /// [`IndexErrorKind`]
+    #[error(transparent)]
+    FromIgnoreError(#[from] IgnoreErrorKind),
+    /// [`CryptBackendErrorKind`]
+    #[error(transparent)]
+    FromBackendDecryptionError(#[from] CryptBackendErrorKind),
+    /// [`ignore::Error`]
+    #[error(transparent)]
+    GenericError(#[from] ignore::Error),
+    /// creating data in backend failed
+    CreatingDataOnBackendFailed,
+    /// writing bytes to backend failed
+    WritingBytesToBackendFailed,
+    /// removing data from backend failed
+    RemovingDataFromBackendFailed,
+    /// failed to list files on Backend
+    ListingFilesOnBackendFailed,
+    /// Path is not allowed: `{0:?}`
+    PathNotAllowed(PathBuf),
+}
+
+/// [`CryptBackendErrorKind`] describes the errors that can be returned by a Decryption action in Backends
+#[derive(Error, Debug, Display)]
+pub enum CryptBackendErrorKind {
+    /// decryption not supported for backend
+    DecryptionNotSupportedForBackend,
+    /// length of uncompressed data does not match!
+    LengthOfUncompressedDataDoesNotMatch,
+    /// failed to read encrypted data during full read
+    DecryptionInFullReadFailed,
+    /// failed to read encrypted data during partial read
+    DecryptionInPartialReadFailed,
+    /// decrypting from backend failed
+    DecryptingFromBackendFailed,
+    /// deserializing from bytes of JSON Text failed: `{0:?}`
+    DeserializingFromBytesOfJsonTextFailed(serde_json::Error),
+    /// failed to write data in crypt backend
+    WritingDataInCryptBackendFailed,
+    /// failed to list Ids
+    ListingIdsInDecryptionBackendFailed,
+    /// [`CryptoErrorKind`]
+    #[error(transparent)]
+    FromKey(#[from] CryptoErrorKind),
+    /// [`std::io::Error`]
+    #[error(transparent)]
+    FromIo(#[from] std::io::Error),
+    /// [`serde_json::Error`]
+    #[error(transparent)]
+    FromJson(#[from] serde_json::Error),
+    /// writing full hash failed in CryptBackend
+    WritingFullHashFailed,
+    /// decoding Zstd compressed data failed: `{0:?}`
+    DecodingZstdCompressedDataFailed(std::io::Error),
+    /// Serializing to JSON byte vector failed: `{0:?}`
+    SerializingToJsonByteVectorFailed(serde_json::Error),
+    /// encrypting data failed
+    EncryptingDataFailed,
+    /// Compressing and appending data failed: `{0:?}`
+    CopyEncodingDataFailed(std::io::Error),
+    /// conversion for integer failed: `{0:?}`
+    IntConversionFailed(#[from] TryFromIntError),
+    /// Extra verification failed: After decrypting and decompressing the data changed!
+    ExtraVerificationFailed,
+}
+
+pub(crate) type BackendResult<T> = Result<T, BackendAccessErrorKind>;
+pub(crate) type CryptBackendResult<T> = Result<T, CryptBackendErrorKind>;
 
 /// All [`FileType`]s which are located in separated directories
 pub const ALL_FILE_TYPES: [FileType; 4] = [
@@ -198,7 +292,7 @@ pub trait FindInBackend: ReadBackend {
     ///
     /// [`BackendAccessErrorKind::NoSuitableIdFound`]: crate::error::BackendAccessErrorKind::NoSuitableIdFound
     /// [`BackendAccessErrorKind::IdNotUnique`]: crate::error::BackendAccessErrorKind::IdNotUnique
-    fn find_starts_with<T: AsRef<str>>(&self, tpe: FileType, vec: &[T]) -> RusticResult<Vec<Id>> {
+    fn find_starts_with<T: AsRef<str>>(&self, tpe: FileType, vec: &[T]) -> BackendResult<Vec<Id>> {
         #[derive(Clone, Copy, PartialEq, Eq)]
         enum MapResult<T> {
             None,
@@ -251,7 +345,7 @@ pub trait FindInBackend: ReadBackend {
     /// [`IdErrorKind::HexError`]: crate::error::IdErrorKind::HexError
     /// [`BackendAccessErrorKind::NoSuitableIdFound`]: crate::error::BackendAccessErrorKind::NoSuitableIdFound
     /// [`BackendAccessErrorKind::IdNotUnique`]: crate::error::BackendAccessErrorKind::IdNotUnique
-    fn find_id(&self, tpe: FileType, id: &str) -> RusticResult<Id> {
+    fn find_id(&self, tpe: FileType, id: &str) -> BackendResult<Id> {
         Ok(self.find_ids(tpe, &[id.to_string()])?.remove(0))
     }
 
@@ -275,10 +369,10 @@ pub trait FindInBackend: ReadBackend {
     /// [`IdErrorKind::HexError`]: crate::error::IdErrorKind::HexError
     /// [`BackendAccessErrorKind::NoSuitableIdFound`]: crate::error::BackendAccessErrorKind::NoSuitableIdFound
     /// [`BackendAccessErrorKind::IdNotUnique`]: crate::error::BackendAccessErrorKind::IdNotUnique
-    fn find_ids<T: AsRef<str>>(&self, tpe: FileType, ids: &[T]) -> RusticResult<Vec<Id>> {
+    fn find_ids<T: AsRef<str>>(&self, tpe: FileType, ids: &[T]) -> BackendResult<Vec<Id>> {
         ids.iter()
             .map(|id| id.as_ref().parse())
-            .collect::<RusticResult<Vec<_>>>()
+            .collect::<BackendResult<Vec<_>>>()
             .or_else(|err|{
                 trace!("no valid IDs given: {err}, searching for ID starting with given strings instead");
                 self.find_starts_with(tpe, ids)})
@@ -426,7 +520,7 @@ pub struct ReadSourceEntry<O> {
 }
 
 impl<O> ReadSourceEntry<O> {
-    fn from_path(path: PathBuf, open: Option<O>) -> RusticResult<Self> {
+    fn from_path(path: PathBuf, open: Option<O>) -> BackendResult<Self> {
         let node = Node::new_node(
             path.file_name()
                 .ok_or_else(|| BackendAccessErrorKind::PathNotAllowed(path.clone()))?,
@@ -452,13 +546,13 @@ pub trait ReadSourceOpen {
     /// # Result
     ///
     /// The reader used to read from the source.
-    fn open(self) -> RusticResult<Self::Reader>;
+    fn open(self) -> BackendResult<Self::Reader>;
 }
 
 /// blanket implementation for readers
 impl<T: Read + Send + 'static> ReadSourceOpen for T {
     type Reader = T;
-    fn open(self) -> RusticResult<Self::Reader> {
+    fn open(self) -> BackendResult<Self::Reader> {
         Ok(self)
     }
 }
@@ -470,7 +564,7 @@ pub trait ReadSource: Sync + Send {
     /// The type used to handle open source files
     type Open: ReadSourceOpen;
     /// The iterator we use to iterate over the source entries
-    type Iter: Iterator<Item = RusticResult<ReadSourceEntry<Self::Open>>>;
+    type Iter: Iterator<Item = BackendResult<ReadSourceEntry<Self::Open>>>;
 
     /// Returns the size of the source.
     ///
@@ -481,7 +575,7 @@ pub trait ReadSource: Sync + Send {
     /// # Returns
     ///
     /// The size of the source, if it is known.
-    fn size(&self) -> RusticResult<Option<u64>>;
+    fn size(&self) -> BackendResult<Option<u64>>;
 
     /// Returns an iterator over the entries of the source.
     fn entries(&self) -> Self::Iter;
