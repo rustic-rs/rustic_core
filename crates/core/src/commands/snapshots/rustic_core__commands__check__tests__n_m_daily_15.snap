@@ -1,0 +1,5 @@
+---
+source: crates/core/src/commands/check.rs
+expression: "(res, res_1h, res_1d, res_1w, res_1m, res_1y, res2)"
+---
+((14, 15), (14, 15), (0, 15), (6, 15), (0, 15), (13, 15), (2, 15))

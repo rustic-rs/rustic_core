@@ -1615,6 +1615,12 @@ impl<P, S: IndexedFull> Repository<P, S> {
     /// * `offset` - The offset to start reading
     /// * `length` - The length to read
     ///
+    /// # Returns
+    ///
+    /// The read bytes from the given offset and length.
+    /// If offset is behind the end of the file, an empty `Bytes` is returned.
+    /// If length is too large, the result up to the end of the file is returned.
+    ///
     /// # Errors
     ///
     // TODO: Document errors

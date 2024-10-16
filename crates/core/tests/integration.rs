@@ -24,6 +24,7 @@
 //! The fixtures are passed as arguments to the test functions.
 
 use anyhow::Result;
+use bytes::Bytes;
 use flate2::read::GzDecoder;
 use globset::Glob;
 use insta::{
@@ -414,7 +415,7 @@ fn test_backup_stdin_command(
 }
 
 #[rstest]
-fn test_ls(
+fn test_ls_and_read(
     tar_gz_testdata: Result<TestSource>,
     set_up_repo: Result<RepoOpen>,
     insta_node_redaction: Settings,
@@ -444,8 +445,22 @@ fn test_ls(
         .collect::<RusticResult<_>>()?;
 
     insta_node_redaction.bind(|| {
-        assert_with_win("ls", entries);
+        assert_with_win("ls", &entries);
     });
+
+    // test reading a file from the repository
+    let repo = repo.to_indexed()?;
+    let path: PathBuf = ["test", "0", "tests", "testfile"].iter().collect();
+    let node = entries.get(&path).unwrap();
+    let file = repo.open_file(node)?;
+
+    let data = repo.read_file_at(&file, 0, 21)?; // read full content
+    assert_eq!(Bytes::from("This is a test file.\n"), &data);
+    let data2 = repo.read_file_at(&file, 0, 4096)?; // read beyond file end
+    assert_eq!(data2, &data);
+    assert_eq!(Bytes::new(), repo.read_file_at(&file, 25, 1)?); // offset beyond file end
+    assert_eq!(Bytes::from("test"), repo.read_file_at(&file, 10, 4)?); // read partial content
+
     Ok(())
 }
 

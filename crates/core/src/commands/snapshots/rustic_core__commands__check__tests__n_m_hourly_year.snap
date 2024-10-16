@@ -1,0 +1,5 @@
+---
+source: crates/core/src/commands/check.rs
+expression: "(res, res_1h, res_1d, res_1w, res_1m, res_1y, res2)"
+---
+((6828, 8784), (6829, 8784), (6852, 8784), (6996, 8784), (7572, 8784), (6804, 8760), (780, 8784))
