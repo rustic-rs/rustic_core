@@ -148,4 +148,6 @@ pub enum LocalBackendErrorKind {
     ReadingExactLengthOfFileFailed(std::io::Error),
     /// failed to sync OS Metadata to disk: `{0:?}`
     SyncingOfOsMetadataFailed(std::io::Error),
+    /// File `{0:?}` should have a parent, but doesn't. This is a bug.
+    FileDoesNotHaveParent(std::path::PathBuf),
 }
