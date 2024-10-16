@@ -54,9 +54,15 @@ pub enum IgnoreErrorKind {
         path: PathBuf,
         source: std::io::Error,
     },
-    /// [`std::num::TryFromIntError`]
-    #[error(transparent)]
-    FromTryFromIntError(#[from] TryFromIntError),
+    #[cfg(not(windows))]
+    /// Error converting ctime `{ctime}` and ctime_nsec `{ctime_nsec}` to Utc Timestamp: `{source:?}`
+    CtimeConversionToTimestampFailed {
+        ctime: i64,
+        ctime_nsec: i64,
+        source: ignore::Error,
+    },
+    /// Error acquiring metadata for `{name}`: `{source:?}`
+    AcquiringMetadataFailed { name: String, source: ignore::Error },
 }
 
 pub(crate) type IgnoreResult<T> = Result<T, IgnoreErrorKind>;
@@ -275,6 +281,7 @@ impl LocalSource {
 pub struct OpenFile(PathBuf);
 
 impl ReadSourceOpen for OpenFile {
+    type Error = IgnoreErrorKind;
     type Reader = File;
 
     /// Open the file from the local backend.
@@ -301,6 +308,7 @@ impl ReadSourceOpen for OpenFile {
 }
 
 impl ReadSource for LocalSource {
+    type Error = IgnoreErrorKind;
     type Open = OpenFile;
     type Iter = LocalSourceWalker;
 
@@ -559,7 +567,12 @@ fn map_entry(
     ignore_devid: bool,
 ) -> IgnoreResult<ReadSourceEntry<OpenFile>> {
     let name = entry.file_name();
-    let m = entry.metadata().map_err(IgnoreErrorKind::GenericError)?;
+    let m = entry
+        .metadata()
+        .map_err(|err| IgnoreErrorKind::AcquiringMetadataFailed {
+            name: name.to_string_lossy().to_string(),
+            source: err,
+        })?;
 
     let uid = m.uid();
     let gid = m.gid();
@@ -583,7 +596,11 @@ fn map_entry(
             m.ctime(),
             m.ctime_nsec()
                 .try_into()
-                .map_err(IgnoreErrorKind::FromTryFromIntError)?,
+                .map_err(|err| IgnoreErrorKind::CtimeConversionFailed {
+                    ctime: m.ctime(),
+                    ctime_nsec: m.ctime_nsec(),
+                    source: err,
+                })?,
         )
         .single()
         .map(|dt| dt.with_timezone(&Local));
