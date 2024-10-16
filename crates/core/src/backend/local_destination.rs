@@ -4,6 +4,7 @@ use std::os::unix::fs::{symlink, PermissionsExt};
 use std::{
     fs::{self, File, OpenOptions},
     io::{Read, Seek, SeekFrom, Write},
+    num::TryFromIntError,
     path::{Path, PathBuf},
 };
 
@@ -38,12 +39,18 @@ pub enum LocalDestinationErrorKind {
     DirectoryCreationFailed(#[from] std::io::Error),
     /// file `{0:?}` should have a parent
     FileDoesNotHaveParent(PathBuf),
-    /// [`std::num::TryFromIntError`]   
-    #[error(transparent)]
-    FromTryIntError(#[from] TryFromIntError),
-    /// [`IdErrorKind`]
-    #[error(transparent)]
-    FromIdError(#[from] IdErrorKind),
+    /// DeviceID could not be converted to other type `{target}` of device `{device}`: `{source}`
+    DeviceIdConversionFailed {
+        target: String,
+        device: u64,
+        source: TryFromIntError,
+    },
+    /// Length conversion failed for `{target}` of length `{length}`: `{source}`
+    LengthConversionFailed {
+        target: String,
+        length: u64,
+        source: TryFromIntError,
+    },
     /// [`walkdir::Error`]
     #[error(transparent)]
     FromWalkdirError(#[from] walkdir::Error),
@@ -610,12 +617,12 @@ impl LocalDestination {
     /// # Errors
     ///
     /// * [`LocalDestinationErrorKind::SymlinkingFailed`] - If the symlink could not be created.
-    /// * [`LocalDestinationErrorKind::FromTryIntError`] - If the device could not be converted to the correct type.
+    /// * [`LocalDestinationErrorKind::DeviceIdConversionFailed`] - If the device could not be converted to the correct type.
     /// * [`LocalDestinationErrorKind::FromErrnoError`] - If the device could not be created.
     ///
-    /// [`LocalDestinationErrorKind::SymlinkingFailed`]: crate::error::LocalDestinationErrorKind::SymlinkingFailed
-    /// [`LocalDestinationErrorKind::FromTryIntError`]: crate::error::LocalDestinationErrorKind::FromTryIntError
-    /// [`LocalDestinationErrorKind::FromErrnoError`]: crate::error::LocalDestinationErrorKind::FromErrnoError
+    /// [`LocalDestinationErrorKind::SymlinkingFailed`]: LocalDestinationErrorKind::SymlinkingFailed
+    /// [`LocalDestinationErrorKind::DeviceIdConversionFailed`]: LocalDestinationErrorKind::DeviceIdConversionFailed
+    /// [`LocalDestinationErrorKind::FromErrnoError`]: LocalDestinationErrorKind::FromErrnoError
     pub fn create_special(
         &self,
         item: impl AsRef<Path>,
@@ -642,11 +649,21 @@ impl LocalDestination {
                 )))]
                 let device = *device;
                 #[cfg(any(target_os = "macos", target_os = "openbsd"))]
-                let device =
-                    i32::try_from(*device).map_err(LocalDestinationErrorKind::FromTryIntError)?;
+                let device = i32::try_from(*device).map_err(|err| {
+                    LocalDestinationErrorKind::DeviceIdConversionFailed {
+                        target: "i32".to_string(),
+                        device: *device,
+                        source: err,
+                    }
+                })?;
                 #[cfg(target_os = "freebsd")]
-                let device =
-                    u32::try_from(*device).map_err(LocalDestinationErrorKind::FromTryIntError)?;
+                let device = u32::try_from(*device).map_err(|err| {
+                    LocalDestinationErrorKind::DeviceIdConversionFailed {
+                        target: "u32".to_string(),
+                        device: *device,
+                        source: err,
+                    }
+                })?;
                 mknod(&filename, SFlag::S_IFBLK, Mode::empty(), device)
                     .map_err(LocalDestinationErrorKind::FromErrnoError)?;
             }
@@ -658,11 +675,21 @@ impl LocalDestination {
                 )))]
                 let device = *device;
                 #[cfg(any(target_os = "macos", target_os = "openbsd"))]
-                let device =
-                    i32::try_from(*device).map_err(LocalDestinationErrorKind::FromTryIntError)?;
+                let device = i32::try_from(*device).map_err(|err| {
+                    LocalDestinationErrorKind::DeviceIdConversionFailed {
+                        target: "i32".to_string(),
+                        device: *device,
+                        source: err,
+                    }
+                })?;
                 #[cfg(target_os = "freebsd")]
-                let device =
-                    u32::try_from(*device).map_err(LocalDestinationErrorKind::FromTryIntError)?;
+                let device = u32::try_from(*device).map_err(|err| {
+                    LocalDestinationErrorKind::DeviceIdConversionFailed {
+                        target: "u32".to_string(),
+                        device: *device,
+                        source: err,
+                    }
+                })?;
                 mknod(&filename, SFlag::S_IFCHR, Mode::empty(), device)
                     .map_err(LocalDestinationErrorKind::FromErrnoError)?;
             }
@@ -691,13 +718,13 @@ impl LocalDestination {
     ///
     /// * [`LocalDestinationErrorKind::OpeningFileFailed`] - If the file could not be opened.
     /// * [`LocalDestinationErrorKind::CouldNotSeekToPositionInFile`] - If the file could not be seeked to the given position.
-    /// * [`LocalDestinationErrorKind::FromTryIntError`] - If the length of the file could not be converted to u32.
+    /// * [`LocalDestinationErrorKind::LengthConversionFailed`] - If the length of the file could not be converted to u32.
     /// * [`LocalDestinationErrorKind::ReadingExactLengthOfFileFailed`] - If the length of the file could not be read.
     ///
-    /// [`LocalDestinationErrorKind::OpeningFileFailed`]: crate::error::LocalDestinationErrorKind::OpeningFileFailed
-    /// [`LocalDestinationErrorKind::CouldNotSeekToPositionInFile`]: crate::error::LocalDestinationErrorKind::CouldNotSeekToPositionInFile
-    /// [`LocalDestinationErrorKind::FromTryIntError`]: crate::error::LocalDestinationErrorKind::FromTryIntError
-    /// [`LocalDestinationErrorKind::ReadingExactLengthOfFileFailed`]: crate::error::LocalDestinationErrorKind::ReadingExactLengthOfFileFailed
+    /// [`LocalDestinationErrorKind::OpeningFileFailed`]: LocalDestinationErrorKind::OpeningFileFailed
+    /// [`LocalDestinationErrorKind::CouldNotSeekToPositionInFile`]: LocalDestinationErrorKind::CouldNotSeekToPositionInFile
+    /// [`LocalDestinationErrorKind::LengthConversionFailed`]: LocalDestinationErrorKind::LengthConversionFailed
+    /// [`LocalDestinationErrorKind::ReadingExactLengthOfFileFailed`]: LocalDestinationErrorKind::ReadingExactLengthOfFileFailed
     pub fn read_at(
         &self,
         item: impl AsRef<Path>,
@@ -712,9 +739,13 @@ impl LocalDestination {
             .map_err(LocalDestinationErrorKind::CouldNotSeekToPositionInFile)?;
         let mut vec = vec![
             0;
-            length
-                .try_into()
-                .map_err(LocalDestinationErrorKind::FromTryIntError)?
+            length.try_into().map_err(|err| {
+                LocalDestinationErrorKind::LengthConversionFailed {
+                    target: "u8".to_string(),
+                    length,
+                    source: err,
+                }
+            })?
         ];
         file.read_exact(&mut vec)
             .map_err(LocalDestinationErrorKind::ReadingExactLengthOfFileFailed)?;
