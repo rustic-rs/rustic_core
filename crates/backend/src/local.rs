@@ -146,19 +146,16 @@ impl LocalBackend {
     ///
     /// # Returns
     ///
-    /// The parent path of the file.
+    /// The parent path of the file or `None` if the file does not have a parent.
     ///
     /// # Errors
     ///
     /// * [`LocalBackendErrorKind::FileDoesNotHaveParent`] - If the file does not have a parent.
     ///
     /// [`LocalBackendErrorKind::FileDoesNotHaveParent`]: LocalBackendErrorKind::FileDoesNotHaveParent
-    fn parent_path(&self, tpe: FileType, id: &Id) -> Result<PathBuf> {
+    fn parent_path(&self, tpe: FileType, id: &Id) -> Option<PathBuf> {
         let path = self.path(tpe, id);
-        path.parent().map_or(
-            Err(LocalBackendErrorKind::FileDoesNotHaveParent(path.clone()).into()),
-            |path| Ok(path.to_path_buf()),
-        )
+        path.parent().map(Path::to_path_buf)
     }
 }
 
@@ -390,7 +387,8 @@ impl WriteBackend for LocalBackend {
         let filename = self.path(tpe, id);
 
         // create parent directory if it does not exist
-        if let Ok(parent) = self.parent_path(tpe, id) {
+        // we ignore a `None` here, because the file should have a parent
+        if let Some(parent) = self.parent_path(tpe, id) {
             fs::create_dir_all(&parent).map_err(|err| {
                 LocalBackendErrorKind::DirectoryCreationFailed {
                     path: parent,

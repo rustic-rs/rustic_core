@@ -88,7 +88,7 @@ pub enum RestErrorKind {
 #[derive(Error, Debug, Display)]
 #[non_exhaustive]
 pub enum LocalBackendErrorKind {
-    /// Creating directory failed: `{path}` : `{source}`
+    /// Creating directory failed! Maybe parts of the `{path}` are already existing? : `{source}`
     DirectoryCreationFailed {
         /// Path to directory
         path: std::path::PathBuf,
@@ -148,6 +148,4 @@ pub enum LocalBackendErrorKind {
     ReadingExactLengthOfFileFailed(std::io::Error),
     /// failed to sync OS Metadata to disk: `{0:?}`
     SyncingOfOsMetadataFailed(std::io::Error),
-    /// File `{0:?}` should have a parent, but doesn't. This is a bug.
-    FileDoesNotHaveParent(std::path::PathBuf),
 }
