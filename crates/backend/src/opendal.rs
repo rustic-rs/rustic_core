@@ -1,5 +1,5 @@
 /// `OpenDAL` backend for rustic.
-use std::{collections::HashMap, path::PathBuf, str::FromStr, sync::OnceLock};
+use std::{collections::BTreeMap, path::PathBuf, str::FromStr, sync::OnceLock};
 
 use anyhow::{anyhow, Error, Result};
 use bytes::Bytes;
@@ -74,7 +74,7 @@ impl OpenDALBackend {
     /// # Returns
     ///
     /// A new `OpenDAL` backend.
-    pub fn new(path: impl AsRef<str>, options: HashMap<String, String>) -> Result<Self> {
+    pub fn new(path: impl AsRef<str>, options: BTreeMap<String, String>) -> Result<Self> {
         let max_retries = match options.get("retry").map(String::as_str) {
             Some("false" | "off") => 0,
             None | Some("default") => constants::DEFAULT_RETRY,
@@ -318,7 +318,7 @@ mod tests {
         #[derive(Deserialize)]
         struct TestCase {
             path: String,
-            options: HashMap<String, String>,
+            options: BTreeMap<String, String>,
         }
 
         let test: TestCase = toml::from_str(&fs::read_to_string(test_case)?)?;

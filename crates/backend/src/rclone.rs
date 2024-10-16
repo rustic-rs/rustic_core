@@ -1,5 +1,5 @@
 use std::{
-    collections::HashMap,
+    collections::BTreeMap,
     io::{BufRead, BufReader},
     process::{Child, Command, Stdio},
     thread::JoinHandle,
@@ -127,7 +127,7 @@ impl RcloneBackend {
     ///
     /// If the rclone command is not found.
     // TODO: This should be an error, not a panic.
-    pub fn new(url: impl AsRef<str>, options: HashMap<String, String>) -> Result<Self> {
+    pub fn new(url: impl AsRef<str>, options: BTreeMap<String, String>) -> Result<Self> {
         let rclone_command = options.get("rclone-command");
         let use_password = options
             .get("use-password")
