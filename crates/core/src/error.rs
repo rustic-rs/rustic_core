@@ -5,19 +5,23 @@
 // use std::error::Error as StdError;
 // use std::fmt;
 
+use derive_setters::Setters;
 use std::fmt::{self, Display};
-
-use displaydoc::Display;
 use thiserror::Error;
 
 /// Result type that is being returned from methods that can fail and thus have [`RusticError`]s.
 pub type RusticResult<T> = Result<T, RusticError>;
 
-#[derive(Error, Debug)]
+#[derive(Error, Debug, Setters)]
+#[setters(strip_option)]
 /// Errors that can result from rustic.
 pub struct RusticError {
-    /// The kind of error.
-    kind: RusticErrorKind,
+    /// The source of the error.
+    // TODO! We should think if it makes sense to erase the type here, or if we should
+    // TODO! rather use RusticErrorKind here and create some higher level errors there,
+    // TODO! that are most needed for the user. E.g. something like `IncorrectPassword`
+    // TODO! or general failures for the repository.
+    source: Box<dyn std::error::Error>,
 
     /// The message of the error.
     message: Option<String>,
@@ -30,20 +34,17 @@ pub struct RusticError {
 
     /// The URL of an already existing issue that is related to this error.
     existing_issue_url: Option<String>,
-
-    /// The backtrace of the error.
-    backtrace: Option<std::backtrace::Backtrace>,
 }
 
 impl Display for RusticError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "An error occurred in `rustic_core`: ")?;
 
-        write!(f, "{}", self.kind)?;
-
         if let Some(message) = &self.message {
             write!(f, ": {}", message)?;
         }
+
+        write!(f, "{}", self.source)?;
 
         if let Some(docs_url) = &self.docs_url {
             write!(f, "\n\nFor more information, see: {}", docs_url)?;
@@ -61,27 +62,33 @@ impl Display for RusticError {
             write!(f, "\n\nThis might be a related issue, please check it for a possible workaround and/or further guidance: {}", existing_issue_url)?;
         }
 
-        if let Some(backtrace) = &self.backtrace {
-            write!(f, "\n\nBacktrace:\n{:?}", backtrace)?;
-        }
-
         Ok(())
     }
 }
 
 // Accessors for anything we do want to expose publicly.
 impl RusticError {
+    pub fn new<T: std::error::Error + Display + 'static>(source: T) -> Self {
+        Self {
+            source: Box::new(source),
+            message: None,
+            docs_url: None,
+            new_issue_url: None,
+            existing_issue_url: None,
+        }
+    }
+
     /// Expose the inner error kind.
     ///
     /// This is useful for matching on the error kind.
     pub fn into_inner(self) -> RusticErrorKind {
-        self.kind
+        todo!()
     }
 
     /// Checks if the error is due to an incorrect password
     pub fn is_incorrect_password(&self) -> bool {
         matches!(
-            self.kind,
+            self.source,
             RusticErrorKind::Repository(RepositoryErrorKind::IncorrectPassword)
         )
     }
@@ -90,10 +97,20 @@ impl RusticError {
     ///
     /// Returns `anyhow::Error`; you need to cast this to the real backend error type
     pub fn backend_error(&self) -> Option<&anyhow::Error> {
-        if let RusticErrorKind::Backend(error) = &self.kind {
+        if let RusticErrorKind::Backend(error) = &self.source {
             Some(error)
         } else {
             None
+        }
+    }
+
+    pub fn from<T: std::error::Error + Display + 'static>(error: T) -> Self {
+        Self {
+            message: error.to_string().into(),
+            source: Box::new(error),
+            docs_url: None,
+            new_issue_url: None,
+            existing_issue_url: None,
         }
     }
 }
@@ -104,9 +121,12 @@ impl RusticError {
 /// recommended to match against the wildcard `_` instead of listing all possible variants,
 /// to avoid problems when new variants are added.
 #[non_exhaustive]
-#[derive(Error, Debug)]
+#[derive(Error, Debug, displaydoc::Display)]
 pub enum RusticErrorKind {
     /// Describes the errors that can be returned by the various backends from the `rustic_backend` crate.
     #[error(transparent)]
     Backend(#[from] anyhow::Error),
+    /// [`std::io::Error`]
+    #[error(transparent)]
+    FromIo(#[from] std::io::Error),
 }
