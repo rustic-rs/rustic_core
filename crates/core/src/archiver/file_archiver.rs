@@ -22,6 +22,7 @@ use crate::{
     index::{indexer::SharedIndexer, ReadGlobalIndex},
     progress::Progress,
     repofile::configfile::ConfigFile,
+    RusticError, RusticResult,
 };
 
 /// The `FileArchiver` is responsible for archiving files.
@@ -65,8 +66,8 @@ impl<'a, BE: DecryptWriteBackend, I: ReadGlobalIndex> FileArchiver<'a, BE, I> {
         index: &'a I,
         indexer: SharedIndexer<BE>,
         config: &ConfigFile,
-    ) -> ArchiverResult<Self> {
-        let poly = config.poly()?;
+    ) -> RusticResult<ArchiverResult<Self>> {
+        let poly = config.poly().map_err(RusticError::from)?;
 
         let data_packer = Packer::new(
             be,
@@ -74,15 +75,16 @@ impl<'a, BE: DecryptWriteBackend, I: ReadGlobalIndex> FileArchiver<'a, BE, I> {
             indexer,
             config,
             index.total_size(BlobType::Data),
-        )?;
+        )
+        .map_err(RusticError::from)?;
 
         let rabin = Rabin64::new_with_polynom(6, poly);
 
-        Ok(Self {
+        Ok(Ok(Self {
             index,
             data_packer,
             rabin,
-        })
+        }))
     }
 
     /// Processes the given item.
@@ -174,7 +176,10 @@ impl<'a, BE: DecryptWriteBackend, I: ReadGlobalIndex> FileArchiver<'a, BE, I> {
     /// # Panics
     ///
     /// If the channel could not be dropped
-    pub(crate) fn finalize(self) -> ArchiverResult<PackerStats> {
-        self.data_packer.finalize()
+    pub(crate) fn finalize(self) -> RusticResult<ArchiverResult<PackerStats>> {
+        Ok(Ok(self
+            .data_packer
+            .finalize()
+            .map_err(RusticError::from)?))
     }
 }
