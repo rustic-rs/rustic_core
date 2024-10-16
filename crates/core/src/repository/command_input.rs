@@ -29,6 +29,12 @@ pub enum CommandInputErrorKind {
         arguments: String,
         source: shell_words::ParseError,
     },
+    /// Process execution failed: {command:?} : {path:?} : {source}
+    ProcessExecutionFailed {
+        command: CommandInput,
+        path: std::path::PathBuf,
+        source: std::io::Error,
+    },
 }
 
 pub(crate) type CommandInputResult<T> = Result<T, CommandInputErrorKind>;

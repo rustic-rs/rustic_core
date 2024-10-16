@@ -6,9 +6,8 @@ use std::{
 };
 
 use crate::{
-    backend::{ReadSource, ReadSourceEntry},
-    error::{RepositoryErrorKind, RusticResult},
-    CommandInput,
+    backend::{BackendAccessErrorKind, ReadSource, ReadSourceEntry},
+    repository::command_input::{CommandInput, CommandInputErrorKind, CommandInputResult},
 };
 
 /// The `ChildStdoutSource` is a `ReadSource` when spawning a child process and reading its stdout
@@ -30,18 +29,15 @@ pub struct ChildStdoutSource {
 
 impl ChildStdoutSource {
     /// Creates a new `ChildSource`.
-    pub fn new(cmd: &CommandInput, path: PathBuf) -> RusticResult<Self> {
+    pub fn new(cmd: &CommandInput, path: PathBuf) -> CommandInputResult<Self> {
         let process = Command::new(cmd.command())
             .args(cmd.args())
             .stdout(Stdio::piped())
             .spawn()
-            .map_err(|err| {
-                RepositoryErrorKind::CommandExecutionFailed(
-                    "stdin-command".into(),
-                    "call".into(),
-                    err,
-                )
-                .into()
+            .map_err(|err| CommandInputErrorKind::ProcessExecutionFailed {
+                command: cmd.clone(),
+                path: path.clone(),
+                source: err,
             });
 
         let process = cmd.on_failure().display_result(process)?;
@@ -54,7 +50,7 @@ impl ChildStdoutSource {
     }
 
     /// Finishes the `ChildSource`
-    pub fn finish(self) -> RusticResult<()> {
+    pub fn finish(self) -> CommandInputResult<()> {
         let status = self.process.lock().unwrap().wait();
         self.command
             .on_failure()
@@ -64,10 +60,11 @@ impl ChildStdoutSource {
 }
 
 impl ReadSource for ChildStdoutSource {
+    type Error = BackendAccessErrorKind;
     type Open = ChildStdout;
-    type Iter = Once<RusticResult<ReadSourceEntry<ChildStdout>>>;
+    type Iter = Once<Result<ReadSourceEntry<ChildStdout>, Self::Error>>;
 
-    fn size(&self) -> RusticResult<Option<u64>> {
+    fn size(&self) -> Result<Option<u64>, Self::Error> {
         Ok(None)
     }
 
