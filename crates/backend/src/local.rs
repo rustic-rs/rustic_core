@@ -179,19 +179,10 @@ impl LocalBackend {
     ///
     /// # Returns
     ///
-    /// The parent path of the file.
-    ///
-    /// # Errors
-    ///
-    /// * [`LocalBackendErrorKind::FileDoesNotHaveParent`] - If the file does not have a parent.
-    ///
-    /// [`LocalBackendErrorKind::FileDoesNotHaveParent`]: LocalBackendErrorKind::FileDoesNotHaveParent
-    fn parent_path(&self, tpe: FileType, id: &Id) -> Result<PathBuf> {
+    /// The parent path of the file or `None` if the file does not have a parent.
+    fn parent_path(&self, tpe: FileType, id: &Id) -> Option<PathBuf> {
         let path = self.path(tpe, id);
-        path.parent().map_or(
-            Err(LocalBackendErrorKind::FileDoesNotHaveParent(path.clone()).into()),
-            |path| Ok(path.to_path_buf()),
-        )
+        path.parent().map(Path::to_path_buf)
     }
 }
 
@@ -380,7 +371,7 @@ impl ReadBackend for LocalBackend {
     ) -> RusticResult<Bytes> {
         trace!("reading tpe: {tpe:?}, id: {id}, offset: {offset}, length: {length}");
         let filename = self.path(tpe, id);
-        let mut file = File::open(filename).map_err(|err| {
+        let mut file = File::open(filename.clone()).map_err(|err| {
             RusticError::with_source(
                 ErrorKind::Backend,
                 "Failed to open the file `{path}`. Please check the file and try again.",
@@ -484,6 +475,10 @@ impl WriteBackend for LocalBackend {
     /// * If the length of the file could not be set.
     /// * If the bytes could not be written to the file.
     /// * If the OS Metadata could not be synced to disk.
+    /// * If the file does not have a parent directory.
+    /// * If the parent directory could not be created.
+    /// * If the file cannot be opened, due to missing permissions.
+    /// * If the file cannot be written to, due to lack of space on the disk.
     fn write_bytes(
         &self,
         tpe: FileType,
@@ -494,17 +489,27 @@ impl WriteBackend for LocalBackend {
         trace!("writing tpe: {:?}, id: {}", &tpe, &id);
         let filename = self.path(tpe, id);
 
-        // create parent directory if it does not exist
-        if let Some(parent) = filename.parent() {
-            fs::create_dir_all(parent).map_err(|err| {
-                RusticError::with_source(
-                    ErrorKind::InputOutput,
-                    "Failed to create directories `{path}`. Please check the file and try again.",
-                    err,
+        let Some(parent) = self.parent_path(tpe, id) else {
+            return Err(
+                RusticError::new(
+                    ErrorKind::Backend,
+                    "The file `{path}` does not have a parent directory. This may be empty or a root path. Please check the file and try again.",
                 )
-                .attach_context("path", parent.to_string_lossy())
-            })?;
-        }
+                .attach_context("path", filename.display().to_string())
+                .ask_report()
+            );
+        };
+
+        // create parent directory if it does not exist
+        fs::create_dir_all(parent.clone()).map_err(|err| {
+            RusticError::with_source(
+                ErrorKind::InputOutput,
+                "Failed to create directories `{path}`. Does the directory already exist? Please check the file and try again.",
+                err,
+            )
+            .attach_context("path", parent.display().to_string())
+            .ask_report()
+        })?;
 
         let mut file = fs::OpenOptions::new()
             .create(true)
