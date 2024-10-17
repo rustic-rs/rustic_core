@@ -5,15 +5,11 @@
 // use std::error::Error as StdError;
 // use std::fmt;
 
-use binrw::docs;
 use derive_setters::Setters;
-use std::{
-    default,
-    fmt::{self, Display},
-};
+use std::fmt::{self, Display};
 use thiserror::Error;
 
-use crate::error::immut_str::ImmutStr;
+use crate::{error::immut_str::ImmutStr, BackendDynError};
 
 pub(crate) mod constants {
     pub const DEFAULT_DOCS_URL: &str = "https://rustic.cli.rs/docs/errors/";
@@ -109,17 +105,14 @@ impl RusticError {
 
     /// Checks if the error is due to an incorrect password
     pub fn is_incorrect_password(&self) -> bool {
-        matches!(
-            self.kind,
-            RusticErrorKind::Repository(RepositoryErrorKind::IncorrectPassword)
-        )
+        matches!(self.kind, RusticErrorKind::IncorrectRepositoryPassword)
     }
 
     /// Get the corresponding backend error, if error is caused by the backend.
     ///
-    /// Returns `anyhow::Error`; you need to cast this to the real backend error type
-    pub fn backend_error(&self) -> Option<&anyhow::Error> {
-        if let RusticErrorKind::Backend(error) = &self.cause {
+    /// Returns `BackendDynError`; you need to cast this to the real backend error type
+    pub fn backend_error(&self) -> Option<&BackendDynError> {
+        if let RusticErrorKind::Backend(error) = &self.kind {
             Some(error)
         } else {
             None
@@ -166,9 +159,11 @@ pub enum RusticErrorKind {
     None,
     /// Describes the errors that can be returned by the various backends from the `rustic_backend` crate.
     #[error(transparent)]
-    Backend(#[from] anyhow::Error),
+    Backend(#[from] BackendDynError),
     /// IO error
     Io,
+    /// The repository password is incorrect. Please try again.
+    IncorrectRepositoryPassword,
 }
 
 pub mod immut_str {
