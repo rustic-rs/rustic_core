@@ -40,6 +40,13 @@ pub enum CacheBackendErrorKind {
     WritingBytesOnCacheBackendFailed,
     /// removing data on CacheBackend failed
     RemovingDataOnCacheBackendFailed,
+    /// Error in cache backend {context} for {tpe:?} with {id}: {source}
+    Io {
+        context: String,
+        source: std::io::Error,
+        tpe: FileType,
+        id: Id,
+    },
 }
 
 pub(crate) type CacheBackendResult<T> = Result<T, CacheBackendErrorKind>;
@@ -468,18 +475,14 @@ impl Cache {
     /// * [`CacheBackendErrorKind::FromIoError`] - If the file could not be written.
     ///
     /// [`CacheBackendErrorKind::FromIoError`]: crate::error::CacheBackendErrorKind::FromIoError
-    pub fn write_bytes(
-        &self,
-        tpe: FileType,
-        id: &Id,
-        buf: &Bytes,
-    ) -> RusticResult<CacheBackendResult<()>> {
+    pub fn write_bytes(&self, tpe: FileType, id: &Id, buf: &Bytes) -> CacheBackendResult<()> {
         trace!("cache writing tpe: {:?}, id: {}", &tpe, &id);
 
-        fs::create_dir_all(self.dir(tpe, id)).map_err(|err| {
-            RusticError::new(RusticErrorKind::FromIo(err)).message(format!(
-                "Error in cache backend during creation of directories for {tpe:?} with {id}"
-            ))
+        fs::create_dir_all(self.dir(tpe, id)).map_err(|err| CacheBackendErrorKind::Io {
+            context: "while creating directories".into(),
+            source: err,
+            tpe: tpe.clone(),
+            id: id.clone(),
         })?;
 
         let filename = self.path(tpe, id);
@@ -489,17 +492,22 @@ impl Cache {
             .truncate(true)
             .write(true)
             .open(&filename)
-            .map_err(|err| {
-            RusticError::new(RusticErrorKind::FromIo(err))
-                .message(format!("Error in cache backend while opening file path for {tpe:?} with {id}: {filename:?}"))
-        })?;
+            .map_err(|err| CacheBackendErrorKind::Io {
+                context: "while opening file paths".into(),
+                source: err,
+                tpe: tpe.clone(),
+                id: id.clone(),
+            })?;
 
-        file.write_all(buf).map_err(|err| {
-            RusticError::new(RusticErrorKind::FromIo(err))
-                .message(format!("Error in cache backend while writing to buffer for {tpe:?} with {id}: {filename:?}"))
-        })?;
+        file.write_all(buf)
+            .map_err(|err| CacheBackendErrorKind::Io {
+                context: "while writing to buffer".into(),
+                source: err,
+                tpe: tpe.clone(),
+                id: id.clone(),
+            })?;
 
-        Ok(Ok(()))
+        Ok(())
     }
 
     /// Removes the given file.
@@ -514,14 +522,16 @@ impl Cache {
     /// * [`CacheBackendErrorKind::FromIoError`] - If the file could not be removed.
     ///
     /// [`CacheBackendErrorKind::FromIoError`]: crate::error::CacheBackendErrorKind::FromIoError
-    pub fn remove(&self, tpe: FileType, id: &Id) -> RusticResult<CacheBackendResult<()>> {
+    pub fn remove(&self, tpe: FileType, id: &Id) -> CacheBackendResult<()> {
         trace!("cache writing tpe: {:?}, id: {}", &tpe, &id);
         let filename = self.path(tpe, id);
-        fs::remove_file(filename).map_err(|err| {
-            RusticError::new(RusticErrorKind::FromIo(err))
-                .message(format!("Error in cache backend removing {tpe:?} with {id}"))
+        fs::remove_file(&filename).map_err(|err| CacheBackendErrorKind::Io {
+            context: format!("while removing file: {filename:?}"),
+            source: err,
+            tpe: tpe.clone(),
+            id: id.clone(),
         })?;
 
-        Ok(Ok(()))
+        Ok(())
     }
 }
