@@ -1,9 +1,6 @@
 //! The commands that can be run by the CLI.
 
-use std::{
-    num::{ParseFloatError, ParseIntError, TryFromIntError},
-    path::PathBuf,
-};
+use std::{num::TryFromIntError, path::PathBuf};
 
 use chrono::OutOfRangeError;
 use displaydoc::Display;
@@ -45,39 +42,24 @@ pub enum CommandErrorKind {
     PackNotExisting(PackId),
     /// pack `{0}` got no decision what to do
     NoDecision(PackId),
-    /// [`std::num::ParseFloatError`]
-    #[error(transparent)]
-    FromParseFloatError(#[from] ParseFloatError),
-    /// [`std::num::ParseIntError`]
-    #[error(transparent)]
-    FromParseIntError(#[from] ParseIntError),
     /// Bytesize parser failed: `{0}`
     FromByteSizeParser(String),
     /// --repack-uncompressed makes no sense for v1 repo!
     RepackUncompressedRepoV1,
     /// datetime out of range: `{0}`
-    FromOutOfRangeError(#[from] OutOfRangeError),
+    FromOutOfRangeError(OutOfRangeError),
     /// node type `{0:?}` not supported by dump
     DumpNotSupported(NodeType),
-    /// [`serde_json::Error`]
-    #[error(transparent)]
-    FromJsonError(#[from] serde_json::Error),
     /// error creating `{0:?}`: `{1:?}`
     ErrorCreating(PathBuf, Box<RusticError>),
     /// error collecting information for `{0:?}`: `{1:?}`
     ErrorCollecting(PathBuf, Box<RusticError>),
     /// error setting length for `{0:?}`: `{1:?}`
     ErrorSettingLength(PathBuf, Box<RusticError>),
-    /// [`rayon::ThreadPoolBuildError`]
-    #[error(transparent)]
-    FromRayonError(#[from] rayon::ThreadPoolBuildError),
     /// Conversion from integer failed: `{0:?}`
     ConversionFromIntFailed(TryFromIntError),
     /// Specify one of the keep-* options for forget! Please use keep-none to keep no snapshot.
     NoKeepOption,
-    /// [`shell_words::ParseError`]
-    #[error(transparent)]
-    FromParseError(#[from] shell_words::ParseError),
     /// Checking the repository failed!
     CheckFailed,
 }
