@@ -9,7 +9,6 @@ use thiserror::Error;
 use crate::{
     backend::{FileType, ReadBackend},
     crypto::{aespoly1305::Key, CryptoKey},
-    error::CryptoErrorKind,
     impl_repoid, RusticError,
 };
 
@@ -22,18 +21,26 @@ pub enum KeyFileErrorKind {
     ListingKeyFilesFailed,
     /// couldn't get KeyFile from backend
     CouldNotGetKeyFileFromBackend,
-    /// serde_json couldn't deserialize the data: `{0:?}`
-    DeserializingFromSliceFailed(serde_json::Error),
-    /// couldn't encrypt data: `{0:?}`
-    CouldNotEncryptData(#[from] CryptoErrorKind),
+    /// serde_json couldn't deserialize the data for the key: `{key_id:?}` : `{source}`
+    DeserializingFromSliceForKeyIdFailed {
+        /// The id of the key
+        key_id: KeyId,
+        /// The error that occurred
+        source: serde_json::Error,
+    },
     /// serde_json couldn't serialize the data into a JSON byte vector: `{0:?}`
     CouldNotSerializeAsJsonByteVector(serde_json::Error),
-    /// conversion from `u32` to `u8` failed: `{0:?}`
-    ConversionFromU32ToU8Failed(TryFromIntError),
     /// output length is invalid: `{0:?}`
     OutputLengthInvalid(scrypt::errors::InvalidOutputLen),
     /// invalid scrypt parameters: `{0:?}`
     InvalidSCryptParameters(scrypt::errors::InvalidParams),
+    /// Could not get key from decrypt data: `{key:?}` : `{source}`
+    CouldNotGetKeyFromDecryptData {
+        key: Key,
+        source: crate::crypto::CryptoErrorKind,
+    },
+    /// deserializing master key from slice failed: `{source}`
+    DeserializingMasterKeyFromSliceFailed { source: serde_json::Error },
 }
 
 pub(crate) type KeyFileResult<T> = Result<T, KeyFileErrorKind>;
@@ -133,9 +140,15 @@ impl KeyFile {
     ///
     /// [`KeyFileErrorKind::DeserializingFromSliceFailed`]: crate::error::KeyFileErrorKind::DeserializingFromSliceFailed
     pub fn key_from_data(&self, key: &Key) -> KeyFileResult<Key> {
-        let dec_data = key.decrypt_data(&self.data)?;
+        let dec_data = key.decrypt_data(&self.data).map_err(|err| {
+            KeyFileErrorKind::CouldNotGetKeyFromDecryptData {
+                key: key.clone(),
+                source: err,
+            }
+        })?;
+
         Ok(serde_json::from_slice::<MasterKey>(&dec_data)
-            .map_err(KeyFileErrorKind::DeserializingFromSliceFailed)?
+            .map_err(|err| KeyFileErrorKind::DeserializingMasterKeyFromSliceFailed { source: err })?
             .key())
     }
 
@@ -233,10 +246,13 @@ impl KeyFile {
         let data = be
             .read_full(FileType::Key, id)
             .map_err(RusticErrorKind::Backend)?;
-        Ok(
-            serde_json::from_slice(&data)
-                .map_err(KeyFileErrorKind::DeserializingFromSliceFailed)?,
-        )
+
+        Ok(serde_json::from_slice(&data).map_err(|err| {
+            KeyFileErrorKind::DeserializingFromSliceForKeyIdFailed {
+                key_id: id.clone(),
+                source: err,
+            }
+        })?)
     }
 }
 
