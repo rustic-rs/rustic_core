@@ -9,7 +9,7 @@ use log::warn;
 use crate::{
     backend::decrypt::DecryptWriteBackend,
     blob::BlobId,
-    error::RusticResult,
+    index::{IndexErrorKind, IndexResult},
     repofile::indexfile::{IndexFile, IndexPack},
 };
 
@@ -104,7 +104,7 @@ impl<BE: DecryptWriteBackend> Indexer<BE> {
     /// * [`CryptBackendErrorKind::SerializingToJsonByteVectorFailed`] - If the index file could not be serialized.
     ///
     /// [`CryptBackendErrorKind::SerializingToJsonByteVectorFailed`]: crate::error::CryptBackendErrorKind::SerializingToJsonByteVectorFailed
-    pub fn finalize(&self) -> RusticResult<()> {
+    pub fn finalize(&self) -> IndexResult<()> {
         self.save()
     }
 
@@ -115,9 +115,12 @@ impl<BE: DecryptWriteBackend> Indexer<BE> {
     /// * [`CryptBackendErrorKind::SerializingToJsonByteVectorFailed`] - If the index file could not be serialized.
     ///
     /// [`CryptBackendErrorKind::SerializingToJsonByteVectorFailed`]: crate::error::CryptBackendErrorKind::SerializingToJsonByteVectorFailed
-    pub fn save(&self) -> RusticResult<()> {
+    pub fn save(&self) -> IndexResult<()> {
         if (self.file.packs.len() + self.file.packs_to_delete.len()) > 0 {
-            _ = self.be.save_file(&self.file)?;
+            _ = self
+                .be
+                .save_file(&self.file)
+                .map_err(|err| IndexErrorKind::SavingIndexFileFailed { source: err })?;
         }
         Ok(())
     }
@@ -133,7 +136,7 @@ impl<BE: DecryptWriteBackend> Indexer<BE> {
     /// * [`CryptBackendErrorKind::SerializingToJsonByteVectorFailed`] - If the index file could not be serialized.
     ///
     /// [`CryptBackendErrorKind::SerializingToJsonByteVectorFailed`]: crate::error::CryptBackendErrorKind::SerializingToJsonByteVectorFailed
-    pub fn add(&mut self, pack: IndexPack) -> RusticResult<()> {
+    pub fn add(&mut self, pack: IndexPack) -> IndexResult<()> {
         self.add_with(pack, false)
     }
 
@@ -148,7 +151,7 @@ impl<BE: DecryptWriteBackend> Indexer<BE> {
     /// * [`CryptBackendErrorKind::SerializingToJsonByteVectorFailed`] - If the index file could not be serialized.
     ///
     /// [`CryptBackendErrorKind::SerializingToJsonByteVectorFailed`]: crate::error::CryptBackendErrorKind::SerializingToJsonByteVectorFailed
-    pub fn add_remove(&mut self, pack: IndexPack) -> RusticResult<()> {
+    pub fn add_remove(&mut self, pack: IndexPack) -> IndexResult<()> {
         self.add_with(pack, true)
     }
 
@@ -164,7 +167,7 @@ impl<BE: DecryptWriteBackend> Indexer<BE> {
     /// * [`CryptBackendErrorKind::SerializingToJsonByteVectorFailed`] - If the index file could not be serialized.
     ///
     /// [`CryptBackendErrorKind::SerializingToJsonByteVectorFailed`]: crate::error::CryptBackendErrorKind::SerializingToJsonByteVectorFailed
-    pub fn add_with(&mut self, pack: IndexPack, delete: bool) -> RusticResult<()> {
+    pub fn add_with(&mut self, pack: IndexPack, delete: bool) -> IndexResult<()> {
         self.count += pack.blobs.len();
 
         if let Some(indexed) = &mut self.indexed {

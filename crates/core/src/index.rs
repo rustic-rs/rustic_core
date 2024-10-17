@@ -4,20 +4,34 @@ use bytes::Bytes;
 use derive_more::Constructor;
 
 use crate::{
-    backend::{decrypt::DecryptReadBackend, FileType},
+    backend::{decrypt::DecryptReadBackend, CryptBackendErrorKind, FileType},
     blob::{tree::TreeId, BlobId, BlobType, DataId},
-    error::IndexErrorKind,
     index::binarysorted::{Index, IndexCollector, IndexType},
     progress::Progress,
     repofile::{
         indexfile::{IndexBlob, IndexFile},
         packfile::PackId,
     },
-    RusticResult,
 };
 
 pub(crate) mod binarysorted;
 pub(crate) mod indexer;
+
+/// [`IndexErrorKind`] describes the errors that can be returned by processing Indizes
+#[derive(thiserror::Error, Debug, displaydoc::Display)]
+pub enum IndexErrorKind {
+    /// blob not found in index
+    BlobInIndexNotFound,
+    /// failed to get a blob from the backend
+    GettingBlobIndexEntryFromBackendFailed,
+    /// saving IndexFile failed
+    SavingIndexFileFailed {
+        /// the error that occurred
+        source: CryptBackendErrorKind,
+    },
+}
+
+pub(crate) type IndexResult<T> = Result<T, IndexErrorKind>;
 
 /// An entry in the index
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Constructor)]
@@ -61,15 +75,18 @@ impl IndexEntry {
     /// # Errors
     ///
     // TODO:  add error! This function will return an error if the blob is not found in the backend.
-    pub fn read_data<B: DecryptReadBackend>(&self, be: &B) -> RusticResult<Bytes> {
-        let data = be.read_encrypted_partial(
-            FileType::Pack,
-            &self.pack,
-            self.blob_type.is_cacheable(),
-            self.offset,
-            self.length,
-            self.uncompressed_length,
-        )?;
+    pub fn read_data<B: DecryptReadBackend>(&self, be: &B) -> IndexResult<Bytes> {
+        let data = be
+            .read_encrypted_partial(
+                FileType::Pack,
+                &self.pack,
+                self.blob_type.is_cacheable(),
+                self.offset,
+                self.length,
+                self.uncompressed_length,
+            )
+            .map_err(|_err| todo!("Error transition"))?;
+
         Ok(data)
     }
 
@@ -183,9 +200,9 @@ pub trait ReadIndex {
         be: &impl DecryptReadBackend,
         tpe: BlobType,
         id: &BlobId,
-    ) -> RusticResult<Bytes> {
+    ) -> IndexResult<Bytes> {
         self.get_id(tpe, id).map_or_else(
-            || Err(IndexErrorKind::BlobInIndexNotFound.into()),
+            || Err(IndexErrorKind::BlobInIndexNotFound),
             |ie| ie.read_data(be),
         )
     }
@@ -272,10 +289,13 @@ impl GlobalIndex {
         be: &impl DecryptReadBackend,
         p: &impl Progress,
         mut collector: IndexCollector,
-    ) -> RusticResult<Self> {
+    ) -> IndexResult<Self> {
         p.set_title("reading index...");
-        for index in be.stream_all::<IndexFile>(p)? {
-            collector.extend(index?.1.packs);
+        for index in be
+            .stream_all::<IndexFile>(p)
+            .map_err(|_err| todo!("Error transition"))?
+        {
+            collector.extend(index.map_err(|_err| todo!("Error transition"))?.1.packs);
         }
 
         p.finish();
@@ -289,7 +309,7 @@ impl GlobalIndex {
     ///
     /// * `be` - The backend to read from
     /// * `p` - The progress tracker
-    pub fn new(be: &impl DecryptReadBackend, p: &impl Progress) -> RusticResult<Self> {
+    pub fn new(be: &impl DecryptReadBackend, p: &impl Progress) -> IndexResult<Self> {
         Self::new_from_collector(be, p, IndexCollector::new(IndexType::Full))
     }
 
@@ -303,7 +323,7 @@ impl GlobalIndex {
     /// # Errors
     ///
     /// If the index could not be read
-    pub fn only_full_trees(be: &impl DecryptReadBackend, p: &impl Progress) -> RusticResult<Self> {
+    pub fn only_full_trees(be: &impl DecryptReadBackend, p: &impl Progress) -> IndexResult<Self> {
         Self::new_from_collector(be, p, IndexCollector::new(IndexType::DataIds))
     }
 

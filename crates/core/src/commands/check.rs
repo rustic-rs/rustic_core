@@ -2,23 +2,26 @@
 use std::{
     collections::{BTreeSet, HashMap},
     fmt::Debug,
+    path::PathBuf,
     str::FromStr,
 };
 
 use bytes::Bytes;
 use bytesize::ByteSize;
 use chrono::{Datelike, Local, NaiveDateTime, Timelike};
+use crossbeam_channel::Sender;
 use derive_setters::Setters;
+use displaydoc::Display;
 use log::{debug, error, warn};
 use rand::{prelude::SliceRandom, thread_rng, Rng};
 use rayon::prelude::{IntoParallelIterator, ParallelIterator};
+use thiserror::Error;
 use zstd::stream::decode_all;
 
 use crate::{
     backend::{cache::Cache, decrypt::DecryptReadBackend, node::NodeType, FileType, ReadBackend},
     blob::{tree::TreeStreamerOnce, BlobId, BlobType},
     crypto::hasher::hash,
-    error::{CommandErrorKind, RusticErrorKind, RusticResult},
     id::Id,
     index::{
         binarysorted::{IndexCollector, IndexType},
@@ -31,6 +34,99 @@ use crate::{
     repository::{Open, Repository},
     TreeId,
 };
+
+#[non_exhaustive]
+#[derive(thiserror::Error, Debug, Display)]
+pub enum CheckCommandErrorKind {
+    /// error reading pack {id} : {source}
+    ErrorReadingPack {
+        id: PackId,
+        source: Box<RusticError>,
+    },
+    /// cold file for hot file Type: {file_type:?}, Id: {id} does not exist
+    NoColdFile { id: Id, file_type: FileType },
+    /// Type: {file_type:?}, Id: {id}: hot size: {size_hot}, actual size: {size}
+    HotFileSizeMismatch {
+        id: Id,
+        file_type: FileType,
+        size_hot: u32,
+        size: u32,
+    },
+    /// hot file Type: {file_type:?}, Id: {id} is missing!
+    NoHotFile { id: Id, file_type: FileType },
+    /// Error reading cached file Type: {file_type:?}, Id: {id} : {source}
+    ErrorReadingCache {
+        id: Id,
+        file_type: FileType,
+        source: Box<RusticError>,
+    },
+    /// Error reading file Type: {file_type:?}, Id: {id} : {source}
+    ErrorReadingFile {
+        id: Id,
+        file_type: FileType,
+        source: Box<RusticError>,
+    },
+    /// Cached file Type: {file_type:?}, Id: {id} is not identical to backend!
+    CacheMismatch { id: Id, file_type: FileType },
+    /// pack {id}: No time is set! Run prune to correct this!
+    PackTimeNotSet { id: PackId },
+    /// pack {id}: blob {blob_id} blob type does not match: type: {blob_type:?}, expected: {expected:?}
+    PackBlobTypesMismatch {
+        id: PackId,
+        blob_id: BlobId,
+        blob_type: BlobType,
+        expected: BlobType,
+    },
+    /// pack {id}: blob {blob_id} offset in index: {offset}, expected: {expected}
+    PackBlobOffsetMismatch {
+        id: PackId,
+        blob_id: BlobId,
+        offset: u32,
+        expected: u32,
+    },
+    /// pack {id} not referenced in index. Can be a parallel backup job. To repair: 'rustic repair index'.
+    PackNotReferenced { id: Id },
+    /// pack {id}: size computed by index: {index_size}, actual size: {size}. To repair: 'rustic repair index'.
+    PackSizeMismatchIndex { id: Id, index_size: u32, size: u32 },
+    /// pack {id} is referenced by the index but not present! To repair: 'rustic repair index'."
+    NoPack { id: PackId },
+    /// file {file:?} doesn't have a content
+    FileHasNoContent { file: PathBuf },
+    /// file {file:?} blob {blob_num} has null ID
+    FileBlobHasNullId { file: PathBuf, blob_num: usize },
+    /// file {file:?} blob {blob_id} is missing in index
+    FileBlobNotInIndex { file: PathBuf, blob_id: Id },
+    /// dir {dir:?} doesn't have a subtree
+    NoSubTree { dir: PathBuf },
+    /// "dir {dir:?} subtree has null ID
+    NullSubTree { dir: PathBuf },
+    /// pack {id}: data size does not match expected size. Read: {size} bytes, expected: {expected} bytes
+    PackSizeMismatch {
+        id: PackId,
+        size: usize,
+        expected: usize,
+    },
+    /// pack {id}: Hash mismatch. Computed hash: {computed}
+    PackHashMismatch { id: PackId, computed: PackId },
+    /// pack {id}: Header length in pack file doesn't match index. In pack: {length}, computed: {computed}
+    PackHeaderLengthMismatch {
+        id: PackId,
+        length: u32,
+        computed: u32,
+    },
+    /// pack {id}: Header from pack file does not match the index
+    PackHeaderMismatchIndex { id: PackId },
+    /// pack {id}, blob {blob_id}: Actual uncompressed length does not fit saved uncompressed length
+    PackBlobLengthMismatch { id: PackId, blob_id: BlobId },
+    /// pack {id}, blob {blob_id}: Hash mismatch. Computed hash: {computed}
+    PackBlobHashMismatch {
+        id: PackId,
+        blob_id: BlobId,
+        computed: BlobId,
+    },
+}
+
+pub(crate) type CheckResult = Result<(), CheckCommandErrorKind>;
 
 #[derive(Clone, Copy, Debug, Default)]
 #[non_exhaustive]
@@ -202,11 +298,13 @@ pub struct CheckOptions {
 /// # Panics
 ///
 // TODO: Add panics
+#[allow(clippy::needless_pass_by_value)]
 pub(crate) fn check_repository<P: ProgressBars, S: Open>(
     repo: &Repository<P, S>,
     opts: CheckOptions,
     trees: Vec<TreeId>,
-) -> RusticResult<()> {
+    err_send: Sender<CheckCommandErrorKind>,
+) -> CheckResult<()> {
     let be = repo.dbe();
     let cache = repo.cache();
     let hot_be = &repo.be_hot;
@@ -225,18 +323,19 @@ pub(crate) fn check_repository<P: ProgressBars, S: Open>(
 
                 let p = pb.progress_bytes(format!("checking {file_type:?} in cache..."));
                 // TODO: Make concurrency (20) customizable
-                check_cache_files(20, cache, raw_be, file_type, &p)?;
+
+                check_cache_files(20, cache, raw_be, file_type, &p, &err_send)?;
             }
         }
     }
 
     if let Some(hot_be) = hot_be {
         for file_type in [FileType::Snapshot, FileType::Index] {
-            check_hot_files(raw_be, hot_be, file_type, pb)?;
+            check_hot_files(raw_be, hot_be, file_type, pb, &err_send)?;
         }
     }
 
-    let index_collector = check_packs(be, hot_be, pb)?;
+    let index_collector = check_packs(be, hot_be, pb, &err_send)?;
 
     if let Some(cache) = &cache {
         let p = pb.progress_spinner("cleaning up packs from cache...");
@@ -253,7 +352,7 @@ pub(crate) fn check_repository<P: ProgressBars, S: Open>(
         if !opts.trust_cache {
             let p = pb.progress_bytes("checking packs in cache...");
             // TODO: Make concurrency (5) customizable
-            check_cache_files(5, cache, raw_be, FileType::Pack, &p)?;
+            check_cache_files(5, cache, raw_be, FileType::Pack, &p, &err_send)?;
         }
     }
 
@@ -279,13 +378,19 @@ pub(crate) fn check_repository<P: ProgressBars, S: Open>(
         packs.into_par_iter().for_each(|pack| {
             let id = pack.id;
             let data = be.read_full(FileType::Pack, &id).unwrap();
-            match check_pack(be, pack, data, &p) {
+            match check_pack(be, pack, data, &p, &err_send) {
                 Ok(()) => {}
-                Err(err) => error!("Error reading pack {id} : {err}",),
+                Err(err) => {
+                    let _ = err_send.send(CheckCommandErrorKind::ErrorReadingPack {
+                        id,
+                        source: Box::new(err),
+                    });
+                }
             }
         });
         p.finish();
     }
+
     Ok(())
 }
 
@@ -306,7 +411,8 @@ fn check_hot_files(
     be_hot: &impl ReadBackend,
     file_type: FileType,
     pb: &impl ProgressBars,
-) -> RusticResult<()> {
+    err_send: &Sender<CheckCommandErrorKind>,
+) -> CheckResult<()> {
     let p = pb.progress_spinner(format!("checking {file_type:?} in hot repo..."));
     let mut files = be
         .list_with_size(file_type)
@@ -320,18 +426,25 @@ fn check_hot_files(
 
     for (id, size_hot) in files_hot {
         match files.remove(&id) {
-            None => error!("hot file Type: {file_type:?}, Id: {id} does not exist in repo"),
+            None => {
+                let _ = err_send.send(CheckCommandErrorKind::NoColdFile { id, file_type });
+            }
             Some(size) if size != size_hot => {
-                // TODO: This should be an actual error not a log entry
-                error!("Type: {file_type:?}, Id: {id}: hot size: {size_hot}, actual size: {size}");
+                let _ = err_send.send(CheckCommandErrorKind::HotFileSizeMismatch {
+                    id,
+                    file_type,
+                    size_hot,
+                    size,
+                });
             }
             _ => {} //everything ok
         }
     }
 
     for (id, _) in files {
-        error!("hot file Type: {file_type:?}, Id: {id} is missing!",);
+        let _ = err_send.send(CheckCommandErrorKind::NoHotFile { id, file_type });
     }
+
     p.finish();
 
     Ok(())
@@ -356,7 +469,8 @@ fn check_cache_files(
     be: &impl ReadBackend,
     file_type: FileType,
     p: &impl Progress,
-) -> RusticResult<()> {
+    err_send: &Sender<CheckCommandErrorKind>,
+) -> CheckResult<()> {
     let files = cache.list_with_size(file_type)?;
 
     if files.is_empty() {
@@ -375,15 +489,21 @@ fn check_cache_files(
                 be.read_full(file_type, &id),
             ) {
                 (Err(err), _) => {
-                    error!("Error reading cached file Type: {file_type:?}, Id: {id} : {err}");
+                    let _ = err_send.send(CheckCommandErrorKind::ErrorReadingCache {
+                        id,
+                        file_type,
+                        source: Box::new(err),
+                    });
                 }
                 (_, Err(err)) => {
-                    error!("Error reading file Type: {file_type:?}, Id: {id} : {err}");
+                    let _ = err_send.send(CheckCommandErrorKind::ErrorReadingFile {
+                        id,
+                        file_type,
+                        source: Box::new(RusticErrorKind::Backend(err).into()),
+                    });
                 }
                 (Ok(Some(data_cached)), Ok(data)) if data_cached != data => {
-                    error!(
-                        "Cached file Type: {file_type:?}, Id: {id} is not identical to backend!"
-                    );
+                    let _ = err_send.send(CheckCommandErrorKind::CacheMismatch { id, file_type });
                 }
                 (Ok(_), Ok(_)) => {} // everything ok
             }
@@ -392,6 +512,7 @@ fn check_cache_files(
         });
 
     p.finish();
+
     Ok(())
 }
 
@@ -415,7 +536,8 @@ fn check_packs(
     be: &impl DecryptReadBackend,
     hot_be: &Option<impl ReadBackend>,
     pb: &impl ProgressBars,
-) -> RusticResult<IndexCollector> {
+    err_send: &Sender<CheckCommandErrorKind>,
+) -> CheckResult<IndexCollector> {
     let mut packs = HashMap::new();
     let mut tree_packs = HashMap::new();
     let mut index_collector = IndexCollector::new(IndexType::Full);
@@ -435,7 +557,7 @@ fn check_packs(
 
             // Check if time is set _
             if check_time && p.time.is_none() {
-                error!("pack {}: No time is set! Run prune to correct this!", p.id);
+                let _ = err_send.send(CheckCommandErrorKind::PackTimeNotSet { id: p.id });
             }
 
             // check offsests in index
@@ -444,17 +566,21 @@ fn check_packs(
             blobs.sort_unstable();
             for blob in blobs {
                 if blob.tpe != blob_type {
-                    error!(
-                        "pack {}: blob {} blob type does not match: type: {:?}, expected: {:?}",
-                        p.id, blob.id, blob.tpe, blob_type
-                    );
+                    let _ = err_send.send(CheckCommandErrorKind::PackBlobTypesMismatch {
+                        id: p.id,
+                        blob_id: blob.id,
+                        blob_type: blob.tpe,
+                        expected: blob_type,
+                    });
                 }
 
                 if blob.offset != expected_offset {
-                    error!(
-                        "pack {}: blob {} offset in index: {}, expected: {}",
-                        p.id, blob.id, blob.offset, expected_offset
-                    );
+                    let _ = err_send.send(CheckCommandErrorKind::PackBlobOffsetMismatch {
+                        id: p.id,
+                        blob_id: blob.id,
+                        offset: blob.offset,
+                        expected: expected_offset,
+                    });
                 }
                 expected_offset += blob.length;
             }
@@ -465,12 +591,12 @@ fn check_packs(
 
     if let Some(hot_be) = hot_be {
         let p = pb.progress_spinner("listing packs in hot repo...");
-        check_packs_list_hot(hot_be, tree_packs, &packs)?;
+        check_packs_list_hot(hot_be, tree_packs, &packs, err_send)?;
         p.finish();
     }
 
     let p = pb.progress_spinner("listing packs...");
-    check_packs_list(be, packs)?;
+    check_packs_list(be, packs, err_send)?;
     p.finish();
 
     Ok(index_collector)
@@ -487,7 +613,11 @@ fn check_packs(
 /// # Errors
 ///
 /// If a pack is missing or has a different size
-fn check_packs_list(be: &impl ReadBackend, mut packs: HashMap<PackId, u32>) -> RusticResult<()> {
+fn check_packs_list(
+    be: &impl ReadBackend,
+    mut packs: HashMap<PackId, u32>,
+    err_send: &Sender<CheckCommandErrorKind>,
+) -> CheckResult<()> {
     for (id, size) in be
         .list_with_size(FileType::Pack)
         .map_err(RusticErrorKind::Backend)?
@@ -495,15 +625,22 @@ fn check_packs_list(be: &impl ReadBackend, mut packs: HashMap<PackId, u32>) -> R
         match packs.remove(&PackId::from(id)) {
             None => warn!("pack {id} not referenced in index. Can be a parallel backup job. To repair: 'rustic repair index'."),
             Some(index_size) if index_size != size => {
-                error!("pack {id}: size computed by index: {index_size}, actual size: {size}. To repair: 'rustic repair index'.");
+                let _ = err_send.send(
+                    CheckCommandErrorKind::PackSizeMismatchIndex {
+                        id,
+                        index_size,
+                        size,
+                    }
+                );
             }
             _ => {} //everything ok
         }
     }
 
     for (id, _) in packs {
-        error!("pack {id} is referenced by the index but not present! To repair: 'rustic repair index'.",);
+        let _ = err_send.send(CheckCommandErrorKind::NoPack { id });
     }
+
     Ok(())
 }
 
@@ -517,11 +654,13 @@ fn check_packs_list(be: &impl ReadBackend, mut packs: HashMap<PackId, u32>) -> R
 /// # Errors
 ///
 /// If a pack is missing or has a different size
+// TODO: Error handling!
 fn check_packs_list_hot(
     be: &impl ReadBackend,
     mut treepacks: HashMap<PackId, u32>,
     packs: &HashMap<PackId, u32>,
-) -> RusticResult<()> {
+    _err_send: &Sender<CheckCommandErrorKind>,
+) -> CheckResult<()> {
     for (id, size) in be
         .list_with_size(FileType::Pack)
         .map_err(RusticErrorKind::Backend)?
@@ -562,7 +701,7 @@ fn check_trees(
     index: &impl ReadGlobalIndex,
     snap_trees: Vec<TreeId>,
     pb: &impl ProgressBars,
-) -> RusticResult<BTreeSet<PackId>> {
+) -> CheckResult<BTreeSet<PackId>> {
     let mut packs = BTreeSet::new();
     let p = pb.progress_counter("checking trees...");
     let mut tree_streamer = TreeStreamerOnce::new(be, index, snap_trees, p)?;
@@ -648,20 +787,25 @@ fn check_pack(
     index_pack: IndexPack,
     mut data: Bytes,
     p: &impl Progress,
-) -> RusticResult<()> {
+    err_send: &Sender<CheckCommandErrorKind>,
+) -> CheckResult<()> {
     let id = index_pack.id;
     let size = index_pack.pack_size();
     if data.len() != size as usize {
-        error!(
-            "pack {id}: data size does not match expected size. Read: {} bytes, expected: {size} bytes",
-            data.len()
-        );
+        let _ = err_send.send(CheckCommandErrorKind::PackSizeMismatch {
+            id,
+            size: data.len(),
+            expected: size as usize,
+        });
         return Ok(());
     }
 
-    let comp_id = PackId::from(hash(&data));
-    if id != comp_id {
-        error!("pack {id}: Hash mismatch. Computed hash: {comp_id}");
+    let computed_id = PackId::from(hash(&data));
+    if id != computed_id {
+        let _ = err_send.send(CheckCommandErrorKind::PackHashMismatch {
+            id,
+            computed: computed_id,
+        });
         return Ok(());
     }
 
@@ -669,7 +813,11 @@ fn check_pack(
     let header_len = PackHeaderRef::from_index_pack(&index_pack).size();
     let pack_header_len = PackHeaderLength::from_binary(&data.split_off(data.len() - 4))?.to_u32();
     if pack_header_len != header_len {
-        error!("pack {id}: Header length in pack file doesn't match index. In pack: {pack_header_len}, calculated: {header_len}");
+        let _ = err_send.send(CheckCommandErrorKind::PackHeaderLengthMismatch {
+            id,
+            length: pack_header_len,
+            computed: header_len,
+        });
         return Ok(());
     }
 
@@ -680,7 +828,7 @@ fn check_pack(
     let mut blobs = index_pack.blobs;
     blobs.sort_unstable_by_key(|b| b.offset);
     if pack_blobs != blobs {
-        error!("pack {id}: Header from pack file does not match the index");
+        let _ = err_send.send(CheckCommandErrorKind::PackHeaderMismatchIndex { id });
         debug!("pack file header: {pack_blobs:?}");
         debug!("index: {:?}", blobs);
         return Ok(());
@@ -696,14 +844,19 @@ fn check_pack(
         if let Some(length) = blob.uncompressed_length {
             blob_data = decode_all(&*blob_data).unwrap();
             if blob_data.len() != length.get() as usize {
-                error!("pack {id}, blob {blob_id}: Actual uncompressed length does not fit saved uncompressed length");
+                let _ =
+                    err_send.send(CheckCommandErrorKind::PackBlobLengthMismatch { id, blob_id });
                 return Ok(());
             }
         }
 
-        let comp_id = BlobId::from(hash(&blob_data));
-        if blob.id != comp_id {
-            error!("pack {id}, blob {blob_id}: Hash mismatch. Computed hash: {comp_id}");
+        let computed_id = BlobId::from(hash(&blob_data));
+        if blob.id != computed_id {
+            let _ = err_send.send(CheckCommandErrorKind::PackBlobHashMismatch {
+                id,
+                blob_id,
+                computed: computed_id,
+            });
             return Ok(());
         }
         p.inc(blob.length.into());

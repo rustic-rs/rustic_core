@@ -126,8 +126,8 @@ pub use crate::{
         ignore::{LocalSource, LocalSourceFilterOptions, LocalSourceSaveOptions},
         local_destination::LocalDestination,
         node::last_modified_node,
-        FileType, ReadBackend, ReadSource, ReadSourceEntry, ReadSourceOpen, RepositoryBackends,
-        WriteBackend, ALL_FILE_TYPES,
+        BackendDynError, BackendResult, FileType, ReadBackend, ReadSource, ReadSourceEntry,
+        ReadSourceOpen, RepositoryBackends, WriteBackend, ALL_FILE_TYPES,
     },
     blob::{
         tree::{FindMatches, FindNode, TreeId, TreeStreamerOptions as LsOptions},

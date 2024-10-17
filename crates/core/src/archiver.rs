@@ -3,7 +3,7 @@ pub(crate) mod parent;
 pub(crate) mod tree;
 pub(crate) mod tree_archiver;
 
-use std::path::{Path, PathBuf};
+use std::path::{Path, PathBuf, StripPrefixError};
 
 use chrono::Local;
 use log::warn;
@@ -16,10 +16,38 @@ use crate::{
     },
     backend::{decrypt::DecryptFullBackend, ReadSource, ReadSourceEntry},
     blob::BlobType,
-    index::{indexer::Indexer, indexer::SharedIndexer, ReadGlobalIndex},
+    index::{
+        indexer::{Indexer, SharedIndexer},
+        ReadGlobalIndex,
+    },
     repofile::{configfile::ConfigFile, snapshotfile::SnapshotFile},
-    Progress, RusticResult,
+    Progress,
 };
+
+/// [`ArchiverErrorKind`] describes the errors that can be returned from the archiver
+#[derive(thiserror::Error, Debug, displaydoc::Display)]
+pub enum ArchiverErrorKind {
+    /// tree stack empty
+    TreeStackEmpty,
+    /// cannot open file
+    OpeningFileFailed,
+    /// option should contain a value, but contained `None`
+    UnpackingTreeTypeOptionalFailed,
+    /// couldn't get size for archive: `{0:?}`
+    CouldNotGetSizeForArchive(BackendAccessErrorKind),
+    /// couldn't determine size for item in Archiver
+    CouldNotDetermineSize,
+    /// failed to save index: `{0:?}`
+    IndexSavingFailed(IndexErrorKind),
+    /// failed to save file in backend: `{0:?}`
+    FailedToSaveFileInBackend(CryptBackendErrorKind),
+    /// finalizing SnapshotSummary failed: `{0:?}`
+    FinalizingSnapshotSummaryFailed(SnapshotFileErrorKind),
+    /// conversion from `u64` to `usize` failed: `{0:?}`
+    ConversionFromU64ToUsizeFailed(TryFromIntError),
+}
+
+pub(crate) type ArchiverResult<T> = Result<T, ArchiverErrorKind>;
 
 /// The `Archiver` is responsible for archiving files and trees.
 /// It will read the file, chunk it, and write the chunks to the backend.
@@ -77,7 +105,7 @@ impl<'a, BE: DecryptFullBackend, I: ReadGlobalIndex> Archiver<'a, BE, I> {
         config: &ConfigFile,
         parent: Parent,
         mut snap: SnapshotFile,
-    ) -> RusticResult<Self> {
+    ) -> ArchiverResult<Self> {
         let indexer = Indexer::new(be.clone()).into_shared();
         let mut summary = snap.summary.take().unwrap_or_default();
         summary.backup_start = Local::now();
@@ -129,13 +157,13 @@ impl<'a, BE: DecryptFullBackend, I: ReadGlobalIndex> Archiver<'a, BE, I> {
         skip_identical_parent: bool,
         no_scan: bool,
         p: &impl Progress,
-    ) -> RusticResult<SnapshotFile>
+    ) -> ArchiverResult<SnapshotFile>
     where
         R: ReadSource + 'static,
         <R as ReadSource>::Open: Send,
         <R as ReadSource>::Iter: Send,
     {
-        std::thread::scope(|s| -> RusticResult<_> {
+        std::thread::scope(|s| -> ArchiverResult<_> {
             // determine backup size in parallel to running backup
             let src_size_handle = s.spawn(|| {
                 if !no_scan && !p.is_hidden() {
@@ -178,7 +206,7 @@ impl<'a, BE: DecryptFullBackend, I: ReadGlobalIndex> Archiver<'a, BE, I> {
             // handle beginning and ending of trees
             let iter = TreeIterator::new(iter);
 
-            scope(|scope| -> RusticResult<_> {
+            scope(|scope| -> ArchiverResult<_> {
                 // use parent snapshot
                 iter.filter_map(
                     |item| match self.parent.process(&self.be, self.index, item) {
@@ -211,13 +239,22 @@ impl<'a, BE: DecryptFullBackend, I: ReadGlobalIndex> Archiver<'a, BE, I> {
         stats.apply(&mut summary, BlobType::Data);
         self.snap.tree = id;
 
-        self.indexer.write().unwrap().finalize()?;
+        self.indexer
+            .write()
+            .unwrap()
+            .finalize()
+            .map_err(|_err| todo!("Error transition"))?;
 
-        summary.finalize(self.snap.time)?;
+        summary
+            .finalize(self.snap.time)
+            .map_err(|_err| todo!("Error transition"))?;
         self.snap.summary = Some(summary);
 
         if !skip_identical_parent || Some(self.snap.tree) != self.parent.tree_id() {
-            let id = self.be.save_file(&self.snap)?;
+            let id = self
+                .be
+                .save_file(&self.snap)
+                .map_err(|_err| todo!("Error transition"))?;
             self.snap.id = id.into();
         }
 

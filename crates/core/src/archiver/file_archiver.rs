@@ -5,6 +5,7 @@ use crate::{
         parent::{ItemWithParent, ParentResult},
         tree::TreeType,
         tree_archiver::TreeItem,
+        ArchiverErrorKind, ArchiverResult,
     },
     backend::{
         decrypt::DecryptWriteBackend,
@@ -18,7 +19,6 @@ use crate::{
     cdc::rolling_hash::Rabin64,
     chunker::ChunkIter,
     crypto::hasher::hash,
-    error::{ArchiverErrorKind, RusticResult},
     index::{indexer::SharedIndexer, ReadGlobalIndex},
     progress::Progress,
     repofile::configfile::ConfigFile,
@@ -65,8 +65,8 @@ impl<'a, BE: DecryptWriteBackend, I: ReadGlobalIndex> FileArchiver<'a, BE, I> {
         index: &'a I,
         indexer: SharedIndexer<BE>,
         config: &ConfigFile,
-    ) -> RusticResult<Self> {
-        let poly = config.poly()?;
+    ) -> ArchiverResult<Self> {
+        let poly = config.poly().map_err(|_err| todo!("Error transition"))?;
 
         let data_packer = Packer::new(
             be,
@@ -74,8 +74,11 @@ impl<'a, BE: DecryptWriteBackend, I: ReadGlobalIndex> FileArchiver<'a, BE, I> {
             indexer,
             config,
             index.total_size(BlobType::Data),
-        )?;
+        )
+        .map_err(|_err| todo!("Error transition"))?;
+
         let rabin = Rabin64::new_with_polynom(6, poly);
+
         Ok(Self {
             index,
             data_packer,
@@ -107,7 +110,7 @@ impl<'a, BE: DecryptWriteBackend, I: ReadGlobalIndex> FileArchiver<'a, BE, I> {
         &self,
         item: ItemWithParent<Option<O>>,
         p: &impl Progress,
-    ) -> RusticResult<TreeItem> {
+    ) -> ArchiverResult<TreeItem> {
         Ok(match item {
             TreeType::NewTree(item) => TreeType::NewTree(item),
             TreeType::EndTree => TreeType::EndTree,
@@ -119,7 +122,8 @@ impl<'a, BE: DecryptWriteBackend, I: ReadGlobalIndex> FileArchiver<'a, BE, I> {
                 } else if node.node_type == NodeType::File {
                     let r = open
                         .ok_or(ArchiverErrorKind::UnpackingTreeTypeOptionalFailed)?
-                        .open()?;
+                        .open()
+                        .map_err(|_err| todo!("Error transition"))?;
                     self.backup_reader(r, node, p)?
                 } else {
                     (node, 0)
@@ -135,25 +139,26 @@ impl<'a, BE: DecryptWriteBackend, I: ReadGlobalIndex> FileArchiver<'a, BE, I> {
         r: impl Read + Send + 'static,
         node: Node,
         p: &impl Progress,
-    ) -> RusticResult<(Node, u64)> {
+    ) -> ArchiverResult<(Node, u64)> {
         let chunks: Vec<_> = ChunkIter::new(
             r,
-            usize::try_from(node.meta.size)
-                .map_err(ArchiverErrorKind::ConversionFromU64ToUsizeFailed)?,
+            usize::try_from(node.meta.size).map_err(|_err| todo!("Error transition"))?,
             self.rabin.clone(),
         )
         .map(|chunk| {
-            let chunk = chunk.map_err(ArchiverErrorKind::FromStdIo)?;
+            let chunk = chunk.map_err(|_err| todo!("Error transition"))?;
             let id = hash(&chunk);
             let size = chunk.len() as u64;
 
             if !self.index.has_data(&DataId::from(id)) {
-                self.data_packer.add(chunk.into(), BlobId::from(id))?;
+                self.data_packer
+                    .add(chunk.into(), BlobId::from(id))
+                    .map_err(|_err| todo!("Error transition"))?;
             }
             p.inc(size);
             Ok((DataId::from(id), size))
         })
-        .collect::<RusticResult<_>>()?;
+        .collect::<ArchiverResult<_>>()?;
 
         let filesize = chunks.iter().map(|x| x.1).sum();
         let content = chunks.into_iter().map(|x| x.0).collect();
@@ -172,7 +177,10 @@ impl<'a, BE: DecryptWriteBackend, I: ReadGlobalIndex> FileArchiver<'a, BE, I> {
     /// # Panics
     ///
     /// If the channel could not be dropped
-    pub(crate) fn finalize(self) -> RusticResult<PackerStats> {
-        self.data_packer.finalize()
+    pub(crate) fn finalize(self) -> ArchiverResult<PackerStats> {
+        Ok(self
+            .data_packer
+            .finalize()
+            .map_err(|_err| todo!("Error transition"))?)
     }
 }

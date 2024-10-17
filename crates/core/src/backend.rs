@@ -10,9 +10,8 @@ pub(crate) mod node;
 pub(crate) mod stdin;
 pub(crate) mod warm_up;
 
-use std::{io::Read, ops::Deref, path::PathBuf, sync::Arc};
+use std::{io::Read, num::TryFromIntError, ops::Deref, path::PathBuf, sync::Arc};
 
-use anyhow::Result;
 use bytes::Bytes;
 use enum_map::Enum;
 use log::trace;
@@ -24,10 +23,77 @@ use serde_derive::{Deserialize, Serialize};
 
 use crate::{
     backend::node::{Metadata, Node, NodeType},
-    error::{BackendAccessErrorKind, RusticErrorKind},
-    id::Id,
-    RusticResult,
+    id::{Id, IdResult},
 };
+
+#[derive(thiserror::Error, Debug, displaydoc::Display)]
+/// Experienced an error in the backend: `{0}`
+pub struct BackendDynError(pub Box<dyn std::error::Error + Send + Sync>);
+
+/// [`BackendAccessErrorKind`] describes the errors that can be returned by the various Backends
+#[derive(thiserror::Error, Debug, displaydoc::Display)]
+pub enum BackendAccessErrorKind {
+    /// General Backend Error: {0:?}
+    #[error(transparent)]
+    General(#[from] BackendDynError),
+    /// backend `{0:?}` is not supported!
+    BackendNotSupported(String),
+    /// backend `{0}` cannot be loaded: {1:?}
+    BackendLoadError(String, BackendDynError),
+    /// no suitable id found for `{0}`
+    NoSuitableIdFound(String),
+    /// id `{0}` is not unique
+    IdNotUnique(String),
+    /// creating data in backend failed
+    CreatingDataOnBackendFailed,
+    /// writing bytes to backend failed
+    WritingBytesToBackendFailed,
+    /// removing data from backend failed
+    RemovingDataFromBackendFailed,
+    /// failed to list files on Backend
+    ListingFilesOnBackendFailed,
+    /// Path is not allowed: `{0:?}`
+    PathNotAllowed(PathBuf),
+}
+
+/// [`CryptBackendErrorKind`] describes the errors that can be returned by a Decryption action in Backends
+#[derive(thiserror::Error, Debug, displaydoc::Display)]
+pub enum CryptBackendErrorKind {
+    /// decryption not supported for backend
+    DecryptionNotSupportedForBackend,
+    /// length of uncompressed data does not match!
+    LengthOfUncompressedDataDoesNotMatch,
+    /// failed to read encrypted data during full read
+    DecryptionInFullReadFailed,
+    /// failed to read encrypted data during partial read
+    DecryptionInPartialReadFailed,
+    /// decrypting from backend failed
+    DecryptingFromBackendFailed,
+    /// deserializing from bytes of JSON Text failed: `{0:?}`
+    DeserializingFromBytesOfJsonTextFailed(serde_json::Error),
+    /// failed to write data in crypt backend
+    WritingDataInCryptBackendFailed,
+    /// failed to list Ids
+    ListingIdsInDecryptionBackendFailed,
+    /// writing full hash failed in CryptBackend
+    WritingFullHashFailed,
+    /// decoding Zstd compressed data failed: `{0:?}`
+    DecodingZstdCompressedDataFailed(std::io::Error),
+    /// Serializing to JSON byte vector failed: `{0:?}`
+    SerializingToJsonByteVectorFailed(serde_json::Error),
+    /// encrypting data failed
+    EncryptingDataFailed,
+    /// Compressing and appending data failed: `{0:?}`
+    CopyEncodingDataFailed(std::io::Error),
+    /// conversion for integer failed: `{0:?}`
+    IntConversionFailed(TryFromIntError),
+    /// Extra verification failed: After decrypting and decompressing the data changed!
+    ExtraVerificationFailed,
+}
+
+pub type BackendResult<T> = Result<T, BackendDynError>;
+pub(crate) type BackendAccessResult<T> = Result<T, BackendAccessErrorKind>;
+pub(crate) type CryptBackendResult<T> = Result<T, CryptBackendErrorKind>;
 
 /// All [`FileType`]s which are located in separated directories
 pub const ALL_FILE_TYPES: [FileType; 4] = [
@@ -95,7 +161,7 @@ pub trait ReadBackend: Send + Sync + 'static {
     /// # Errors
     ///
     /// If the files could not be listed.
-    fn list_with_size(&self, tpe: FileType) -> Result<Vec<(Id, u32)>>;
+    fn list_with_size(&self, tpe: FileType) -> BackendResult<Vec<(Id, u32)>>;
 
     /// Lists all files of the given type.
     ///
@@ -106,7 +172,7 @@ pub trait ReadBackend: Send + Sync + 'static {
     /// # Errors
     ///
     /// If the files could not be listed.
-    fn list(&self, tpe: FileType) -> Result<Vec<Id>> {
+    fn list(&self, tpe: FileType) -> BackendResult<Vec<Id>> {
         Ok(self
             .list_with_size(tpe)?
             .into_iter()
@@ -124,7 +190,7 @@ pub trait ReadBackend: Send + Sync + 'static {
     /// # Errors
     ///
     /// If the file could not be read.
-    fn read_full(&self, tpe: FileType, id: &Id) -> Result<Bytes>;
+    fn read_full(&self, tpe: FileType, id: &Id) -> BackendResult<Bytes>;
 
     /// Reads partial data of the given file.
     ///
@@ -146,7 +212,7 @@ pub trait ReadBackend: Send + Sync + 'static {
         cacheable: bool,
         offset: u32,
         length: u32,
-    ) -> Result<Bytes>;
+    ) -> BackendResult<Bytes>;
 
     /// Specify if the backend needs a warming-up of files before accessing them.
     fn needs_warm_up(&self) -> bool {
@@ -163,7 +229,7 @@ pub trait ReadBackend: Send + Sync + 'static {
     /// # Errors
     ///
     /// If the file could not be read.
-    fn warm_up(&self, _tpe: FileType, _id: &Id) -> Result<()> {
+    fn warm_up(&self, _tpe: FileType, _id: &Id) -> BackendResult<()> {
         Ok(())
     }
 }
@@ -198,7 +264,11 @@ pub trait FindInBackend: ReadBackend {
     ///
     /// [`BackendAccessErrorKind::NoSuitableIdFound`]: crate::error::BackendAccessErrorKind::NoSuitableIdFound
     /// [`BackendAccessErrorKind::IdNotUnique`]: crate::error::BackendAccessErrorKind::IdNotUnique
-    fn find_starts_with<T: AsRef<str>>(&self, tpe: FileType, vec: &[T]) -> RusticResult<Vec<Id>> {
+    fn find_starts_with<T: AsRef<str>>(
+        &self,
+        tpe: FileType,
+        vec: &[T],
+    ) -> BackendAccessResult<Vec<Id>> {
         #[derive(Clone, Copy, PartialEq, Eq)]
         enum MapResult<T> {
             None,
@@ -206,7 +276,7 @@ pub trait FindInBackend: ReadBackend {
             NonUnique,
         }
         let mut results = vec![MapResult::None; vec.len()];
-        for id in self.list(tpe).map_err(RusticErrorKind::Backend)? {
+        for id in self.list(tpe)? {
             let id_hex = id.to_hex();
             for (i, v) in vec.iter().enumerate() {
                 if id_hex.starts_with(v.as_ref()) {
@@ -226,11 +296,10 @@ pub trait FindInBackend: ReadBackend {
                 MapResult::Some(id) => Ok(id),
                 MapResult::None => Err(BackendAccessErrorKind::NoSuitableIdFound(
                     (vec[i]).as_ref().to_string(),
-                )
-                .into()),
-                MapResult::NonUnique => {
-                    Err(BackendAccessErrorKind::IdNotUnique((vec[i]).as_ref().to_string()).into())
-                }
+                )),
+                MapResult::NonUnique => Err(BackendAccessErrorKind::IdNotUnique(
+                    (vec[i]).as_ref().to_string(),
+                )),
             })
             .collect()
     }
@@ -251,7 +320,7 @@ pub trait FindInBackend: ReadBackend {
     /// [`IdErrorKind::HexError`]: crate::error::IdErrorKind::HexError
     /// [`BackendAccessErrorKind::NoSuitableIdFound`]: crate::error::BackendAccessErrorKind::NoSuitableIdFound
     /// [`BackendAccessErrorKind::IdNotUnique`]: crate::error::BackendAccessErrorKind::IdNotUnique
-    fn find_id(&self, tpe: FileType, id: &str) -> RusticResult<Id> {
+    fn find_id(&self, tpe: FileType, id: &str) -> BackendAccessResult<Id> {
         Ok(self.find_ids(tpe, &[id.to_string()])?.remove(0))
     }
 
@@ -275,10 +344,10 @@ pub trait FindInBackend: ReadBackend {
     /// [`IdErrorKind::HexError`]: crate::error::IdErrorKind::HexError
     /// [`BackendAccessErrorKind::NoSuitableIdFound`]: crate::error::BackendAccessErrorKind::NoSuitableIdFound
     /// [`BackendAccessErrorKind::IdNotUnique`]: crate::error::BackendAccessErrorKind::IdNotUnique
-    fn find_ids<T: AsRef<str>>(&self, tpe: FileType, ids: &[T]) -> RusticResult<Vec<Id>> {
+    fn find_ids<T: AsRef<str>>(&self, tpe: FileType, ids: &[T]) -> BackendAccessResult<Vec<Id>> {
         ids.iter()
             .map(|id| id.as_ref().parse())
-            .collect::<RusticResult<Vec<_>>>()
+            .collect::<IdResult<Vec<_>>>()
             .or_else(|err|{
                 trace!("no valid IDs given: {err}, searching for ID starting with given strings instead");
                 self.find_starts_with(tpe, ids)})
@@ -299,7 +368,7 @@ pub trait WriteBackend: ReadBackend {
     /// # Returns
     ///
     /// The result of the creation.
-    fn create(&self) -> Result<()> {
+    fn create(&self) -> BackendResult<()> {
         Ok(())
     }
 
@@ -319,7 +388,8 @@ pub trait WriteBackend: ReadBackend {
     /// # Returns
     ///
     /// The result of the write.
-    fn write_bytes(&self, tpe: FileType, id: &Id, cacheable: bool, buf: Bytes) -> Result<()>;
+    fn write_bytes(&self, tpe: FileType, id: &Id, cacheable: bool, buf: Bytes)
+        -> BackendResult<()>;
 
     /// Removes the given file.
     ///
@@ -336,7 +406,7 @@ pub trait WriteBackend: ReadBackend {
     /// # Returns
     ///
     /// The result of the removal.
-    fn remove(&self, tpe: FileType, id: &Id, cacheable: bool) -> Result<()>;
+    fn remove(&self, tpe: FileType, id: &Id, cacheable: bool) -> BackendResult<()>;
 }
 
 #[cfg(test)]
@@ -345,8 +415,8 @@ mock! {
 
     impl ReadBackend for Backend{
         fn location(&self) -> String;
-        fn list_with_size(&self, tpe: FileType) -> Result<Vec<(Id, u32)>>;
-        fn read_full(&self, tpe: FileType, id: &Id) -> Result<Bytes>;
+        fn list_with_size(&self, tpe: FileType) -> BackendResult<Vec<(Id, u32)>>;
+        fn read_full(&self, tpe: FileType, id: &Id) -> BackendResult<Bytes>;
         fn read_partial(
             &self,
             tpe: FileType,
@@ -354,24 +424,30 @@ mock! {
             cacheable: bool,
             offset: u32,
             length: u32,
-        ) -> Result<Bytes>;
+        ) -> BackendResult<Bytes>;
     }
 
     impl WriteBackend for Backend {
-        fn create(&self) -> Result<()>;
-        fn write_bytes(&self, tpe: FileType, id: &Id, cacheable: bool, buf: Bytes) -> Result<()>;
-        fn remove(&self, tpe: FileType, id: &Id, cacheable: bool) -> Result<()>;
+        fn create(&self) -> BackendResult<()>;
+        fn write_bytes(&self, tpe: FileType, id: &Id, cacheable: bool, buf: Bytes) -> BackendResult<()>;
+        fn remove(&self, tpe: FileType, id: &Id, cacheable: bool) -> BackendResult<()>;
     }
 }
 
 impl WriteBackend for Arc<dyn WriteBackend> {
-    fn create(&self) -> Result<()> {
+    fn create(&self) -> BackendResult<()> {
         self.deref().create()
     }
-    fn write_bytes(&self, tpe: FileType, id: &Id, cacheable: bool, buf: Bytes) -> Result<()> {
+    fn write_bytes(
+        &self,
+        tpe: FileType,
+        id: &Id,
+        cacheable: bool,
+        buf: Bytes,
+    ) -> BackendResult<()> {
         self.deref().write_bytes(tpe, id, cacheable, buf)
     }
-    fn remove(&self, tpe: FileType, id: &Id, cacheable: bool) -> Result<()> {
+    fn remove(&self, tpe: FileType, id: &Id, cacheable: bool) -> BackendResult<()> {
         self.deref().remove(tpe, id, cacheable)
     }
 }
@@ -380,13 +456,13 @@ impl ReadBackend for Arc<dyn WriteBackend> {
     fn location(&self) -> String {
         self.deref().location()
     }
-    fn list_with_size(&self, tpe: FileType) -> Result<Vec<(Id, u32)>> {
+    fn list_with_size(&self, tpe: FileType) -> BackendResult<Vec<(Id, u32)>> {
         self.deref().list_with_size(tpe)
     }
-    fn list(&self, tpe: FileType) -> Result<Vec<Id>> {
+    fn list(&self, tpe: FileType) -> BackendResult<Vec<Id>> {
         self.deref().list(tpe)
     }
-    fn read_full(&self, tpe: FileType, id: &Id) -> Result<Bytes> {
+    fn read_full(&self, tpe: FileType, id: &Id) -> BackendResult<Bytes> {
         self.deref().read_full(tpe, id)
     }
     fn read_partial(
@@ -396,7 +472,7 @@ impl ReadBackend for Arc<dyn WriteBackend> {
         cacheable: bool,
         offset: u32,
         length: u32,
-    ) -> Result<Bytes> {
+    ) -> BackendResult<Bytes> {
         self.deref()
             .read_partial(tpe, id, cacheable, offset, length)
     }
@@ -426,7 +502,7 @@ pub struct ReadSourceEntry<O> {
 }
 
 impl<O> ReadSourceEntry<O> {
-    fn from_path(path: PathBuf, open: Option<O>) -> RusticResult<Self> {
+    fn from_path(path: PathBuf, open: Option<O>) -> BackendAccessResult<Self> {
         let node = Node::new_node(
             path.file_name()
                 .ok_or_else(|| BackendAccessErrorKind::PathNotAllowed(path.clone()))?,
@@ -440,6 +516,8 @@ impl<O> ReadSourceEntry<O> {
 /// Trait for backends that can read and open sources.
 /// This trait is implemented by all backends that can read data and open from a source.
 pub trait ReadSourceOpen {
+    /// The error type used for this source
+    type Error: std::error::Error + Send + Sync;
     /// The Reader used for this source
     type Reader: Read + Send + 'static;
 
@@ -452,13 +530,14 @@ pub trait ReadSourceOpen {
     /// # Result
     ///
     /// The reader used to read from the source.
-    fn open(self) -> RusticResult<Self::Reader>;
+    fn open(self) -> Result<Self::Reader, Self::Error>;
 }
 
 /// blanket implementation for readers
 impl<T: Read + Send + 'static> ReadSourceOpen for T {
+    type Error = BackendDynError;
     type Reader = T;
-    fn open(self) -> RusticResult<Self::Reader> {
+    fn open(self) -> Result<Self::Reader, Self::Error> {
         Ok(self)
     }
 }
@@ -467,10 +546,12 @@ impl<T: Read + Send + 'static> ReadSourceOpen for T {
 ///
 /// This trait is implemented by all backends that can read data from a source.
 pub trait ReadSource: Sync + Send {
+    /// The error type used for this source
+    type Error: std::error::Error + Send + Sync + 'static;
     /// The type used to handle open source files
     type Open: ReadSourceOpen;
     /// The iterator we use to iterate over the source entries
-    type Iter: Iterator<Item = RusticResult<ReadSourceEntry<Self::Open>>>;
+    type Iter: Iterator<Item = Result<ReadSourceEntry<Self::Open>, Self::Error>>;
 
     /// Returns the size of the source.
     ///
@@ -481,7 +562,7 @@ pub trait ReadSource: Sync + Send {
     /// # Returns
     ///
     /// The size of the source, if it is known.
-    fn size(&self) -> RusticResult<Option<u64>>;
+    fn size(&self) -> Result<Option<u64>, Self::Error>;
 
     /// Returns an iterator over the entries of the source.
     fn entries(&self) -> Self::Iter;

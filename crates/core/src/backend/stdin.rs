@@ -4,10 +4,7 @@ use std::{
     path::PathBuf,
 };
 
-use crate::{
-    backend::{ReadSource, ReadSourceEntry},
-    error::RusticResult,
-};
+use crate::backend::{BackendAccessErrorKind, ReadSource, ReadSourceEntry};
 
 /// The `StdinSource` is a `ReadSource` for stdin.
 #[derive(Debug, Clone)]
@@ -24,13 +21,14 @@ impl StdinSource {
 }
 
 impl ReadSource for StdinSource {
+    type Error = BackendAccessErrorKind;
     /// The open type.
     type Open = Stdin;
     /// The iterator type.
-    type Iter = Once<RusticResult<ReadSourceEntry<Stdin>>>;
+    type Iter = Once<Result<ReadSourceEntry<Stdin>, Self::Error>>;
 
     /// Returns the size of the source.
-    fn size(&self) -> RusticResult<Option<u64>> {
+    fn size(&self) -> Result<Option<u64>, Self::Error> {
         Ok(None)
     }
 

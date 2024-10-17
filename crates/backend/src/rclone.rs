@@ -5,19 +5,44 @@ use std::{
     thread::JoinHandle,
 };
 
-use anyhow::Result;
 use bytes::Bytes;
 use constants::DEFAULT_COMMAND;
+use displaydoc::Display;
 use log::{debug, info};
 use rand::{
     distributions::{Alphanumeric, DistString},
     thread_rng,
 };
 use semver::{BuildMetadata, Prerelease, Version, VersionReq};
+use thiserror::Error;
 
-use crate::{error::RcloneErrorKind, rest::RestBackend};
+use crate::rest::RestBackend;
 
-use rustic_core::{CommandInput, FileType, Id, ReadBackend, WriteBackend};
+use rustic_core::{BackendResult, CommandInput, FileType, Id, ReadBackend, WriteBackend};
+
+/// [`RcloneErrorKind`] describes the errors that can be returned by a backend provider
+#[derive(Error, Debug, Display)]
+#[non_exhaustive]
+pub enum RcloneErrorKind {
+    /// 'rclone version' doesn't give any output
+    NoOutputForRcloneVersion,
+    /// cannot get stdout of rclone
+    NoStdOutForRclone,
+    /// rclone exited with `{0:?}`
+    RCloneExitWithBadStatus(ExitStatus),
+    /// url must start with http:\/\/! url: {0:?}
+    UrlNotStartingWithHttp(String),
+    /// StdIo Error: `{0:?}`
+    #[error(transparent)]
+    FromIoError(#[from] std::io::Error),
+    /// utf8 error: `{0:?}`
+    #[error(transparent)]
+    FromUtf8Error(#[from] Utf8Error),
+    /// error parsing verision number from `{0:?}`
+    FromParseVersion(String),
+    /// Using rclone without authentication! Upgrade to rclone >= 1.52.2 (current version: `{0}`)!
+    RCloneWithoutAuthentication(String),
+}
 
 pub(super) mod constants {
     /// The default command called if no other is specified
@@ -70,7 +95,7 @@ impl Drop for RcloneBackend {
 /// [`RcloneErrorKind::FromUtf8Error`]: RcloneErrorKind::FromUtf8Error
 /// [`RcloneErrorKind::NoOutputForRcloneVersion`]: RcloneErrorKind::NoOutputForRcloneVersion
 /// [`RcloneErrorKind::FromParseVersion`]: RcloneErrorKind::FromParseVersion
-fn check_clone_version(rclone_version_output: &[u8]) -> Result<()> {
+fn check_clone_version(rclone_version_output: &[u8]) -> BackendResult<()> {
     let rclone_version = std::str::from_utf8(rclone_version_output)
         .map_err(RcloneErrorKind::FromUtf8Error)?
         .lines()
@@ -127,7 +152,7 @@ impl RcloneBackend {
     ///
     /// If the rclone command is not found.
     // TODO: This should be an error, not a panic.
-    pub fn new(url: impl AsRef<str>, options: HashMap<String, String>) -> Result<Self> {
+    pub fn new(url: impl AsRef<str>, options: HashMap<String, String>) -> BackendResult<Self> {
         let rclone_command = options.get("rclone-command");
         let use_password = options
             .get("use-password")
@@ -247,7 +272,7 @@ impl ReadBackend for RcloneBackend {
     /// * `tpe` - The type of the file.
     ///
     /// If the size could not be determined.
-    fn list_with_size(&self, tpe: FileType) -> Result<Vec<(Id, u32)>> {
+    fn list_with_size(&self, tpe: FileType) -> BackendResult<Vec<(Id, u32)>> {
         self.rest.list_with_size(tpe)
     }
 
@@ -261,7 +286,7 @@ impl ReadBackend for RcloneBackend {
     /// # Returns
     ///
     /// The data read.
-    fn read_full(&self, tpe: FileType, id: &Id) -> Result<Bytes> {
+    fn read_full(&self, tpe: FileType, id: &Id) -> BackendResult<Bytes> {
         self.rest.read_full(tpe, id)
     }
 
@@ -285,14 +310,14 @@ impl ReadBackend for RcloneBackend {
         cacheable: bool,
         offset: u32,
         length: u32,
-    ) -> Result<Bytes> {
+    ) -> BackendResult<Bytes> {
         self.rest.read_partial(tpe, id, cacheable, offset, length)
     }
 }
 
 impl WriteBackend for RcloneBackend {
     /// Creates a new file.
-    fn create(&self) -> Result<()> {
+    fn create(&self) -> BackendResult<()> {
         self.rest.create()
     }
 
@@ -304,7 +329,13 @@ impl WriteBackend for RcloneBackend {
     /// * `id` - The id of the file.
     /// * `cacheable` - Whether the data should be cached.
     /// * `buf` - The data to write.
-    fn write_bytes(&self, tpe: FileType, id: &Id, cacheable: bool, buf: Bytes) -> Result<()> {
+    fn write_bytes(
+        &self,
+        tpe: FileType,
+        id: &Id,
+        cacheable: bool,
+        buf: Bytes,
+    ) -> BackendResult<()> {
         self.rest.write_bytes(tpe, id, cacheable, buf)
     }
 
@@ -315,7 +346,7 @@ impl WriteBackend for RcloneBackend {
     /// * `tpe` - The type of the file.
     /// * `id` - The id of the file.
     /// * `cacheable` - Whether the file is cacheable.
-    fn remove(&self, tpe: FileType, id: &Id, cacheable: bool) -> Result<()> {
+    fn remove(&self, tpe: FileType, id: &Id, cacheable: bool) -> BackendResult<()> {
         self.rest.remove(tpe, id, cacheable)
     }
 }

@@ -7,7 +7,16 @@ use derive_more::{Constructor, Display};
 use rand::{thread_rng, RngCore};
 use serde_derive::{Deserialize, Serialize};
 
-use crate::{crypto::hasher::hash, error::IdErrorKind, RusticError, RusticResult};
+use crate::crypto::hasher::hash;
+
+/// [`IdErrorKind`] describes the errors that can be returned by processing IDs
+#[derive(thiserror::Error, Debug, displaydoc::Display, Copy, Clone)]
+pub enum IdErrorKind {
+    /// Hex decoding error: `{0:?}`
+    HexError(hex::FromHexError),
+}
+
+pub(crate) type IdResult<T> = Result<T, IdErrorKind>;
 
 pub(super) mod constants {
     /// The length of the hash in bytes
@@ -71,7 +80,7 @@ pub struct Id(
 );
 
 impl FromStr for Id {
-    type Err = RusticError;
+    type Err = IdErrorKind;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let mut id = Self::default();
         hex::decode_to_slice(s, &mut id.0).map_err(IdErrorKind::HexError)?;
@@ -102,7 +111,7 @@ impl Id {
     ///
     /// [`IdErrorKind::HexError`]: crate::error::IdErrorKind::HexError
     #[deprecated(note = "use FromStr::from_str instead")]
-    pub fn from_hex(s: &str) -> RusticResult<Self> {
+    pub fn from_hex(s: &str) -> IdResult<Self> {
         s.parse()
     }
 

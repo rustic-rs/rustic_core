@@ -1,10 +1,30 @@
+use std::num::ParseIntError;
+
 use serde_derive::{Deserialize, Serialize};
 use serde_with::skip_serializing_none;
 
 use crate::{
-    backend::FileType, blob::BlobType, define_new_id_struct, error::ConfigFileErrorKind,
-    impl_repofile, repofile::RepoFile, RusticResult,
+    backend::FileType, blob::BlobType, define_new_id_struct, impl_repofile, repofile::RepoFile,
 };
+
+/// [`ConfigFileErrorKind`] describes the errors that can be returned for `ConfigFile`s
+#[derive(thiserror::Error, Debug, displaydoc::Display)]
+pub enum ConfigFileErrorKind {
+    /// config version not supported: {version}, compression: {compression:?}
+    ConfigVersionNotSupported {
+        /// The version of the config
+        version: u32,
+        /// The compression level
+        compression: Option<i32>,
+    },
+    /// Parsing failed for polynomial: {polynomial} : {source}
+    ParsingFailedForPolynomial {
+        polynomial: String,
+        source: ParseIntError,
+    },
+}
+
+pub(crate) type ConfigFileResult<T> = Result<T, ConfigFileErrorKind>;
 
 pub(super) mod constants {
 
@@ -133,10 +153,16 @@ impl ConfigFile {
     ///
     /// * [`ConfigFileErrorKind::ParsingFailedForPolynomial`] - If the polynomial could not be parsed
     ///
-    /// [`ConfigFileErrorKind::ParsingFailedForPolynomial`]: crate::error::ConfigFileErrorKind::ParsingFailedForPolynomial
-    pub fn poly(&self) -> RusticResult<u64> {
-        Ok(u64::from_str_radix(&self.chunker_polynomial, 16)
-            .map_err(ConfigFileErrorKind::ParsingFailedForPolynomial)?)
+    /// [`ConfigFileErrorKind::ParsingFailedForPolynomial`]: ConfigFileErrorKind::ParsingFailedForPolynomial
+    pub fn poly(&self) -> ConfigFileResult<u64> {
+        Ok(
+            u64::from_str_radix(&self.chunker_polynomial, 16).map_err(|err| {
+                ConfigFileErrorKind::ParsingFailedForPolynomial {
+                    polynomial: self.chunker_polynomial.clone(),
+                    source: err,
+                }
+            })?,
+        )
     }
 
     /// Get the compression level
@@ -145,13 +171,16 @@ impl ConfigFile {
     ///
     /// * [`ConfigFileErrorKind::ConfigVersionNotSupported`] - If the version is not supported
     ///
-    /// [`ConfigFileErrorKind::ConfigVersionNotSupported`]: crate::error::ConfigFileErrorKind::ConfigVersionNotSupported
-    pub fn zstd(&self) -> RusticResult<Option<i32>> {
+    /// [`ConfigFileErrorKind::ConfigVersionNotSupported`]: ConfigFileErrorKind::ConfigVersionNotSupported
+    pub fn zstd(&self) -> ConfigFileResult<Option<i32>> {
         match (self.version, self.compression) {
             (1, _) | (2, Some(0)) => Ok(None),
             (2, None) => Ok(Some(0)), // use default (=0) zstd compression
             (2, Some(c)) => Ok(Some(c)),
-            _ => Err(ConfigFileErrorKind::ConfigVersionNotSupported.into()),
+            _ => Err(ConfigFileErrorKind::ConfigVersionNotSupported {
+                version: self.version,
+                compression: self.compression,
+            }),
         }
     }
 
