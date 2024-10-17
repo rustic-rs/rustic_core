@@ -75,6 +75,7 @@ impl<'a, BE: DecryptWriteBackend, I: ReadGlobalIndex> TreeArchiver<'a, BE, I> {
             config,
             index.total_size(BlobType::Tree),
         )?;
+        
         Ok(Self {
             tree: Tree::new(),
             stack: Vec::new(),

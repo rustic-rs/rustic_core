@@ -6,7 +6,7 @@ use displaydoc::Display;
 use thiserror::Error;
 
 use crate::{
-    backend::{decrypt::DecryptReadBackend, FileType},
+    backend::{decrypt::DecryptReadBackend, CryptBackendErrorKind, FileType},
     blob::{tree::TreeId, BlobId, BlobType, DataId},
     index::binarysorted::{Index, IndexCollector, IndexType},
     progress::Progress,
@@ -20,14 +20,17 @@ pub(crate) mod binarysorted;
 pub(crate) mod indexer;
 
 /// [`IndexErrorKind`] describes the errors that can be returned by processing Indizes
-#[derive(Error, Debug, Display, Clone, Copy)]
+#[derive(Error, Debug, Display)]
 pub enum IndexErrorKind {
     /// blob not found in index
     BlobInIndexNotFound,
     /// failed to get a blob from the backend
     GettingBlobIndexEntryFromBackendFailed,
     /// saving IndexFile failed
-    SavingIndexFileFailed,
+    SavingIndexFileFailed {
+        /// the error that occurred
+        source: CryptBackendErrorKind,
+    },
 }
 
 pub(crate) type IndexResult<T> = Result<T, IndexErrorKind>;
@@ -83,6 +86,7 @@ impl IndexEntry {
             self.length,
             self.uncompressed_length,
         )?;
+
         Ok(data)
     }
 

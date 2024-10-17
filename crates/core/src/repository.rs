@@ -1,5 +1,5 @@
-mod command_input;
-mod warm_up;
+pub(crate) mod command_input;
+pub(crate) mod warm_up;
 
 pub use command_input::CommandInput;
 
@@ -53,6 +53,7 @@ use crate::{
         restore::{collect_and_prepare, restore_repository, RestoreOptions, RestorePlan},
     },
     crypto::aespoly1305::Key,
+    error::RusticErrorKind,
     index::{
         binarysorted::{IndexCollector, IndexType},
         GlobalIndex, IndexEntry, ReadGlobalIndex, ReadIndex,
@@ -60,7 +61,7 @@ use crate::{
     progress::{NoProgressBars, Progress, ProgressBars},
     repofile::{
         configfile::ConfigId,
-        keyfile::find_key_in_backend,
+        keyfile::{find_key_in_backend, KeyFileErrorKind},
         packfile::PackId,
         snapshotfile::{SnapshotGroup, SnapshotGroupCriterion, SnapshotId},
         ConfigFile, KeyId, PathList, RepoFile, RepoId, SnapshotFile, SnapshotSummary, Tree,
@@ -574,13 +575,9 @@ impl<P, S> Repository<P, S> {
             }
         }
 
-        let key = find_key_in_backend(&self.be, &password, None).map_err(|err| {
-            match err.into_inner() {
-                RusticErrorKind::KeyFile(KeyFileErrorKind::NoSuitableKeyFound) => {
-                    RepositoryErrorKind::IncorrectPassword.into()
-                }
-                err => err,
-            }
+        let key = find_key_in_backend(&self.be, &password, None).map_err(|err| match err {
+            KeyFileErrorKind::NoSuitableKeyFound => RepositoryErrorKind::IncorrectPassword.into(),
+            err => err,
         })?;
         info!("repository {}: password is correct.", self.name);
         let dbe = DecryptBackend::new(self.be.clone(), key);
