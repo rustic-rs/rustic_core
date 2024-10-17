@@ -1,9 +1,9 @@
 use std::str::FromStr;
 use std::time::Duration;
 
-use anyhow::Result;
 use backoff::{backoff::Backoff, ExponentialBackoff, ExponentialBackoffBuilder};
 use bytes::Bytes;
+use displaydoc::Display;
 use log::{trace, warn};
 use reqwest::{
     blocking::{Client, ClientBuilder, Response},
@@ -11,10 +11,32 @@ use reqwest::{
     Url,
 };
 use serde::Deserialize;
+use thiserror::Error;
 
-use crate::error::RestErrorKind;
+use rustic_core::{BackendResult, FileType, Id, ReadBackend, WriteBackend};
 
-use rustic_core::{FileType, Id, ReadBackend, WriteBackend};
+/// [`RestErrorKind`] describes the errors that can be returned while dealing with the REST API
+#[derive(Error, Debug, Display)]
+#[non_exhaustive]
+pub enum RestErrorKind {
+    /// value `{0:?}` not supported for option retry!
+    NotSupportedForRetry(String),
+    /// parsing failed for url: `{0:?}`
+    UrlParsingFailed(#[from] url::ParseError),
+    #[cfg(feature = "rest")]
+    /// requesting resource failed: `{0:?}`
+    RequestingResourceFailed(#[from] reqwest::Error),
+    /// couldn't parse duration in humantime library: `{0:?}`
+    CouldNotParseDuration(#[from] humantime::DurationError),
+    #[cfg(feature = "rest")]
+    /// backoff failed: {0:?}
+    BackoffError(#[from] backoff::Error<reqwest::Error>),
+    #[cfg(feature = "rest")]
+    /// Failed to build HTTP client: `{0:?}`
+    BuildingClientFailed(reqwest::Error),
+    /// joining URL failed on: {0:?}
+    JoiningUrlFailed(url::ParseError),
+}
 
 mod consts {
     /// Default number of retries
@@ -24,7 +46,7 @@ mod consts {
 // trait CheckError to add user-defined method check_error on Response
 pub(crate) trait CheckError {
     /// Check reqwest Response for error and treat errors as permanent or transient
-    fn check_error(self) -> Result<Response, backoff::Error<reqwest::Error>>;
+    fn check_error(self) -> BackendResult<Response, backoff::Error<reqwest::Error>>;
 }
 
 impl CheckError for Response {
@@ -37,7 +59,7 @@ impl CheckError for Response {
     /// # Returns
     ///
     /// The response if it is not an error
-    fn check_error(self) -> Result<Response, backoff::Error<reqwest::Error>> {
+    fn check_error(self) -> BackendResult<Response, backoff::Error<reqwest::Error>> {
         match self.error_for_status() {
             Ok(t) => Ok(t),
             // Note: status() always give Some(_) as it is called from a Response
@@ -138,7 +160,7 @@ impl RestBackend {
     pub fn new(
         url: impl AsRef<str>,
         options: impl IntoIterator<Item = (String, String)>,
-    ) -> Result<Self> {
+    ) -> BackendResult<Self> {
         let url = url.as_ref();
         let url = if url.ends_with('/') {
             Url::parse(url).map_err(RestErrorKind::UrlParsingFailed)?
@@ -197,7 +219,7 @@ impl RestBackend {
     /// # Errors
     ///
     /// If the url could not be created.
-    fn url(&self, tpe: FileType, id: &Id) -> Result<Url> {
+    fn url(&self, tpe: FileType, id: &Id) -> BackendResult<Url> {
         let id_path = if tpe == FileType::Config {
             "config".to_string()
         } else {
@@ -245,7 +267,7 @@ impl ReadBackend for RestBackend {
     /// A vector of tuples containing the id and size of the files.
     ///
     /// [`RestErrorKind::JoiningUrlFailed`]: RestErrorKind::JoiningUrlFailed
-    fn list_with_size(&self, tpe: FileType) -> Result<Vec<(Id, u32)>> {
+    fn list_with_size(&self, tpe: FileType) -> BackendResult<Vec<(Id, u32)>> {
         // format which is delivered by the REST-service
         #[derive(Deserialize)]
         struct ListEntry {
@@ -313,7 +335,7 @@ impl ReadBackend for RestBackend {
     /// * [`RestErrorKind::BackoffError`] - If the backoff failed.
     ///
     /// [`RestErrorKind::BackoffError`]: RestErrorKind::BackoffError
-    fn read_full(&self, tpe: FileType, id: &Id) -> Result<Bytes> {
+    fn read_full(&self, tpe: FileType, id: &Id) -> BackendResult<Bytes> {
         trace!("reading tpe: {tpe:?}, id: {id}");
         let url = self.url(tpe, id)?;
         Ok(backoff::retry_notify(
@@ -353,7 +375,7 @@ impl ReadBackend for RestBackend {
         _cacheable: bool,
         offset: u32,
         length: u32,
-    ) -> Result<Bytes> {
+    ) -> BackendResult<Bytes> {
         trace!("reading tpe: {tpe:?}, id: {id}, offset: {offset}, length: {length}");
         let offset2 = offset + length - 1;
         let header_value = format!("bytes={offset}-{offset2}");
@@ -383,7 +405,7 @@ impl WriteBackend for RestBackend {
     /// * [`RestErrorKind::BackoffError`] - If the backoff failed.
     ///
     /// [`RestErrorKind::BackoffError`]: RestErrorKind::BackoffError
-    fn create(&self) -> Result<()> {
+    fn create(&self) -> BackendResult<()> {
         let url = self
             .url
             .join("?create=true")
@@ -413,7 +435,13 @@ impl WriteBackend for RestBackend {
     /// * [`RestErrorKind::BackoffError`] - If the backoff failed.
     ///
     /// [`RestErrorKind::BackoffError`]: RestErrorKind::BackoffError
-    fn write_bytes(&self, tpe: FileType, id: &Id, _cacheable: bool, buf: Bytes) -> Result<()> {
+    fn write_bytes(
+        &self,
+        tpe: FileType,
+        id: &Id,
+        _cacheable: bool,
+        buf: Bytes,
+    ) -> BackendResult<()> {
         trace!("writing tpe: {:?}, id: {}", &tpe, &id);
         let req_builder = self.client.post(self.url(tpe, id)?).body(buf);
         Ok(backoff::retry_notify(
@@ -441,7 +469,7 @@ impl WriteBackend for RestBackend {
     /// * [`RestErrorKind::BackoffError`] - If the backoff failed.
     ///
     /// [`RestErrorKind::BackoffError`]: RestErrorKind::BackoffError
-    fn remove(&self, tpe: FileType, id: &Id, _cacheable: bool) -> Result<()> {
+    fn remove(&self, tpe: FileType, id: &Id, _cacheable: bool) -> BackendResult<()> {
         trace!("removing tpe: {:?}, id: {}", &tpe, &id);
         let url = self.url(tpe, id)?;
         Ok(backoff::retry_notify(

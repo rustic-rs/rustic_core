@@ -57,23 +57,20 @@ pub mod choose;
 pub mod error;
 /// Local backend for Rustic.
 pub mod local;
-/// `OpenDAL` backend for Rustic.
-#[cfg(feature = "opendal")]
-pub mod opendal;
-/// `Rclone` backend for Rustic.
-#[cfg(feature = "rclone")]
-pub mod rclone;
-/// REST backend for Rustic.
-#[cfg(feature = "rest")]
-pub mod rest;
 /// Utility functions for the backend.
 pub mod util;
 
-// rustic_backend Public API
-pub use crate::{
-    choose::{BackendOptions, SupportedBackend},
-    local::LocalBackend,
-};
+/// `OpenDAL` backend for Rustic.
+#[cfg(feature = "opendal")]
+pub mod opendal;
+
+/// `Rclone` backend for Rustic.
+#[cfg(feature = "rclone")]
+pub mod rclone;
+
+/// REST backend for Rustic.
+#[cfg(feature = "rest")]
+pub mod rest;
 
 #[cfg(feature = "opendal")]
 pub use crate::opendal::OpenDALBackend;
@@ -83,3 +80,9 @@ pub use crate::rclone::RcloneBackend;
 
 #[cfg(feature = "rest")]
 pub use crate::rest::RestBackend;
+
+// rustic_backend Public API
+pub use crate::{
+    choose::{BackendOptions, SupportedBackend},
+    local::LocalBackend,
+};

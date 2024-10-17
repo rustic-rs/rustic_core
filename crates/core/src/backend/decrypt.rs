@@ -1,6 +1,5 @@
 use std::{num::NonZeroU32, sync::Arc};
 
-use anyhow::Result;
 use bytes::Bytes;
 use crossbeam_channel::{unbounded, Receiver};
 use rayon::prelude::*;
@@ -15,7 +14,10 @@ pub fn max_compression_level() -> i32 {
 }
 
 use crate::{
-    backend::{CryptBackendResult, FileType, ReadBackend, WriteBackend},
+    backend::{
+        BackendResult, CryptBackendErrorKind, CryptBackendResult, FileType, ReadBackend,
+        WriteBackend,
+    },
     crypto::{hasher::hash, CryptoKey},
     id::Id,
     repofile::{RepoFile, RepoId},
@@ -110,9 +112,7 @@ pub trait DecryptReadBackend: ReadBackend + Clone + 'static {
         uncompressed_length: Option<NonZeroU32>,
     ) -> CryptBackendResult<Bytes> {
         self.read_encrypted_from_partial(
-            &self
-                .read_partial(tpe, id, cacheable, offset, length)
-                .map_err(RusticErrorKind::Backend)?,
+            &self.read_partial(tpe, id, cacheable, offset, length)?,
             uncompressed_length,
         )
     }
@@ -144,7 +144,7 @@ pub trait DecryptReadBackend: ReadBackend + Clone + 'static {
     ///
     /// If the files could not be read.
     fn stream_all<F: RepoFile>(&self, p: &impl Progress) -> StreamResult<F::Id, F> {
-        let list = self.list(F::TYPE).map_err(RusticErrorKind::Backend)?;
+        let list = self.list(F::TYPE)?;
         self.stream_list(&list, p)
     }
 
@@ -222,8 +222,7 @@ pub trait DecryptWriteBackend: WriteBackend + Clone + 'static {
     fn hash_write_full_uncompressed(&self, tpe: FileType, data: &[u8]) -> CryptBackendResult<Id> {
         let data = self.key().encrypt_data(data)?;
         let id = hash(&data);
-        self.write_bytes(tpe, &id, false, data.into())
-            .map_err(RusticErrorKind::Backend)?;
+        self.write_bytes(tpe, &id, false, data.into())?;
         Ok(id)
     }
     /// Saves the given file.
@@ -533,8 +532,7 @@ impl<C: CryptoKey> DecryptReadBackend for DecryptBackend<C> {
     /// [`CryptBackendErrorKind::DecryptionNotSupportedForBackend`]: crate::error::CryptBackendErrorKind::DecryptionNotSupportedForBackend
     /// [`CryptBackendErrorKind::DecodingZstdCompressedDataFailed`]: crate::error::CryptBackendErrorKind::DecodingZstdCompressedDataFailed
     fn read_encrypted_full(&self, tpe: FileType, id: &Id) -> CryptBackendResult<Bytes> {
-        self.decrypt_file(&self.read_full(tpe, id).map_err(RusticErrorKind::Backend)?)
-            .map(Into::into)
+        self.decrypt_file(&self.read_full(tpe, id)?).map(Into::into)
     }
 }
 
@@ -543,15 +541,15 @@ impl<C: CryptoKey> ReadBackend for DecryptBackend<C> {
         self.be.location()
     }
 
-    fn list(&self, tpe: FileType) -> Result<Vec<Id>> {
+    fn list(&self, tpe: FileType) -> BackendResult<Vec<Id>> {
         self.be.list(tpe)
     }
 
-    fn list_with_size(&self, tpe: FileType) -> Result<Vec<(Id, u32)>> {
+    fn list_with_size(&self, tpe: FileType) -> BackendResult<Vec<(Id, u32)>> {
         self.be.list_with_size(tpe)
     }
 
-    fn read_full(&self, tpe: FileType, id: &Id) -> Result<Bytes> {
+    fn read_full(&self, tpe: FileType, id: &Id) -> BackendResult<Bytes> {
         self.be.read_full(tpe, id)
     }
 
@@ -562,21 +560,27 @@ impl<C: CryptoKey> ReadBackend for DecryptBackend<C> {
         cacheable: bool,
         offset: u32,
         length: u32,
-    ) -> Result<Bytes> {
+    ) -> BackendResult<Bytes> {
         self.be.read_partial(tpe, id, cacheable, offset, length)
     }
 }
 
 impl<C: CryptoKey> WriteBackend for DecryptBackend<C> {
-    fn create(&self) -> Result<()> {
+    fn create(&self) -> BackendResult<()> {
         self.be.create()
     }
 
-    fn write_bytes(&self, tpe: FileType, id: &Id, cacheable: bool, buf: Bytes) -> Result<()> {
+    fn write_bytes(
+        &self,
+        tpe: FileType,
+        id: &Id,
+        cacheable: bool,
+        buf: Bytes,
+    ) -> BackendResult<()> {
         self.be.write_bytes(tpe, id, cacheable, buf)
     }
 
-    fn remove(&self, tpe: FileType, id: &Id, cacheable: bool) -> Result<()> {
+    fn remove(&self, tpe: FileType, id: &Id, cacheable: bool) -> BackendResult<()> {
         self.be.remove(tpe, id, cacheable)
     }
 }
