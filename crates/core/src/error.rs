@@ -73,6 +73,10 @@ impl Display for RusticError {
             write!(f, "\n\nFor more information, see: {docs_url}/{code}")?;
         }
 
+        if let Some(existing_issue_url) = &self.existing_issue_url {
+            write!(f, "\n\nThis might be a related issue, please check it for a possible workaround and/or further guidance: {existing_issue_url}")?;
+        }
+
         let new_issue_url = self
             .new_issue_url
             .as_ref()
@@ -80,12 +84,8 @@ impl Display for RusticError {
 
         write!(
             f,
-            "\n\nIf you think this is a bug, please open an issue at: {new_issue_url}"
+            "\n\nIf you think this is an undiscovered bug, please open an issue at: {new_issue_url}"
         )?;
-
-        if let Some(existing_issue_url) = &self.existing_issue_url {
-            write!(f, "\n\nThis might be a related issue, please check it for a possible workaround and/or further guidance: {existing_issue_url}")?;
-        }
 
         Ok(())
     }
@@ -173,19 +173,21 @@ pub enum RusticErrorKind {
 }
 
 pub mod immut_str {
-    // Copyright 2024 Cloudflare, Inc.
-    //
-    // Licensed under the Apache License, Version 2.0 (the "License");
-    // you may not use this file except in compliance with the License.
-    // You may obtain a copy of the License at
-    //
-    // http://www.apache.org/licenses/LICENSE-2.0
-    //
-    // Unless required by applicable law or agreed to in writing, software
-    // distributed under the License is distributed on an "AS IS" BASIS,
-    // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-    // See the License for the specific language governing permissions and
-    // limitations under the License.
+    //! Copyright 2024 Cloudflare, Inc.
+    //!
+    //! Licensed under the Apache License, Version 2.0 (the "License");
+    //! you may not use this file except in compliance with the License.
+    //! You may obtain a copy of the License at
+    //!
+    //! http://www.apache.org/licenses/LICENSE-2.0
+    //!
+    //! Unless required by applicable law or agreed to in writing, software
+    //! distributed under the License is distributed on an "AS IS" BASIS,
+    //! WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+    //! See the License for the specific language governing permissions and
+    //! limitations under the License.
+    //!
+    //! Taken from <https://github.com/cloudflare/pingora/blob/51516839f7155dd74d5cf93006ec1df9ea126b11/pingora-error/src/immut_str.rs>
 
     use std::fmt;
 
