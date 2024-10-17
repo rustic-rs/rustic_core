@@ -36,30 +36,15 @@ pub enum ArchiverErrorKind {
     /// option should contain a value, but contained `None`
     UnpackingTreeTypeOptionalFailed,
     /// couldn't get size for archive: `{0:?}`
-    CouldNotGetSizeForArchive(#[from] BackendAccessErrorKind),
+    CouldNotGetSizeForArchive(BackendAccessErrorKind),
     /// couldn't determine size for item in Archiver
     CouldNotDetermineSize,
     /// failed to save index: `{0:?}`
-    IndexSavingFailed(#[from] IndexErrorKind),
+    IndexSavingFailed(IndexErrorKind),
     /// failed to save file in backend: `{0:?}`
-    FailedToSaveFileInBackend(#[from] CryptBackendErrorKind),
+    FailedToSaveFileInBackend(CryptBackendErrorKind),
     /// finalizing SnapshotSummary failed: `{0:?}`
-    FinalizingSnapshotSummaryFailed(#[from] SnapshotFileErrorKind),
-    /// [`PackerErrorKind`]
-    #[error(transparent)]
-    FromPacker(#[from] PackerErrorKind),
-    /// [`TreeErrorKind`]
-    #[error(transparent)]
-    FromTree(#[from] TreeErrorKind),
-    /// [`ConfigFileErrorKind`]
-    #[error(transparent)]
-    FromConfigFile(#[from] ConfigFileErrorKind),
-    /// [`std::io::Error`]
-    #[error(transparent)]
-    FromStdIo(#[from] std::io::Error),
-    /// [`StripPrefixError`]
-    #[error(transparent)]
-    FromStripPrefix(#[from] StripPrefixError),
+    FinalizingSnapshotSummaryFailed(SnapshotFileErrorKind),
     /// conversion from `u64` to `usize` failed: `{0:?}`
     ConversionFromU64ToUsizeFailed(TryFromIntError),
 }

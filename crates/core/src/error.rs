@@ -167,9 +167,8 @@ pub enum RusticErrorKind {
     /// Describes the errors that can be returned by the various backends from the `rustic_backend` crate.
     #[error(transparent)]
     Backend(#[from] anyhow::Error),
-    /// [`std::io::Error`]
-    #[error(transparent)]
-    FromIo(#[from] std::io::Error),
+    /// IO error
+    Io,
 }
 
 pub mod immut_str {
