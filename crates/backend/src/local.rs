@@ -219,7 +219,7 @@ impl ReadBackend for LocalBackend {
 
         let walker = WalkDir::new(self.path.join(tpe.dirname()))
             .into_iter()
-            .filter_map(walkdir::BackendResult::ok)
+            .filter_map(walkdir::Result::ok)
             .filter(|e| e.file_type().is_file())
             .filter_map(|e| e.file_name().to_string_lossy().parse::<Id>().ok());
         Ok(walker.collect())
@@ -261,7 +261,7 @@ impl ReadBackend for LocalBackend {
 
         let walker = WalkDir::new(path)
             .into_iter()
-            .filter_map(walkdir::BackendResult::ok)
+            .filter_map(walkdir::Result::ok)
             .filter(|e| e.file_type().is_file())
             .map(|e| -> BackendResult<_> {
                 Ok((
