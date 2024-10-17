@@ -13,10 +13,8 @@ pub(crate) mod warm_up;
 use std::{io::Read, num::TryFromIntError, ops::Deref, path::PathBuf, sync::Arc};
 
 use bytes::Bytes;
-use displaydoc::Display;
 use enum_map::Enum;
 use log::trace;
-use thiserror::Error;
 
 #[cfg(test)]
 use mockall::mock;
@@ -28,12 +26,12 @@ use crate::{
     id::{Id, IdResult},
 };
 
-#[derive(Error, Debug, displaydoc::Display)]
+#[derive(thiserror::Error, Debug, displaydoc::Display)]
 /// Experienced an error in the backend: `{0}`
 pub struct BackendDynError(pub Box<dyn std::error::Error + Send + Sync>);
 
 /// [`BackendAccessErrorKind`] describes the errors that can be returned by the various Backends
-#[derive(Error, Debug, Display)]
+#[derive(thiserror::Error, Debug, displaydoc::Display)]
 pub enum BackendAccessErrorKind {
     /// General Backend Error: {0:?}
     #[error(transparent)]
@@ -59,7 +57,7 @@ pub enum BackendAccessErrorKind {
 }
 
 /// [`CryptBackendErrorKind`] describes the errors that can be returned by a Decryption action in Backends
-#[derive(Error, Debug, Display)]
+#[derive(thiserror::Error, Debug, displaydoc::Display)]
 pub enum CryptBackendErrorKind {
     /// decryption not supported for backend
     DecryptionNotSupportedForBackend,
@@ -266,7 +264,11 @@ pub trait FindInBackend: ReadBackend {
     ///
     /// [`BackendAccessErrorKind::NoSuitableIdFound`]: crate::error::BackendAccessErrorKind::NoSuitableIdFound
     /// [`BackendAccessErrorKind::IdNotUnique`]: crate::error::BackendAccessErrorKind::IdNotUnique
-    fn find_starts_with<T: AsRef<str>>(&self, tpe: FileType, vec: &[T]) -> BackendResult<Vec<Id>> {
+    fn find_starts_with<T: AsRef<str>>(
+        &self,
+        tpe: FileType,
+        vec: &[T],
+    ) -> BackendAccessResult<Vec<Id>> {
         #[derive(Clone, Copy, PartialEq, Eq)]
         enum MapResult<T> {
             None,
@@ -294,11 +296,10 @@ pub trait FindInBackend: ReadBackend {
                 MapResult::Some(id) => Ok(id),
                 MapResult::None => Err(BackendAccessErrorKind::NoSuitableIdFound(
                     (vec[i]).as_ref().to_string(),
-                )
-                .into()),
-                MapResult::NonUnique => {
-                    Err(BackendAccessErrorKind::IdNotUnique((vec[i]).as_ref().to_string()).into())
-                }
+                )),
+                MapResult::NonUnique => Err(BackendAccessErrorKind::IdNotUnique(
+                    (vec[i]).as_ref().to_string(),
+                )),
             })
             .collect()
     }
@@ -319,7 +320,7 @@ pub trait FindInBackend: ReadBackend {
     /// [`IdErrorKind::HexError`]: crate::error::IdErrorKind::HexError
     /// [`BackendAccessErrorKind::NoSuitableIdFound`]: crate::error::BackendAccessErrorKind::NoSuitableIdFound
     /// [`BackendAccessErrorKind::IdNotUnique`]: crate::error::BackendAccessErrorKind::IdNotUnique
-    fn find_id(&self, tpe: FileType, id: &str) -> BackendResult<Id> {
+    fn find_id(&self, tpe: FileType, id: &str) -> BackendAccessResult<Id> {
         Ok(self.find_ids(tpe, &[id.to_string()])?.remove(0))
     }
 
@@ -343,7 +344,7 @@ pub trait FindInBackend: ReadBackend {
     /// [`IdErrorKind::HexError`]: crate::error::IdErrorKind::HexError
     /// [`BackendAccessErrorKind::NoSuitableIdFound`]: crate::error::BackendAccessErrorKind::NoSuitableIdFound
     /// [`BackendAccessErrorKind::IdNotUnique`]: crate::error::BackendAccessErrorKind::IdNotUnique
-    fn find_ids<T: AsRef<str>>(&self, tpe: FileType, ids: &[T]) -> BackendResult<Vec<Id>> {
+    fn find_ids<T: AsRef<str>>(&self, tpe: FileType, ids: &[T]) -> BackendAccessResult<Vec<Id>> {
         ids.iter()
             .map(|id| id.as_ref().parse())
             .collect::<IdResult<Vec<_>>>()

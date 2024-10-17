@@ -1,8 +1,6 @@
 use std::io::{self, Read};
 
-use displaydoc::Display;
 use rand::{thread_rng, Rng};
-use thiserror::Error;
 
 use crate::cdc::{
     polynom::{Polynom, Polynom64},
@@ -10,7 +8,7 @@ use crate::cdc::{
 };
 
 /// [`PolynomialErrorKind`] describes the errors that can happen while dealing with Polynomials
-#[derive(Error, Debug, Display, Copy, Clone)]
+#[derive(thiserror::Error, Debug, displaydoc::Display, Copy, Clone)]
 pub enum PolynomialErrorKind {
     /// no suitable polynomial found
     NoSuitablePolynomialFound,

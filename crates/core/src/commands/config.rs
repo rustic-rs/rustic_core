@@ -16,7 +16,7 @@ use crate::{
 };
 
 #[non_exhaustive]
-#[derive(Error, Debug, Display)]
+#[derive(thiserror::Error, Debug, Display)]
 pub enum ConfigConfigCommandErrorKind {
     /// Not allowed on an append-only repository: `{0}`
     NotAllowedWithAppendOnly(String),

@@ -36,7 +36,7 @@ use crate::{
 };
 
 #[non_exhaustive]
-#[derive(Error, Debug, Display)]
+#[derive(thiserror::Error, Debug, Display)]
 pub enum CheckCommandErrorKind {
     /// error reading pack {id} : {source}
     ErrorReadingPack {

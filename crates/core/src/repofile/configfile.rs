@@ -1,16 +1,14 @@
 use std::num::ParseIntError;
 
-use displaydoc::Display;
 use serde_derive::{Deserialize, Serialize};
 use serde_with::skip_serializing_none;
-use thiserror::Error;
 
 use crate::{
     backend::FileType, blob::BlobType, define_new_id_struct, impl_repofile, repofile::RepoFile,
 };
 
 /// [`ConfigFileErrorKind`] describes the errors that can be returned for `ConfigFile`s
-#[derive(Error, Debug, Display)]
+#[derive(thiserror::Error, Debug, displaydoc::Display)]
 pub enum ConfigFileErrorKind {
     /// config version not supported: {version}, compression: {compression:?}
     ConfigVersionNotSupported {

@@ -29,7 +29,7 @@ use crate::blob::{tree::TreeId, DataId};
 
 #[cfg(not(windows))]
 /// [`NodeErrorKind`] describes the errors that can be returned by an action utilizing a node in Backends
-#[derive(Error, Debug, Display)]
+#[derive(thiserror::Error, Debug, Display)]
 pub enum NodeErrorKind {
     /// Unexpected EOF while parsing filename: `{file_name}`
     #[cfg(not(windows))]

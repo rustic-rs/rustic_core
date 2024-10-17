@@ -6,12 +6,11 @@ use binrw::{BinRead, BinWrite};
 use derive_more::{Constructor, Display};
 use rand::{thread_rng, RngCore};
 use serde_derive::{Deserialize, Serialize};
-use thiserror::Error;
 
 use crate::crypto::hasher::hash;
 
 /// [`IdErrorKind`] describes the errors that can be returned by processing IDs
-#[derive(Error, Debug, displaydoc::Display, Copy, Clone)]
+#[derive(thiserror::Error, Debug, displaydoc::Display, Copy, Clone)]
 pub enum IdErrorKind {
     /// Hex decoding error: `{0:?}`
     HexError(hex::FromHexError),

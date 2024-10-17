@@ -7,12 +7,6 @@ use zstd::stream::{copy_encode, decode_all, encode_all};
 
 pub use zstd::compression_level_range;
 
-/// The maximum compression level allowed by zstd
-#[must_use]
-pub fn max_compression_level() -> i32 {
-    *compression_level_range().end()
-}
-
 use crate::{
     backend::{
         BackendResult, CryptBackendErrorKind, CryptBackendResult, FileType, ReadBackend,
@@ -23,6 +17,12 @@ use crate::{
     repofile::{RepoFile, RepoId},
     Progress,
 };
+
+/// The maximum compression level allowed by zstd
+#[must_use]
+pub fn max_compression_level() -> i32 {
+    *compression_level_range().end()
+}
 
 /// A backend that can decrypt data.
 /// This is a trait that is implemented by all backends that can decrypt data.
@@ -112,7 +112,9 @@ pub trait DecryptReadBackend: ReadBackend + Clone + 'static {
         uncompressed_length: Option<NonZeroU32>,
     ) -> CryptBackendResult<Bytes> {
         self.read_encrypted_from_partial(
-            &self.read_partial(tpe, id, cacheable, offset, length)?,
+            &self
+                .read_partial(tpe, id, cacheable, offset, length)
+                .map_err(|_err| todo!("Error transition"))?,
             uncompressed_length,
         )
     }
@@ -144,7 +146,9 @@ pub trait DecryptReadBackend: ReadBackend + Clone + 'static {
     ///
     /// If the files could not be read.
     fn stream_all<F: RepoFile>(&self, p: &impl Progress) -> StreamResult<F::Id, F> {
-        let list = self.list(F::TYPE)?;
+        let list = self
+            .list(F::TYPE)
+            .map_err(|_err| todo!("Error transition"))?;
         self.stream_list(&list, p)
     }
 
@@ -220,9 +224,13 @@ pub trait DecryptWriteBackend: WriteBackend + Clone + 'static {
     ///
     /// The hash of the written data.
     fn hash_write_full_uncompressed(&self, tpe: FileType, data: &[u8]) -> CryptBackendResult<Id> {
-        let data = self.key().encrypt_data(data)?;
+        let data = self
+            .key()
+            .encrypt_data(data)
+            .map_err(|_err| todo!("Error transition"))?;
         let id = hash(&data);
-        self.write_bytes(tpe, &id, false, data.into())?;
+        self.write_bytes(tpe, &id, false, data.into())
+            .map_err(|_err| todo!("Error transition"))?;
         Ok(id)
     }
     /// Saves the given file.
@@ -393,9 +401,14 @@ impl<C: CryptoKey> DecryptBackend<C> {
                 let mut out = vec![2_u8];
                 copy_encode(data, &mut out, level)
                     .map_err(CryptBackendErrorKind::CopyEncodingDataFailed)?;
-                self.key().encrypt_data(&out)?
+                self.key()
+                    .encrypt_data(&out)
+                    .map_err(|_err| todo!("Error transition"))?
             }
-            None => self.key().encrypt_data(data)?,
+            None => self
+                .key()
+                .encrypt_data(data)
+                .map_err(|_err| todo!("Error transition"))?,
         };
         Ok(data_encrypted)
     }
@@ -417,10 +430,19 @@ impl<C: CryptoKey> DecryptBackend<C> {
             .try_into()
             .map_err(CryptBackendErrorKind::IntConversionFailed)?;
         let (data_encrypted, uncompressed_length) = match self.zstd {
-            None => (self.key.encrypt_data(data)?, None),
+            None => (
+                self.key
+                    .encrypt_data(data)
+                    .map_err(|_err| todo!("Error transition"))?,
+                None,
+            ),
             // compress if requested
             Some(level) => (
-                self.key.encrypt_data(&encode_all(data, level)?)?,
+                self.key
+                    .encrypt_data(
+                        &encode_all(data, level).map_err(|_err| todo!("Error transition"))?,
+                    )
+                    .map_err(|_err| todo!("Error transition"))?,
                 NonZeroU32::new(data_len),
             ),
         };
@@ -474,7 +496,7 @@ impl<C: CryptoKey> DecryptWriteBackend for DecryptBackend<C> {
         self.very_file(&data_encrypted, data)?;
         let id = hash(&data_encrypted);
         self.write_bytes(tpe, &id, false, data_encrypted.into())
-            .map_err(RusticErrorKind::Backend)?;
+            .map_err(|_err| todo!("Error transition"))?;
         Ok(id)
     }
 
@@ -514,7 +536,9 @@ impl<C: CryptoKey> DecryptReadBackend for DecryptBackend<C> {
     ///
     /// A vector containing the decrypted data.
     fn decrypt(&self, data: &[u8]) -> CryptBackendResult<Vec<u8>> {
-        self.key.decrypt_data(data)
+        self.key
+            .decrypt_data(data)
+            .map_err(|_err| todo!("Error transition"))
     }
 
     /// Reads encrypted data from the backend.
@@ -532,7 +556,12 @@ impl<C: CryptoKey> DecryptReadBackend for DecryptBackend<C> {
     /// [`CryptBackendErrorKind::DecryptionNotSupportedForBackend`]: crate::error::CryptBackendErrorKind::DecryptionNotSupportedForBackend
     /// [`CryptBackendErrorKind::DecodingZstdCompressedDataFailed`]: crate::error::CryptBackendErrorKind::DecodingZstdCompressedDataFailed
     fn read_encrypted_full(&self, tpe: FileType, id: &Id) -> CryptBackendResult<Bytes> {
-        self.decrypt_file(&self.read_full(tpe, id)?).map(Into::into)
+        self.decrypt_file(
+            &self
+                .read_full(tpe, id)
+                .map_err(|_err| todo!("Error transition"))?,
+        )
+        .map(Into::into)
     }
 }
 

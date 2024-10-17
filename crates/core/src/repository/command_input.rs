@@ -7,10 +7,9 @@ use std::{
 use log::{debug, error, trace, warn};
 use serde::{Deserialize, Serialize, Serializer};
 use serde_with::{serde_as, DisplayFromStr, PickFirst};
-use thiserror::Error;
 
 /// [`CommandInputErrorKind`] describes the errors that can be returned from the CommandInput
-#[derive(Error, Debug, displaydoc::Display)]
+#[derive(thiserror::Error, Debug, displaydoc::Display)]
 pub enum CommandInputErrorKind {
     /// Command execution failed: {context}:{what} : {source}
     CommandExecutionFailed {

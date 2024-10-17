@@ -13,13 +13,11 @@ use cached::proc_macro::cached;
 use chrono::TimeZone;
 use chrono::{DateTime, Local, Utc};
 use derive_setters::Setters;
-use displaydoc::Display;
 use ignore::{overrides::OverrideBuilder, DirEntry, Walk, WalkBuilder};
 use log::warn;
 #[cfg(not(windows))]
 use nix::unistd::{Gid, Group, Uid, User};
 use serde_with::{serde_as, DisplayFromStr};
-use thiserror::Error;
 
 #[cfg(not(windows))]
 use crate::backend::node::ExtendedAttribute;
@@ -30,7 +28,7 @@ use crate::backend::{
 };
 
 /// [`IgnoreErrorKind`] describes the errors that can be returned by a Ignore action in Backends
-#[derive(Error, Debug, Display)]
+#[derive(thiserror::Error, Debug, displaydoc::Display)]
 pub enum IgnoreErrorKind {
     /// generic Ignore error: `{0:?}`
     GenericError(#[from] ignore::Error),

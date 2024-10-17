@@ -9,10 +9,8 @@ use std::{
 };
 
 use bytes::{Bytes, BytesMut};
-use displaydoc::Display;
 use runtime_format::FormatArgs;
 use strum::EnumString;
-use thiserror::Error;
 
 #[cfg(feature = "webdav")]
 /// A struct which enables `WebDAV` access to a [`Vfs`] using [`dav-server`]
@@ -27,7 +25,7 @@ use crate::{
 };
 
 /// [`VfsErrorKind`] describes the errors that can be returned from the Virtual File System
-#[derive(Error, Debug, Display)]
+#[derive(thiserror::Error, Debug, displaydoc::Display)]
 pub enum VfsErrorKind {
     /// No directory entries for symlink found: `{0:?}`
     NoDirectoryEntriesForSymlinkFound(OsString),
@@ -335,7 +333,9 @@ impl Vfs {
     ) -> VfsResult<Node> {
         let meta = Metadata::default();
         match self.tree.get_path(path)? {
-            VfsPath::RusticPath(tree_id, path) => Ok(repo.node_from_path(*tree_id, &path)?),
+            VfsPath::RusticPath(tree_id, path) => Ok(repo
+                .node_from_path(*tree_id, &path)
+                .map_err(|_err| todo!("Error transition"))?),
             VfsPath::VirtualTree(_) => {
                 Ok(Node::new(String::new(), NodeType::Dir, meta, None, None))
             }
@@ -379,9 +379,13 @@ impl Vfs {
     ) -> VfsResult<Vec<Node>> {
         let result = match self.tree.get_path(path)? {
             VfsPath::RusticPath(tree_id, path) => {
-                let node = repo.node_from_path(*tree_id, &path)?;
+                let node = repo
+                    .node_from_path(*tree_id, &path)
+                    .map_err(|_err| todo!("Error transition"))?;
                 if node.is_dir() {
-                    let tree = repo.get_tree(&node.subtree.unwrap())?;
+                    let tree = repo
+                        .get_tree(&node.subtree.unwrap())
+                        .map_err(|_err| todo!("Error transition"))?;
                     tree.nodes
                 } else {
                     Vec::new()
@@ -509,21 +513,32 @@ impl OpenFile {
         // find the start of relevant blobs => find the largest index such that self.content[i].starts_at <= offset, but
         // self.content[i+1] > offset  (note that a last dummy element has been added)
         let mut i = self.content.partition_point(|c| c.starts_at <= offset) - 1;
+
         offset -= self.content[i].starts_at;
+
         let mut result = BytesMut::with_capacity(length);
 
         while length > 0 && i < self.content.len() - 1 {
-            let data = repo.get_blob_cached(&BlobId::from(*self.content[i].id), BlobType::Data)?;
+            let data = repo
+                .get_blob_cached(&BlobId::from(*self.content[i].id), BlobType::Data)
+                .map_err(|_err| todo!("Error transition"))?;
+
             if offset > data.len() {
                 // we cannot read behind the blob. This only happens if offset is too large to fit in the last blob
                 break;
             }
+
             let to_copy = (data.len() - offset).min(length);
+
             result.extend_from_slice(&data[offset..offset + to_copy]);
+
             offset = 0;
+
             length -= to_copy;
+
             i += 1;
         }
+
         Ok(result.into())
     }
 }

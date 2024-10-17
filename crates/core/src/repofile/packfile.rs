@@ -1,9 +1,7 @@
 use std::num::NonZeroU32;
 
 use binrw::{io::Cursor, BinRead, BinWrite};
-use displaydoc::Display;
 use log::trace;
-use thiserror::Error;
 
 use crate::{
     backend::{decrypt::DecryptReadBackend, FileType},
@@ -14,7 +12,7 @@ use crate::{
 };
 
 /// [`PackFileErrorKind`] describes the errors that can be returned for `PackFile`s
-#[derive(Error, Debug, Display)]
+#[derive(thiserror::Error, Debug, displaydoc::Display)]
 pub enum PackFileErrorKind {
     /// Failed reading binary representation of the pack header: `{0:?}`
     ReadingBinaryRepresentationFailed(binrw::Error),
@@ -302,7 +300,7 @@ impl PackHeader {
         let offset = pack_size - read_size;
         let mut data = be
             .read_partial(FileType::Pack, &id, false, offset, read_size)
-            .map_err(RusticErrorKind::Backend)?;
+            .map_err(|_err| todo!("Error transition"))?;
 
         // get header length from the file
         let size_real =
@@ -325,10 +323,13 @@ impl PackHeader {
             // size_guess was too small; we have to read again
             let offset = pack_size - size_real - constants::LENGTH_LEN;
             be.read_partial(FileType::Pack, &id, false, offset, size_real)
-                .map_err(RusticErrorKind::Backend)?
+                .map_err(|_err| todo!("Error transition"))?
         };
 
-        let header = Self::from_binary(&be.decrypt(&data)?)?;
+        let header = Self::from_binary(
+            &be.decrypt(&data)
+                .map_err(|_err| todo!("Error transition"))?,
+        )?;
 
         if header.size() != size_real {
             return Err(PackFileErrorKind::HeaderLengthDoesNotMatchHeaderContents {

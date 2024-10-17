@@ -10,7 +10,6 @@ use std::{
 use chrono::{DateTime, Duration, Local, OutOfRangeError};
 use derivative::Derivative;
 use derive_setters::Setters;
-use displaydoc::Display;
 use dunce::canonicalize;
 use gethostname::gethostname;
 use itertools::Itertools;
@@ -18,7 +17,6 @@ use log::info;
 use path_dedot::ParseDot;
 use serde_derive::{Deserialize, Serialize};
 use serde_with::{serde_as, skip_serializing_none, DisplayFromStr};
-use thiserror::Error;
 
 use crate::{
     backend::{decrypt::DecryptReadBackend, FileType, FindInBackend},
@@ -33,7 +31,7 @@ use crate::{
 use clap::ValueHint;
 
 /// [`SnapshotFileErrorKind`] describes the errors that can be returned for `SnapshotFile`s
-#[derive(Error, Debug, Display)]
+#[derive(thiserror::Error, Debug, displaydoc::Display)]
 pub enum SnapshotFileErrorKind {
     /// non-unicode hostname `{0:?}`
     NonUnicodeHostname(OsString),
@@ -475,7 +473,10 @@ impl SnapshotFile {
     /// * `be` - The backend to use
     /// * `id` - The id of the snapshot
     fn from_backend<B: DecryptReadBackend>(be: &B, id: &SnapshotId) -> SnapshotFileResult<Self> {
-        Ok(Self::set_id((*id, be.get_file(id)?)))
+        Ok(Self::set_id((
+            *id,
+            be.get_file(id).map_err(|_err| todo!("Error transition"))?,
+        )))
     }
 
     /// Get a [`SnapshotFile`] from the backend by (part of the) Id
@@ -530,8 +531,11 @@ impl SnapshotFile {
         let mut latest: Option<Self> = None;
         let mut pred = predicate;
 
-        for snap in be.stream_all::<Self>(p)? {
-            let (id, mut snap) = snap?;
+        for snap in be
+            .stream_all::<Self>(p)
+            .map_err(|_err| todo!("Error transition"))?
+        {
+            let (id, mut snap) = snap.map_err(|_err| todo!("Error transition"))?;
             if !pred(&snap) {
                 continue;
             }
@@ -565,7 +569,9 @@ impl SnapshotFile {
     /// [`BackendAccessErrorKind::IdNotUnique`]: crate::error::BackendAccessErrorKind::IdNotUnique
     pub(crate) fn from_id<B: DecryptReadBackend>(be: &B, id: &str) -> SnapshotFileResult<Self> {
         info!("getting snapshot...");
-        let id = be.find_id(FileType::Snapshot, id)?;
+        let id = be
+            .find_id(FileType::Snapshot, id)
+            .map_err(|_err| todo!("Error transition"))?;
         Self::from_backend(be, &SnapshotId::from(id))
     }
 
@@ -617,7 +623,9 @@ impl SnapshotFile {
         ids: &[T],
         p: &impl Progress,
     ) -> SnapshotFileResult<Vec<Self>> {
-        let ids = be.find_ids(FileType::Snapshot, ids)?;
+        let ids = be
+            .find_ids(FileType::Snapshot, ids)
+            .map_err(|_err| todo!("Error transition"))?;
         Self::fill_missing(be, current, &ids, |_| true, p)
     }
 
@@ -639,8 +647,11 @@ impl SnapshotFile {
             .filter(|id| !snaps.contains_key(&SnapshotId::from(**id)))
             .copied()
             .collect();
-        for res in be.stream_list::<Self>(&missing_ids, p)? {
-            let (id, snap) = res?;
+        for res in be
+            .stream_list::<Self>(&missing_ids, p)
+            .map_err(|_err| todo!("Error transition"))?
+        {
+            let (id, snap) = res.map_err(|_err| todo!("Error transition"))?;
             if filter(&snap) {
                 let _ = snaps.insert(id, snap);
             }
@@ -767,7 +778,8 @@ impl SnapshotFile {
         B: DecryptReadBackend,
         F: FnMut(&Self) -> bool,
     {
-        be.stream_all::<Self>(p)?
+        be.stream_all::<Self>(p)
+            .map_err(|_err| todo!("Error transition"))?
             .into_iter()
             .map_ok(Self::set_id)
             .filter_ok(filter)
@@ -787,7 +799,7 @@ impl SnapshotFile {
     {
         let ids = be
             .list(FileType::Snapshot)
-            .map_err(RusticErrorKind::Backend)?;
+            .map_err(|_err| todo!("Error transition"))?;
         Self::fill_missing(be, current, &ids, filter, p)
     }
 

@@ -3,8 +3,6 @@
 use std::{num::TryFromIntError, path::PathBuf};
 
 use chrono::OutOfRangeError;
-use displaydoc::Display;
-use thiserror::Error;
 
 use crate::{backend::node::NodeType, blob::BlobId, repofile::packfile::PackId, RusticError};
 
@@ -30,7 +28,7 @@ pub mod restore;
 pub mod snapshots;
 
 /// [`CommandErrorKind`] describes the errors that can happen while executing a high-level command
-#[derive(Error, Debug, Display)]
+#[derive(thiserror::Error, Debug, displaydoc::Display)]
 pub enum CommandErrorKind {
     /// path is no dir: `{0}`
     PathIsNoDir(String),

@@ -7,11 +7,9 @@ use std::{
 use bytes::{Bytes, BytesMut};
 use chrono::Local;
 use crossbeam_channel::{bounded, Receiver, Sender};
-use displaydoc::Display;
 use integer_sqrt::IntegerSquareRoot;
 use log::warn;
 use pariter::{scope, IteratorExt};
-use thiserror::Error;
 
 use crate::{
     backend::{
@@ -30,40 +28,16 @@ use crate::{
 };
 
 /// [`PackerErrorKind`] describes the errors that can be returned for a Packer
-#[derive(Error, Debug, Display)]
+#[derive(thiserror::Error, Debug, displaydoc::Display)]
 pub enum PackerErrorKind {
-    /// error returned by cryptographic libraries: `{0:?}`
-    CryptoError(#[from] CryptoErrorKind),
-    /// could not compress due to unsupported config version: `{0:?}`
-    ConfigVersionNotSupported(#[from] ConfigFileErrorKind),
-    /// compressing data failed: `{0:?}`
-    CompressingDataFailed(#[from] std::io::Error),
     /// getting total size failed
     GettingTotalSizeFailed,
-    /// [`crossbeam_channel::SendError`]
-    #[error(transparent)]
-    SendingCrossbeamMessageFailed(
-        #[from] crossbeam_channel::SendError<(bytes::Bytes, BlobId, Option<u32>)>,
-    ),
-    /// [`crossbeam_channel::SendError`]
-    #[error(transparent)]
-    SendingCrossbeamMessageFailedForIndexPack(
-        #[from] crossbeam_channel::SendError<(bytes::Bytes, IndexPack)>,
-    ),
-    /// couldn't create binary representation for pack header: `{0:?}`
-    CouldNotCreateBinaryRepresentationForHeader(#[from] PackFileErrorKind),
-    /// failed to write bytes in backend: `{0:?}`
-    WritingBytesFailedInBackend(#[from] BackendAccessErrorKind),
-    /// failed to write bytes for PackFile: `{0:?}`
-    WritingBytesFailedForPackFile(PackFileErrorKind),
-    /// failed to read partially encrypted data: `{0:?}`
-    ReadingPartiallyEncryptedDataFailed(#[from] CryptBackendErrorKind),
-    /// failed to partially read  data: `{0:?}`
-    PartiallyReadingDataFailed(PackFileErrorKind),
-    /// failed to add index pack: `{0:?}`
-    AddingIndexPackFailed(#[from] IndexErrorKind),
-    /// conversion for integer failed: `{0:?}`
-    IntConversionFailed(#[from] TryFromIntError),
+    /// Conversion from `{from}` to `{to}` failed: {source}
+    ConversionFailed {
+        to: &'static str,
+        from: &'static str,
+        source: std::num::TryFromIntError,
+    },
 }
 
 pub(crate) type PackerResult<T> = Result<T, PackerErrorKind>;
@@ -269,7 +243,9 @@ impl<BE: DecryptWriteBackend> Packer<BE> {
                     .parallel_map_scoped(
                         scope,
                         |(data, id, size_limit): (Bytes, BlobId, Option<u32>)| {
-                            let (data, data_len, uncompressed_length) = be.process_data(&data)?;
+                            let (data, data_len, uncompressed_length) = be
+                                .process_data(&data)
+                                .map_err(|_err| todo!("Error transition"))?;
                             Ok((
                                 data,
                                 id,
@@ -342,7 +318,7 @@ impl<BE: DecryptWriteBackend> Packer<BE> {
     ) -> PackerResult<()> {
         self.sender
             .send((data, id, size_limit))
-            .map_err(PackerErrorKind::SendingCrossbeamMessageFailed)?;
+            .map_err(|_err| todo!("Error transition"))?;
         Ok(())
     }
 
@@ -535,7 +511,11 @@ impl<BE: DecryptWriteBackend> RawPacker<BE> {
         let len = data
             .len()
             .try_into()
-            .map_err(PackerErrorKind::IntConversionFailed)?;
+            .map_err(|err| PackerErrorKind::ConversionFailed {
+                to: "u32",
+                from: "usize",
+                source: err,
+            })?;
         self.file.extend_from_slice(data);
         self.size += len;
         Ok(len)
@@ -569,10 +549,14 @@ impl<BE: DecryptWriteBackend> RawPacker<BE> {
         }
         self.stats.blobs += 1;
         self.stats.data += data_len;
-        let data_len_packed: u64 = data
-            .len()
-            .try_into()
-            .map_err(PackerErrorKind::IntConversionFailed)?;
+        let data_len_packed: u64 =
+            data.len()
+                .try_into()
+                .map_err(|err| PackerErrorKind::ConversionFailed {
+                    to: "u64",
+                    from: "usize",
+                    source: err,
+                })?;
         self.stats.data_packed += data_len_packed;
 
         let size_limit = size_limit.unwrap_or_else(|| self.pack_sizer.pack_size());
@@ -611,19 +595,33 @@ impl<BE: DecryptWriteBackend> RawPacker<BE> {
     /// [`PackFileErrorKind::WritingBinaryRepresentationFailed`]: crate::error::PackFileErrorKind::WritingBinaryRepresentationFailed
     fn write_header(&mut self) -> PackerResult<()> {
         // compute the pack header
-        let data = PackHeaderRef::from_index_pack(&self.index).to_binary()?;
+        let data = PackHeaderRef::from_index_pack(&self.index)
+            .to_binary()
+            .map_err(|_err| todo!("Error transition"))?;
 
         // encrypt and write to pack file
-        let data = self.be.key().encrypt_data(&data)?;
+        let data = self
+            .be
+            .key()
+            .encrypt_data(&data)
+            .map_err(|_err| todo!("Error transition"))?;
 
         let headerlen = data
             .len()
             .try_into()
-            .map_err(PackerErrorKind::IntConversionFailed)?;
+            .map_err(|err| PackerErrorKind::ConversionFailed {
+                to: "u32",
+                from: "usize",
+                source: err,
+            })?;
         _ = self.write_data(&data)?;
 
         // finally write length of header unencrypted to pack file
-        _ = self.write_data(&PackHeaderLength::from_u32(headerlen).to_binary()?)?;
+        _ = self.write_data(
+            &PackHeaderLength::from_u32(headerlen)
+                .to_binary()
+                .map_err(|_err| todo!("Error transition"))?,
+        )?;
 
         Ok(())
     }
@@ -685,13 +683,17 @@ impl<BE: DecryptWriteBackend> FileWriterHandle<BE> {
         index.id = id;
         self.be
             .write_bytes(FileType::Pack, &id, self.cacheable, file)
-            .map_err(RusticErrorKind::Backend)?;
+            .map_err(|_err| todo!("Error transition"))?;
         index.time = Some(Local::now());
         Ok(index)
     }
 
     fn index(&self, index: IndexPack) -> PackerResult<()> {
-        self.indexer.write().unwrap().add(index)?;
+        self.indexer
+            .write()
+            .unwrap()
+            .add(index)
+            .map_err(|_err| todo!("Error transition"))?;
         Ok(())
     }
 }
@@ -760,7 +762,7 @@ impl Actor {
     fn send(&self, load: (Bytes, IndexPack)) -> PackerResult<()> {
         self.sender
             .send(load)
-            .map_err(PackerErrorKind::SendingCrossbeamMessageFailedForIndexPack)?;
+            .map_err(|_err| todo!("Error transition"))?;
         Ok(())
     }
 
@@ -850,7 +852,7 @@ impl<BE: DecryptFullBackend> Repacker<BE> {
                 blob.offset,
                 blob.length,
             )
-            .map_err(RusticErrorKind::Backend)?;
+            .map_err(|_err| todo!("Error transition"))?;
         self.packer.add_raw(
             &data,
             &blob.id,
@@ -873,16 +875,21 @@ impl<BE: DecryptFullBackend> Repacker<BE> {
     /// If the blob could not be added
     /// If reading the blob from the backend fails
     pub fn add(&self, pack_id: &PackId, blob: &IndexBlob) -> PackerResult<()> {
-        let data = self.be.read_encrypted_partial(
-            FileType::Pack,
-            pack_id,
-            blob.tpe.is_cacheable(),
-            blob.offset,
-            blob.length,
-            blob.uncompressed_length,
-        )?;
+        let data = self
+            .be
+            .read_encrypted_partial(
+                FileType::Pack,
+                pack_id,
+                blob.tpe.is_cacheable(),
+                blob.offset,
+                blob.length,
+                blob.uncompressed_length,
+            )
+            .map_err(|_err| todo!("Error transition"))?;
+
         self.packer
             .add_with_sizelimit(data, blob.id, Some(self.size_limit))?;
+
         Ok(())
     }
 

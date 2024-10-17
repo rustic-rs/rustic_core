@@ -6,10 +6,8 @@ pub(crate) mod tree_archiver;
 use std::path::{Path, PathBuf, StripPrefixError};
 
 use chrono::Local;
-use displaydoc::Display;
 use log::warn;
 use pariter::{scope, IteratorExt};
-use thiserror::Error;
 
 use crate::{
     archiver::{
@@ -23,11 +21,11 @@ use crate::{
         ReadGlobalIndex,
     },
     repofile::{configfile::ConfigFile, snapshotfile::SnapshotFile},
-    Progress, RusticResult,
+    Progress,
 };
 
 /// [`ArchiverErrorKind`] describes the errors that can be returned from the archiver
-#[derive(Error, Debug, Display)]
+#[derive(thiserror::Error, Debug, displaydoc::Display)]
 pub enum ArchiverErrorKind {
     /// tree stack empty
     TreeStackEmpty,
@@ -165,7 +163,7 @@ impl<'a, BE: DecryptFullBackend, I: ReadGlobalIndex> Archiver<'a, BE, I> {
         <R as ReadSource>::Open: Send,
         <R as ReadSource>::Iter: Send,
     {
-        std::thread::scope(|s| -> RusticResult<_> {
+        std::thread::scope(|s| -> ArchiverResult<_> {
             // determine backup size in parallel to running backup
             let src_size_handle = s.spawn(|| {
                 if !no_scan && !p.is_hidden() {
@@ -208,7 +206,7 @@ impl<'a, BE: DecryptFullBackend, I: ReadGlobalIndex> Archiver<'a, BE, I> {
             // handle beginning and ending of trees
             let iter = TreeIterator::new(iter);
 
-            scope(|scope| -> RusticResult<_> {
+            scope(|scope| -> ArchiverResult<_> {
                 // use parent snapshot
                 iter.filter_map(
                     |item| match self.parent.process(&self.be, self.index, item) {
@@ -241,13 +239,22 @@ impl<'a, BE: DecryptFullBackend, I: ReadGlobalIndex> Archiver<'a, BE, I> {
         stats.apply(&mut summary, BlobType::Data);
         self.snap.tree = id;
 
-        self.indexer.write().unwrap().finalize()?;
+        self.indexer
+            .write()
+            .unwrap()
+            .finalize()
+            .map_err(|_err| todo!("Error transition"))?;
 
-        summary.finalize(self.snap.time)?;
+        summary
+            .finalize(self.snap.time)
+            .map_err(|_err| todo!("Error transition"))?;
         self.snap.summary = Some(summary);
 
         if !skip_identical_parent || Some(self.snap.tree) != self.parent.tree_id() {
-            let id = self.be.save_file(&self.snap)?;
+            let id = self
+                .be
+                .save_file(&self.snap)
+                .map_err(|_err| todo!("Error transition"))?;
             self.snap.id = id.into();
         }
 

@@ -7,7 +7,6 @@
 
 use derive_setters::Setters;
 use std::fmt::{self, Display};
-use thiserror::Error;
 
 use crate::{error::immut_str::ImmutStr, BackendDynError};
 
@@ -19,7 +18,7 @@ pub(crate) mod constants {
 /// Result type that is being returned from methods that can fail and thus have [`RusticError`]s.
 pub type RusticResult<T> = Result<T, RusticError>;
 
-#[derive(Error, Debug, Setters, Default)]
+#[derive(thiserror::Error, Debug, Setters, Default)]
 #[setters(strip_option)]
 /// Errors that can result from rustic.
 pub struct RusticError {
@@ -151,7 +150,7 @@ pub enum ErrorSeverity {
 /// recommended to match against the wildcard `_` instead of listing all possible variants,
 /// to avoid problems when new variants are added.
 #[non_exhaustive]
-#[derive(Error, Debug, displaydoc::Display, Default)]
+#[derive(thiserror::Error, Debug, displaydoc::Display, Default)]
 pub enum RusticErrorKind {
     /// None
     // This is a placeholder variant to avoid having to use `Option` in the `RusticError` struct.

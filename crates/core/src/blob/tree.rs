@@ -31,7 +31,7 @@ use crate::{
 };
 
 /// [`TreeErrorKind`] describes the errors that can come up dealing with Trees
-#[derive(Error, Debug, Display)]
+#[derive(thiserror::Error, Debug, Display)]
 pub enum TreeErrorKind {
     /// blob `{0}` not found in index
     BlobIdNotFound(TreeId),
@@ -53,12 +53,6 @@ pub enum TreeErrorKind {
     BuildingNodeStreamerFailed(#[from] ignore::Error),
     /// failed to read file string from glob file: `{0:?}`
     ReadingFileStringFromGlobsFailed(#[from] std::io::Error),
-    /// [`crossbeam_channel::SendError`]
-    #[error(transparent)]
-    SendingCrossbeamMessageFailed(#[from] crossbeam_channel::SendError<(PathBuf, TreeId, usize)>),
-    /// [`crossbeam_channel::RecvError`]
-    #[error(transparent)]
-    ReceivingCrossbreamMessageFailed(#[from] crossbeam_channel::RecvError),
 }
 
 pub(crate) type TreeResult<T> = Result<T, TreeErrorKind>;
@@ -147,7 +141,8 @@ impl Tree {
         let data = index
             .get_tree(&id)
             .ok_or_else(|| TreeErrorKind::BlobIdNotFound(id))?
-            .read_data(be)?;
+            .read_data(be)
+            .map_err(|_err| todo!("Error transition"))?;
 
         Ok(serde_json::from_slice(&data).map_err(TreeErrorKind::DeserializingTreeFailed)?)
     }
@@ -772,7 +767,7 @@ impl<P: Progress> TreeStreamerOnce<P> {
                 .as_ref()
                 .unwrap()
                 .send((path, id, count))
-                .map_err(TreeErrorKind::SendingCrossbeamMessageFailed)?;
+                .map_err(|_err| todo!("Error transition"))?;
             self.counter[count] += 1;
             Ok(true)
         } else {

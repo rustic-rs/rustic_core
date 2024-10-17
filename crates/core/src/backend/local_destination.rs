@@ -11,7 +11,6 @@ use std::{
 use bytes::Bytes;
 #[allow(unused_imports)]
 use cached::proc_macro::cached;
-use displaydoc::Display;
 use filetime::{set_symlink_file_times, FileTime};
 #[cfg(not(windows))]
 use log::warn;
@@ -24,7 +23,6 @@ use nix::{
     fcntl::AtFlags,
     unistd::{fchownat, Gid, Group, Uid, User},
 };
-use thiserror::Error;
 
 #[cfg(not(windows))]
 use crate::backend::ignore::mapper::map_mode_from_go;
@@ -33,7 +31,7 @@ use crate::backend::node::NodeType;
 use crate::backend::node::{ExtendedAttribute, Metadata, Node};
 
 /// [`LocalDestinationErrorKind`] describes the errors that can be returned by an action on the filesystem in Backends
-#[derive(Error, Debug, Display)]
+#[derive(thiserror::Error, Debug, displaydoc::Display)]
 pub enum LocalDestinationErrorKind {
     /// directory creation failed: `{0:?}`
     DirectoryCreationFailed(#[from] std::io::Error),

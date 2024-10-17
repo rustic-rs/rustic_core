@@ -2,8 +2,6 @@ use std::{num::NonZeroU32, sync::Arc, thread::sleep, time::Duration};
 
 use bytes::Bytes;
 use derive_more::Constructor;
-use displaydoc::Display;
-use thiserror::Error;
 
 use crate::{
     backend::{decrypt::DecryptReadBackend, CryptBackendErrorKind, FileType},
@@ -20,7 +18,7 @@ pub(crate) mod binarysorted;
 pub(crate) mod indexer;
 
 /// [`IndexErrorKind`] describes the errors that can be returned by processing Indizes
-#[derive(Error, Debug, Display)]
+#[derive(thiserror::Error, Debug, displaydoc::Display)]
 pub enum IndexErrorKind {
     /// blob not found in index
     BlobInIndexNotFound,
@@ -78,14 +76,16 @@ impl IndexEntry {
     ///
     // TODO:  add error! This function will return an error if the blob is not found in the backend.
     pub fn read_data<B: DecryptReadBackend>(&self, be: &B) -> IndexResult<Bytes> {
-        let data = be.read_encrypted_partial(
-            FileType::Pack,
-            &self.pack,
-            self.blob_type.is_cacheable(),
-            self.offset,
-            self.length,
-            self.uncompressed_length,
-        )?;
+        let data = be
+            .read_encrypted_partial(
+                FileType::Pack,
+                &self.pack,
+                self.blob_type.is_cacheable(),
+                self.offset,
+                self.length,
+                self.uncompressed_length,
+            )
+            .map_err(|_err| todo!("Error transition"))?;
 
         Ok(data)
     }
@@ -291,8 +291,11 @@ impl GlobalIndex {
         mut collector: IndexCollector,
     ) -> IndexResult<Self> {
         p.set_title("reading index...");
-        for index in be.stream_all::<IndexFile>(p)? {
-            collector.extend(index?.1.packs);
+        for index in be
+            .stream_all::<IndexFile>(p)
+            .map_err(|_err| todo!("Error transition"))?
+        {
+            collector.extend(index.map_err(|_err| todo!("Error transition"))?.1.packs);
         }
 
         p.finish();

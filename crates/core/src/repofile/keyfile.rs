@@ -1,19 +1,17 @@
 use chrono::{DateTime, Local};
-use displaydoc::Display;
 use rand::{thread_rng, RngCore};
 use scrypt::Params;
 use serde_derive::{Deserialize, Serialize};
 use serde_with::{base64::Base64, serde_as, skip_serializing_none};
-use thiserror::Error;
 
 use crate::{
     backend::{FileType, ReadBackend},
-    crypto::{aespoly1305::Key, CryptoKey},
-    impl_repoid, RusticError,
+    crypto::{aespoly1305::Key, CryptoErrorKind, CryptoKey},
+    impl_repoid,
 };
 
 /// [`KeyFileErrorKind`] describes the errors that can be returned for `KeyFile`s
-#[derive(Error, Debug, Display)]
+#[derive(thiserror::Error, Debug, displaydoc::Display)]
 pub enum KeyFileErrorKind {
     /// no suitable key found!
     NoSuitableKeyFound,
@@ -35,12 +33,16 @@ pub enum KeyFileErrorKind {
     /// invalid scrypt parameters: `{0:?}`
     InvalidSCryptParameters(scrypt::errors::InvalidParams),
     /// Could not get key from decrypt data: `{key:?}` : `{source}`
-    CouldNotGetKeyFromDecryptData {
-        key: Key,
-        source: crate::crypto::CryptoErrorKind,
-    },
+    CouldNotGetKeyFromDecryptData { key: Key, source: CryptoErrorKind },
     /// deserializing master key from slice failed: `{source}`
     DeserializingMasterKeyFromSliceFailed { source: serde_json::Error },
+    /// conversion from {from} to {to} failed for {x} : {source}
+    ConversionFailed {
+        from: &'static str,
+        to: &'static str,
+        x: u32,
+        source: std::num::TryFromIntError,
+    },
 }
 
 pub(crate) type KeyFileResult<T> = Result<T, KeyFileErrorKind>;
@@ -210,10 +212,12 @@ impl KeyFile {
             .map_err(KeyFileErrorKind::OutputLengthInvalid)?;
 
         let key = Key::from_slice(&key);
-        let data = key.encrypt_data(
-            &serde_json::to_vec(&masterkey)
-                .map_err(KeyFileErrorKind::CouldNotSerializeAsJsonByteVector)?,
-        )?;
+        let data = key
+            .encrypt_data(
+                &serde_json::to_vec(&masterkey)
+                    .map_err(KeyFileErrorKind::CouldNotSerializeAsJsonByteVector)?,
+            )
+            .map_err(|_err| todo!("Error transition"))?;
 
         Ok(Self {
             hostname,
@@ -245,7 +249,7 @@ impl KeyFile {
     fn from_backend<B: ReadBackend>(be: &B, id: &KeyId) -> KeyFileResult<Self> {
         let data = be
             .read_full(FileType::Key, id)
-            .map_err(RusticErrorKind::Backend)?;
+            .map_err(|_err| todo!("Error transition"))?;
 
         Ok(serde_json::from_slice(&data).map_err(|err| {
             KeyFileErrorKind::DeserializingFromSliceForKeyIdFailed {
@@ -273,10 +277,19 @@ impl KeyFile {
 /// [`KeyFileErrorKind::ConversionFromU32ToU8Failed`]: crate::error::KeyFileErrorKind::ConversionFromU32ToU8Failed
 fn log_2(x: u32) -> KeyFileResult<u8> {
     assert!(x > 0);
-    Ok(u8::try_from(constants::num_bits::<u32>())
-        .map_err(KeyFileErrorKind::ConversionFromU32ToU8Failed)?
-        - u8::try_from(x.leading_zeros()).map_err(KeyFileErrorKind::ConversionFromU32ToU8Failed)?
-        - 1)
+    Ok(u8::try_from(constants::num_bits::<u32>()).map_err(|err| {
+        KeyFileErrorKind::ConversionFailed {
+            from: "usize",
+            to: "u8",
+            x,
+            source: err,
+        }
+    })? - u8::try_from(x.leading_zeros()).map_err(|err| KeyFileErrorKind::ConversionFailed {
+        from: "u32",
+        to: "u8",
+        x,
+        source: err,
+    })? - 1)
 }
 
 /// The mac of a [`Key`]
@@ -377,12 +390,14 @@ pub(crate) fn find_key_in_backend<B: ReadBackend>(
     if let Some(id) = hint {
         key_from_backend(be, id, passwd)
     } else {
-        for id in be.list(FileType::Key).map_err(RusticErrorKind::Backend)? {
+        for id in be
+            .list(FileType::Key)
+            .map_err(|_err| todo!("Error transition"))?
+        {
             match key_from_backend(be, &id.into(), passwd) {
                 Ok(key) => return Ok(key),
-                Err(RusticError(RusticErrorKind::Crypto(
-                    CryptoErrorKind::DataDecryptionFailed(_),
-                ))) => continue,
+                // TODO IMPORTANT! This is KeyFileErrorKind now
+                Err(CryptoErrorKind::DataDecryptionFailed(_)) => continue,
                 err => return err,
             }
         }

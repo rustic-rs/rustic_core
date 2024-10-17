@@ -17,10 +17,8 @@ use std::{
 
 use bytes::Bytes;
 use derive_setters::Setters;
-use displaydoc::Display;
 use log::{debug, error, info};
 use serde_with::{serde_as, DisplayFromStr};
-use thiserror::Error;
 
 use crate::{
     backend::{
@@ -53,7 +51,6 @@ use crate::{
         restore::{collect_and_prepare, restore_repository, RestoreOptions, RestorePlan},
     },
     crypto::aespoly1305::Key,
-    error::RusticErrorKind,
     index::{
         binarysorted::{IndexCollector, IndexType},
         GlobalIndex, IndexEntry, ReadGlobalIndex, ReadIndex,
@@ -75,7 +72,7 @@ use crate::{
 use clap::ValueHint;
 
 /// [`RepositoryErrorKind`] describes the errors that can be returned by processing Repositories
-#[derive(Error, Debug, Display)]
+#[derive(thiserror::Error, Debug, displaydoc::Display)]
 pub enum RepositoryErrorKind {
     /// No repository given. Please use the --repository option.
     NoRepositoryGiven,
@@ -564,11 +561,11 @@ impl<P, S> Repository<P, S> {
             let mut keys = self
                 .be
                 .list_with_size(FileType::Key)
-                .map_err(RusticErrorKind::Backend)?;
+                .map_err(|_err| todo!("Error transition"))?;
             keys.sort_unstable_by_key(|key| key.0);
             let mut hot_keys = be_hot
                 .list_with_size(FileType::Key)
-                .map_err(RusticErrorKind::Backend)?;
+                .map_err(|_err| todo!("Error transition"))?;
             hot_keys.sort_unstable_by_key(|key| key.0);
             if keys != hot_keys {
                 return Err(RepositoryErrorKind::KeysDontMatchForRepositories(self.name).into());
@@ -576,12 +573,14 @@ impl<P, S> Repository<P, S> {
         }
 
         let key = find_key_in_backend(&self.be, &password, None).map_err(|err| match err {
-            KeyFileErrorKind::NoSuitableKeyFound => RepositoryErrorKind::IncorrectPassword.into(),
-            err => err,
+            KeyFileErrorKind::NoSuitableKeyFound => RepositoryErrorKind::IncorrectPassword,
+            err => todo!("Error transition"),
         })?;
         info!("repository {}: password is correct.", self.name);
         let dbe = DecryptBackend::new(self.be.clone(), key);
-        let config: ConfigFile = dbe.get_file(&config_id)?;
+        let config: ConfigFile = dbe
+            .get_file(&config_id)
+            .map_err(|_err| todo!("Error transition"))?;
         self.open_raw(key, config)
     }
 
@@ -656,7 +655,9 @@ impl<P, S> Repository<P, S> {
         if self.config_id()?.is_some() {
             return Err(RepositoryErrorKind::ConfigFileExists.into());
         }
-        let (key, config) = commands::init::init(&self, pass, key_opts, config_opts)?;
+        let (key, config) = commands::init::init(&self, pass, key_opts, config_opts)
+            .map_err(|_err| todo!("Error transition"))?;
+
         self.open_raw(key, config)
     }
 
@@ -683,7 +684,8 @@ impl<P, S> Repository<P, S> {
         key_opts: &KeyOptions,
         config: ConfigFile,
     ) -> RepositoryResult<Repository<P, OpenStatus>> {
-        let key = commands::init::init_with_config(&self, password, key_opts, &config)?;
+        let key = commands::init::init_with_config(&self, password, key_opts, &config)
+            .map_err(|_err| todo!("Error transition"))?;
         info!("repository {} successfully created.", config.id);
         self.open_raw(key, config)
     }
@@ -729,7 +731,7 @@ impl<P, S> Repository<P, S> {
         }
 
         let mut dbe = DecryptBackend::new(self.be.clone(), key);
-        dbe.set_zstd(config.zstd()?);
+        dbe.set_zstd(config.zstd().map_err(|_err| todo!("Error transition"))?);
         dbe.set_extra_verify(config.extra_verify());
 
         let open = OpenStatus { cache, dbe, config };
@@ -757,7 +759,7 @@ impl<P, S> Repository<P, S> {
         Ok(self
             .be
             .list(T::TYPE)
-            .map_err(RusticErrorKind::Backend)?
+            .map_err(|_err| todo!("Error transition"))?
             .into_iter()
             .map(Into::into))
     }
@@ -770,7 +772,7 @@ impl<P: ProgressBars, S> Repository<P, S> {
     ///
     /// If files could not be listed.
     pub fn infos_files(&self) -> RepositoryResult<RepoFileInfos> {
-        commands::repoinfo::collect_file_infos(self)
+        commands::repoinfo::collect_file_infos(self).map_err(|_err| todo!("Error transition"))
     }
 
     /// Warm up the given pack files without waiting.
@@ -788,7 +790,7 @@ impl<P: ProgressBars, S> Repository<P, S> {
     ///
     /// The result of the warm up
     pub fn warm_up(&self, packs: impl ExactSizeIterator<Item = PackId>) -> RepositoryResult<()> {
-        warm_up(self, packs)
+        warm_up(self, packs).map_err(|_err| todo!("Error transition"))
     }
 
     /// Warm up the given pack files and wait the configured waiting time.
@@ -808,7 +810,7 @@ impl<P: ProgressBars, S> Repository<P, S> {
         &self,
         packs: impl ExactSizeIterator<Item = PackId>,
     ) -> RepositoryResult<()> {
-        warm_up_wait(self, packs)
+        warm_up_wait(self, packs).map_err(|_err| todo!("Error transition"))
     }
 }
 
@@ -887,7 +889,7 @@ impl<P, S: Open> Repository<P, S> {
     /// [`BackendAccessErrorKind::NoSuitableIdFound`]: crate::error::BackendAccessErrorKind::NoSuitableIdFound
     /// [`BackendAccessErrorKind::IdNotUnique`]: crate::error::BackendAccessErrorKind::IdNotUnique
     pub fn cat_file(&self, tpe: FileType, id: &str) -> RepositoryResult<Bytes> {
-        commands::cat::cat_file(self, tpe, id)
+        commands::cat::cat_file(self, tpe, id).map_err(|_err| todo!("Error transition"))
     }
 
     /// Add a new key to the repository
@@ -903,7 +905,7 @@ impl<P, S: Open> Repository<P, S> {
     ///
     /// [`CommandErrorKind::FromJsonError`]: crate::error::CommandErrorKind::FromJsonError
     pub fn add_key(&self, pass: &str, opts: &KeyOptions) -> RepositoryResult<KeyId> {
-        add_current_key_to_repo(self, opts, pass)
+        add_current_key_to_repo(self, opts, pass).map_err(|_err| todo!("Error transition"))
     }
 
     /// Update the repository config by applying the given [`ConfigOptions`]
@@ -932,7 +934,7 @@ impl<P, S: Open> Repository<P, S> {
     /// [`CommandErrorKind::MaxPackSizeTolerateWrong`]: crate::error::CommandErrorKind::MaxPackSizeTolerateWrong
     /// [`CryptBackendErrorKind::SerializingToJsonByteVectorFailed`]: crate::error::CryptBackendErrorKind::SerializingToJsonByteVectorFailed
     pub fn apply_config(&self, opts: &ConfigOptions) -> RepositoryResult<bool> {
-        commands::config::apply_config(self, opts)
+        commands::config::apply_config(self, opts).map_err(|_err| todo!("Error transition"))
     }
 
     /// Get the repository configuration
@@ -970,6 +972,7 @@ impl<P: ProgressBars, S: Open> Repository<P, S> {
         filter: impl FnMut(&SnapshotFile) -> bool,
     ) -> RepositoryResult<Vec<(SnapshotGroup, Vec<SnapshotFile>)>> {
         commands::snapshots::get_snapshot_group(self, ids, group_by, filter)
+            .map_err(|_err| todo!("Error transition"))
     }
 
     /// Get a single snapshot
@@ -999,7 +1002,8 @@ impl<P: ProgressBars, S: Open> Repository<P, S> {
         filter: impl FnMut(&SnapshotFile) -> bool + Send + Sync,
     ) -> RepositoryResult<SnapshotFile> {
         let p = self.pb.progress_counter("getting snapshot...");
-        let snap = SnapshotFile::from_str(self.dbe(), id, filter, &p)?;
+        let snap = SnapshotFile::from_str(self.dbe(), id, filter, &p)
+            .map_err(|_err| todo!("Error transition"))?;
         p.finish();
         Ok(snap)
     }
@@ -1043,7 +1047,8 @@ impl<P: ProgressBars, S: Open> Repository<P, S> {
         ids: &[T],
     ) -> RepositoryResult<Vec<SnapshotFile>> {
         let p = self.pb.progress_counter("getting snapshots...");
-        let result = SnapshotFile::update_from_ids(self.dbe(), current, ids, &p);
+        let result = SnapshotFile::update_from_ids(self.dbe(), current, ids, &p)
+            .map_err(|_err| todo!("Error transition"));
         p.finish();
         result
     }
@@ -1111,7 +1116,8 @@ impl<P: ProgressBars, S: Open> Repository<P, S> {
         filter: impl FnMut(&SnapshotFile) -> bool,
     ) -> RepositoryResult<Vec<SnapshotFile>> {
         let p = self.pb.progress_counter("getting snapshots...");
-        let result = SnapshotFile::update_from_backend(self.dbe(), current, filter, &p);
+        let result = SnapshotFile::update_from_backend(self.dbe(), current, filter, &p)
+            .map_err(|_err| todo!("Error transition"));
         p.finish();
         result
     }
@@ -1138,6 +1144,7 @@ impl<P: ProgressBars, S: Open> Repository<P, S> {
         filter: impl FnMut(&SnapshotFile) -> bool,
     ) -> RepositoryResult<ForgetGroups> {
         commands::forget::get_forget_snapshots(self, keep, group_by, filter)
+            .map_err(|_err| todo!("Error transition"))
     }
 
     /// Get snapshots which are not already present and should be present.
@@ -1160,6 +1167,7 @@ impl<P: ProgressBars, S: Open> Repository<P, S> {
         snaps: &[SnapshotFile],
     ) -> RepositoryResult<Vec<CopySnapshot>> {
         commands::copy::relevant_snapshots(snaps, self, filter)
+            .map_err(|_err| todo!("Error transition"))
     }
 
     // TODO: Maybe only offer a method to remove &[Snapshotfile] and check if they must be kept.
@@ -1185,7 +1193,9 @@ impl<P: ProgressBars, S: Open> Repository<P, S> {
             .into());
         }
         let p = self.pb.progress_counter("removing snapshots...");
-        self.dbe().delete_list(true, ids.iter(), p)?;
+        self.dbe()
+            .delete_list(true, ids.iter(), p)
+            .map_err(|_err| todo!("Error transition"))?;
         Ok(())
     }
 
@@ -1205,7 +1215,9 @@ impl<P: ProgressBars, S: Open> Repository<P, S> {
             snap.id = SnapshotId::default();
         }
         let p = self.pb.progress_counter("saving snapshots...");
-        self.dbe().save_list(snaps.iter(), p)?;
+        self.dbe()
+            .save_list(snaps.iter(), p)
+            .map_err(|_err| todo!("Error transition"))?;
         Ok(())
     }
 
@@ -1240,7 +1252,7 @@ impl<P: ProgressBars, S: Open> Repository<P, S> {
             }
         });
 
-        check_repository(self, opts, trees, err_send)?;
+        check_repository(self, opts, trees, err_send).map_err(|_err| todo!("Error transition"))?;
 
         err_handle.join().expect("Error handling thread panicked");
 
@@ -1276,7 +1288,7 @@ impl<P: ProgressBars, S: Open> Repository<P, S> {
             }
         });
 
-        check_repository(self, opts, trees, err_send)?;
+        check_repository(self, opts, trees, err_send).map_err(|_err| todo!("Error transition"))?;
 
         err_handle.join().expect("Error handling thread panicked");
 
@@ -1301,7 +1313,7 @@ impl<P: ProgressBars, S: Open> Repository<P, S> {
     ///
     /// The plan about what should be pruned and/or repacked.
     pub fn prune_plan(&self, opts: &PruneOptions) -> RepositoryResult<PrunePlan> {
-        PrunePlan::from_prune_options(self, opts)
+        PrunePlan::from_prune_options(self, opts).map_err(|_err| todo!("Error transition"))
     }
 
     /// Perform the pruning on the repository.
@@ -1323,7 +1335,7 @@ impl<P: ProgressBars, S: Open> Repository<P, S> {
     /// # Panics
     ///
     pub fn prune(&self, opts: &PruneOptions, prune_plan: PrunePlan) -> RepositoryResult<()> {
-        prune_repository(self, opts, prune_plan)
+        prune_repository(self, opts, prune_plan).map_err(|_err| todo!("Error transition"))
     }
 
     /// Turn the repository into the `IndexedFull` state by reading and storing the index
@@ -1336,7 +1348,8 @@ impl<P: ProgressBars, S: Open> Repository<P, S> {
     ///
     /// This saves the full index in memory which can be quite memory-consuming!
     pub fn to_indexed(self) -> RepositoryResult<Repository<P, IndexedStatus<FullIndex, S>>> {
-        let index = GlobalIndex::new(self.dbe(), &self.pb.progress_counter(""))?;
+        let index = GlobalIndex::new(self.dbe(), &self.pb.progress_counter(""))
+            .map_err(|_err| todo!("Error transition"))?;
         Ok(self.into_indexed_with_index(index))
     }
 
@@ -1356,7 +1369,8 @@ impl<P: ProgressBars, S: Open> Repository<P, S> {
         self,
     ) -> RepositoryResult<Repository<P, IndexedStatus<FullIndex, S>>> {
         let collector = IndexCollector::new(IndexType::Full);
-        let index = index_checked_from_collector(&self, collector)?;
+        let index = index_checked_from_collector(&self, collector)
+            .map_err(|_err| todo!("Error transition"))?;
         Ok(self.into_indexed_with_index(index))
     }
 
@@ -1402,7 +1416,8 @@ impl<P: ProgressBars, S: Open> Repository<P, S> {
     /// This saves only the `Id`s for data blobs. Therefore, not all operations are possible on the repository.
     /// However, operations which add data are fully functional.
     pub fn to_indexed_ids(self) -> RepositoryResult<Repository<P, IndexedStatus<IdIndex, S>>> {
-        let index = GlobalIndex::only_full_trees(self.dbe(), &self.pb.progress_counter(""))?;
+        let index = GlobalIndex::only_full_trees(self.dbe(), &self.pb.progress_counter(""))
+            .map_err(|_err| todo!("Error transition"))?;
         Ok(self.into_indexed_ids_with_index(index))
     }
 
@@ -1427,7 +1442,8 @@ impl<P: ProgressBars, S: Open> Repository<P, S> {
         self,
     ) -> RepositoryResult<Repository<P, IndexedStatus<IdIndex, S>>> {
         let collector = IndexCollector::new(IndexType::DataIds);
-        let index = index_checked_from_collector(&self, collector)?;
+        let index = index_checked_from_collector(&self, collector)
+            .map_err(|_err| todo!("Error transition"))?;
         Ok(self.into_indexed_ids_with_index(index))
     }
 
@@ -1462,7 +1478,7 @@ impl<P: ProgressBars, S: Open> Repository<P, S> {
     ///
     /// The statistical information from the index.
     pub fn infos_index(&self) -> RepositoryResult<IndexInfos> {
-        commands::repoinfo::collect_index_infos(self)
+        commands::repoinfo::collect_index_infos(self).map_err(|_err| todo!("Error transition"))
     }
 
     /// Read all files of a given [`RepoFile`]
@@ -1482,7 +1498,8 @@ impl<P: ProgressBars, S: Open> Repository<P, S> {
     ) -> RepositoryResult<impl Iterator<Item = RepositoryResult<(F::Id, F)>>> {
         Ok(self
             .dbe()
-            .stream_all::<F>(&self.pb.progress_hidden())?
+            .stream_all::<F>(&self.pb.progress_hidden())
+            .map_err(|_err| todo!("Error transition"))?
             .into_iter())
     }
 
@@ -1500,7 +1517,7 @@ impl<P: ProgressBars, S: Open> Repository<P, S> {
     ///
     // TODO: Document errors
     pub fn repair_index(&self, opts: &RepairIndexOptions, dry_run: bool) -> RepositoryResult<()> {
-        repair_index(self, *opts, dry_run)
+        repair_index(self, *opts, dry_run).map_err(|_err| todo!("Error transition"))
     }
 }
 
@@ -1743,7 +1760,9 @@ impl<P, S: IndexedFull> Repository<P, S> {
         offset: usize,
         length: usize,
     ) -> RepositoryResult<Bytes> {
-        open_file.read_at(self, offset, length)
+        open_file
+            .read_at(self, offset, length)
+            .map_err(|_err| todo!("Error transition"))
     }
 }
 
@@ -1767,7 +1786,7 @@ impl<P, S: IndexedTree> Repository<P, S> {
     /// [`TreeErrorKind::BlobIdNotFound`]: crate::error::TreeErrorKind::BlobIdNotFound
     /// [`TreeErrorKind::DeserializingTreeFailed`]: crate::error::TreeErrorKind::DeserializingTreeFailed
     pub fn get_tree(&self, id: &TreeId) -> RepositoryResult<Tree> {
-        Tree::from_backend(self.dbe(), self.index(), *id)
+        Tree::from_backend(self.dbe(), self.index(), *id).map_err(|_err| todo!("Error transition"))
     }
 
     /// Get a [`Node`] from a root tree and a path
@@ -1791,6 +1810,7 @@ impl<P, S: IndexedTree> Repository<P, S> {
     /// [`TreeErrorKind::PathIsNotUtf8Conform`]: crate::error::TreeErrorKind::PathIsNotUtf8Conform
     pub fn node_from_path(&self, root_tree: TreeId, path: &Path) -> RepositoryResult<Node> {
         Tree::node_from_path(self.dbe(), self.index(), root_tree, Path::new(path))
+            .map_err(|_err| todo!("Error transition"))
     }
 
     /// Get all [`Node`]s from given root trees and a path
@@ -1808,6 +1828,7 @@ impl<P, S: IndexedTree> Repository<P, S> {
         path: &Path,
     ) -> RepositoryResult<FindNode> {
         Tree::find_nodes_from_path(self.dbe(), self.index(), ids, path)
+            .map_err(|_err| todo!("Error transition"))
     }
 
     /// Get all [`Node`]s/[`Path`]s from given root trees and a matching criterion
@@ -1825,6 +1846,7 @@ impl<P, S: IndexedTree> Repository<P, S> {
         matches: &impl Fn(&Path, &Node) -> bool,
     ) -> RepositoryResult<FindMatches> {
         Tree::find_matching_nodes(self.dbe(), self.index(), ids, matches)
+            .map_err(|_err| todo!("Error transition"))
     }
 
     /// drop the `Repository` index leaving an `Open` `Repository`
@@ -1867,9 +1889,11 @@ impl<P: ProgressBars, S: IndexedTree> Repository<P, S> {
         let (id, path) = snap_path.split_once(':').unwrap_or((snap_path, ""));
 
         let p = &self.pb.progress_counter("getting snapshot...");
-        let snap = SnapshotFile::from_str(self.dbe(), id, filter, p)?;
+        let snap = SnapshotFile::from_str(self.dbe(), id, filter, p)
+            .map_err(|_err| todo!("Error transition"))?;
 
         Tree::node_from_path(self.dbe(), self.index(), snap.tree, Path::new(path))
+            .map_err(|_err| todo!("Error transition"))
     }
 
     /// Get a [`Node`] from a [`SnapshotFile`] and a `path`
@@ -1890,6 +1914,7 @@ impl<P: ProgressBars, S: IndexedTree> Repository<P, S> {
         path: &str,
     ) -> RepositoryResult<Node> {
         Tree::node_from_path(self.dbe(), self.index(), snap.tree, Path::new(path))
+            .map_err(|_err| todo!("Error transition"))
     }
     /// Reads a raw tree from a "SNAP\[:PATH\]" syntax
     ///
@@ -1908,7 +1933,7 @@ impl<P: ProgressBars, S: IndexedTree> Repository<P, S> {
         snap: &str,
         sn_filter: impl FnMut(&SnapshotFile) -> bool + Send + Sync,
     ) -> RepositoryResult<Bytes> {
-        commands::cat::cat_tree(self, snap, sn_filter)
+        commands::cat::cat_tree(self, snap, sn_filter).map_err(|_err| todo!("Error transition"))
     }
 
     /// List the contents of a given [`Node`]
@@ -1937,6 +1962,7 @@ impl<P: ProgressBars, S: IndexedTree> Repository<P, S> {
     ) -> RepositoryResult<impl Iterator<Item = RepositoryResult<(PathBuf, Node)>> + Clone + '_>
     {
         NodeStreamer::new_with_glob(self.dbe().clone(), self.index(), node, ls_opts)
+            .map_err(|_err| todo!("Error transition"))
     }
 
     /// Restore a given [`RestorePlan`] to a local destination
@@ -1959,6 +1985,7 @@ impl<P: ProgressBars, S: IndexedTree> Repository<P, S> {
         dest: &LocalDestination,
     ) -> RepositoryResult<()> {
         restore_repository(restore_infos, self, *opts, node_streamer, dest)
+            .map_err(|_err| todo!("Error transition"))
     }
 
     /// Merge the given trees.
@@ -1986,6 +2013,7 @@ impl<P: ProgressBars, S: IndexedTree> Repository<P, S> {
         summary: &mut SnapshotSummary,
     ) -> RepositoryResult<TreeId> {
         commands::merge::merge_trees(self, trees, cmp, summary)
+            .map_err(|_err| todo!("Error transition"))
     }
 
     /// Merge the given snapshots.
@@ -2013,6 +2041,7 @@ impl<P: ProgressBars, S: IndexedTree> Repository<P, S> {
         snap: SnapshotFile,
     ) -> RepositoryResult<SnapshotFile> {
         commands::merge::merge_snapshots(self, snaps, cmp, snap)
+            .map_err(|_err| todo!("Error transition"))
     }
 }
 
@@ -2040,7 +2069,7 @@ impl<P: ProgressBars, S: IndexedIds> Repository<P, S> {
         source: &PathList,
         snap: SnapshotFile,
     ) -> RepositoryResult<SnapshotFile> {
-        commands::backup::backup(self, opts, source, snap)
+        commands::backup::backup(self, opts, source, snap).map_err(|_err| todo!("Error transition"))
     }
 }
 
@@ -2062,7 +2091,11 @@ impl<P, S: IndexedFull> Repository<P, S> {
     ///
     /// [`IndexErrorKind::BlobInIndexNotFound`]: crate::error::IndexErrorKind::BlobInIndexNotFound
     pub fn get_blob_cached(&self, id: &BlobId, tpe: BlobType) -> RepositoryResult<Bytes> {
-        self.get_blob_or_insert_with(id, || self.index().blob_from_backend(self.dbe(), tpe, id))
+        self.get_blob_or_insert_with(id, || {
+            self.index()
+                .blob_from_backend(self.dbe(), tpe, id)
+                .map_err(|_err| todo!("Error transition"))
+        })
     }
 
     /// drop the data pack information from the `Repository` index leaving an `IndexedTree` `Repository`
@@ -2096,7 +2129,7 @@ impl<P: ProgressBars, S: IndexedFull> Repository<P, S> {
     ///
     /// [`IdErrorKind::HexError`]: crate::error::IdErrorKind::HexError
     pub fn cat_blob(&self, tpe: BlobType, id: &str) -> RepositoryResult<Bytes> {
-        commands::cat::cat_blob(self, tpe, id)
+        commands::cat::cat_blob(self, tpe, id).map_err(|_err| todo!("Error transition"))
     }
 
     /// Dump a [`Node`] using the given writer.
@@ -2116,7 +2149,7 @@ impl<P: ProgressBars, S: IndexedFull> Repository<P, S> {
     ///
     /// [`CommandErrorKind::DumpNotSupported`]: crate::error::CommandErrorKind::DumpNotSupported
     pub fn dump(&self, node: &Node, w: &mut impl Write) -> RepositoryResult<()> {
-        commands::dump::dump(self, node, w)
+        commands::dump::dump(self, node, w).map_err(|_err| todo!("Error transition"))
     }
 
     /// Prepare the restore.
@@ -2151,6 +2184,7 @@ impl<P: ProgressBars, S: IndexedFull> Repository<P, S> {
         dry_run: bool,
     ) -> RepositoryResult<RestorePlan> {
         collect_and_prepare(self, *opts, node_streamer, dest, dry_run)
+            .map_err(|_err| todo!("Error transition"))
     }
 
     /// Copy the given `snapshots` to `repo_dest`.
@@ -2180,7 +2214,7 @@ impl<P: ProgressBars, S: IndexedFull> Repository<P, S> {
         repo_dest: &Repository<Q, R>,
         snapshots: impl IntoIterator<Item = &'a SnapshotFile>,
     ) -> RepositoryResult<()> {
-        commands::copy::copy(self, repo_dest, snapshots)
+        commands::copy::copy(self, repo_dest, snapshots).map_err(|_err| todo!("Error transition"))
     }
 
     /// Repair snapshots.
@@ -2206,6 +2240,6 @@ impl<P: ProgressBars, S: IndexedFull> Repository<P, S> {
         snapshots: Vec<SnapshotFile>,
         dry_run: bool,
     ) -> RepositoryResult<()> {
-        repair_snapshots(self, opts, snapshots, dry_run)
+        repair_snapshots(self, opts, snapshots, dry_run).map_err(|_err| todo!("Error transition"))
     }
 }

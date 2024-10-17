@@ -4,7 +4,8 @@ use zstd::decode_all;
 use crate::{
     backend::{
         decrypt::{DecryptFullBackend, DecryptReadBackend, DecryptWriteBackend},
-        BackendResult, CryptBackendResult, FileType, ReadBackend, WriteBackend,
+        BackendResult, CryptBackendErrorKind, CryptBackendResult, FileType, ReadBackend,
+        WriteBackend,
     },
     id::Id,
 };
@@ -58,7 +59,11 @@ impl<BE: DecryptFullBackend> DecryptReadBackend for DryRunBackend<BE> {
     /// [`CryptBackendErrorKind::DecryptionNotSupportedForBackend`]: crate::error::CryptBackendErrorKind::DecryptionNotSupportedForBackend
     /// [`CryptBackendErrorKind::DecodingZstdCompressedDataFailed`]: crate::error::CryptBackendErrorKind::DecodingZstdCompressedDataFailed
     fn read_encrypted_full(&self, tpe: FileType, id: &Id) -> CryptBackendResult<Bytes> {
-        let decrypted = self.decrypt(&self.read_full(tpe, id)?)?;
+        let decrypted = self.decrypt(
+            &self
+                .read_full(tpe, id)
+                .map_err(|_err| todo!("Error transition"))?,
+        )?;
         Ok(match decrypted.first() {
             Some(b'{' | b'[') => decrypted, // not compressed
             Some(2) => decode_all(&decrypted[1..])

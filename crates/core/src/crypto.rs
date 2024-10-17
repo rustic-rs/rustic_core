@@ -1,11 +1,8 @@
-use displaydoc::Display;
-use thiserror::Error;
-
 pub(crate) mod aespoly1305;
 pub(crate) mod hasher;
 
 /// [`CryptoErrorKind`] describes the errors that can happen while dealing with Cryptographic functions
-#[derive(Error, Debug, Display, Copy, Clone)]
+#[derive(thiserror::Error, Debug, displaydoc::Display, Copy, Clone)]
 pub enum CryptoErrorKind {
     /// data decryption failed: `{0:?}`
     DataDecryptionFailed(aes256ctr_poly1305aes::aead::Error),
