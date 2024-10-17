@@ -27,16 +27,13 @@ pub enum PackFileErrorKind {
     /// pack size computed from header doesn't match real pack isch! Computed: `{size_computed}`, real: `{size_real}`
     HeaderPackSizeComputedDoesNotMatchRealPackFile { size_real: u32, size_computed: u32 },
     /// partially reading the pack header from packfile failed: `{0:?}`
-    ListingKeyFilesFailed(#[from] BackendAccessErrorKind),
+    ListingKeyFilesFailed(BackendAccessErrorKind),
     /// decrypting from binary failed
     BinaryDecryptionFailed,
     /// Partial read of PackFile failed
     PartialReadOfPackfileFailed,
     /// writing Bytes failed
     WritingBytesFailed,
-    /// [`CryptBackendErrorKind`]
-    #[error(transparent)]
-    PackDecryptionFailed(#[from] CryptBackendErrorKind),
 }
 
 pub(crate) type PackFileResult<T> = Result<T, PackFileErrorKind>;

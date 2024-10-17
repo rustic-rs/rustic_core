@@ -44,9 +44,9 @@ pub enum SnapshotFileErrorKind {
     /// value `{0:?}` not allowed
     ValueNotAllowed(String),
     /// datetime out of range: `{0:?}`
-    OutOfRange(#[from] OutOfRangeError),
+    OutOfRange(OutOfRangeError),
     /// reading the description file failed: `{0:?}`
-    ReadingDescriptionFailed(#[from] std::io::Error),
+    ReadingDescriptionFailed(std::io::Error),
     /// getting the SnapshotFile from the backend failed
     GettingSnapshotFileFailed,
     /// getting the SnapshotFile by ID failed
@@ -979,7 +979,7 @@ impl Default for SnapshotGroupCriterion {
 }
 
 impl FromStr for SnapshotGroupCriterion {
-    type Err = RusticError;
+    type Err = SnapshotFileErrorKind;
     fn from_str(s: &str) -> SnapshotFileResult<Self> {
         let mut crit = Self::new();
         for val in s.split(',') {
@@ -1085,7 +1085,7 @@ impl SnapshotGroup {
 pub struct StringList(pub(crate) BTreeSet<String>);
 
 impl FromStr for StringList {
-    type Err = RusticError;
+    type Err = SnapshotFileErrorKind;
     fn from_str(s: &str) -> SnapshotFileResult<Self> {
         Ok(Self(s.split(',').map(ToString::to_string).collect()))
     }
