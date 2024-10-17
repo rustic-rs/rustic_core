@@ -2,7 +2,6 @@
 
 use std::{
     num::{ParseFloatError, ParseIntError, TryFromIntError},
-    ops::RangeInclusive,
     path::PathBuf,
 };
 
@@ -10,7 +9,7 @@ use chrono::OutOfRangeError;
 use displaydoc::Display;
 use thiserror::Error;
 
-use crate::{backend::node::NodeType, blob::BlobId, repofile::packfile::PackId};
+use crate::{backend::node::NodeType, blob::BlobId, repofile::packfile::PackId, RusticError};
 
 pub mod backup;
 /// The `cat` command.
@@ -63,20 +62,6 @@ pub enum CommandErrorKind {
     /// [`serde_json::Error`]
     #[error(transparent)]
     FromJsonError(#[from] serde_json::Error),
-    /// version `{0}` is not supported. Allowed values: {1:?}
-    VersionNotSupported(u32, RangeInclusive<u32>),
-    /// cannot downgrade version from `{0}` to `{1}`
-    CannotDowngrade(u32, u32),
-    /// compression level `{0}` is not supported for repo v1
-    NoCompressionV1Repo(i32),
-    /// compression level `{0}` is not supported. Allowed values: `{1:?}`
-    CompressionLevelNotSupported(i32, RangeInclusive<i32>),
-    /// Size is too large: `{0}`
-    SizeTooLarge(bytesize::ByteSize),
-    /// min_packsize_tolerate_percent must be <= 100
-    MinPackSizeTolerateWrong,
-    /// max_packsize_tolerate_percent must be >= 100 or 0"
-    MaxPackSizeTolerateWrong,
     /// error creating `{0:?}`: `{1:?}`
     ErrorCreating(PathBuf, Box<RusticError>),
     /// error collecting information for `{0:?}`: `{1:?}`
@@ -88,8 +73,6 @@ pub enum CommandErrorKind {
     FromRayonError(#[from] rayon::ThreadPoolBuildError),
     /// Conversion from integer failed: `{0:?}`
     ConversionFromIntFailed(TryFromIntError),
-    /// Not allowed on an append-only repository: `{0}`
-    NotAllowedWithAppendOnly(String),
     /// Specify one of the keep-* options for forget! Please use keep-none to keep no snapshot.
     NoKeepOption,
     /// [`shell_words::ParseError`]
