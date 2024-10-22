@@ -235,11 +235,7 @@ impl IntoIterator for Index {
                     entries.par_sort_unstable_by(|e1, e2| e1.pack_idx.cmp(&e2.pack_idx));
                 }
 
-                TypeIndex {
-                    packs: tc.packs,
-                    entries: tc.entries,
-                    total_size: tc.total_size,
-                }
+                tc
             })),
             tpe: BlobType::Tree,
             idx: BlobTypeMap::default(),
