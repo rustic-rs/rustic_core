@@ -109,7 +109,7 @@ All notable changes to this project will be documented in this file.
 - clippy lints ([#220](https://github.com/rustic-rs/rustic_core/pull/220))
 - *(errors)* Show filenames in error message coming from ignore source ([#215](https://github.com/rustic-rs/rustic_core/pull/215))
 - *(paths)* Handle paths starting with "." correctly ([#213](https://github.com/rustic-rs/rustic_core/pull/213))
-- Add warning about unsorted files and sort where neccessary ([#205](https://github.com/rustic-rs/rustic_core/pull/205))
+- Add warning about unsorted files and sort where necessary ([#205](https://github.com/rustic-rs/rustic_core/pull/205))
 - *(deps)* update rust crate thiserror to 1.0.58 ([#192](https://github.com/rustic-rs/rustic_core/pull/192))
 - *(deps)* update rust crate anyhow to 1.0.81 ([#191](https://github.com/rustic-rs/rustic_core/pull/191))
 - *(deps)* update rust crate serde_with to 3.7.0 ([#189](https://github.com/rustic-rs/rustic_core/pull/189))
