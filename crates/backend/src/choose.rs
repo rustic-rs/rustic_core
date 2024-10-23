@@ -1,5 +1,6 @@
 //! This module contains [`BackendOptions`] and helpers to choose a backend from a given url.
 use derive_setters::Setters;
+use rustic_core::RusticError;
 use std::{collections::HashMap, sync::Arc};
 use strum_macros::{Display, EnumString};
 
@@ -85,7 +86,12 @@ impl BackendOptions {
         options.extend(self.options_cold.clone());
         let be = self
             .get_backend(self.repository.as_ref(), options)?
-            .ok_or_else(|| Err("No repository given.".to_string()).into())?;
+            .ok_or_else(|| {
+                RusticError::new(
+                    rustic_core::ErrorKind::Backend,
+                    "No repository given. Please make sure, that you have set the repository.",
+                )
+            })?;
         let mut options = self.options.clone();
         options.extend(self.options_hot.clone());
         let be_hot = self.get_backend(self.repo_hot.as_ref(), options)?;
@@ -113,15 +119,17 @@ impl BackendOptions {
         &self,
         repo_string: Option<&String>,
         options: HashMap<String, String>,
-    ) -> BackendResult<Option<Arc<dyn WriteBackend>>> {
+    ) -> RusticResult<Option<Arc<dyn WriteBackend>>> {
         repo_string
             .map(|string| {
                 let (be_type, location) = location_to_type_and_path(string)?;
                 be_type.to_backend(location, options.into()).map_err(|err| {
-                    BackendErrorKind::BackendLoadError {
-                        name: be_type,
-                        source: err,
-                    }
+                    RusticError::new(
+                        ErrorKind::Backend,
+                        "Could not load the backend. Please check the given backend and try again.",
+                    )
+                    .add_context("name", be_type)
+                    .source(err.into())
                 })
             })
             .transpose()

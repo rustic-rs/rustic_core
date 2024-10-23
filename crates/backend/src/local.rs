@@ -11,7 +11,8 @@ use log::{debug, trace, warn};
 use walkdir::WalkDir;
 
 use rustic_core::{
-    CommandInput, FileType, Id, ReadBackend, RusticResult, WriteBackend, ALL_FILE_TYPES,
+    CommandInput, ErrorKind, FileType, Id, ReadBackend, RusticError, RusticResult, WriteBackend,
+    ALL_FILE_TYPES,
 };
 
 /// [`LocalBackendErrorKind`] describes the errors that can be returned by an action on the filesystem in Backends
@@ -80,16 +81,19 @@ impl LocalBackend {
     /// # Arguments
     ///
     /// * `path` - The base path of the backend
+    /// * `options` - Additional options for the backend
     ///
-    /// # Errors
+    /// # Returns
     ///
-    /// * [`LocalBackendErrorKind::DirectoryCreationFailed`] - If the directory could not be created.
+    /// A new [`LocalBackend`] instance
     ///
-    /// [`LocalBackendErrorKind::DirectoryCreationFailed`]: LocalBackendErrorKind::DirectoryCreationFailed
-    pub fn new(
-        path: impl AsRef<str>,
-        options: impl IntoIterator<Item = (String, String)>,
-    ) -> RusticResult<Self> {
+    /// # Notes
+    ///
+    /// The following options are supported:
+    ///
+    /// * `post-create-command` - The command to call after a file was created.
+    /// * `post-delete-command` - The command to call after a file was deleted.
+    pub fn new(path: impl AsRef<str>, options: impl IntoIterator<Item = (String, String)>) -> Self {
         let path = path.as_ref().into();
         let mut post_create_command = None;
         let mut post_delete_command = None;
@@ -107,11 +111,11 @@ impl LocalBackend {
             }
         }
 
-        Ok(Self {
+        Self {
             path,
             post_create_command,
             post_delete_command,
-        })
+        }
     }
 
     /// Path to the given file type and id.
@@ -146,10 +150,7 @@ impl LocalBackend {
     ///
     /// # Errors
     ///
-    /// * [`LocalBackendErrorKind::FromAhoCorasick`] - If the patterns could not be compiled.
-    /// * [`LocalBackendErrorKind::FromSplitError`] - If the command could not be parsed.
-    /// * [`LocalBackendErrorKind::CommandExecutionFailed`] - If the command could not be executed.
-    /// * [`LocalBackendErrorKind::CommandNotSuccessful`] - If the command was not successful.
+    // TODO: Add error types
     ///
     /// # Notes
     ///
@@ -157,23 +158,45 @@ impl LocalBackend {
     /// * `%file` - The path to the file.
     /// * `%type` - The type of the file.
     /// * `%id` - The id of the file.
-    ///
-    /// [`LocalBackendErrorKind::FromAhoCorasick`]: LocalBackendErrorKind::FromAhoCorasick
-    /// [`LocalBackendErrorKind::FromSplitError`]: LocalBackendErrorKind::FromSplitError
-    /// [`LocalBackendErrorKind::CommandExecutionFailed`]: LocalBackendErrorKind::CommandExecutionFailed
-    /// [`LocalBackendErrorKind::CommandNotSuccessful`]: LocalBackendErrorKind::CommandNotSuccessful
     fn call_command(tpe: FileType, id: &Id, filename: &Path, command: &str) -> RusticResult<()> {
         let id = id.to_hex();
+
         let patterns = &["%file", "%type", "%id"];
-        let ac = AhoCorasick::new(patterns).map_err(LocalBackendErrorKind::FromAhoCorasick)?;
+
+        let ac = AhoCorasick::new(patterns).map_err(|err| {
+            RusticError::new(ErrorKind::Backend,
+            "Experienced an error building AhoCorasick automaton for command replacement. This is a bug. Please report it.")
+            .source(err.into())
+        })?;
+
         let replace_with = &[filename.to_str().unwrap(), tpe.dirname(), id.as_str()];
+
         let actual_command = ac.replace_all(command, replace_with);
+
         debug!("calling {actual_command}...");
-        let command: CommandInput = actual_command.parse()?;
+
+        let command: CommandInput = actual_command.parse().map_err(|err| {
+            RusticError::new(
+                ErrorKind::Backend,
+                "Failed to parse command input. This is a bug. Please report it.",
+            )
+            .add_context("command", actual_command)
+            .add_context("replacement", replace_with.join(", "))
+            .source(err.into())
+        })?;
+
         let status = Command::new(command.command())
             .args(command.args())
             .status()
-            .map_err(LocalBackendErrorKind::CommandExecutionFailed)?;
+            .map_err(|err| {
+                RusticError::new(
+                    ErrorKind::Backend,
+                    "Failed to execute command. Please check the command and try again.",
+                )
+                .add_context("command", command)
+                .source(err.into())
+            })?;
+
         if !status.success() {
             return Err(LocalBackendErrorKind::CommandNotSuccessful {
                 file_name: replace_with[0].to_owned(),
