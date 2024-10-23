@@ -1,11 +1,10 @@
-use anyhow::Result;
 use bytes::Bytes;
 use zstd::decode_all;
 
 use crate::{
     backend::{
         decrypt::{DecryptFullBackend, DecryptReadBackend, DecryptWriteBackend},
-        FileType, ReadBackend, WriteBackend,
+        CryptBackendErrorKind, FileType, ReadBackend, WriteBackend,
     },
     error::RusticResult,
     id::Id,
@@ -60,13 +59,16 @@ impl<BE: DecryptFullBackend> DecryptReadBackend for DryRunBackend<BE> {
     /// [`CryptBackendErrorKind::DecryptionNotSupportedForBackend`]: crate::error::CryptBackendErrorKind::DecryptionNotSupportedForBackend
     /// [`CryptBackendErrorKind::DecodingZstdCompressedDataFailed`]: crate::error::CryptBackendErrorKind::DecodingZstdCompressedDataFailed
     fn read_encrypted_full(&self, tpe: FileType, id: &Id) -> RusticResult<Bytes> {
-        let decrypted =
-            self.decrypt(&self.read_full(tpe, id).map_err(RusticErrorKind::Backend)?)?;
+        let decrypted = self.decrypt(&self.read_full(tpe, id)?)?;
         Ok(match decrypted.first() {
             Some(b'{' | b'[') => decrypted, // not compressed
             Some(2) => decode_all(&decrypted[1..])
-                .map_err(CryptBackendErrorKind::DecodingZstdCompressedDataFailed)?, // 2 indicates compressed data following
-            _ => return Err(CryptBackendErrorKind::DecryptionNotSupportedForBackend.into()),
+                .map_err(CryptBackendErrorKind::DecodingZstdCompressedDataFailed)
+                .map_err(|_err| todo!("Error transition"))?, // 2 indicates compressed data following
+            _ => {
+                return Err(CryptBackendErrorKind::DecryptionNotSupportedForBackend)
+                    .map_err(|_err| todo!("Error transition"))
+            }
         }
         .into())
     }

@@ -199,7 +199,8 @@ pub fn random_poly() -> RusticResult<u64> {
             return Ok(poly);
         }
     }
-    Err(PolynomialErrorKind::NoSuitablePolynomialFound.into())
+
+    todo!("create rustic error Err(PolynomialErrorKind::NoSuitablePolynomialFound)");
 }
 
 /// A trait for extending polynomials.

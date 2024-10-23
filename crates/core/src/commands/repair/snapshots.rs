@@ -14,7 +14,7 @@ use crate::{
         tree::{Tree, TreeId},
         BlobId, BlobType,
     },
-    error::{CommandErrorKind, RusticResult},
+    error::RusticResult,
     index::{indexer::Indexer, ReadGlobalIndex, ReadIndex},
     progress::ProgressBars,
     repofile::{snapshotfile::SnapshotId, SnapshotFile, StringList},
@@ -280,7 +280,7 @@ pub(crate) fn repair_tree<BE: DecryptWriteBackend>(
         (Some(id), Changed::None) => Ok((Changed::None, id)),
         (_, c) => {
             // the tree has been changed => save it
-            let (chunk, new_id) = tree.serialize()?;
+            let (chunk, new_id) = tree.serialize().map_err(|_err| todo!("Error transition"))?;
             if !index.has_tree(&new_id) && !dry_run {
                 packer.add(chunk.into(), BlobId::from(*new_id))?;
             }

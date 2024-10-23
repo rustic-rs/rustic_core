@@ -4,16 +4,16 @@ use bytesize::ByteSize;
 use log::{debug, trace};
 
 use crate::{
-    archiver::{parent::ParentResult, tree::TreeType},
+    archiver::{parent::ParentResult, tree::TreeType, ArchiverErrorKind},
     backend::{decrypt::DecryptWriteBackend, node::Node},
     blob::{
         packer::Packer,
         tree::{Tree, TreeId},
         BlobType,
     },
-    error::{ArchiverErrorKind, RusticResult},
     index::{indexer::SharedIndexer, ReadGlobalIndex},
     repofile::{configfile::ConfigFile, snapshotfile::SnapshotSummary},
+    RusticResult,
 };
 
 pub(crate) type TreeItem = TreeType<(ParentResult<()>, u64), ParentResult<TreeId>>;
@@ -76,6 +76,7 @@ impl<'a, BE: DecryptWriteBackend, I: ReadGlobalIndex> TreeArchiver<'a, BE, I> {
             config,
             index.total_size(BlobType::Tree),
         )?;
+
         Ok(Self {
             tree: Tree::new(),
             stack: Vec::new(),
@@ -109,7 +110,8 @@ impl<'a, BE: DecryptWriteBackend, I: ReadGlobalIndex> TreeArchiver<'a, BE, I> {
                 let (path, mut node, parent, tree) = self
                     .stack
                     .pop()
-                    .ok_or_else(|| ArchiverErrorKind::TreeStackEmpty)?;
+                    .ok_or_else(|| ArchiverErrorKind::TreeStackEmpty)
+                    .map_err(|_err| todo!("Error transition"))?;
 
                 // save tree
                 trace!("finishing {path:?}");
@@ -172,7 +174,10 @@ impl<'a, BE: DecryptWriteBackend, I: ReadGlobalIndex> TreeArchiver<'a, BE, I> {
     ///
     /// [`PackerErrorKind::SendingCrossbeamMessageFailed`]: crate::error::PackerErrorKind::SendingCrossbeamMessageFailed
     fn backup_tree(&mut self, path: &Path, parent: &ParentResult<TreeId>) -> RusticResult<TreeId> {
-        let (chunk, id) = self.tree.serialize()?;
+        let (chunk, id) = self
+            .tree
+            .serialize()
+            .map_err(|_err| todo!("Error transition"))?;
         let dirsize = chunk.len() as u64;
         let dirsize_bytes = ByteSize(dirsize).to_string_as(true);
 

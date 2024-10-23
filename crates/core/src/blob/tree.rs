@@ -4,7 +4,7 @@ use std::{
     ffi::{OsStr, OsString},
     mem,
     path::{Component, Path, PathBuf, Prefix},
-    str,
+    str::{self, Utf8Error},
 };
 
 use crossbeam_channel::{bounded, unbounded, Receiver, Sender};
@@ -12,7 +12,6 @@ use derivative::Derivative;
 use derive_setters::Setters;
 use ignore::overrides::{Override, OverrideBuilder};
 use ignore::Match;
-
 use serde::{Deserialize, Deserializer};
 use serde_derive::Serialize;
 
@@ -23,7 +22,7 @@ use crate::{
     },
     blob::BlobType,
     crypto::hasher::hash,
-    error::{RusticResult, TreeErrorKind},
+    error::RusticResult,
     impl_blobid,
     index::ReadGlobalIndex,
     progress::Progress,
@@ -112,10 +111,15 @@ impl Tree {
     /// # Returns
     ///
     /// A tuple of the serialized tree as `Vec<u8>` and the tree's ID
-    pub(crate) fn serialize(&self) -> RusticResult<(Vec<u8>, TreeId)> {
+    pub(crate) fn serialize(&self) -> TreeResult<(Vec<u8>, TreeId)> {
         let mut chunk = serde_json::to_vec(&self).map_err(TreeErrorKind::SerializingTreeFailed)?;
-        chunk.push(b'\n'); // for whatever reason, restic adds a newline, so to be compatible...
+        // # COMPATIBILITY
+        //
+        // We add a newline to be compatible with `restic` here
+        chunk.push(b'\n');
+
         let id = hash(&chunk).into();
+
         Ok((chunk, id))
     }
 
@@ -144,10 +148,15 @@ impl Tree {
     ) -> RusticResult<Self> {
         let data = index
             .get_tree(&id)
-            .ok_or_else(|| TreeErrorKind::BlobIdNotFound(id))?
+            .ok_or_else(|| TreeErrorKind::BlobIdNotFound(id))
+            .map_err(|_err| todo!("Error transition"))?
             .read_data(be)?;
 
-        Ok(serde_json::from_slice(&data).map_err(TreeErrorKind::DeserializingTreeFailed)?)
+        let tree = serde_json::from_slice(&data)
+            .map_err(TreeErrorKind::DeserializingTreeFailed)
+            .map_err(|_err| todo!("Error transition"))?;
+
+        Ok(tree)
     }
 
     /// Creates a new node from a path.
@@ -177,16 +186,18 @@ impl Tree {
         node.subtree = Some(id);
 
         for p in path.components() {
-            if let Some(p) = comp_to_osstr(p)? {
+            if let Some(p) = comp_to_osstr(p).map_err(|_err| todo!("Error transition"))? {
                 let id = node
                     .subtree
-                    .ok_or_else(|| TreeErrorKind::NotADirectory(p.clone()))?;
+                    .ok_or_else(|| TreeErrorKind::NotADirectory(p.clone()))
+                    .map_err(|_err| todo!("Error transition"))?;
                 let tree = Self::from_backend(be, index, id)?;
                 node = tree
                     .nodes
                     .into_iter()
                     .find(|node| node.name() == p)
-                    .ok_or_else(|| TreeErrorKind::PathNotFound(p.clone()))?;
+                    .ok_or_else(|| TreeErrorKind::PathNotFound(p.clone()))
+                    .map_err(|_err| todo!("Error transition"))?;
             }
         }
 
@@ -226,7 +237,8 @@ impl Tree {
                 } else {
                     let id = node
                         .subtree
-                        .ok_or_else(|| TreeErrorKind::NotADirectory(path_comp[idx].clone()))?;
+                        .ok_or_else(|| TreeErrorKind::NotADirectory(path_comp[idx].clone()))
+                        .map_err(|_err| todo!("Error transition"))?;
 
                     find_node_from_component(
                         be,
@@ -248,7 +260,8 @@ impl Tree {
         let path_comp: Vec<_> = path
             .components()
             .filter_map(|p| comp_to_osstr(p).transpose())
-            .collect::<RusticResult<_>>()?;
+            .collect::<TreeResult<_>>()
+            .map_err(|_err| todo!("Error transition"))?;
 
         // caching all results
         let mut results_cache = vec![BTreeMap::new(); path_comp.len()];
@@ -322,7 +335,8 @@ impl Tree {
                 if node.is_dir() {
                     let id = node
                         .subtree
-                        .ok_or_else(|| TreeErrorKind::NotADirectory(node.name()))?;
+                        .ok_or_else(|| TreeErrorKind::NotADirectory(node.name()))
+                        .map_err(|_err| todo!("Error transition"))?;
                     result.append(&mut find_matching_nodes_recursive(
                         be, index, id, &node_path, state, matches,
                     )?);
@@ -397,7 +411,7 @@ pub struct FindMatches {
 ///
 /// [`TreeErrorKind::ContainsCurrentOrParentDirectory`]: crate::error::TreeErrorKind::ContainsCurrentOrParentDirectory
 /// [`TreeErrorKind::PathIsNotUtf8Conform`]: crate::error::TreeErrorKind::PathIsNotUtf8Conform
-pub(crate) fn comp_to_osstr(p: Component<'_>) -> RusticResult<Option<OsString>> {
+pub(crate) fn comp_to_osstr(p: Component<'_>) -> TreeResult<Option<OsString>> {
     let s = match p {
         Component::RootDir => None,
         Component::Prefix(p) => match p.kind() {
@@ -503,7 +517,6 @@ where
     ///
     /// [`TreeErrorKind::BlobIdNotFound`]: crate::error::TreeErrorKind::BlobIdNotFound
     /// [`TreeErrorKind::DeserializingTreeFailed`]: crate::error::TreeErrorKind::DeserializingTreeFailed
-    #[allow(unused)]
     pub fn new(be: BE, index: &'a I, node: &Node) -> RusticResult<Self> {
         Self::new_streamer(be, index, node, None, true)
     }
@@ -575,42 +588,50 @@ where
         for g in &opts.glob {
             _ = override_builder
                 .add(g)
-                .map_err(TreeErrorKind::BuildingNodeStreamerFailed)?;
+                .map_err(TreeErrorKind::BuildingNodeStreamerFailed)
+                .map_err(|_err| todo!("Error transition"))?;
         }
 
         for file in &opts.glob_file {
             for line in std::fs::read_to_string(file)
-                .map_err(TreeErrorKind::ReadingFileStringFromGlobsFailed)?
+                .map_err(TreeErrorKind::ReadingFileStringFromGlobsFailed)
+                .map_err(|_err| todo!("Error transition"))?
                 .lines()
             {
                 _ = override_builder
                     .add(line)
-                    .map_err(TreeErrorKind::BuildingNodeStreamerFailed)?;
+                    .map_err(TreeErrorKind::BuildingNodeStreamerFailed)
+                    .map_err(|_err| todo!("Error transition"))?;
             }
         }
 
         _ = override_builder
             .case_insensitive(true)
-            .map_err(TreeErrorKind::BuildingNodeStreamerFailed)?;
+            .map_err(TreeErrorKind::BuildingNodeStreamerFailed)
+            .map_err(|_err| todo!("Error transition"))?;
         for g in &opts.iglob {
             _ = override_builder
                 .add(g)
-                .map_err(TreeErrorKind::BuildingNodeStreamerFailed)?;
+                .map_err(TreeErrorKind::BuildingNodeStreamerFailed)
+                .map_err(|_err| todo!("Error transition"))?;
         }
 
         for file in &opts.iglob_file {
             for line in std::fs::read_to_string(file)
-                .map_err(TreeErrorKind::ReadingFileStringFromGlobsFailed)?
+                .map_err(TreeErrorKind::ReadingFileStringFromGlobsFailed)
+                .map_err(|_err| todo!("Error transition"))?
                 .lines()
             {
                 _ = override_builder
                     .add(line)
-                    .map_err(TreeErrorKind::BuildingNodeStreamerFailed)?;
+                    .map_err(TreeErrorKind::BuildingNodeStreamerFailed)
+                    .map_err(|_err| todo!("Error transition"))?;
             }
         }
         let overrides = override_builder
             .build()
-            .map_err(TreeErrorKind::BuildingNodeStreamerFailed)?;
+            .map_err(TreeErrorKind::BuildingNodeStreamerFailed)
+            .map_err(|_err| todo!("Error transition"))?;
 
         Self::new_streamer(be, index, node, Some(overrides), opts.recursive)
     }
@@ -738,7 +759,10 @@ impl<P: Progress> TreeStreamerOnce<P> {
         };
 
         for (count, id) in ids.into_iter().enumerate() {
-            if !streamer.add_pending(PathBuf::new(), id, count)? {
+            if !streamer
+                .add_pending(PathBuf::new(), id, count)
+                .map_err(|_err| todo!("Error transition"))?
+            {
                 streamer.p.inc(1);
                 streamer.finished_ids += 1;
             }
@@ -764,13 +788,17 @@ impl<P: Progress> TreeStreamerOnce<P> {
     /// * [`TreeErrorKind::SendingCrossbeamMessageFailed`] - If sending the message fails.
     ///
     /// [`TreeErrorKind::SendingCrossbeamMessageFailed`]: crate::error::TreeErrorKind::SendingCrossbeamMessageFailed
-    fn add_pending(&mut self, path: PathBuf, id: TreeId, count: usize) -> RusticResult<bool> {
+    fn add_pending(&mut self, path: PathBuf, id: TreeId, count: usize) -> TreeResult<bool> {
         if self.visited.insert(id) {
             self.queue_in
                 .as_ref()
                 .unwrap()
                 .send((path, id, count))
-                .map_err(TreeErrorKind::SendingCrossbeamMessageFailed)?;
+                .map_err(|err| TreeErrorKind::Channel {
+                    kind: "sending crossbeam message",
+                    source: err.into(),
+                })?;
+
             self.counter[count] += 1;
             Ok(true)
         } else {
@@ -791,9 +819,13 @@ impl<P: Progress> Iterator for TreeStreamerOnce<P> {
         let (path, tree, count) = match self.queue_out.recv() {
             Ok(Ok(res)) => res,
             Err(err) => {
-                return Some(Err(
-                    TreeErrorKind::ReceivingCrossbreamMessageFailed(err).into()
-                ))
+                return Some(
+                    Err(TreeErrorKind::Channel {
+                        kind: "receiving crossbeam message",
+                        source: err.into(),
+                    })
+                    .map_err(|_err| todo!("Error transition")),
+                )
             }
             Ok(Err(err)) => return Some(Err(err)),
         };
@@ -804,7 +836,7 @@ impl<P: Progress> Iterator for TreeStreamerOnce<P> {
                 path.push(node.name());
                 match self.add_pending(path, id, count) {
                     Ok(_) => {}
-                    Err(err) => return Some(Err(err)),
+                    Err(err) => return Some(Err(err).map_err(|_err| todo!("Error transition"))),
                 }
             }
         }

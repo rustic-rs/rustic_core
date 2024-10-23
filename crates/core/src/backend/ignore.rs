@@ -6,8 +6,6 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use serde_with::{serde_as, DisplayFromStr};
-
 use bytesize::ByteSize;
 #[cfg(not(windows))]
 use cached::proc_macro::cached;
@@ -19,6 +17,7 @@ use ignore::{overrides::OverrideBuilder, DirEntry, Walk, WalkBuilder};
 use log::warn;
 #[cfg(not(windows))]
 use nix::unistd::{Gid, Group, Uid, User};
+use serde_with::{serde_as, DisplayFromStr};
 
 #[cfg(not(windows))]
 use crate::backend::node::ExtendedAttribute;
@@ -198,7 +197,7 @@ impl LocalSource {
         for g in &filter_opts.globs {
             _ = override_builder
                 .add(g)
-                .map_err(IgnoreErrorKind::GenericError)?;
+                .map_err(|_err| todo!("Error transition"))?;
         }
 
         for file in &filter_opts.glob_files {
@@ -206,22 +205,23 @@ impl LocalSource {
                 .map_err(|err| IgnoreErrorKind::ErrorGlob {
                     file: file.into(),
                     source: err,
-                })?
+                })
+                .map_err(|_err| todo!("Error transition"))?
                 .lines()
             {
                 _ = override_builder
                     .add(line)
-                    .map_err(IgnoreErrorKind::GenericError)?;
+                    .map_err(|_err| todo!("Error transition"))?;
             }
         }
 
         _ = override_builder
             .case_insensitive(true)
-            .map_err(IgnoreErrorKind::GenericError)?;
+            .map_err(|_err| todo!("Error transition"))?;
         for g in &filter_opts.iglobs {
             _ = override_builder
                 .add(g)
-                .map_err(IgnoreErrorKind::GenericError)?;
+                .map_err(|_err| todo!("Error transition"))?;
         }
 
         for file in &filter_opts.iglob_files {
@@ -229,12 +229,13 @@ impl LocalSource {
                 .map_err(|err| IgnoreErrorKind::ErrorGlob {
                     file: file.into(),
                     source: err,
-                })?
+                })
+                .map_err(|_err| todo!("Error transition"))?
                 .lines()
             {
                 _ = override_builder
                     .add(line)
-                    .map_err(IgnoreErrorKind::GenericError)?;
+                    .map_err(|_err| todo!("Error transition"))?;
             }
         }
 
@@ -254,7 +255,7 @@ impl LocalSource {
             .overrides(
                 override_builder
                     .build()
-                    .map_err(IgnoreErrorKind::GenericError)?,
+                    .map_err(|_err| todo!("Error transition"))?,
             );
 
         let exclude_if_present = filter_opts.exclude_if_present.clone();
@@ -298,13 +299,12 @@ impl ReadSourceOpen for OpenFile {
     /// [`IgnoreErrorKind::UnableToOpenFile`]: crate::error::IgnoreErrorKind::UnableToOpenFile
     fn open(self) -> RusticResult<Self::Reader> {
         let path = self.0;
-        File::open(&path).map_err(|err| {
-            IgnoreErrorKind::UnableToOpenFile {
+        File::open(&path)
+            .map_err(|err| IgnoreErrorKind::UnableToOpenFile {
                 file: path,
                 source: err,
-            }
-            .into()
-        })
+            })
+            .map_err(|_err| todo!("Error transition"))
     }
 }
 
@@ -368,11 +368,11 @@ impl Iterator for LocalSourceWalker {
         }
         .map(|e| {
             map_entry(
-                e.map_err(IgnoreErrorKind::GenericError)?,
+                e.map_err(|_err| todo!("Error transition"))?,
                 self.save_opts.with_atime,
                 self.save_opts.ignore_devid,
             )
-            .map_err(Into::into)
+            .map_err(|_err| todo!("Error transition"))
         })
     }
 }
@@ -398,9 +398,9 @@ fn map_entry(
     entry: DirEntry,
     with_atime: bool,
     _ignore_devid: bool,
-) -> RusticResult<ReadSourceEntry<OpenFile>> {
+) -> IgnoreResult<ReadSourceEntry<OpenFile>> {
     let name = entry.file_name();
-    let m = entry.metadata().map_err(IgnoreErrorKind::GenericError)?;
+    let m = entry.metadata().map_err(|_err| todo!("Error transition"))?;
 
     // TODO: Set them to suitable values
     let uid = None;
@@ -511,7 +511,7 @@ fn get_group_by_gid(gid: u32) -> Option<String> {
 }
 
 #[cfg(all(not(windows), target_os = "openbsd"))]
-fn list_extended_attributes(path: &Path) -> RusticResult<Vec<ExtendedAttribute>> {
+fn list_extended_attributes(path: &Path) -> IgnoreResult<Vec<ExtendedAttribute>> {
     Ok(vec![])
 }
 
@@ -525,7 +525,7 @@ fn list_extended_attributes(path: &Path) -> RusticResult<Vec<ExtendedAttribute>>
 ///
 /// * [`IgnoreErrorKind::ErrorXattr`] - if Xattr couldn't be listed or couldn't be read
 #[cfg(all(not(windows), not(target_os = "openbsd")))]
-fn list_extended_attributes(path: &Path) -> RusticResult<Vec<ExtendedAttribute>> {
+fn list_extended_attributes(path: &Path) -> IgnoreResult<Vec<ExtendedAttribute>> {
     xattr::list(path)
         .map_err(|err| IgnoreErrorKind::ErrorXattr {
             path: path.to_path_buf(),
@@ -540,7 +540,7 @@ fn list_extended_attributes(path: &Path) -> RusticResult<Vec<ExtendedAttribute>>
                 })?,
             })
         })
-        .collect::<RusticResult<Vec<ExtendedAttribute>>>()
+        .collect::<IgnoreResult<Vec<ExtendedAttribute>>>()
 }
 
 /// Maps a [`DirEntry`] to a [`ReadSourceEntry`].
@@ -565,9 +565,14 @@ fn map_entry(
     entry: DirEntry,
     with_atime: bool,
     ignore_devid: bool,
-) -> RusticResult<ReadSourceEntry<OpenFile>> {
+) -> IgnoreResult<ReadSourceEntry<OpenFile>> {
     let name = entry.file_name();
-    let m = entry.metadata().map_err(IgnoreErrorKind::GenericError)?;
+    let m = entry
+        .metadata()
+        .map_err(|err| IgnoreErrorKind::AcquiringMetadataFailed {
+            name: name.to_string_lossy().to_string(),
+            source: err,
+        })?;
 
     let uid = m.uid();
     let gid = m.gid();
@@ -591,7 +596,11 @@ fn map_entry(
             m.ctime(),
             m.ctime_nsec()
                 .try_into()
-                .map_err(IgnoreErrorKind::FromTryFromIntError)?,
+                .map_err(|err| IgnoreErrorKind::CtimeConversionFailed {
+                    ctime: m.ctime(),
+                    ctime_nsec: m.ctime_nsec(),
+                    source: err,
+                })?,
         )
         .single()
         .map(|dt| dt.with_timezone(&Local));

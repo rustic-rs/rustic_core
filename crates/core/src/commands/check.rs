@@ -2,6 +2,7 @@
 use std::{
     collections::{BTreeSet, HashMap},
     fmt::Debug,
+    path::PathBuf,
     str::FromStr,
 };
 
@@ -18,7 +19,7 @@ use crate::{
     backend::{cache::Cache, decrypt::DecryptReadBackend, node::NodeType, FileType, ReadBackend},
     blob::{tree::TreeStreamerOnce, BlobId, BlobType},
     crypto::hasher::hash,
-    error::{CommandErrorKind, RusticErrorKind, RusticResult},
+    error::{RusticError, RusticResult},
     id::Id,
     index::{
         binarysorted::{IndexCollector, IndexType},
@@ -191,8 +192,12 @@ impl ReadSubsetOption {
     }
 }
 
-/// parses n/m inclding named settings depending on current date
-fn parse_n_m(now: NaiveDateTime, n_in: &str, m_in: &str) -> Result<(u32, u32), CommandErrorKind> {
+/// parses n/m including named settings depending on current date
+fn parse_n_m(
+    now: NaiveDateTime,
+    n_in: &str,
+    m_in: &str,
+) -> Result<(u32, u32), CheckCommandErrorKind> {
     let is_leap_year = |dt: NaiveDateTime| {
         let year = dt.year();
         year % 4 == 0 && (year % 25 != 0 || year % 16 == 0)
@@ -233,7 +238,7 @@ fn parse_n_m(now: NaiveDateTime, n_in: &str, m_in: &str) -> Result<(u32, u32), C
 }
 
 impl FromStr for ReadSubsetOption {
-    type Err = CommandErrorKind;
+    type Err = CheckCommandErrorKind;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let result = if s == "all" {
             Self::All
@@ -246,7 +251,7 @@ impl FromStr for ReadSubsetOption {
         } else {
             Self::Size(
                 ByteSize::from_str(s)
-                    .map_err(CommandErrorKind::FromByteSizeParser)?
+                    .map_err(CheckCommandErrorKind::FromByteSizeParser)?
                     .as_u64(),
             )
         };

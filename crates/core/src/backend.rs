@@ -10,9 +10,8 @@ pub(crate) mod node;
 pub(crate) mod stdin;
 pub(crate) mod warm_up;
 
-use std::{io::Read, ops::Deref, path::PathBuf, sync::Arc};
+use std::{io::Read, num::TryFromIntError, ops::Deref, path::PathBuf, sync::Arc};
 
-use anyhow::Result;
 use bytes::Bytes;
 use enum_map::Enum;
 use log::trace;
@@ -26,7 +25,6 @@ use crate::{
     backend::node::{Metadata, Node, NodeType},
     error::RusticResult,
     id::Id,
-    RusticResult,
 };
 
 // #[derive(thiserror::Error, Debug, displaydoc::Display)]
@@ -273,7 +271,7 @@ pub trait FindInBackend: ReadBackend {
             NonUnique,
         }
         let mut results = vec![MapResult::None; vec.len()];
-        for id in self.list(tpe).map_err(RusticErrorKind::Backend)? {
+        for id in self.list(tpe)? {
             let id_hex = id.to_hex();
             for (i, v) in vec.iter().enumerate() {
                 if id_hex.starts_with(v.as_ref()) {
@@ -291,12 +289,13 @@ pub trait FindInBackend: ReadBackend {
             .enumerate()
             .map(|(i, id)| match id {
                 MapResult::Some(id) => Ok(id),
-                MapResult::None => Err(BackendAccessErrorKind::NoSuitableIdFound(
+                MapResult::None => Err(BackendErrorKind::NoSuitableIdFound(
                     (vec[i]).as_ref().to_string(),
-                )
-                .into()),
+                ))
+                .map_err(|_err| todo!("Error transition")),
                 MapResult::NonUnique => {
-                    Err(BackendAccessErrorKind::IdNotUnique((vec[i]).as_ref().to_string()).into())
+                    Err(BackendErrorKind::IdNotUnique((vec[i]).as_ref().to_string()))
+                        .map_err(|_err| todo!("Error transition"))
                 }
             })
             .collect()
@@ -496,7 +495,8 @@ impl<O> ReadSourceEntry<O> {
     fn from_path(path: PathBuf, open: Option<O>) -> RusticResult<Self> {
         let node = Node::new_node(
             path.file_name()
-                .ok_or_else(|| BackendAccessErrorKind::PathNotAllowed(path.clone()))?,
+                .ok_or_else(|| BackendErrorKind::PathNotAllowed(path.clone()))
+                .map_err(|_err| todo!("Error transition"))?,
             NodeType::File,
             Metadata::default(),
         );

@@ -7,7 +7,6 @@ use strum_macros::{Display, EnumString};
 use rustic_core::{RepositoryBackends, RusticResult, WriteBackend};
 
 use crate::{
-    error::BackendAccessErrorKind,
     local::LocalBackend,
     util::{location_to_type_and_path, BackendLocation},
 };
@@ -119,7 +118,10 @@ impl BackendOptions {
             .map(|string| {
                 let (be_type, location) = location_to_type_and_path(string)?;
                 be_type.to_backend(location, options.into()).map_err(|err| {
-                    BackendAccessErrorKind::BackendLoadError(be_type.to_string(), err).into()
+                    BackendErrorKind::BackendLoadError {
+                        name: be_type,
+                        source: err,
+                    }
                 })
             })
             .transpose()

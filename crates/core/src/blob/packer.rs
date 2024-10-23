@@ -1,6 +1,3 @@
-use integer_sqrt::IntegerSquareRoot;
-use log::warn;
-
 use std::{
     num::NonZeroU32,
     sync::{Arc, RwLock},
@@ -10,6 +7,8 @@ use std::{
 use bytes::{Bytes, BytesMut};
 use chrono::Local;
 use crossbeam_channel::{bounded, Receiver, Sender};
+use integer_sqrt::IntegerSquareRoot;
+use log::warn;
 use pariter::{scope, IteratorExt};
 
 use crate::{
@@ -19,7 +18,7 @@ use crate::{
     },
     blob::{BlobId, BlobType},
     crypto::{hasher::hash, CryptoKey},
-    error::{PackerErrorKind, RusticErrorKind, RusticResult},
+    error::RusticResult,
     index::indexer::SharedIndexer,
     repofile::{
         configfile::ConfigFile,
@@ -265,12 +264,13 @@ impl<BE: DecryptWriteBackend> Packer<BE> {
                             |(_, id, _, _, _)| !indexer.read().unwrap().has(id),
                         )
                     })
-                    .try_for_each(|item: RusticResult<_>| {
+                    .try_for_each(|item: RusticResult<_>| -> RusticResult<()> {
                         let (data, id, data_len, ul, size_limit) = item?;
                         raw_packer
                             .write()
                             .unwrap()
                             .add_raw(&data, &id, data_len, ul, size_limit)
+                            .map_err(|_err| todo!("Error transition"))
                     })
                     .and_then(|()| raw_packer.write().unwrap().finalize());
                 _ = finish_tx.send(status);
@@ -296,6 +296,7 @@ impl<BE: DecryptWriteBackend> Packer<BE> {
     pub fn add(&self, data: Bytes, id: BlobId) -> RusticResult<()> {
         // compute size limit based on total size and size bounds
         self.add_with_sizelimit(data, id, None)
+            .map_err(|_err| todo!("Error transition"))
     }
 
     /// Adds the blob to the packfile, allows specifying a size limit for the pack file
@@ -316,10 +317,10 @@ impl<BE: DecryptWriteBackend> Packer<BE> {
         data: Bytes,
         id: BlobId,
         size_limit: Option<u32>,
-    ) -> RusticResult<()> {
+    ) -> PackerResult<()> {
         self.sender
             .send((data, id, size_limit))
-            .map_err(PackerErrorKind::SendingCrossbeamMessageFailed)?;
+            .map_err(|_err| todo!("Error transition"))?;
         Ok(())
     }
 
@@ -344,7 +345,7 @@ impl<BE: DecryptWriteBackend> Packer<BE> {
         data_len: u64,
         uncompressed_length: Option<NonZeroU32>,
         size_limit: Option<u32>,
-    ) -> RusticResult<()> {
+    ) -> PackerResult<()> {
         // only add if this blob is not present
         if self.indexer.read().unwrap().has(id) {
             Ok(())
@@ -368,7 +369,9 @@ impl<BE: DecryptWriteBackend> Packer<BE> {
         // cancel channel
         drop(self.sender);
         // wait for items in channel to be processed
-        self.finish.recv().unwrap()
+        self.finish
+            .recv()
+            .expect("Should be able to receive from channel to finalize packer.")
     }
 }
 
@@ -494,7 +497,7 @@ impl<BE: DecryptWriteBackend> RawPacker<BE> {
     ///
     /// If the packfile could not be saved
     fn finalize(&mut self) -> RusticResult<PackerStats> {
-        self.save()?;
+        self.save().map_err(|_err| todo!("Error transition"))?;
         self.file_writer.take().unwrap().finalize()?;
         Ok(std::mem::take(&mut self.stats))
     }
@@ -508,11 +511,15 @@ impl<BE: DecryptWriteBackend> RawPacker<BE> {
     /// # Returns
     ///
     /// The number of bytes written.
-    fn write_data(&mut self, data: &[u8]) -> RusticResult<u32> {
+    fn write_data(&mut self, data: &[u8]) -> PackerResult<u32> {
         let len = data
             .len()
             .try_into()
-            .map_err(PackerErrorKind::IntConversionFailed)?;
+            .map_err(|err| PackerErrorKind::ConversionFailed {
+                to: "u32",
+                from: "usize",
+                source: err,
+            })?;
         self.file.extend_from_slice(data);
         self.size += len;
         Ok(len)
@@ -540,16 +547,20 @@ impl<BE: DecryptWriteBackend> RawPacker<BE> {
         data_len: u64,
         uncompressed_length: Option<NonZeroU32>,
         size_limit: Option<u32>,
-    ) -> RusticResult<()> {
+    ) -> PackerResult<()> {
         if self.has(id) {
             return Ok(());
         }
         self.stats.blobs += 1;
         self.stats.data += data_len;
-        let data_len_packed: u64 = data
-            .len()
-            .try_into()
-            .map_err(PackerErrorKind::IntConversionFailed)?;
+        let data_len_packed: u64 =
+            data.len()
+                .try_into()
+                .map_err(|err| PackerErrorKind::ConversionFailed {
+                    to: "u64",
+                    from: "usize",
+                    source: err,
+                })?;
         self.stats.data_packed += data_len_packed;
 
         let size_limit = size_limit.unwrap_or_else(|| self.pack_sizer.pack_size());
@@ -586,21 +597,35 @@ impl<BE: DecryptWriteBackend> RawPacker<BE> {
     ///
     /// [`PackerErrorKind::IntConversionFailed`]: crate::error::PackerErrorKind::IntConversionFailed
     /// [`PackFileErrorKind::WritingBinaryRepresentationFailed`]: crate::error::PackFileErrorKind::WritingBinaryRepresentationFailed
-    fn write_header(&mut self) -> RusticResult<()> {
+    fn write_header(&mut self) -> PackerResult<()> {
         // compute the pack header
-        let data = PackHeaderRef::from_index_pack(&self.index).to_binary()?;
+        let data = PackHeaderRef::from_index_pack(&self.index)
+            .to_binary()
+            .map_err(|_err| todo!("Error transition"))?;
 
         // encrypt and write to pack file
-        let data = self.be.key().encrypt_data(&data)?;
+        let data = self
+            .be
+            .key()
+            .encrypt_data(&data)
+            .map_err(|_err| todo!("Error transition"))?;
 
         let headerlen = data
             .len()
             .try_into()
-            .map_err(PackerErrorKind::IntConversionFailed)?;
+            .map_err(|err| PackerErrorKind::ConversionFailed {
+                to: "u32",
+                from: "usize",
+                source: err,
+            })?;
         _ = self.write_data(&data)?;
 
         // finally write length of header unencrypted to pack file
-        _ = self.write_data(&PackHeaderLength::from_u32(headerlen).to_binary()?)?;
+        _ = self.write_data(
+            &PackHeaderLength::from_u32(headerlen)
+                .to_binary()
+                .map_err(|_err| todo!("Error transition"))?,
+        )?;
 
         Ok(())
     }
@@ -618,7 +643,7 @@ impl<BE: DecryptWriteBackend> RawPacker<BE> {
     ///
     /// [`PackerErrorKind::IntConversionFailed`]: crate::error::PackerErrorKind::IntConversionFailed
     /// [`PackFileErrorKind::WritingBinaryRepresentationFailed`]: crate::error::PackFileErrorKind::WritingBinaryRepresentationFailed
-    fn save(&mut self) -> RusticResult<()> {
+    fn save(&mut self) -> PackerResult<()> {
         if self.size == 0 {
             return Ok(());
         }
@@ -661,8 +686,7 @@ impl<BE: DecryptWriteBackend> FileWriterHandle<BE> {
         let (file, id, mut index) = load;
         index.id = id;
         self.be
-            .write_bytes(FileType::Pack, &id, self.cacheable, file)
-            .map_err(RusticErrorKind::Backend)?;
+            .write_bytes(FileType::Pack, &id, self.cacheable, file)?;
         index.time = Some(Local::now());
         Ok(index)
     }
@@ -734,10 +758,10 @@ impl Actor {
     /// # Errors
     ///
     /// If sending the message to the actor fails.
-    fn send(&self, load: (Bytes, IndexPack)) -> RusticResult<()> {
+    fn send(&self, load: (Bytes, IndexPack)) -> PackerResult<()> {
         self.sender
             .send(load)
-            .map_err(PackerErrorKind::SendingCrossbeamMessageFailedForIndexPack)?;
+            .map_err(|_err| todo!("Error transition"))?;
         Ok(())
     }
 
@@ -818,23 +842,22 @@ impl<BE: DecryptFullBackend> Repacker<BE> {
     /// If the blob could not be added
     /// If reading the blob from the backend fails
     pub fn add_fast(&self, pack_id: &PackId, blob: &IndexBlob) -> RusticResult<()> {
-        let data = self
-            .be
-            .read_partial(
-                FileType::Pack,
-                pack_id,
-                blob.tpe.is_cacheable(),
-                blob.offset,
-                blob.length,
-            )
-            .map_err(RusticErrorKind::Backend)?;
-        self.packer.add_raw(
-            &data,
-            &blob.id,
-            0,
-            blob.uncompressed_length,
-            Some(self.size_limit),
+        let data = self.be.read_partial(
+            FileType::Pack,
+            pack_id,
+            blob.tpe.is_cacheable(),
+            blob.offset,
+            blob.length,
         )?;
+        self.packer
+            .add_raw(
+                &data,
+                &blob.id,
+                0,
+                blob.uncompressed_length,
+                Some(self.size_limit),
+            )
+            .map_err(|_err| todo!("Error transition"))?;
         Ok(())
     }
 
@@ -858,8 +881,11 @@ impl<BE: DecryptFullBackend> Repacker<BE> {
             blob.length,
             blob.uncompressed_length,
         )?;
+
         self.packer
-            .add_with_sizelimit(data, blob.id, Some(self.size_limit))?;
+            .add_with_sizelimit(data, blob.id, Some(self.size_limit))
+            .map_err(|_err| todo!("Error transition"))?;
+
         Ok(())
     }
 

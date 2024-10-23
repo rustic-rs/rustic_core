@@ -7,7 +7,10 @@ use derive_more::{Constructor, Display};
 use rand::{thread_rng, RngCore};
 use serde_derive::{Deserialize, Serialize};
 
-use crate::{crypto::hasher::hash, error::IdErrorKind, RusticError, RusticResult};
+use crate::{
+    crypto::hasher::hash,
+    error::{RusticError, ErrorKind, RusticResult},
+};
 
 pub(super) mod constants {
     /// The length of the hash in bytes
@@ -40,6 +43,14 @@ macro_rules! define_new_id_struct {
         )]
         #[serde(transparent)]
         pub struct $a($crate::Id);
+
+        impl $a {
+            /// impl into_inner
+            #[must_use]
+            pub fn into_inner(self) -> $crate::Id {
+                self.0
+            }
+        }
     };
 }
 
@@ -74,7 +85,12 @@ impl FromStr for Id {
     type Err = RusticError;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let mut id = Self::default();
-        hex::decode_to_slice(s, &mut id.0).map_err(IdErrorKind::HexError)?;
+        hex::decode_to_slice(s, &mut id.0).map_err(|err| {
+            RusticError::new(ErrorKind::Parsing, 
+                format!("Failed to decode hex string into Id. The string must be a valid hexadecimal string: {s}")
+            ).source(err.into())
+        })?;
+
         Ok(id)
     }
 }

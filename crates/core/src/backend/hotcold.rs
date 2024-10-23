@@ -1,6 +1,5 @@
 use std::sync::Arc;
 
-use anyhow::Result;
 use bytes::Bytes;
 
 use crate::{

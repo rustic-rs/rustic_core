@@ -266,10 +266,12 @@ impl ReadBackend for LocalBackend {
                 Ok((
                     e.file_name().to_string_lossy().parse()?,
                     e.metadata()
-                        .map_err(LocalBackendErrorKind::QueryingWalkDirMetadataFailed)?
+                        .map_err(LocalBackendErrorKind::QueryingWalkDirMetadataFailed)
+                        .map_err(|_err| todo!("Error transition"))?
                         .len()
                         .try_into()
-                        .map_err(LocalBackendErrorKind::FromTryIntError)?,
+                        .map_err(LocalBackendErrorKind::FromTryIntError)
+                        .map_err(|_err| todo!("Error transition"))?,
                 ))
             })
             .filter_map(RusticResult::ok);

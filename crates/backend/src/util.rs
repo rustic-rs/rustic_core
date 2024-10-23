@@ -65,6 +65,9 @@ pub fn location_to_type_and_path(
             SupportedBackend::Local,
             BackendLocation(raw_location.to_string()),
         )),
+        _ => Err(BackendErrorKind::BackendLocationNotConvertible {
+            location: raw_location.to_string(),
+        }),
     }
 }
 

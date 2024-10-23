@@ -16,9 +16,13 @@ use crate::{
     },
     backend::{decrypt::DecryptFullBackend, ReadSource, ReadSourceEntry},
     blob::BlobType,
-    index::{indexer::Indexer, indexer::SharedIndexer, ReadGlobalIndex},
+    error::RusticResult,
+    index::{
+        indexer::{Indexer, SharedIndexer},
+        ReadGlobalIndex,
+    },
     repofile::{configfile::ConfigFile, snapshotfile::SnapshotFile},
-    Progress, RusticResult,
+    Progress,
 };
 
 /// [`ArchiverErrorKind`] describes the errors that can be returned from the archiver
@@ -221,8 +225,12 @@ impl<'a, BE: DecryptFullBackend, I: ReadGlobalIndex> Archiver<'a, BE, I> {
                 })
                 .try_for_each(|item| self.tree_archiver.add(item))
             })
-            .unwrap()?;
-            src_size_handle.join().unwrap();
+            .expect("Scoped Archiver thread should not panic!")?;
+
+            src_size_handle
+                .join()
+                .expect("Scoped Size Handler thread should not panic!");
+
             Ok(())
         })?;
 
@@ -233,7 +241,9 @@ impl<'a, BE: DecryptFullBackend, I: ReadGlobalIndex> Archiver<'a, BE, I> {
 
         self.indexer.write().unwrap().finalize()?;
 
-        summary.finalize(self.snap.time)?;
+        summary
+            .finalize(self.snap.time)
+            .map_err(|_err| todo!("Error transition"))?;
         self.snap.summary = Some(summary);
 
         if !skip_identical_parent || Some(self.snap.tree) != self.parent.tree_id() {

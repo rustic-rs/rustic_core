@@ -6,7 +6,7 @@ use serde_derive::{Deserialize, Serialize};
 use serde_with::{serde_as, skip_serializing_none, DisplayFromStr};
 
 use crate::{
-    error::{CommandErrorKind, RusticResult},
+    error::RusticResult,
     progress::ProgressBars,
     repofile::{
         snapshotfile::{SnapshotGroup, SnapshotGroupCriterion, SnapshotId},
@@ -523,7 +523,7 @@ impl KeepOptions {
         now: DateTime<Local>,
     ) -> RusticResult<Vec<ForgetSnapshot>> {
         if !self.is_valid() {
-            return Err(CommandErrorKind::NoKeepOption.into());
+            return Err(CommandErrorKind::NoKeepOption).map_err(|_err| todo!("Error transition"));
         }
 
         let mut group_keep = self.clone();

@@ -30,7 +30,7 @@ use crate::{
         tree::TreeStreamerOnce,
         BlobId, BlobType, BlobTypeMap, Initialize,
     },
-    error::{CommandErrorKind, RusticErrorKind, RusticResult},
+    error::{RusticError, RusticResult},
     index::{
         binarysorted::{IndexCollector, IndexType},
         indexer::Indexer,
@@ -198,16 +198,16 @@ pub enum LimitOption {
 }
 
 impl FromStr for LimitOption {
-    type Err = CommandErrorKind;
+    type Err = RusticError;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         Ok(match s.chars().last().unwrap_or('0') {
             '%' => Self::Percentage({
                 let mut copy = s.to_string();
                 _ = copy.pop();
-                copy.parse()?
+                copy.parse().map_err(|_err| todo!("Error transition"))?
             }),
             'd' if s == "unlimited" => Self::Unlimited,
-            _ => Self::Size(ByteSize::from_str(s).map_err(CommandErrorKind::FromByteSizeParser)?),
+            _ => Self::Size(ByteSize::from_str(s).map_err(|_err| todo!("Error transition"))?),
         })
     }
 }
@@ -689,7 +689,8 @@ impl PrunePlan {
         let be = repo.dbe();
 
         if repo.config().version < 2 && opts.repack_uncompressed {
-            return Err(CommandErrorKind::RepackUncompressedRepoV1.into());
+            return Err(CommandErrorKind::RepackUncompressedRepoV1)
+                .map_err(|_err| todo!("Error transition"));
         }
 
         let mut index_files = Vec::new();
@@ -718,8 +719,7 @@ impl PrunePlan {
         // list existing pack files
         let p = pb.progress_spinner("getting packs from repository...");
         let existing_packs: BTreeMap<_, _> = be
-            .list_with_size(FileType::Pack)
-            .map_err(RusticErrorKind::Backend)?
+            .list_with_size(FileType::Pack)?
             .into_iter()
             .map(|(id, size)| (PackId::from(id), size))
             .collect();
@@ -734,8 +734,8 @@ impl PrunePlan {
         let pack_sizer =
             total_size.map(|tpe, size| PackSizer::from_config(repo.config(), tpe, size));
         pruner.decide_packs(
-            Duration::from_std(*opts.keep_pack).map_err(CommandErrorKind::FromOutOfRangeError)?,
-            Duration::from_std(*opts.keep_delete).map_err(CommandErrorKind::FromOutOfRangeError)?,
+            Duration::from_std(*opts.keep_pack).map_err(|_err| todo!("Error transition"))?,
+            Duration::from_std(*opts.keep_delete).map_err(|_err| todo!("Error transition"))?,
             repack_cacheable_only,
             opts.repack_uncompressed,
             opts.repack_all,
@@ -781,7 +781,8 @@ impl PrunePlan {
     fn check(&self) -> RusticResult<()> {
         for (id, count) in &self.used_ids {
             if *count == 0 {
-                return Err(CommandErrorKind::BlobsMissing(*id).into());
+                return Err(CommandErrorKind::BlobsMissing(*id))
+                    .map_err(|_err| todo!("Error transition"));
             }
         }
         Ok(())
@@ -1052,13 +1053,18 @@ impl PrunePlan {
                     Some(size) if size == pack.size => Ok(()), // size is ok => continue
                     Some(size) => Err(CommandErrorKind::PackSizeNotMatching(
                         pack.id, pack.size, size,
-                    )),
-                    None => Err(CommandErrorKind::PackNotExisting(pack.id)),
+                    ))
+                    .map_err(|_err| todo!("Error transition")),
+                    None => Err(CommandErrorKind::PackNotExisting(pack.id))
+                        .map_err(|_err| todo!("Error transition")),
                 }
             };
 
             match pack.to_do {
-                PackToDo::Undecided => return Err(CommandErrorKind::NoDecision(pack.id).into()),
+                PackToDo::Undecided => {
+                    return Err(CommandErrorKind::NoDecision(pack.id).into())
+                        .map_err(|_err| todo!("Error transition"))
+                }
                 PackToDo::Keep | PackToDo::Recover => {
                     for blob in &pack.blobs {
                         _ = self.used_ids.remove(&blob.id);
@@ -1301,7 +1307,10 @@ pub(crate) fn prune_repository<P: ProgressBars, S: Open>(
         .into_par_iter()
         .try_for_each(|pack| -> RusticResult<_> {
             match pack.to_do {
-                PackToDo::Undecided => return Err(CommandErrorKind::NoDecision(pack.id).into()),
+                PackToDo::Undecided => {
+                    return Err(CommandErrorKind::NoDecision(pack.id))
+                        .map_err(|_err| todo!("Error transition"))
+                }
                 PackToDo::Keep => {
                     // keep pack: add to new index
                     let pack = pack.into_index_pack();
@@ -1528,8 +1537,7 @@ fn find_used_blobs(
 
     let p = pb.progress_counter("reading snapshots...");
     let list: Vec<_> = be
-        .list(FileType::Snapshot)
-        .map_err(RusticErrorKind::Backend)?
+        .list(FileType::Snapshot)?
         .into_iter()
         .filter(|id| !ignore_snaps.contains(&SnapshotId::from(*id)))
         .collect();

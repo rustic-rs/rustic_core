@@ -23,7 +23,7 @@ use crate::{
         node::{Node, NodeType},
         FileType, ReadBackend,
     },
-    error::{CommandErrorKind, RusticResult},
+    error::RusticResult,
     progress::{Progress, ProgressBars},
     repofile::packfile::PackId,
     repository::{IndexedFull, IndexedTree, Open, Repository},
@@ -222,9 +222,11 @@ pub(crate) fn collect_and_prepare<P: ProgressBars, S: IndexedFull>(
                     stats.dirs.restore += 1;
                     debug!("to restore: {path:?}");
                     if !dry_run {
-                        dest.create_dir(path).map_err(|err| {
-                            CommandErrorKind::ErrorCreating(path.clone(), Box::new(err))
-                        })?;
+                        dest.create_dir(path)
+                            .map_err(|err| {
+                                CommandErrorKind::ErrorCreating(path.clone(), Box::new(err))
+                            })
+                            .map_err(|_err| todo!("Error transition"))?;
                     }
                 }
             }
@@ -236,7 +238,8 @@ pub(crate) fn collect_and_prepare<P: ProgressBars, S: IndexedFull>(
                         .add_file(dest, node, path.clone(), repo, opts.verify_existing)
                         .map_err(|err| {
                             CommandErrorKind::ErrorCollecting(path.clone(), Box::new(err))
-                        })?,
+                        })
+                        .map_err(|_err| todo!("Error transition"))?,
                 ) {
                     // Note that exists = false and Existing or Verified can happen if the file is changed between scanning the dir
                     // and calling add_file. So we don't care about exists but trust add_file here.
@@ -450,7 +453,8 @@ fn restore_contents<P: ProgressBars, S: Open>(
         if *size == 0 {
             let path = &filenames[i];
             dest.set_length(path, *size)
-                .map_err(|err| CommandErrorKind::ErrorSettingLength(path.clone(), Box::new(err)))?;
+                .map_err(|err| CommandErrorKind::ErrorSettingLength(path.clone(), Box::new(err)))
+                .map_err(|_err| todo!("Error transition"))?;
         }
     }
 
@@ -494,7 +498,8 @@ fn restore_contents<P: ProgressBars, S: Open>(
     let pool = ThreadPoolBuilder::new()
         .num_threads(constants::MAX_READER_THREADS_NUM)
         .build()
-        .map_err(CommandErrorKind::FromRayonError)?;
+        .map_err(CommandErrorKind::FromRayonError)
+        .map_err(|_err| todo!("Error transition"))?;
     pool.in_place_scope(|s| {
         for (pack, offset, length, from_file, name_dests) in blobs {
             let p = &p;
@@ -544,6 +549,7 @@ fn restore_contents<P: ProgressBars, S: Open>(
                                                 Box::new(err),
                                             )
                                         })
+                                        .map_err(|_err| todo!("Error transition"))
                                         .unwrap();
                                     sizes_guard[file_idx] = 0;
                                 }
@@ -664,7 +670,8 @@ impl RestorePlan {
             if let Some(meta) = open_file
                 .as_ref()
                 .map(std::fs::File::metadata)
-                .transpose()?
+                .transpose()
+                .map_err(|_err| todo!("Error transition"))?
             {
                 if meta.len() == 0 {
                     // Empty file exists
@@ -677,7 +684,8 @@ impl RestorePlan {
             if let Some(meta) = open_file
                 .as_ref()
                 .map(std::fs::File::metadata)
-                .transpose()?
+                .transpose()
+                .map_err(|_err| todo!("Error transition"))?
             {
                 // TODO: This is the same logic as in backend/ignore.rs => consollidate!
                 let mtime = meta
@@ -706,8 +714,9 @@ impl RestorePlan {
             };
             let length = bl.data_length();
 
-            let usize_length =
-                usize::try_from(length).map_err(CommandErrorKind::ConversionFromIntFailed)?;
+            let usize_length = usize::try_from(length)
+                .map_err(CommandErrorKind::ConversionFromIntFailed)
+                .map_err(|_err| todo!("Error transition"))?;
 
             let matches = open_file
                 .as_mut()

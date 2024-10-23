@@ -260,14 +260,40 @@ impl Cache {
         let mut path = if let Some(p) = path {
             p
         } else {
-            let mut dir = cache_dir().ok_or_else(|| CacheBackendErrorKind::NoCacheDirectory)?;
+            let mut dir = cache_dir()
+                .ok_or_else(|| CacheBackendErrorKind::NoCacheDirectory)
+                .map_err(|_err| todo!("Error transition"))?;
             dir.push("rustic");
             dir
         };
-        fs::create_dir_all(&path).map_err(CacheBackendErrorKind::FromIoError)?;
-        cachedir::ensure_tag(&path).map_err(CacheBackendErrorKind::FromIoError)?;
+
+        fs::create_dir_all(&path)
+            .map_err(|err| CacheBackendErrorKind::Io {
+                context: "while creating cache directory".into(),
+                source: err,
+                tpe: None,
+                id: id.clone().into_inner(),
+            })
+            .map_err(|_err| todo!("Error transition"))?;
+
+        cachedir::ensure_tag(&path)
+            .map_err(|err| CacheBackendErrorKind::EnsureTagFailed {
+                source: err,
+                path: path.clone(),
+            })
+            .map_err(|_err| todo!("Error transition"))?;
+
         path.push(id.to_hex());
-        fs::create_dir_all(&path).map_err(CacheBackendErrorKind::FromIoError)?;
+
+        fs::create_dir_all(&path)
+            .map_err(|err| CacheBackendErrorKind::Io {
+                context: "while creating cache directory with id".into(),
+                source: err,
+                tpe: None,
+                id: id.clone().into_inner(),
+            })
+            .map_err(|_err| todo!("Error transition"))?;
+
         Ok(Self { path })
     }
 
@@ -400,7 +426,13 @@ impl Cache {
                 Ok(Some(data.into()))
             }
             Err(err) if err.kind() == ErrorKind::NotFound => Ok(None),
-            Err(err) => Err(CacheBackendErrorKind::FromIoError(err).into()),
+            Err(err) => Err(CacheBackendErrorKind::Io {
+                context: "while reading full data of file".into(),
+                source: err,
+                tpe: Some(tpe.clone()),
+                id: id.clone(),
+            })
+            .map_err(|_err| todo!("Error transition")),
         }
     }
 
@@ -434,14 +466,22 @@ impl Cache {
         let mut file = match File::open(self.path(tpe, id)) {
             Ok(file) => file,
             Err(err) if err.kind() == ErrorKind::NotFound => return Ok(None),
-            Err(err) => return Err(CacheBackendErrorKind::FromIoError(err).into()),
+            Err(err) => {
+                return Err(CacheBackendErrorKind::Io {
+                    context: "while opening file".into(),
+                    source: err,
+                    tpe: Some(tpe.clone()),
+                    id: id.clone(),
+                })
+                .map_err(|_err| todo!("Error transition"))
+            }
         };
         _ = file
             .seek(SeekFrom::Start(u64::from(offset)))
-            .map_err(CacheBackendErrorKind::FromIoError)?;
+            .map_err(|_err| todo!("Error transition"))?;
         let mut vec = vec![0; length as usize];
         file.read_exact(&mut vec)
-            .map_err(CacheBackendErrorKind::FromIoError)?;
+            .map_err(|_err| todo!("Error transition"))?;
         trace!("cache hit!");
         Ok(Some(vec.into()))
     }
@@ -461,16 +501,40 @@ impl Cache {
     /// [`CacheBackendErrorKind::FromIoError`]: crate::error::CacheBackendErrorKind::FromIoError
     pub fn write_bytes(&self, tpe: FileType, id: &Id, buf: &Bytes) -> RusticResult<()> {
         trace!("cache writing tpe: {:?}, id: {}", &tpe, &id);
-        fs::create_dir_all(self.dir(tpe, id)).map_err(CacheBackendErrorKind::FromIoError)?;
+
+        fs::create_dir_all(self.dir(tpe, id))
+            .map_err(|err| CacheBackendErrorKind::Io {
+                context: "while creating directories".into(),
+                source: err,
+                tpe: Some(tpe.clone()),
+                id: id.clone(),
+            })
+            .map_err(|_err| todo!("Error transition"))?;
+
         let filename = self.path(tpe, id);
+
         let mut file = fs::OpenOptions::new()
             .create(true)
             .truncate(true)
             .write(true)
-            .open(filename)
-            .map_err(CacheBackendErrorKind::FromIoError)?;
+            .open(&filename)
+            .map_err(|err| CacheBackendErrorKind::Io {
+                context: "while opening file paths".into(),
+                source: err,
+                tpe: Some(tpe.clone()),
+                id: id.clone(),
+            })
+            .map_err(|_err| todo!("Error transition"))?;
+
         file.write_all(buf)
-            .map_err(CacheBackendErrorKind::FromIoError)?;
+            .map_err(|err| CacheBackendErrorKind::Io {
+                context: "while writing to buffer".into(),
+                source: err,
+                tpe: Some(tpe.clone()),
+                id: id.clone(),
+            })
+            .map_err(|_err| todo!("Error transition"))?;
+
         Ok(())
     }
 
@@ -489,7 +553,15 @@ impl Cache {
     pub fn remove(&self, tpe: FileType, id: &Id) -> RusticResult<()> {
         trace!("cache writing tpe: {:?}, id: {}", &tpe, &id);
         let filename = self.path(tpe, id);
-        fs::remove_file(filename).map_err(CacheBackendErrorKind::FromIoError)?;
+        fs::remove_file(&filename)
+            .map_err(|err| CacheBackendErrorKind::Io {
+                context: format!("while removing file: {filename:?}"),
+                source: err,
+                tpe: Some(tpe.clone()),
+                id: id.clone(),
+            })
+            .map_err(|_err| todo!("Error transition"))?;
+
         Ok(())
     }
 }

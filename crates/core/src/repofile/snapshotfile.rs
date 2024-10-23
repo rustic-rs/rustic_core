@@ -1,12 +1,13 @@
 use std::{
     cmp::Ordering,
     collections::{BTreeMap, BTreeSet},
+    ffi::OsString,
     fmt::{self, Display},
     path::{Path, PathBuf},
     str::FromStr,
 };
 
-use chrono::{DateTime, Duration, Local};
+use chrono::{DateTime, Duration, Local, OutOfRangeError};
 use derivative::Derivative;
 use derive_setters::Setters;
 use dunce::canonicalize;
@@ -20,7 +21,7 @@ use serde_with::{serde_as, skip_serializing_none, DisplayFromStr};
 use crate::{
     backend::{decrypt::DecryptReadBackend, FileType, FindInBackend},
     blob::tree::TreeId,
-    error::{RusticError, RusticErrorKind, RusticResult, SnapshotFileErrorKind},
+    error::RusticResult,
     impl_repofile,
     progress::Progress,
     repofile::RepoFile,
@@ -150,7 +151,8 @@ impl SnapshotOptions {
     ///
     /// [`SnapshotFileErrorKind::NonUnicodeTag`]: crate::error::SnapshotFileErrorKind::NonUnicodeTag
     pub fn add_tags(mut self, tag: &str) -> RusticResult<Self> {
-        self.tags.push(StringList::from_str(tag)?);
+        self.tags
+            .push(StringList::from_str(tag).map_err(|_err| todo!("Error transition"))?);
         Ok(self)
     }
 
@@ -267,7 +269,7 @@ impl SnapshotSummary {
     /// * [`SnapshotFileErrorKind::OutOfRange`] - If the time is not in the range of `Local::now()`
     ///
     /// [`SnapshotFileErrorKind::OutOfRange`]: crate::error::SnapshotFileErrorKind::OutOfRange
-    pub(crate) fn finalize(&mut self, snap_time: DateTime<Local>) -> RusticResult<()> {
+    pub(crate) fn finalize(&mut self, snap_time: DateTime<Local>) -> SnapshotFileResult<()> {
         let end_time = Local::now();
         self.backup_duration = (end_time - self.backup_start)
             .to_std()
@@ -405,7 +407,8 @@ impl SnapshotFile {
             let hostname = gethostname();
             hostname
                 .to_str()
-                .ok_or_else(|| SnapshotFileErrorKind::NonUnicodeHostname(hostname.clone()))?
+                .ok_or_else(|| SnapshotFileErrorKind::NonUnicodeHostname(hostname.clone()))
+                .map_err(|_err| todo!("Error transition"))?
                 .to_string()
         };
 
@@ -414,7 +417,9 @@ impl SnapshotFile {
         let delete = match (opts.delete_never, opts.delete_after) {
             (true, _) => DeleteOption::Never,
             (_, Some(d)) => DeleteOption::After(
-                time + Duration::from_std(*d).map_err(SnapshotFileErrorKind::OutOfRange)?,
+                time + Duration::from_std(*d)
+                    .map_err(SnapshotFileErrorKind::OutOfRange)
+                    .map_err(|_err| todo!("Error transition"))?,
             ),
             (false, None) => DeleteOption::NotSet,
         };
@@ -446,7 +451,8 @@ impl SnapshotFile {
         if let Some(ref file) = opts.description_from {
             snap.description = Some(
                 std::fs::read_to_string(file)
-                    .map_err(SnapshotFileErrorKind::ReadingDescriptionFailed)?,
+                    .map_err(SnapshotFileErrorKind::ReadingDescriptionFailed)
+                    .map_err(|_err| todo!("Error transition"))?,
             );
         }
 
@@ -544,7 +550,9 @@ impl SnapshotFile {
             }
         }
         p.finish();
-        latest.ok_or_else(|| SnapshotFileErrorKind::NoSnapshotsFound.into())
+        latest
+            .ok_or_else(|| SnapshotFileErrorKind::NoSnapshotsFound)
+            .map_err(|_err| todo!("Error transition"))
     }
 
     /// Get a [`SnapshotFile`] from the backend by (part of the) id
@@ -784,9 +792,7 @@ impl SnapshotFile {
         B: DecryptReadBackend,
         F: FnMut(&Self) -> bool,
     {
-        let ids = be
-            .list(FileType::Snapshot)
-            .map_err(RusticErrorKind::Backend)?;
+        let ids = be.list(FileType::Snapshot)?;
         Self::fill_missing(be, current, &ids, filter, p)
     }
 
@@ -978,8 +984,8 @@ impl Default for SnapshotGroupCriterion {
 }
 
 impl FromStr for SnapshotGroupCriterion {
-    type Err = RusticError;
-    fn from_str(s: &str) -> RusticResult<Self> {
+    type Err = SnapshotFileErrorKind;
+    fn from_str(s: &str) -> SnapshotFileResult<Self> {
         let mut crit = Self::new();
         for val in s.split(',') {
             match val {
@@ -1084,8 +1090,8 @@ impl SnapshotGroup {
 pub struct StringList(pub(crate) BTreeSet<String>);
 
 impl FromStr for StringList {
-    type Err = RusticError;
-    fn from_str(s: &str) -> RusticResult<Self> {
+    type Err = SnapshotFileErrorKind;
+    fn from_str(s: &str) -> SnapshotFileResult<Self> {
         Ok(Self(s.split(',').map(ToString::to_string).collect()))
     }
 }
@@ -1169,7 +1175,7 @@ impl StringList {
     /// * [`SnapshotFileErrorKind::NonUnicodePath`] - If a path is not valid unicode
     ///
     /// [`SnapshotFileErrorKind::NonUnicodePath`]: crate::error::SnapshotFileErrorKind::NonUnicodePath
-    pub(crate) fn set_paths<T: AsRef<Path>>(&mut self, paths: &[T]) -> RusticResult<()> {
+    pub(crate) fn set_paths<T: AsRef<Path>>(&mut self, paths: &[T]) -> SnapshotFileResult<()> {
         self.0 = paths
             .iter()
             .map(|p| {
@@ -1178,7 +1184,7 @@ impl StringList {
                     .ok_or_else(|| SnapshotFileErrorKind::NonUnicodePath(p.as_ref().to_path_buf()))?
                     .to_string())
             })
-            .collect::<RusticResult<BTreeSet<_>>>()?;
+            .collect::<SnapshotFileResult<BTreeSet<_>>>()?;
         Ok(())
     }
 
@@ -1280,7 +1286,7 @@ impl PathList {
     ///
     /// [`SnapshotFileErrorKind::RemovingDotsFromPathFailed`]: crate::error::SnapshotFileErrorKind::RemovingDotsFromPathFailed
     /// [`SnapshotFileErrorKind::CanonicalizingPathFailed`]: crate::error::SnapshotFileErrorKind::CanonicalizingPathFailed
-    pub fn sanitize(mut self) -> RusticResult<Self> {
+    pub fn sanitize(mut self) -> SnapshotFileResult<Self> {
         for path in &mut self.0 {
             *path = sanitize_dot(path)?;
         }
@@ -1317,7 +1323,7 @@ impl PathList {
 }
 
 // helper function to sanitize paths containing dots
-fn sanitize_dot(path: &Path) -> RusticResult<PathBuf> {
+fn sanitize_dot(path: &Path) -> SnapshotFileResult<PathBuf> {
     if path == Path::new(".") || path == Path::new("./") {
         return Ok(PathBuf::from("."));
     }

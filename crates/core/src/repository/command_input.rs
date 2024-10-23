@@ -109,7 +109,7 @@ impl CommandInput {
     ///
     /// # Errors
     ///
-    /// `RusticError` if return status cannot be read
+    /// `CommandInputErrorKind` if return status cannot be read
     pub fn run(&self, context: &str, what: &str) -> RusticResult<()> {
         if !self.is_set() {
             trace!("not calling command {context}:{what} - not set");
@@ -123,7 +123,7 @@ impl CommandInput {
 }
 
 impl FromStr for CommandInput {
-    type Err = RusticError;
+    type Err = CommandInputErrorKind;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         Ok(Self(_CommandInput::from_str(s)?))
     }
@@ -165,7 +165,7 @@ impl From<Vec<String>> for _CommandInput {
 }
 
 impl FromStr for _CommandInput {
-    type Err = RusticError;
+    type Err = CommandInputErrorKind;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         Ok(split(s)?.into())
     }
@@ -192,7 +192,7 @@ pub enum OnFailure {
 }
 
 impl OnFailure {
-    fn eval<T>(self, res: RusticResult<T>) -> RusticResult<Option<T>> {
+    fn eval<T>(self, res: CommandInputResult<T>) -> RusticResult<Option<T>> {
         let res = self.display_result(res);
         match (res, self) {
             (Err(err), Self::Error) => Err(err),
@@ -202,11 +202,12 @@ impl OnFailure {
     }
 
     /// Displays a result depending on the defined error handling which still yielding the same result
+    ///
     /// # Note
     ///
     /// This can be used where an error might occur, but in that
     /// case we have to abort.
-    pub fn display_result<T>(self, res: RusticResult<T>) -> RusticResult<T> {
+    pub fn display_result<T>(self, res: CommandInputResult<T>) -> RusticResult<T> {
         if let Err(err) = &res {
             match self {
                 Self::Error => {
@@ -218,7 +219,7 @@ impl OnFailure {
                 Self::Ignore => {}
             }
         }
-        res
+        res.map_err(|_err| todo!("Error transition"))
     }
 
     /// Handle a status of a called command depending on the defined error handling
@@ -228,20 +229,22 @@ impl OnFailure {
         context: &str,
         what: &str,
     ) -> RusticResult<()> {
-        let status = status.map_err(|err| {
-            RepositoryErrorKind::CommandExecutionFailed(context.into(), what.into(), err).into()
+        let status = status.map_err(|err| CommandInputErrorKind::CommandExecutionFailed {
+            context: context.to_string(),
+            what: what.to_string(),
+            source: err,
         });
+
         let Some(status) = self.eval(status)? else {
             return Ok(());
         };
 
         if !status.success() {
-            let _: Option<()> = self.eval(Err(RepositoryErrorKind::CommandErrorStatus(
-                context.into(),
-                what.into(),
+            let _: Option<()> = self.eval(Err(CommandInputErrorKind::CommandErrorStatus {
+                context: context.to_string(),
+                what: what.to_string(),
                 status,
-            )
-            .into()))?;
+            }))?;
         }
         Ok(())
     }
@@ -249,6 +252,11 @@ impl OnFailure {
 
 /// helper to split arguments
 // TODO: Maybe use special parser (winsplit?) for windows?
-fn split(s: &str) -> RusticResult<Vec<String>> {
-    Ok(shell_words::split(s).map_err(|err| RusticErrorKind::Command(err.into()))?)
+fn split(s: &str) -> CommandInputResult<Vec<String>> {
+    Ok(
+        shell_words::split(s).map_err(|err| CommandInputErrorKind::SplittingArgumentsFailed {
+            arguments: s.to_string(),
+            source: err,
+        })?,
+    )
 }

@@ -5,7 +5,7 @@ use bytes::Bytes;
 use crate::{
     backend::{decrypt::DecryptReadBackend, FileType, FindInBackend},
     blob::{tree::Tree, BlobId, BlobType},
-    error::{CommandErrorKind, RusticResult},
+    error::RusticResult,
     index::ReadIndex,
     progress::ProgressBars,
     repofile::SnapshotFile,
@@ -114,7 +114,8 @@ pub(crate) fn cat_tree<P: ProgressBars, S: IndexedTree>(
     let node = Tree::node_from_path(repo.dbe(), repo.index(), snap.tree, Path::new(path))?;
     let id = node
         .subtree
-        .ok_or_else(|| CommandErrorKind::PathIsNoDir(path.to_string()))?;
+        .ok_or_else(|| CommandErrorKind::PathIsNoDir(path.to_string()))
+        .map_err(|_err| todo!("Error transition"))?;
     let data = repo
         .index()
         .blob_from_backend(repo.dbe(), BlobType::Tree, &BlobId::from(*id))?;

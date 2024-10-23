@@ -5,6 +5,7 @@ use crate::{
         parent::{ItemWithParent, ParentResult},
         tree::TreeType,
         tree_archiver::TreeItem,
+        ArchiverErrorKind,
     },
     backend::{
         decrypt::DecryptWriteBackend,
@@ -18,7 +19,7 @@ use crate::{
     cdc::rolling_hash::Rabin64,
     chunker::ChunkIter,
     crypto::hasher::hash,
-    error::{ArchiverErrorKind, RusticResult},
+    error::RusticResult,
     index::{indexer::SharedIndexer, ReadGlobalIndex},
     progress::Progress,
     repofile::configfile::ConfigFile,
@@ -60,7 +61,7 @@ impl<'a, BE: DecryptWriteBackend, I: ReadGlobalIndex> FileArchiver<'a, BE, I> {
     ///
     /// [`PackerErrorKind::SendingCrossbeamMessageFailed`]: crate::error::PackerErrorKind::SendingCrossbeamMessageFailed
     /// [`PackerErrorKind::IntConversionFailed`]: crate::error::PackerErrorKind::IntConversionFailed
-    pub(crate) fn new(
+    pub fn new(
         be: BE,
         index: &'a I,
         indexer: SharedIndexer<BE>,
@@ -75,7 +76,9 @@ impl<'a, BE: DecryptWriteBackend, I: ReadGlobalIndex> FileArchiver<'a, BE, I> {
             config,
             index.total_size(BlobType::Data),
         )?;
+
         let rabin = Rabin64::new_with_polynom(6, poly);
+
         Ok(Self {
             index,
             data_packer,
@@ -118,8 +121,11 @@ impl<'a, BE: DecryptWriteBackend, I: ReadGlobalIndex> FileArchiver<'a, BE, I> {
                     (node, size)
                 } else if node.node_type == NodeType::File {
                     let r = open
-                        .ok_or(ArchiverErrorKind::UnpackingTreeTypeOptionalFailed)?
-                        .open()?;
+                        .ok_or(ArchiverErrorKind::UnpackingTreeTypeOptionalFailed)
+                        .map_err(|_err| todo!("Error transition"))?
+                        .open()
+                        .map_err(|_| ArchiverErrorKind::OpeningFileFailed { path: path.clone() })
+                        .map_err(|_err| todo!("Error transition"))?;
                     self.backup_reader(r, node, p)?
                 } else {
                     (node, 0)
@@ -138,12 +144,11 @@ impl<'a, BE: DecryptWriteBackend, I: ReadGlobalIndex> FileArchiver<'a, BE, I> {
     ) -> RusticResult<(Node, u64)> {
         let chunks: Vec<_> = ChunkIter::new(
             r,
-            usize::try_from(node.meta.size)
-                .map_err(ArchiverErrorKind::ConversionFromU64ToUsizeFailed)?,
+            usize::try_from(node.meta.size).map_err(|_err| todo!("Error transition"))?,
             self.rabin.clone(),
         )
         .map(|chunk| {
-            let chunk = chunk.map_err(ArchiverErrorKind::FromStdIo)?;
+            let chunk = chunk.map_err(|_err| todo!("Error transition"))?;
             let id = hash(&chunk);
             let size = chunk.len() as u64;
 

@@ -4,7 +4,7 @@ use bytes::Bytes;
 use derive_more::Constructor;
 
 use crate::{
-    backend::{decrypt::DecryptReadBackend, FileType},
+    backend::{decrypt::DecryptReadBackend, CryptBackendErrorKind, FileType},
     blob::{tree::TreeId, BlobId, BlobType, DataId},
     error::RusticResult,
     index::binarysorted::{Index, IndexCollector, IndexType},
@@ -13,7 +13,6 @@ use crate::{
         indexfile::{IndexBlob, IndexFile},
         packfile::PackId,
     },
-    RusticResult,
 };
 
 pub(crate) mod binarysorted;
@@ -203,7 +202,7 @@ pub trait ReadIndex {
         id: &BlobId,
     ) -> RusticResult<Bytes> {
         self.get_id(tpe, id).map_or_else(
-            || Err(IndexErrorKind::BlobInIndexNotFound.into()),
+            || Err(IndexErrorKind::BlobInIndexNotFound).map_err(|_err| todo!("Error transition")),
             |ie| ie.read_data(be),
         )
     }

@@ -1,9 +1,11 @@
+use std::num::ParseIntError;
+
 use serde_derive::{Deserialize, Serialize};
 use serde_with::skip_serializing_none;
 
 use crate::{
-    backend::FileType, blob::BlobType, define_new_id_struct, error::ConfigFileErrorKind,
-    impl_repofile, repofile::RepoFile, RusticResult,
+    backend::FileType, blob::BlobType, define_new_id_struct, error::RusticResult, impl_repofile,
+    repofile::RepoFile,
 };
 
 /// [`ConfigFileErrorKind`] describes the errors that can be returned for `ConfigFile`s
@@ -153,10 +155,14 @@ impl ConfigFile {
     ///
     /// * [`ConfigFileErrorKind::ParsingFailedForPolynomial`] - If the polynomial could not be parsed
     ///
-    /// [`ConfigFileErrorKind::ParsingFailedForPolynomial`]: crate::error::ConfigFileErrorKind::ParsingFailedForPolynomial
+    /// [`ConfigFileErrorKind::ParsingFailedForPolynomial`]: ConfigFileErrorKind::ParsingFailedForPolynomial
     pub fn poly(&self) -> RusticResult<u64> {
         Ok(u64::from_str_radix(&self.chunker_polynomial, 16)
-            .map_err(ConfigFileErrorKind::ParsingFailedForPolynomial)?)
+            .map_err(|err| ConfigFileErrorKind::ParsingFailedForPolynomial {
+                polynomial: self.chunker_polynomial.clone(),
+                source: err,
+            })
+            .map_err(|_err| todo!("Error transition"))?)
     }
 
     /// Get the compression level
@@ -165,17 +171,21 @@ impl ConfigFile {
     ///
     /// * [`ConfigFileErrorKind::ConfigVersionNotSupported`] - If the version is not supported
     ///
-    /// [`ConfigFileErrorKind::ConfigVersionNotSupported`]: crate::error::ConfigFileErrorKind::ConfigVersionNotSupported
+    /// [`ConfigFileErrorKind::ConfigVersionNotSupported`]: ConfigFileErrorKind::ConfigVersionNotSupported
     pub fn zstd(&self) -> RusticResult<Option<i32>> {
         match (self.version, self.compression) {
             (1, _) | (2, Some(0)) => Ok(None),
             (2, None) => Ok(Some(0)), // use default (=0) zstd compression
             (2, Some(c)) => Ok(Some(c)),
-            _ => Err(ConfigFileErrorKind::ConfigVersionNotSupported.into()),
+            _ => Err(ConfigFileErrorKind::ConfigVersionNotSupported {
+                version: self.version,
+                compression: self.compression,
+            })
+            .map_err(|_err| todo!("Error transition")),
         }
     }
 
-    /// Get wheter an extra verification (decompressing/decrypting data before writing to the repository) should be performed.
+    /// Get whether an extra verification (decompressing/decrypting data before writing to the repository) should be performed.
     #[must_use]
     pub fn extra_verify(&self) -> bool {
         self.extra_verify.unwrap_or(true) // default is to do the extra check

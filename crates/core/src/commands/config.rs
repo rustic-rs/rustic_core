@@ -1,11 +1,13 @@
 //! `config` subcommand
+use std::ops::RangeInclusive;
+
 use bytesize::ByteSize;
 use derive_setters::Setters;
 
 use crate::{
     backend::decrypt::{DecryptBackend, DecryptWriteBackend},
     crypto::CryptoKey,
-    error::{CommandErrorKind, RusticResult},
+    error::RusticResult,
     repofile::ConfigFile,
     repository::{Open, Repository},
 };
@@ -47,34 +49,38 @@ pub(crate) type ConfigCommandResult<T> = Result<T, ConfigCommandErrorKind>;
 ///
 /// # Errors
 ///
-/// * [`CommandErrorKind::VersionNotSupported`] - If the version is not supported
-/// * [`CommandErrorKind::CannotDowngrade`] - If the version is lower than the current version
-/// * [`CommandErrorKind::NoCompressionV1Repo`] - If compression is set for a v1 repo
-/// * [`CommandErrorKind::CompressionLevelNotSupported`] - If the compression level is not supported
-/// * [`CommandErrorKind::SizeTooLarge`] - If the size is too large
-/// * [`CommandErrorKind::MinPackSizeTolerateWrong`] - If the min packsize tolerance percent is wrong
-/// * [`CommandErrorKind::MaxPackSizeTolerateWrong`] - If the max packsize tolerance percent is wrong
+/// * [`ConfigCommandErrorKind::VersionNotSupported`] - If the version is not supported
+/// * [`ConfigCommandErrorKind::CannotDowngrade`] - If the version is lower than the current version
+/// * [`ConfigCommandErrorKind::NoCompressionV1Repo`] - If compression is set for a v1 repo
+/// * [`ConfigCommandErrorKind::CompressionLevelNotSupported`] - If the compression level is not supported
+/// * [`ConfigCommandErrorKind::SizeTooLarge`] - If the size is too large
+/// * [`ConfigCommandErrorKind::MinPackSizeTolerateWrong`] - If the min packsize tolerance percent is wrong
+/// * [`ConfigCommandErrorKind::MaxPackSizeTolerateWrong`] - If the max packsize tolerance percent is wrong
 /// * [`CryptBackendErrorKind::SerializingToJsonByteVectorFailed`] - If the file could not be serialized to json.
 ///
 /// # Returns
 ///
 /// Whether the config was changed
 ///
-/// [`CommandErrorKind::VersionNotSupported`]: crate::error::CommandErrorKind::VersionNotSupported
-/// [`CommandErrorKind::CannotDowngrade`]: crate::error::CommandErrorKind::CannotDowngrade
-/// [`CommandErrorKind::NoCompressionV1Repo`]: crate::error::CommandErrorKind::NoCompressionV1Repo
-/// [`CommandErrorKind::CompressionLevelNotSupported`]: crate::error::CommandErrorKind::CompressionLevelNotSupported
-/// [`CommandErrorKind::SizeTooLarge`]: crate::error::CommandErrorKind::SizeTooLarge
-/// [`CommandErrorKind::MinPackSizeTolerateWrong`]: crate::error::CommandErrorKind::MinPackSizeTolerateWrong
-/// [`CommandErrorKind::MaxPackSizeTolerateWrong`]: crate::error::CommandErrorKind::MaxPackSizeTolerateWrong
+/// [`ConfigCommandErrorKind::VersionNotSupported`]: ConfigCommandErrorKind::VersionNotSupported
+/// [`ConfigCommandErrorKind::CannotDowngrade`]: ConfigCommandErrorKind::CannotDowngrade
+/// [`ConfigCommandErrorKind::NoCompressionV1Repo`]: ConfigCommandErrorKind::NoCompressionV1Repo
+/// [`ConfigCommandErrorKind::CompressionLevelNotSupported`]: ConfigCommandErrorKind::CompressionLevelNotSupported
+/// [`ConfigCommandErrorKind::SizeTooLarge`]: ConfigCommandErrorKind::SizeTooLarge
+/// [`ConfigCommandErrorKind::MinPackSizeTolerateWrong`]: ConfigCommandErrorKind::MinPackSizeTolerateWrong
+/// [`ConfigCommandErrorKind::MaxPackSizeTolerateWrong`]: ConfigCommandErrorKind::MaxPackSizeTolerateWrong
 /// [`CryptBackendErrorKind::SerializingToJsonByteVectorFailed`]: crate::error::CryptBackendErrorKind::SerializingToJsonByteVectorFailed
 pub(crate) fn apply_config<P, S: Open>(
     repo: &Repository<P, S>,
     opts: &ConfigOptions,
 ) -> RusticResult<bool> {
     if repo.config().append_only == Some(true) {
-        return Err(CommandErrorKind::NotAllowedWithAppendOnly("config change".to_string()).into());
+        return Err(ConfigCommandErrorKind::NotAllowedWithAppendOnly(
+            "config change".to_string(),
+        ))
+        .map_err(|_err| todo!("Error transition"));
     }
+
     let mut new_config = repo.config().clone();
     opts.apply(&mut new_config)?;
     if &new_config == repo.config() {
@@ -115,10 +121,11 @@ pub(crate) fn save_config<P, S>(
 
     if let Some(hot_be) = repo.be_hot.clone() {
         // save config to hot repo
-        let dbe = DecryptBackend::new(hot_be, key);
+        let dbe = DecryptBackend::new(hot_be.clone(), key);
         new_config.is_hot = Some(true);
         _ = dbe.save_file_uncompressed(&new_config)?;
     }
+
     Ok(())
 }
 
@@ -206,41 +213,49 @@ impl ConfigOptions {
     ///
     /// # Errors
     ///
-    /// * [`CommandErrorKind::VersionNotSupported`] - If the version is not supported
-    /// * [`CommandErrorKind::CannotDowngrade`] - If the version is lower than the current version
-    /// * [`CommandErrorKind::NoCompressionV1Repo`] - If compression is set for a v1 repo
-    /// * [`CommandErrorKind::CompressionLevelNotSupported`] - If the compression level is not supported
-    /// * [`CommandErrorKind::SizeTooLarge`] - If the size is too large
-    /// * [`CommandErrorKind::MinPackSizeTolerateWrong`] - If the min packsize tolerate percent is wrong
-    /// * [`CommandErrorKind::MaxPackSizeTolerateWrong`] - If the max packsize tolerate percent is wrong
+    /// * [`ConfigCommandErrorKind::VersionNotSupported`] - If the version is not supported
+    /// * [`ConfigCommandErrorKind::CannotDowngrade`] - If the version is lower than the current version
+    /// * [`ConfigCommandErrorKind::NoCompressionV1Repo`] - If compression is set for a v1 repo
+    /// * [`ConfigCommandErrorKind::CompressionLevelNotSupported`] - If the compression level is not supported
+    /// * [`ConfigCommandErrorKind::SizeTooLarge`] - If the size is too large
+    /// * [`ConfigCommandErrorKind::MinPackSizeTolerateWrong`] - If the min packsize tolerate percent is wrong
+    /// * [`ConfigCommandErrorKind::MaxPackSizeTolerateWrong`] - If the max packsize tolerate percent is wrong
     ///
-    /// [`CommandErrorKind::VersionNotSupported`]: crate::error::CommandErrorKind::VersionNotSupported
-    /// [`CommandErrorKind::CannotDowngrade`]: crate::error::CommandErrorKind::CannotDowngrade
-    /// [`CommandErrorKind::NoCompressionV1Repo`]: crate::error::CommandErrorKind::NoCompressionV1Repo
-    /// [`CommandErrorKind::CompressionLevelNotSupported`]: crate::error::CommandErrorKind::CompressionLevelNotSupported
-    /// [`CommandErrorKind::SizeTooLarge`]: crate::error::CommandErrorKind::SizeTooLarge
-    /// [`CommandErrorKind::MinPackSizeTolerateWrong`]: crate::error::CommandErrorKind::MinPackSizeTolerateWrong
-    /// [`CommandErrorKind::MaxPackSizeTolerateWrong`]: crate::error::CommandErrorKind::MaxPackSizeTolerateWrong
+    /// [`ConfigCommandErrorKind::VersionNotSupported`]: ConfigCommandErrorKind::VersionNotSupported
+    /// [`ConfigCommandErrorKind::CannotDowngrade`]: ConfigCommandErrorKind::CannotDowngrade
+    /// [`ConfigCommandErrorKind::NoCompressionV1Repo`]: ConfigCommandErrorKind::NoCompressionV1Repo
+    /// [`ConfigCommandErrorKind::CompressionLevelNotSupported`]: ConfigCommandErrorKind::CompressionLevelNotSupported
+    /// [`ConfigCommandErrorKind::SizeTooLarge`]: ConfigCommandErrorKind::SizeTooLarge
+    /// [`ConfigCommandErrorKind::MinPackSizeTolerateWrong`]: ConfigCommandErrorKind::MinPackSizeTolerateWrong
+    /// [`ConfigCommandErrorKind::MaxPackSizeTolerateWrong`]: ConfigCommandErrorKind::MaxPackSizeTolerateWrong
     pub fn apply(&self, config: &mut ConfigFile) -> RusticResult<()> {
         if let Some(version) = self.set_version {
             let range = 1..=2;
             if !range.contains(&version) {
-                return Err(CommandErrorKind::VersionNotSupported(version, range).into());
+                return Err(ConfigCommandErrorKind::VersionNotSupported(version, range))
+                    .map_err(|_err| todo!("Error transition"));
             } else if version < config.version {
-                return Err(CommandErrorKind::CannotDowngrade(config.version, version).into());
+                return Err(ConfigCommandErrorKind::CannotDowngrade(
+                    config.version,
+                    version,
+                ))
+                .map_err(|_err| todo!("Error transition"));
             }
             config.version = version;
         }
 
         if let Some(compression) = self.set_compression {
             if config.version == 1 && compression != 0 {
-                return Err(CommandErrorKind::NoCompressionV1Repo(compression).into());
+                return Err(ConfigCommandErrorKind::NoCompressionV1Repo(compression))
+                    .map_err(|_err| todo!("Error transition"));
             }
             let range = zstd::compression_level_range();
             if !range.contains(&compression) {
-                return Err(
-                    CommandErrorKind::CompressionLevelNotSupported(compression, range).into(),
-                );
+                return Err(ConfigCommandErrorKind::CompressionLevelNotSupported(
+                    compression,
+                    range,
+                ))
+                .map_err(|_err| todo!("Error transition"));
             }
             config.compression = Some(compression);
         }
@@ -253,7 +268,8 @@ impl ConfigOptions {
             config.treepack_size = Some(
                 size.as_u64()
                     .try_into()
-                    .map_err(|_| CommandErrorKind::SizeTooLarge(size))?,
+                    .map_err(|_| ConfigCommandErrorKind::SizeTooLarge(size))
+                    .map_err(|_err| todo!("Error transition"))?,
             );
         }
         if let Some(factor) = self.set_treepack_growfactor {
@@ -263,7 +279,8 @@ impl ConfigOptions {
             config.treepack_size_limit = Some(
                 size.as_u64()
                     .try_into()
-                    .map_err(|_| CommandErrorKind::SizeTooLarge(size))?,
+                    .map_err(|_| ConfigCommandErrorKind::SizeTooLarge(size))
+                    .map_err(|_err| todo!("Error transition"))?,
             );
         }
 
@@ -271,7 +288,8 @@ impl ConfigOptions {
             config.datapack_size = Some(
                 size.as_u64()
                     .try_into()
-                    .map_err(|_| CommandErrorKind::SizeTooLarge(size))?,
+                    .map_err(|_| ConfigCommandErrorKind::SizeTooLarge(size))
+                    .map_err(|_err| todo!("Error transition"))?,
             );
         }
         if let Some(factor) = self.set_datapack_growfactor {
@@ -281,20 +299,23 @@ impl ConfigOptions {
             config.datapack_size_limit = Some(
                 size.as_u64()
                     .try_into()
-                    .map_err(|_| CommandErrorKind::SizeTooLarge(size))?,
+                    .map_err(|_| ConfigCommandErrorKind::SizeTooLarge(size))
+                    .map_err(|_err| todo!("Error transition"))?,
             );
         }
 
         if let Some(percent) = self.set_min_packsize_tolerate_percent {
             if percent > 100 {
-                return Err(CommandErrorKind::MinPackSizeTolerateWrong.into());
+                return Err(ConfigCommandErrorKind::MinPackSizeTolerateWrong)
+                    .map_err(|_err| todo!("Error transition"));
             }
             config.min_packsize_tolerate_percent = Some(percent);
         }
 
         if let Some(percent) = self.set_max_packsize_tolerate_percent {
             if percent < 100 && percent > 0 {
-                return Err(CommandErrorKind::MaxPackSizeTolerateWrong.into());
+                return Err(ConfigCommandErrorKind::MaxPackSizeTolerateWrong)
+                    .map_err(|_err| todo!("Error transition"));
             }
             config.max_packsize_tolerate_percent = Some(percent);
         }

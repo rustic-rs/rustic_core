@@ -9,7 +9,7 @@ use crate::{
         decrypt::{DecryptReadBackend, DecryptWriteBackend},
         FileType, ReadBackend, WriteBackend,
     },
-    error::{CommandErrorKind, RusticErrorKind, RusticResult},
+    error::{ErrorKind, RusticResult},
     index::{binarysorted::IndexCollector, indexer::Indexer, GlobalIndex},
     progress::{Progress, ProgressBars},
     repofile::{packfile::PackId, IndexFile, IndexPack, PackHeader, PackHeaderRef},
@@ -44,7 +44,10 @@ pub(crate) fn repair_index<P: ProgressBars, S: Open>(
     dry_run: bool,
 ) -> RusticResult<()> {
     if repo.config().append_only == Some(true) {
-        return Err(CommandErrorKind::NotAllowedWithAppendOnly("index repair".to_string()).into());
+        return Err(CommandErrorKind::NotAllowedWithAppendOnly(
+            "index repair".to_string(),
+        ))
+        .map_err(|_err| todo!("Error transition"));
     }
 
     let be = repo.dbe();
@@ -60,8 +63,7 @@ pub(crate) fn repair_index<P: ProgressBars, S: Open>(
                 if !new_index.packs.is_empty() || !new_index.packs_to_delete.is_empty() {
                     _ = be.save_file(&new_index)?;
                 }
-                be.remove(FileType::Index, &index_id, true)
-                    .map_err(RusticErrorKind::Backend)?;
+                be.remove(FileType::Index, &index_id, true)?;
             }
             (false, _) => {} // nothing to do
         }
@@ -77,7 +79,7 @@ pub(crate) fn repair_index<P: ProgressBars, S: Open>(
         pack_read_header
             .len()
             .try_into()
-            .map_err(CommandErrorKind::ConversionFromIntFailed)?,
+            .map_err(|_err| todo!("Error transition"))?,
     );
     for (id, size_hint, packsize) in pack_read_header {
         debug!("reading pack {id}...");
@@ -115,8 +117,7 @@ impl PackChecker {
         let be = repo.dbe();
         let p = repo.pb.progress_spinner("listing packs...");
         let packs: HashMap<_, _> = be
-            .list_with_size(FileType::Pack)
-            .map_err(RusticErrorKind::Backend)?
+            .list_with_size(FileType::Pack)?
             .into_iter()
             .map(|(id, size)| (PackId::from(id), size))
             .collect();
@@ -190,7 +191,7 @@ pub(crate) fn index_checked_from_collector<P: ProgressBars, S: Open>(
         pack_read_header
             .len()
             .try_into()
-            .map_err(CommandErrorKind::ConversionFromIntFailed)?,
+            .map_err(|_err| todo!("Error transition"))?,
     );
     let index_packs: Vec<_> = pack_read_header
         .into_iter()
