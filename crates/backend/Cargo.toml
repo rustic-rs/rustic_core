@@ -44,7 +44,6 @@ rclone = ["rest", "dep:rand", "dep:semver"]
 rustic_core = { workspace = true }
 
 # errors
-anyhow = "1.0.89"
 displaydoc = "0.2.5"
 thiserror = "1.0.64"
 

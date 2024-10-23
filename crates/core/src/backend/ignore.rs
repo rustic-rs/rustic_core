@@ -28,7 +28,7 @@ use crate::{
         node::{Metadata, Node, NodeType},
         ReadSource, ReadSourceEntry, ReadSourceOpen,
     },
-    error::{IgnoreErrorKind, RusticResult},
+    error::RusticResult,
 };
 
 /// A [`LocalSource`] is a source from local paths which is used to be read from (i.e. to backup it).

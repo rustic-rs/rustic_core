@@ -7,7 +7,7 @@ use crate::{
         decrypt::{DecryptFullBackend, DecryptReadBackend, DecryptWriteBackend},
         FileType, ReadBackend, WriteBackend,
     },
-    error::{CryptBackendErrorKind, RusticErrorKind, RusticResult},
+    error::RusticResult,
     id::Id,
 };
 
@@ -77,11 +77,11 @@ impl<BE: DecryptFullBackend> ReadBackend for DryRunBackend<BE> {
         self.be.location()
     }
 
-    fn list_with_size(&self, tpe: FileType) -> Result<Vec<(Id, u32)>> {
+    fn list_with_size(&self, tpe: FileType) -> RusticResult<Vec<(Id, u32)>> {
         self.be.list_with_size(tpe)
     }
 
-    fn read_full(&self, tpe: FileType, id: &Id) -> Result<Bytes> {
+    fn read_full(&self, tpe: FileType, id: &Id) -> RusticResult<Bytes> {
         self.be.read_full(tpe, id)
     }
 
@@ -92,7 +92,7 @@ impl<BE: DecryptFullBackend> ReadBackend for DryRunBackend<BE> {
         cacheable: bool,
         offset: u32,
         length: u32,
-    ) -> Result<Bytes> {
+    ) -> RusticResult<Bytes> {
         self.be.read_partial(tpe, id, cacheable, offset, length)
     }
 }
@@ -133,7 +133,7 @@ impl<BE: DecryptFullBackend> DecryptWriteBackend for DryRunBackend<BE> {
 }
 
 impl<BE: DecryptFullBackend> WriteBackend for DryRunBackend<BE> {
-    fn create(&self) -> Result<()> {
+    fn create(&self) -> RusticResult<()> {
         if self.dry_run {
             Ok(())
         } else {
@@ -141,7 +141,7 @@ impl<BE: DecryptFullBackend> WriteBackend for DryRunBackend<BE> {
         }
     }
 
-    fn write_bytes(&self, tpe: FileType, id: &Id, cacheable: bool, buf: Bytes) -> Result<()> {
+    fn write_bytes(&self, tpe: FileType, id: &Id, cacheable: bool, buf: Bytes) -> RusticResult<()> {
         if self.dry_run {
             Ok(())
         } else {
@@ -149,7 +149,7 @@ impl<BE: DecryptFullBackend> WriteBackend for DryRunBackend<BE> {
         }
     }
 
-    fn remove(&self, tpe: FileType, id: &Id, cacheable: bool) -> Result<()> {
+    fn remove(&self, tpe: FileType, id: &Id, cacheable: bool) -> RusticResult<()> {
         if self.dry_run {
             Ok(())
         } else {

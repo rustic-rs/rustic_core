@@ -1,7 +1,6 @@
 /// `OpenDAL` backend for rustic.
 use std::{collections::HashMap, path::PathBuf, str::FromStr, sync::OnceLock};
 
-use anyhow::{anyhow, Error, Result};
 use bytes::Bytes;
 use bytesize::ByteSize;
 use log::trace;
@@ -12,7 +11,7 @@ use opendal::{
 use rayon::prelude::{IntoParallelIterator, ParallelIterator};
 use tokio::runtime::Runtime;
 
-use rustic_core::{FileType, Id, ReadBackend, WriteBackend, ALL_FILE_TYPES};
+use rustic_core::{FileType, Id, ReadBackend, RusticResult, WriteBackend, ALL_FILE_TYPES};
 
 mod constants {
     /// Default number of retries
@@ -45,16 +44,20 @@ pub struct Throttle {
 }
 
 impl FromStr for Throttle {
-    type Err = Error;
-    fn from_str(s: &str) -> Result<Self> {
+    type Err = RusticError;
+    fn from_str(s: &str) -> RusticResult<Self> {
         let mut values = s
             .split(',')
-            .map(|s| ByteSize::from_str(s.trim()).map_err(|err| anyhow!("Error: {err}")))
-            .map(|b| -> Result<u32> { Ok(b?.as_u64().try_into()?) });
+            .map(|s| {
+                ByteSize::from_str(s.trim()).map_err(|err| Err(format!("Error: {err}")).into())
+            })
+            .map(|b| -> RusticResult<u32> { Ok(b?.as_u64().try_into()?) });
         let bandwidth = values
             .next()
-            .ok_or_else(|| anyhow!("no bandwidth given"))??;
-        let burst = values.next().ok_or_else(|| anyhow!("no burst given"))??;
+            .ok_or_else(|| Err("no bandwidth given".to_string()).into())??;
+        let burst = values
+            .next()
+            .ok_or_else(|| Err("no burst given".to_string()).into())??;
         Ok(Self { bandwidth, burst })
     }
 }
@@ -74,7 +77,7 @@ impl OpenDALBackend {
     /// # Returns
     ///
     /// A new `OpenDAL` backend.
-    pub fn new(path: impl AsRef<str>, options: HashMap<String, String>) -> Result<Self> {
+    pub fn new(path: impl AsRef<str>, options: HashMap<String, String>) -> RusticResult<Self> {
         let max_retries = match options.get("retry").map(String::as_str) {
             Some("false" | "off") => 0,
             None | Some("default") => constants::DEFAULT_RETRY,
@@ -154,7 +157,7 @@ impl ReadBackend for OpenDALBackend {
     /// # Notes
     ///
     /// If the file type is `FileType::Config`, this will return a list with a single default id.
-    fn list(&self, tpe: FileType) -> Result<Vec<Id>> {
+    fn list(&self, tpe: FileType) -> RusticResult<Vec<Id>> {
         trace!("listing tpe: {tpe:?}");
         if tpe == FileType::Config {
             return Ok(if self.operator.is_exist("config")? {
@@ -181,7 +184,7 @@ impl ReadBackend for OpenDALBackend {
     ///
     /// * `tpe` - The type of the files to list.
     ///
-    fn list_with_size(&self, tpe: FileType) -> Result<Vec<(Id, u32)>> {
+    fn list_with_size(&self, tpe: FileType) -> RusticResult<Vec<(Id, u32)>> {
         trace!("listing tpe: {tpe:?}");
         if tpe == FileType::Config {
             return match self.operator.stat("config") {
@@ -199,14 +202,14 @@ impl ReadBackend for OpenDALBackend {
             .call()?
             .into_iter()
             .filter(|e| e.metadata().is_file())
-            .map(|e| -> Result<(Id, u32)> {
+            .map(|e| -> RusticResult<(Id, u32)> {
                 Ok((e.name().parse()?, e.metadata().content_length().try_into()?))
             })
-            .filter_map(Result::ok)
+            .filter_map(RusticResult::ok)
             .collect())
     }
 
-    fn read_full(&self, tpe: FileType, id: &Id) -> Result<Bytes> {
+    fn read_full(&self, tpe: FileType, id: &Id) -> RusticResult<Bytes> {
         trace!("reading tpe: {tpe:?}, id: {id}");
 
         Ok(self.operator.read(&self.path(tpe, id))?.to_bytes())
@@ -219,7 +222,7 @@ impl ReadBackend for OpenDALBackend {
         _cacheable: bool,
         offset: u32,
         length: u32,
-    ) -> Result<Bytes> {
+    ) -> RusticResult<Bytes> {
         trace!("reading tpe: {tpe:?}, id: {id}, offset: {offset}, length: {length}");
         let range = u64::from(offset)..u64::from(offset + length);
         Ok(self
@@ -233,7 +236,7 @@ impl ReadBackend for OpenDALBackend {
 
 impl WriteBackend for OpenDALBackend {
     /// Create a repository on the backend.
-    fn create(&self) -> Result<()> {
+    fn create(&self) -> RusticResult<()> {
         trace!("creating repo at {:?}", self.location());
 
         for tpe in ALL_FILE_TYPES {
@@ -262,7 +265,13 @@ impl WriteBackend for OpenDALBackend {
     /// * `id` - The id of the file.
     /// * `cacheable` - Whether the file is cacheable.
     /// * `buf` - The bytes to write.
-    fn write_bytes(&self, tpe: FileType, id: &Id, _cacheable: bool, buf: Bytes) -> Result<()> {
+    fn write_bytes(
+        &self,
+        tpe: FileType,
+        id: &Id,
+        _cacheable: bool,
+        buf: Bytes,
+    ) -> RusticResult<()> {
         trace!("writing tpe: {:?}, id: {}", &tpe, &id);
         let filename = self.path(tpe, id);
         self.operator.write(&filename, buf)?;
@@ -276,7 +285,7 @@ impl WriteBackend for OpenDALBackend {
     /// * `tpe` - The type of the file.
     /// * `id` - The id of the file.
     /// * `cacheable` - Whether the file is cacheable.
-    fn remove(&self, tpe: FileType, id: &Id, _cacheable: bool) -> Result<()> {
+    fn remove(&self, tpe: FileType, id: &Id, _cacheable: bool) -> RusticResult<()> {
         trace!("removing tpe: {:?}, id: {}", &tpe, &id);
         let filename = self.path(tpe, id);
         self.operator.delete(&filename)?;
@@ -314,7 +323,7 @@ mod tests {
     #[rstest]
     fn new_opendal_backend(
         #[files("tests/fixtures/opendal/*.toml")] test_case: PathBuf,
-    ) -> Result<()> {
+    ) -> RusticResult<()> {
         #[derive(Deserialize)]
         struct TestCase {
             path: String,

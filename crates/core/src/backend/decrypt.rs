@@ -1,6 +1,5 @@
 use std::{num::NonZeroU32, sync::Arc};
 
-use anyhow::Result;
 use bytes::Bytes;
 use crossbeam_channel::{unbounded, Receiver};
 use rayon::prelude::*;
@@ -8,20 +7,20 @@ use zstd::stream::{copy_encode, decode_all, encode_all};
 
 pub use zstd::compression_level_range;
 
+use crate::{
+    backend::{FileType, ReadBackend, WriteBackend},
+    crypto::{hasher::hash, CryptoKey},
+    error::RusticResult,
+    id::Id,
+    repofile::{RepoFile, RepoId},
+    Progress, RusticResult,
+};
+
 /// The maximum compression level allowed by zstd
 #[must_use]
 pub fn max_compression_level() -> i32 {
     *compression_level_range().end()
 }
-
-use crate::{
-    backend::{FileType, ReadBackend, WriteBackend},
-    crypto::{hasher::hash, CryptoKey},
-    error::{CryptBackendErrorKind, RusticErrorKind},
-    id::Id,
-    repofile::{RepoFile, RepoId},
-    Progress, RusticResult,
-};
 
 /// A backend that can decrypt data.
 /// This is a trait that is implemented by all backends that can decrypt data.
@@ -387,7 +386,7 @@ impl<C: CryptoKey> DecryptBackend<C> {
     }
 
     /// encrypt and potentially compress a repository file
-    fn encrypt_file(&self, data: &[u8]) -> RusticResult<Vec<u8>> {
+    fn encrypt_file(&self, data: &[u8]) -> CryptBackendResult<Vec<u8>> {
         let data_encrypted = match self.zstd {
             Some(level) => {
                 let mut out = vec![2_u8];
@@ -542,15 +541,15 @@ impl<C: CryptoKey> ReadBackend for DecryptBackend<C> {
         self.be.location()
     }
 
-    fn list(&self, tpe: FileType) -> Result<Vec<Id>> {
+    fn list(&self, tpe: FileType) -> RusticResult<Vec<Id>> {
         self.be.list(tpe)
     }
 
-    fn list_with_size(&self, tpe: FileType) -> Result<Vec<(Id, u32)>> {
+    fn list_with_size(&self, tpe: FileType) -> RusticResult<Vec<(Id, u32)>> {
         self.be.list_with_size(tpe)
     }
 
-    fn read_full(&self, tpe: FileType, id: &Id) -> Result<Bytes> {
+    fn read_full(&self, tpe: FileType, id: &Id) -> RusticResult<Bytes> {
         self.be.read_full(tpe, id)
     }
 
@@ -561,21 +560,21 @@ impl<C: CryptoKey> ReadBackend for DecryptBackend<C> {
         cacheable: bool,
         offset: u32,
         length: u32,
-    ) -> Result<Bytes> {
+    ) -> RusticResult<Bytes> {
         self.be.read_partial(tpe, id, cacheable, offset, length)
     }
 }
 
 impl<C: CryptoKey> WriteBackend for DecryptBackend<C> {
-    fn create(&self) -> Result<()> {
+    fn create(&self) -> RusticResult<()> {
         self.be.create()
     }
 
-    fn write_bytes(&self, tpe: FileType, id: &Id, cacheable: bool, buf: Bytes) -> Result<()> {
+    fn write_bytes(&self, tpe: FileType, id: &Id, cacheable: bool, buf: Bytes) -> RusticResult<()> {
         self.be.write_bytes(tpe, id, cacheable, buf)
     }
 
-    fn remove(&self, tpe: FileType, id: &Id, cacheable: bool) -> Result<()> {
+    fn remove(&self, tpe: FileType, id: &Id, cacheable: bool) -> RusticResult<()> {
         self.be.remove(tpe, id, cacheable)
     }
 }

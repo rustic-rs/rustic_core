@@ -1,5 +1,5 @@
 use crate::SupportedBackend;
-use anyhow::Result;
+use rustic_core::{BackendErrorKind, BackendResult};
 
 /// A backend location. This is a string that represents the location of the backend.
 #[derive(PartialEq, Eq, Debug)]
@@ -45,7 +45,7 @@ impl std::fmt::Display for BackendLocation {
 /// If the url is a windows path, the type will be "local".
 pub fn location_to_type_and_path(
     raw_location: &str,
-) -> Result<(SupportedBackend, BackendLocation)> {
+) -> RusticResult<(SupportedBackend, BackendLocation)> {
     match raw_location.split_once(':') {
         #[cfg(windows)]
         Some((drive_letter, _)) if drive_letter.len() == 1 && !raw_location.contains('/') => Ok((

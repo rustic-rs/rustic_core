@@ -1,7 +1,6 @@
 use std::str::FromStr;
 use std::time::Duration;
 
-use anyhow::Result;
 use backoff::{backoff::Backoff, ExponentialBackoff, ExponentialBackoffBuilder};
 use bytes::Bytes;
 use log::{trace, warn};
@@ -138,7 +137,7 @@ impl RestBackend {
     pub fn new(
         url: impl AsRef<str>,
         options: impl IntoIterator<Item = (String, String)>,
-    ) -> Result<Self> {
+    ) -> RusticResult<Self> {
         let url = url.as_ref();
         let url = if url.ends_with('/') {
             Url::parse(url).map_err(RestErrorKind::UrlParsingFailed)?
@@ -197,7 +196,7 @@ impl RestBackend {
     /// # Errors
     ///
     /// If the url could not be created.
-    fn url(&self, tpe: FileType, id: &Id) -> Result<Url> {
+    fn url(&self, tpe: FileType, id: &Id) -> Result<Url, RestErrorKind> {
         let id_path = if tpe == FileType::Config {
             "config".to_string()
         } else {
@@ -245,7 +244,7 @@ impl ReadBackend for RestBackend {
     /// A vector of tuples containing the id and size of the files.
     ///
     /// [`RestErrorKind::JoiningUrlFailed`]: RestErrorKind::JoiningUrlFailed
-    fn list_with_size(&self, tpe: FileType) -> Result<Vec<(Id, u32)>> {
+    fn list_with_size(&self, tpe: FileType) -> RusticResult<Vec<(Id, u32)>> {
         // format which is delivered by the REST-service
         #[derive(Deserialize)]
         struct ListEntry {
@@ -313,7 +312,7 @@ impl ReadBackend for RestBackend {
     /// * [`RestErrorKind::BackoffError`] - If the backoff failed.
     ///
     /// [`RestErrorKind::BackoffError`]: RestErrorKind::BackoffError
-    fn read_full(&self, tpe: FileType, id: &Id) -> Result<Bytes> {
+    fn read_full(&self, tpe: FileType, id: &Id) -> RusticResult<Bytes> {
         trace!("reading tpe: {tpe:?}, id: {id}");
         let url = self.url(tpe, id)?;
         Ok(backoff::retry_notify(
@@ -353,7 +352,7 @@ impl ReadBackend for RestBackend {
         _cacheable: bool,
         offset: u32,
         length: u32,
-    ) -> Result<Bytes> {
+    ) -> RusticResult<Bytes> {
         trace!("reading tpe: {tpe:?}, id: {id}, offset: {offset}, length: {length}");
         let offset2 = offset + length - 1;
         let header_value = format!("bytes={offset}-{offset2}");
@@ -383,7 +382,7 @@ impl WriteBackend for RestBackend {
     /// * [`RestErrorKind::BackoffError`] - If the backoff failed.
     ///
     /// [`RestErrorKind::BackoffError`]: RestErrorKind::BackoffError
-    fn create(&self) -> Result<()> {
+    fn create(&self) -> RusticResult<()> {
         let url = self
             .url
             .join("?create=true")
@@ -413,13 +412,19 @@ impl WriteBackend for RestBackend {
     /// * [`RestErrorKind::BackoffError`] - If the backoff failed.
     ///
     /// [`RestErrorKind::BackoffError`]: RestErrorKind::BackoffError
-    fn write_bytes(&self, tpe: FileType, id: &Id, _cacheable: bool, buf: Bytes) -> Result<()> {
+    fn write_bytes(
+        &self,
+        tpe: FileType,
+        id: &Id,
+        _cacheable: bool,
+        buf: Bytes,
+    ) -> RusticResult<()> {
         trace!("writing tpe: {:?}, id: {}", &tpe, &id);
         let req_builder = self.client.post(self.url(tpe, id)?).body(buf);
         Ok(backoff::retry_notify(
             self.backoff.clone(),
             || {
-                // Note: try_clone() always gives Some(_) as the body is Bytes which is clonable
+                // Note: try_clone() always gives Some(_) as the body is Bytes which is cloneable
                 _ = req_builder.try_clone().unwrap().send()?.check_error()?;
                 Ok(())
             },
@@ -441,7 +446,7 @@ impl WriteBackend for RestBackend {
     /// * [`RestErrorKind::BackoffError`] - If the backoff failed.
     ///
     /// [`RestErrorKind::BackoffError`]: RestErrorKind::BackoffError
-    fn remove(&self, tpe: FileType, id: &Id, _cacheable: bool) -> Result<()> {
+    fn remove(&self, tpe: FileType, id: &Id, _cacheable: bool) -> RusticResult<()> {
         trace!("removing tpe: {:?}, id: {}", &tpe, &id);
         let url = self.url(tpe, id)?;
         Ok(backoff::retry_notify(

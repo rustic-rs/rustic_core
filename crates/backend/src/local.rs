@@ -6,10 +6,13 @@ use std::{
 };
 
 use aho_corasick::AhoCorasick;
-use anyhow::Result;
 use bytes::Bytes;
 use log::{debug, trace, warn};
 use walkdir::WalkDir;
+
+use rustic_core::{
+    CommandInput, FileType, Id, ReadBackend, RusticResult, WriteBackend, ALL_FILE_TYPES,
+};
 
 use rustic_core::{CommandInput, FileType, Id, ReadBackend, WriteBackend, ALL_FILE_TYPES};
 
@@ -41,7 +44,7 @@ impl LocalBackend {
     pub fn new(
         path: impl AsRef<str>,
         options: impl IntoIterator<Item = (String, String)>,
-    ) -> Result<Self> {
+    ) -> RusticResult<Self> {
         let path = path.as_ref().into();
         let mut post_create_command = None;
         let mut post_delete_command = None;
@@ -58,6 +61,7 @@ impl LocalBackend {
                 }
             }
         }
+
         Ok(Self {
             path,
             post_create_command,
@@ -113,7 +117,7 @@ impl LocalBackend {
     /// [`LocalBackendErrorKind::FromSplitError`]: LocalBackendErrorKind::FromSplitError
     /// [`LocalBackendErrorKind::CommandExecutionFailed`]: LocalBackendErrorKind::CommandExecutionFailed
     /// [`LocalBackendErrorKind::CommandNotSuccessful`]: LocalBackendErrorKind::CommandNotSuccessful
-    fn call_command(tpe: FileType, id: &Id, filename: &Path, command: &str) -> Result<()> {
+    fn call_command(tpe: FileType, id: &Id, filename: &Path, command: &str) -> RusticResult<()> {
         let id = id.to_hex();
         let patterns = &["%file", "%type", "%id"];
         let ac = AhoCorasick::new(patterns).map_err(LocalBackendErrorKind::FromAhoCorasick)?;
@@ -157,7 +161,7 @@ impl ReadBackend for LocalBackend {
     /// # Notes
     ///
     /// If the file type is `FileType::Config`, this will return a list with a single default id.
-    fn list(&self, tpe: FileType) -> Result<Vec<Id>> {
+    fn list(&self, tpe: FileType) -> RusticResult<Vec<Id>> {
         trace!("listing tpe: {tpe:?}");
         if tpe == FileType::Config {
             return Ok(if self.path.join("config").exists() {
@@ -190,7 +194,7 @@ impl ReadBackend for LocalBackend {
     /// [`LocalBackendErrorKind::QueryingMetadataFailed`]: LocalBackendErrorKind::QueryingMetadataFailed
     /// [`LocalBackendErrorKind::FromTryIntError`]: LocalBackendErrorKind::FromTryIntError
     /// [`LocalBackendErrorKind::QueryingWalkDirMetadataFailed`]: LocalBackendErrorKind::QueryingWalkDirMetadataFailed
-    fn list_with_size(&self, tpe: FileType) -> Result<Vec<(Id, u32)>> {
+    fn list_with_size(&self, tpe: FileType) -> RusticResult<Vec<(Id, u32)>> {
         trace!("listing tpe: {tpe:?}");
         let path = self.path.join(tpe.dirname());
 
@@ -213,7 +217,7 @@ impl ReadBackend for LocalBackend {
             .into_iter()
             .filter_map(walkdir::Result::ok)
             .filter(|e| e.file_type().is_file())
-            .map(|e| -> Result<_> {
+            .map(|e| -> RusticResult<_> {
                 Ok((
                     e.file_name().to_string_lossy().parse()?,
                     e.metadata()
@@ -223,7 +227,7 @@ impl ReadBackend for LocalBackend {
                         .map_err(LocalBackendErrorKind::FromTryIntError)?,
                 ))
             })
-            .filter_map(Result::ok);
+            .filter_map(RusticResult::ok);
 
         Ok(walker.collect())
     }
@@ -240,7 +244,7 @@ impl ReadBackend for LocalBackend {
     /// * [`LocalBackendErrorKind::ReadingContentsOfFileFailed`] - If the file could not be read.
     ///
     /// [`LocalBackendErrorKind::ReadingContentsOfFileFailed`]: LocalBackendErrorKind::ReadingContentsOfFileFailed
-    fn read_full(&self, tpe: FileType, id: &Id) -> Result<Bytes> {
+    fn read_full(&self, tpe: FileType, id: &Id) -> RusticResult<Bytes> {
         trace!("reading tpe: {tpe:?}, id: {id}");
         Ok(fs::read(self.path(tpe, id))
             .map_err(LocalBackendErrorKind::ReadingContentsOfFileFailed)?
@@ -260,7 +264,7 @@ impl ReadBackend for LocalBackend {
     /// # Errors
     ///
     /// * [`LocalBackendErrorKind::OpeningFileFailed`] - If the file could not be opened.
-    /// * [`LocalBackendErrorKind::CouldNotSeekToPositionInFile`] - If the file could not be seeked to the given position.
+    /// * [`LocalBackendErrorKind::CouldNotSeekToPositionInFile`] - If the file could not be sought to the given position.
     /// * [`LocalBackendErrorKind::FromTryIntError`] - If the length of the file could not be converted to u32.
     /// * [`LocalBackendErrorKind::ReadingExactLengthOfFileFailed`] - If the length of the file could not be read.
     ///
@@ -275,7 +279,7 @@ impl ReadBackend for LocalBackend {
         _cacheable: bool,
         offset: u32,
         length: u32,
-    ) -> Result<Bytes> {
+    ) -> RusticResult<Bytes> {
         trace!("reading tpe: {tpe:?}, id: {id}, offset: {offset}, length: {length}");
         let mut file =
             File::open(self.path(tpe, id)).map_err(LocalBackendErrorKind::OpeningFileFailed)?;
@@ -302,7 +306,7 @@ impl WriteBackend for LocalBackend {
     /// * [`LocalBackendErrorKind::DirectoryCreationFailed`] - If the directory could not be created.
     ///
     /// [`LocalBackendErrorKind::DirectoryCreationFailed`]: LocalBackendErrorKind::DirectoryCreationFailed
-    fn create(&self) -> Result<()> {
+    fn create(&self) -> RusticResult<()> {
         trace!("creating repo at {:?}", self.path);
         fs::create_dir_all(&self.path).map_err(LocalBackendErrorKind::DirectoryCreationFailed)?;
 
@@ -339,7 +343,13 @@ impl WriteBackend for LocalBackend {
     /// [`LocalBackendErrorKind::SettingFileLengthFailed`]: LocalBackendErrorKind::SettingFileLengthFailed
     /// [`LocalBackendErrorKind::CouldNotWriteToBuffer`]: LocalBackendErrorKind::CouldNotWriteToBuffer
     /// [`LocalBackendErrorKind::SyncingOfOsMetadataFailed`]: LocalBackendErrorKind::SyncingOfOsMetadataFailed
-    fn write_bytes(&self, tpe: FileType, id: &Id, _cacheable: bool, buf: Bytes) -> Result<()> {
+    fn write_bytes(
+        &self,
+        tpe: FileType,
+        id: &Id,
+        _cacheable: bool,
+        buf: Bytes,
+    ) -> RusticResult<()> {
         trace!("writing tpe: {:?}, id: {}", &tpe, &id);
         let filename = self.path(tpe, id);
         let mut file = fs::OpenOptions::new()
@@ -379,7 +389,7 @@ impl WriteBackend for LocalBackend {
     /// * [`LocalBackendErrorKind::FileRemovalFailed`] - If the file could not be removed.
     ///
     /// [`LocalBackendErrorKind::FileRemovalFailed`]: LocalBackendErrorKind::FileRemovalFailed
-    fn remove(&self, tpe: FileType, id: &Id, _cacheable: bool) -> Result<()> {
+    fn remove(&self, tpe: FileType, id: &Id, _cacheable: bool) -> RusticResult<()> {
         trace!("removing tpe: {:?}, id: {}", &tpe, &id);
         let filename = self.path(tpe, id);
         fs::remove_file(&filename).map_err(LocalBackendErrorKind::FileRemovalFailed)?;

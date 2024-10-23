@@ -3270,7 +3270,6 @@ name = "rustic_backend"
 version = "0.4.1"
 dependencies = [
  "aho-corasick",
- "anyhow",
  "backoff",
  "bytes",
  "bytesize",
