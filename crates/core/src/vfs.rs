@@ -28,6 +28,21 @@ use crate::{
     RusticResult,
 };
 
+/// [`VfsErrorKind`] describes the errors that can be returned from the Virtual File System
+#[derive(thiserror::Error, Debug, displaydoc::Display)]
+pub enum VfsErrorKind {
+    /// No directory entries for symlink found: `{0:?}`
+    NoDirectoryEntriesForSymlinkFound(OsString),
+    /// Directory exists as non-virtual directory
+    DirectoryExistsAsNonVirtual,
+    /// Only normal paths allowed
+    OnlyNormalPathsAreAllowed,
+    /// Name `{0:?}`` doesn't exist
+    NameDoesNotExist(OsString),
+}
+
+pub(crate) type VfsResult<T> = Result<T, VfsErrorKind>;
+
 #[derive(Debug, Clone, Copy)]
 /// `IdenticalSnapshot` describes how to handle identical snapshots.
 pub enum IdenticalSnapshot {

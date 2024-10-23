@@ -32,6 +32,100 @@ use crate::{
     TreeId,
 };
 
+#[non_exhaustive]
+#[derive(thiserror::Error, Debug, displaydoc::Display)]
+#[non_exhaustive]
+pub enum CheckCheckCommandErrorKind {
+    /// error reading pack {id} : {source}
+    ErrorReadingPack {
+        id: PackId,
+        source: Box<RusticError>,
+    },
+    /// cold file for hot file Type: {file_type:?}, Id: {id} does not exist
+    NoColdFile { id: Id, file_type: FileType },
+    /// Type: {file_type:?}, Id: {id}: hot size: {size_hot}, actual size: {size}
+    HotFileSizeMismatch {
+        id: Id,
+        file_type: FileType,
+        size_hot: u32,
+        size: u32,
+    },
+    /// hot file Type: {file_type:?}, Id: {id} is missing!
+    NoHotFile { id: Id, file_type: FileType },
+    /// Error reading cached file Type: {file_type:?}, Id: {id} : {source}
+    ErrorReadingCache {
+        id: Id,
+        file_type: FileType,
+        source: Box<RusticError>,
+    },
+    /// Error reading file Type: {file_type:?}, Id: {id} : {source}
+    ErrorReadingFile {
+        id: Id,
+        file_type: FileType,
+        source: Box<RusticError>,
+    },
+    /// Cached file Type: {file_type:?}, Id: {id} is not identical to backend!
+    CacheMismatch { id: Id, file_type: FileType },
+    /// pack {id}: No time is set! Run prune to correct this!
+    PackTimeNotSet { id: PackId },
+    /// pack {id}: blob {blob_id} blob type does not match: type: {blob_type:?}, expected: {expected:?}
+    PackBlobTypesMismatch {
+        id: PackId,
+        blob_id: BlobId,
+        blob_type: BlobType,
+        expected: BlobType,
+    },
+    /// pack {id}: blob {blob_id} offset in index: {offset}, expected: {expected}
+    PackBlobOffsetMismatch {
+        id: PackId,
+        blob_id: BlobId,
+        offset: u32,
+        expected: u32,
+    },
+    /// pack {id} not referenced in index. Can be a parallel backup job. To repair: 'rustic repair index'.
+    PackNotReferenced { id: Id },
+    /// pack {id}: size computed by index: {index_size}, actual size: {size}. To repair: 'rustic repair index'.
+    PackSizeMismatchIndex { id: Id, index_size: u32, size: u32 },
+    /// pack {id} is referenced by the index but not present! To repair: 'rustic repair index'."
+    NoPack { id: PackId },
+    /// file {file:?} doesn't have a content
+    FileHasNoContent { file: PathBuf },
+    /// file {file:?} blob {blob_num} has null ID
+    FileBlobHasNullId { file: PathBuf, blob_num: usize },
+    /// file {file:?} blob {blob_id} is missing in index
+    FileBlobNotInIndex { file: PathBuf, blob_id: Id },
+    /// dir {dir:?} doesn't have a subtree
+    NoSubTree { dir: PathBuf },
+    /// "dir {dir:?} subtree has null ID
+    NullSubTree { dir: PathBuf },
+    /// pack {id}: data size does not match expected size. Read: {size} bytes, expected: {expected} bytes
+    PackSizeMismatch {
+        id: PackId,
+        size: usize,
+        expected: usize,
+    },
+    /// pack {id}: Hash mismatch. Computed hash: {computed}
+    PackHashMismatch { id: PackId, computed: PackId },
+    /// pack {id}: Header length in pack file doesn't match index. In pack: {length}, computed: {computed}
+    PackHeaderLengthMismatch {
+        id: PackId,
+        length: u32,
+        computed: u32,
+    },
+    /// pack {id}: Header from pack file does not match the index
+    PackHeaderMismatchIndex { id: PackId },
+    /// pack {id}, blob {blob_id}: Actual uncompressed length does not fit saved uncompressed length
+    PackBlobLengthMismatch { id: PackId, blob_id: BlobId },
+    /// pack {id}, blob {blob_id}: Hash mismatch. Computed hash: {computed}
+    PackBlobHashMismatch {
+        id: PackId,
+        blob_id: BlobId,
+        computed: BlobId,
+    },
+}
+
+pub(crate) type CheckResult = Result<(), Vec<CheckCheckCommandErrorKind>>;
+
 #[derive(Clone, Copy, Debug, Default)]
 #[non_exhaustive]
 /// Options to specify which subset of packs will be read

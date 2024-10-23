@@ -30,6 +30,37 @@ use crate::{
     repofile::snapshotfile::SnapshotSummary,
 };
 
+/// [`TreeErrorKind`] describes the errors that can come up dealing with Trees
+#[derive(thiserror::Error, Debug, displaydoc::Display)]
+#[non_exhaustive]
+pub enum TreeErrorKind {
+    /// blob `{0}` not found in index
+    BlobIdNotFound(TreeId),
+    /// `{0:?}` is not a directory
+    NotADirectory(OsString),
+    /// Path `{0:?}` not found
+    PathNotFound(OsString),
+    /// path should not contain current or parent dir
+    ContainsCurrentOrParentDirectory,
+    /// serde_json couldn't serialize the tree: `{0:?}`
+    SerializingTreeFailed(serde_json::Error),
+    /// serde_json couldn't deserialize tree from bytes of JSON text: `{0:?}`
+    DeserializingTreeFailed(serde_json::Error),
+    /// slice is not UTF-8: `{0:?}`
+    PathIsNotUtf8Conform(Utf8Error),
+    /// error in building nodestreamer: `{0:?}`
+    BuildingNodeStreamerFailed(ignore::Error),
+    /// failed to read file string from glob file: `{0:?}`
+    ReadingFileStringFromGlobsFailed(std::io::Error),
+    /// Error `{kind}` in tree streamer: `{source}`
+    Channel {
+        kind: &'static str,
+        source: Box<dyn std::error::Error + Send + Sync>,
+    },
+}
+
+pub(crate) type TreeResult<T> = Result<T, TreeErrorKind>;
+
 pub(super) mod constants {
     /// The maximum number of trees that are loaded in parallel
     pub(super) const MAX_TREE_LOADER: usize = 4;

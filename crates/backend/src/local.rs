@@ -14,9 +14,54 @@ use rustic_core::{
     CommandInput, FileType, Id, ReadBackend, RusticResult, WriteBackend, ALL_FILE_TYPES,
 };
 
-use rustic_core::{CommandInput, FileType, Id, ReadBackend, WriteBackend, ALL_FILE_TYPES};
-
-use crate::error::LocalBackendErrorKind;
+/// [`LocalBackendErrorKind`] describes the errors that can be returned by an action on the filesystem in Backends
+#[derive(thiserror::Error, Debug, displaydoc::Display)]
+#[non_exhaustive]
+pub enum LocalBackendErrorKind {
+    /// directory creation failed: `{0:?}`
+    DirectoryCreationFailed(std::io::Error),
+    /// querying metadata failed: `{0:?}`
+    QueryingMetadataFailed(std::io::Error),
+    /// querying WalkDir metadata failed: `{0:?}`
+    QueryingWalkDirMetadataFailed(walkdir::Error),
+    /// execution of command failed: `{0:?}`
+    CommandExecutionFailed(std::io::Error),
+    /// command was not successful for filename {file_name}, type {file_type}, id {id}: {status}
+    CommandNotSuccessful {
+        /// File name
+        file_name: String,
+        /// File type
+        file_type: String,
+        /// Item ID
+        id: String,
+        /// Exit status
+        status: ExitStatus,
+    },
+    /// error building automaton `{0:?}`
+    FromAhoCorasick(aho_corasick::BuildError),
+    /// {0:?}
+    #[error(transparent)]
+    FromTryIntError(TryFromIntError),
+    /// {0:?}
+    #[error(transparent)]
+    FromWalkdirError(walkdir::Error),
+    /// removing file failed: `{0:?}`
+    FileRemovalFailed(std::io::Error),
+    /// opening file failed: `{0:?}`
+    OpeningFileFailed(std::io::Error),
+    /// setting file length failed: `{0:?}`
+    SettingFileLengthFailed(std::io::Error),
+    /// can't jump to position in file: `{0:?}`
+    CouldNotSeekToPositionInFile(std::io::Error),
+    /// couldn't write to buffer: `{0:?}`
+    CouldNotWriteToBuffer(std::io::Error),
+    /// reading file contents failed: `{0:?}`
+    ReadingContentsOfFileFailed(std::io::Error),
+    /// reading exact length of file contents failed: `{0:?}`
+    ReadingExactLengthOfFileFailed(std::io::Error),
+    /// failed to sync OS Metadata to disk: `{0:?}`
+    SyncingOfOsMetadataFailed(std::io::Error),
+}
 
 /// A local backend.
 #[derive(Clone, Debug)]

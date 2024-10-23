@@ -8,10 +8,38 @@ use log::{debug, error, trace, warn};
 use serde::{Deserialize, Serialize, Serializer};
 use serde_with::{serde_as, DisplayFromStr, PickFirst};
 
-use crate::{
-    error::{RepositoryErrorKind, RusticErrorKind},
-    RusticError, RusticResult,
-};
+use crate::error::RusticResult;
+
+/// [`CommandInputErrorKind`] describes the errors that can be returned from the CommandInput
+#[derive(thiserror::Error, Debug, displaydoc::Display)]
+#[non_exhaustive]
+pub enum CommandInputErrorKind {
+    /// Command execution failed: {context}:{what} : {source}
+    CommandExecutionFailed {
+        context: String,
+        what: String,
+        source: std::io::Error,
+    },
+    /// Command error status: {context}:{what} : {status}
+    CommandErrorStatus {
+        context: String,
+        what: String,
+        status: ExitStatus,
+    },
+    /// Splitting arguments failed: {arguments} : {source}
+    SplittingArgumentsFailed {
+        arguments: String,
+        source: shell_words::ParseError,
+    },
+    /// Process execution failed: {command:?} : {path:?} : {source}
+    ProcessExecutionFailed {
+        command: CommandInput,
+        path: std::path::PathBuf,
+        source: std::io::Error,
+    },
+}
+
+pub(crate) type CommandInputResult<T> = Result<T, CommandInputErrorKind>;
 
 /// A command to be called which can be given as CLI option as well as in config files
 /// `CommandInput` implements Serialize/Deserialize as well as FromStr.

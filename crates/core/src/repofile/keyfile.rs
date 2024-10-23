@@ -11,6 +11,44 @@ use crate::{
     impl_repoid, RusticError,
 };
 
+/// [`KeyFileErrorKind`] describes the errors that can be returned for `KeyFile`s
+#[derive(thiserror::Error, Debug, displaydoc::Display)]
+#[non_exhaustive]
+pub enum KeyFileErrorKind {
+    /// no suitable key found!
+    NoSuitableKeyFound,
+    /// listing KeyFiles failed
+    ListingKeyFilesFailed,
+    /// couldn't get KeyFile from backend
+    CouldNotGetKeyFileFromBackend,
+    /// serde_json couldn't deserialize the data for the key: `{key_id:?}` : `{source}`
+    DeserializingFromSliceForKeyIdFailed {
+        /// The id of the key
+        key_id: KeyId,
+        /// The error that occurred
+        source: serde_json::Error,
+    },
+    /// serde_json couldn't serialize the data into a JSON byte vector: `{0:?}`
+    CouldNotSerializeAsJsonByteVector(serde_json::Error),
+    /// output length is invalid: `{0:?}`
+    OutputLengthInvalid(scrypt::errors::InvalidOutputLen),
+    /// invalid scrypt parameters: `{0:?}`
+    InvalidSCryptParameters(scrypt::errors::InvalidParams),
+    /// Could not get key from decrypt data: `{key:?}` : `{source}`
+    CouldNotGetKeyFromDecryptData { key: Key, source: CryptoErrorKind },
+    /// deserializing master key from slice failed: `{source}`
+    DeserializingMasterKeyFromSliceFailed { source: serde_json::Error },
+    /// conversion from {from} to {to} failed for {x} : {source}
+    ConversionFailed {
+        from: &'static str,
+        to: &'static str,
+        x: u32,
+        source: std::num::TryFromIntError,
+    },
+}
+
+pub(crate) type KeyFileResult<T> = Result<T, KeyFileErrorKind>;
+
 pub(super) mod constants {
     /// Returns the number of bits of the given type.
     pub(super) const fn num_bits<T>() -> usize {

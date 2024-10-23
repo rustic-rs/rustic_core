@@ -10,6 +10,29 @@ use crate::{
     repository::{Open, Repository},
 };
 
+#[non_exhaustive]
+#[derive(thiserror::Error, Debug, displaydoc::Display)]
+pub enum ConfigCommandErrorKind {
+    /// Not allowed on an append-only repository: `{0}`
+    NotAllowedWithAppendOnly(String),
+    /// compression level `{0}` is not supported for repo v1
+    NoCompressionV1Repo(i32),
+    /// version `{0}` is not supported. Allowed values: {1:?}
+    VersionNotSupported(u32, RangeInclusive<u32>),
+    /// compression level `{0}` is not supported. Allowed values: `{1:?}`
+    CompressionLevelNotSupported(i32, RangeInclusive<i32>),
+    /// cannot downgrade version from `{0}` to `{1}`
+    CannotDowngrade(u32, u32),
+    /// Size is too large: `{0}`
+    SizeTooLarge(ByteSize),
+    /// min_packsize_tolerate_percent must be <= 100
+    MinPackSizeTolerateWrong,
+    /// max_packsize_tolerate_percent must be >= 100 or 0"
+    MaxPackSizeTolerateWrong,
+}
+
+pub(crate) type ConfigCommandResult<T> = Result<T, ConfigCommandErrorKind>;
+
 /// Apply the [`ConfigOptions`] to a given [`ConfigFile`]
 ///
 /// # Type Parameters

@@ -7,8 +7,16 @@ use crate::{
         polynom::{Polynom, Polynom64},
         rolling_hash::{Rabin64, RollingHash64},
     },
-    error::{PolynomialErrorKind, RusticResult},
+    error::RusticResult,
 };
+
+/// [`PolynomialErrorKind`] describes the errors that can happen while dealing with Polynomials
+#[derive(thiserror::Error, Debug, displaydoc::Display)]
+#[non_exhaustive]
+pub enum PolynomialErrorKind {
+    /// no suitable polynomial found
+    NoSuitablePolynomialFound,
+}
 
 pub(super) mod constants {
     /// The Splitmask is used to determine if a chunk is a chunk boundary.

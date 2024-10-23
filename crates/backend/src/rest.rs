@@ -3,6 +3,7 @@ use std::time::Duration;
 
 use backoff::{backoff::Backoff, ExponentialBackoff, ExponentialBackoffBuilder};
 use bytes::Bytes;
+use displaydoc::Display;
 use log::{trace, warn};
 use reqwest::{
     blocking::{Client, ClientBuilder, Response},
@@ -10,10 +11,32 @@ use reqwest::{
     Url,
 };
 use serde::Deserialize;
-
-use crate::error::RestErrorKind;
+use thiserror::Error;
 
 use rustic_core::{FileType, Id, ReadBackend, WriteBackend};
+
+/// [`RestErrorKind`] describes the errors that can be returned while dealing with the REST API
+#[derive(Error, Debug, Display)]
+#[non_exhaustive]
+pub enum RestErrorKind {
+    /// value `{0:?}` not supported for option retry!
+    NotSupportedForRetry(String),
+    /// parsing failed for url: `{0:?}`
+    UrlParsingFailed(url::ParseError),
+    #[cfg(feature = "rest")]
+    /// requesting resource failed: `{0:?}`
+    RequestingResourceFailed(reqwest::Error),
+    /// couldn't parse duration in humantime library: `{0:?}`
+    CouldNotParseDuration(humantime::DurationError),
+    #[cfg(feature = "rest")]
+    /// backoff failed: {0:?}
+    BackoffError(backoff::Error<reqwest::Error>),
+    #[cfg(feature = "rest")]
+    /// Failed to build HTTP client: `{0:?}`
+    BuildingClientFailed(reqwest::Error),
+    /// joining URL failed on: {0:?}
+    JoiningUrlFailed(url::ParseError),
+}
 
 mod consts {
     /// Default number of retries

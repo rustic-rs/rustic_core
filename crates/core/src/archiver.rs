@@ -21,6 +21,25 @@ use crate::{
     Progress, RusticResult,
 };
 
+/// [`ArchiverErrorKind`] describes the errors that can be returned from the archiver
+#[derive(thiserror::Error, Debug, displaydoc::Display)]
+#[non_exhaustive]
+pub enum ArchiverErrorKind {
+    /// tree stack empty
+    TreeStackEmpty,
+    /// cannot open file or directory `{path}`
+    OpeningFileFailed {
+        /// path of the file
+        path: PathBuf,
+    },
+    /// option should contain a value, but contained `None`
+    UnpackingTreeTypeOptionalFailed,
+    /// couldn't determine size for item in Archiver
+    CouldNotDetermineSize,
+}
+
+pub(crate) type ArchiverResult<T> = Result<T, ArchiverErrorKind>;
+
 /// The `Archiver` is responsible for archiving files and trees.
 /// It will read the file, chunk it, and write the chunks to the backend.
 ///
@@ -84,6 +103,7 @@ impl<'a, BE: DecryptFullBackend, I: ReadGlobalIndex> Archiver<'a, BE, I> {
 
         let file_archiver = FileArchiver::new(be.clone(), index, indexer.clone(), config)?;
         let tree_archiver = TreeArchiver::new(be.clone(), index, indexer.clone(), config, summary)?;
+
         Ok(Self {
             file_archiver,
             tree_archiver,

@@ -31,6 +31,44 @@ use crate::{
     error::RusticResult,
 };
 
+/// [`IgnoreErrorKind`] describes the errors that can be returned by a Ignore action in Backends
+#[derive(thiserror::Error, Debug, displaydoc::Display)]
+pub enum IgnoreErrorKind {
+    /// generic Ignore error: `{0:?}`
+    GenericError(ignore::Error),
+    /// Error reading glob file `{file:?}`: `{source:?}`
+    ErrorGlob {
+        file: PathBuf,
+        source: std::io::Error,
+    },
+    /// Unable to open file `{file:?}`: `{source:?}`
+    UnableToOpenFile {
+        file: PathBuf,
+        source: std::io::Error,
+    },
+    /// Error getting xattrs for `{path:?}`: `{source:?}`
+    ErrorXattr {
+        path: PathBuf,
+        source: std::io::Error,
+    },
+    /// Error reading link target for `{path:?}`: `{source:?}`
+    ErrorLink {
+        path: PathBuf,
+        source: std::io::Error,
+    },
+    #[cfg(not(windows))]
+    /// Error converting ctime `{ctime}` and ctime_nsec `{ctime_nsec}` to Utc Timestamp: `{source:?}`
+    CtimeConversionToTimestampFailed {
+        ctime: i64,
+        ctime_nsec: i64,
+        source: ignore::Error,
+    },
+    /// Error acquiring metadata for `{name}`: `{source:?}`
+    AcquiringMetadataFailed { name: String, source: ignore::Error },
+}
+
+pub(crate) type IgnoreResult<T> = Result<T, IgnoreErrorKind>;
+
 /// A [`LocalSource`] is a source from local paths which is used to be read from (i.e. to backup it).
 #[derive(Debug)]
 pub struct LocalSource {

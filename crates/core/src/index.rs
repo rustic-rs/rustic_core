@@ -6,7 +6,7 @@ use derive_more::Constructor;
 use crate::{
     backend::{decrypt::DecryptReadBackend, FileType},
     blob::{tree::TreeId, BlobId, BlobType, DataId},
-    error::IndexErrorKind,
+    error::RusticResult,
     index::binarysorted::{Index, IndexCollector, IndexType},
     progress::Progress,
     repofile::{
@@ -18,6 +18,23 @@ use crate::{
 
 pub(crate) mod binarysorted;
 pub(crate) mod indexer;
+
+/// [`IndexErrorKind`] describes the errors that can be returned by processing Indizes
+#[derive(thiserror::Error, Debug, displaydoc::Display)]
+#[non_exhaustive]
+pub enum IndexErrorKind {
+    /// blob not found in index
+    BlobInIndexNotFound,
+    /// failed to get a blob from the backend
+    GettingBlobIndexEntryFromBackendFailed,
+    /// saving IndexFile failed
+    SavingIndexFileFailed {
+        /// the error that occurred
+        source: CryptBackendErrorKind,
+    },
+}
+
+pub(crate) type IndexResult<T> = Result<T, IndexErrorKind>;
 
 /// An entry in the index
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Constructor)]
@@ -70,6 +87,7 @@ impl IndexEntry {
             self.length,
             self.uncompressed_length,
         )?;
+
         Ok(data)
     }
 

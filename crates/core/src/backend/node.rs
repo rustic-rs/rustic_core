@@ -29,6 +29,66 @@ use crate::error::NodeErrorKind;
 
 use crate::blob::{tree::TreeId, DataId};
 
+#[cfg(not(windows))]
+/// [`NodeErrorKind`] describes the errors that can be returned by an action utilizing a node in Backends
+#[derive(thiserror::Error, Debug, Display)]
+#[non_exhaustive]
+pub enum NodeErrorKind {
+    /// Unexpected EOF while parsing filename: `{file_name}`
+    #[cfg(not(windows))]
+    UnexpectedEOF {
+        /// The filename
+        file_name: String,
+        /// The remaining chars
+        chars: std::str::Chars,
+    },
+    /// Invalid unicode
+    #[cfg(not(windows))]
+    InvalidUnicode {
+        /// The filename
+        file_name: String,
+        /// The unicode codepoint
+        unicode: u32,
+        /// The remaining chars
+        chars: std::str::Chars,
+    },
+    /// Unrecognized Escape while parsing filename: `{file_name}`
+    #[cfg(not(windows))]
+    UnrecognizedEscape {
+        /// The filename
+        file_name: String,
+        /// The remaining chars
+        chars: std::str::Chars,
+    },
+    /// Parsing hex chars {chars:?} failed for `{hex}` in filename: `{file_name}` : `{source}`
+    #[cfg(not(windows))]
+    ParsingHexFailed {
+        /// The filename
+        file_name: String,
+        /// The hex string
+        hex: String,
+        /// The remaining chars
+        chars: std::str::Chars,
+        /// The error that occurred
+        source: ParseIntError,
+    },
+    /// Parsing unicode chars {chars:?} failed for `{target}` in filename: `{file_name}` : `{source}`
+    #[cfg(not(windows))]
+    ParsingUnicodeFailed {
+        /// The filename
+        file_name: String,
+        /// The target type
+        target: String,
+        /// The remaining chars
+        chars: std::str::Chars,
+        /// The error that occurred
+        source: ParseIntError,
+    },
+}
+
+#[cfg(not(windows))]
+pub(crate) type NodeResult<T> = Result<T, NodeErrorKind>;
+
 #[derive(
     Default, Serialize, Deserialize, Clone, Debug, PartialEq, Eq, Constructor, PartialOrd, Ord,
 )]

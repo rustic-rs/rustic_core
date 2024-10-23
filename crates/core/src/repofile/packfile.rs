@@ -13,6 +13,30 @@ use crate::{
     RusticResult,
 };
 
+/// [`PackFileErrorKind`] describes the errors that can be returned for `PackFile`s
+#[derive(thiserror::Error, Debug, displaydoc::Display)]
+#[non_exhaustive]
+pub enum PackFileErrorKind {
+    /// Failed reading binary representation of the pack header: `{0:?}`
+    ReadingBinaryRepresentationFailed(binrw::Error),
+    /// Failed writing binary representation of the pack header: `{0:?}`
+    WritingBinaryRepresentationFailed(binrw::Error),
+    /// Read header length is too large! Length: `{size_real}`, file size: `{pack_size}`
+    HeaderLengthTooLarge { size_real: u32, pack_size: u32 },
+    /// Read header length doesn't match header contents! Length: `{size_real}`, computed: `{size_computed}`
+    HeaderLengthDoesNotMatchHeaderContents { size_real: u32, size_computed: u32 },
+    /// pack size computed from header doesn't match real pack isch! Computed: `{size_computed}`, real: `{size_real}`
+    HeaderPackSizeComputedDoesNotMatchRealPackFile { size_real: u32, size_computed: u32 },
+    /// decrypting from binary failed
+    BinaryDecryptionFailed,
+    /// Partial read of PackFile failed
+    PartialReadOfPackfileFailed,
+    /// writing Bytes failed
+    WritingBytesFailed,
+}
+
+pub(crate) type PackFileResult<T> = Result<T, PackFileErrorKind>;
+
 impl_repoid!(PackId, FileType::Pack);
 
 pub(super) mod constants {

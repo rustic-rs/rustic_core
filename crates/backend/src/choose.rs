@@ -24,6 +24,13 @@ use crate::rest::RestBackend;
 #[cfg(feature = "clap")]
 use clap::ValueHint;
 
+/// [`ChooseBackendErrorKind`] describes the errors that can be returned by the choose backend
+#[derive(thiserror::Error, Debug, displaydoc::Display)]
+#[non_exhaustive]
+pub enum ChooseBackendErrorKind {}
+
+pub(crate) type ChooseBackendResult<T> = Result<T, ChooseBackendErrorKind>;
+
 /// Options for a backend.
 #[cfg_attr(feature = "clap", derive(clap::Parser))]
 #[cfg_attr(feature = "merge", derive(conflate::Merge))]

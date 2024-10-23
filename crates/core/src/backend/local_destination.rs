@@ -25,11 +25,84 @@ use nix::{
 use crate::backend::ignore::mapper::map_mode_from_go;
 #[cfg(not(windows))]
 use crate::backend::node::NodeType;
-use crate::{
-    backend::node::{ExtendedAttribute, Metadata, Node},
-    error::LocalDestinationErrorKind,
-    RusticResult,
-};
+use crate::backend::node::{ExtendedAttribute, Metadata, Node};
+use crate::error::RusticResult;
+
+/// [`LocalDestinationErrorKind`] describes the errors that can be returned by an action on the filesystem in Backends
+#[derive(thiserror::Error, Debug, displaydoc::Display)]
+pub enum LocalDestinationErrorKind {
+    /// directory creation failed: `{0:?}`
+    DirectoryCreationFailed(std::io::Error),
+    /// file `{0:?}` should have a parent
+    FileDoesNotHaveParent(PathBuf),
+    /// DeviceID could not be converted to other type `{target}` of device `{device}`: `{source}`
+    DeviceIdConversionFailed {
+        target: String,
+        device: u64,
+        source: TryFromIntError,
+    },
+    /// Length conversion failed for `{target}` of length `{length}`: `{source}`
+    LengthConversionFailed {
+        target: String,
+        length: u64,
+        source: TryFromIntError,
+    },
+    /// [`walkdir::Error`]
+    #[error(transparent)]
+    FromWalkdirError(walkdir::Error),
+    /// [`Errno`]
+    #[error(transparent)]
+    #[cfg(not(windows))]
+    FromErrnoError(Errno),
+    /// listing xattrs on `{path:?}`: `{source:?}`
+    #[cfg(not(any(windows, target_os = "openbsd")))]
+    ListingXattrsFailed {
+        path: PathBuf,
+        source: std::io::Error,
+    },
+    /// setting xattr `{name}` on `{filename:?}` with `{source:?}`
+    #[cfg(not(any(windows, target_os = "openbsd")))]
+    SettingXattrFailed {
+        name: String,
+        filename: PathBuf,
+        source: std::io::Error,
+    },
+    /// getting xattr `{name}` on `{filename:?}` with `{source:?}`
+    #[cfg(not(any(windows, target_os = "openbsd")))]
+    GettingXattrFailed {
+        name: String,
+        filename: PathBuf,
+        source: std::io::Error,
+    },
+    /// removing directories failed: `{0:?}`
+    DirectoryRemovalFailed(std::io::Error),
+    /// removing file failed: `{0:?}`
+    FileRemovalFailed(std::io::Error),
+    /// setting time metadata failed: `{0:?}`
+    SettingTimeMetadataFailed(std::io::Error),
+    /// opening file failed: `{0:?}`
+    OpeningFileFailed(std::io::Error),
+    /// setting file length failed: `{0:?}`
+    SettingFileLengthFailed(std::io::Error),
+    /// can't jump to position in file: `{0:?}`
+    CouldNotSeekToPositionInFile(std::io::Error),
+    /// couldn't write to buffer: `{0:?}`
+    CouldNotWriteToBuffer(std::io::Error),
+    /// reading exact length of file contents failed: `{0:?}`
+    ReadingExactLengthOfFileFailed(std::io::Error),
+    /// setting file permissions failed: `{0:?}`
+    #[cfg(not(windows))]
+    SettingFilePermissionsFailed(std::io::Error),
+    /// failed to symlink target `{linktarget:?}` from `{filename:?}` with `{source:?}`
+    #[cfg(not(windows))]
+    SymlinkingFailed {
+        linktarget: PathBuf,
+        filename: PathBuf,
+        source: std::io::Error,
+    },
+}
+
+pub(crate) type LocalDestinationResult<T> = Result<T, LocalDestinationErrorKind>;
 
 #[derive(Clone, Debug)]
 /// Local destination, used when restoring.

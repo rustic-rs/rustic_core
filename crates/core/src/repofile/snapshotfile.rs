@@ -30,6 +30,38 @@ use crate::{
 #[cfg(feature = "clap")]
 use clap::ValueHint;
 
+/// [`SnapshotFileErrorKind`] describes the errors that can be returned for `SnapshotFile`s
+#[derive(thiserror::Error, Debug, displaydoc::Display)]
+#[non_exhaustive]
+pub enum SnapshotFileErrorKind {
+    /// non-unicode hostname `{0:?}`
+    NonUnicodeHostname(OsString),
+    /// non-unicode path `{0:?}`
+    NonUnicodePath(PathBuf),
+    /// no snapshots found
+    NoSnapshotsFound,
+    /// value `{0:?}` not allowed
+    ValueNotAllowed(String),
+    /// datetime out of range: `{0:?}`
+    OutOfRange(OutOfRangeError),
+    /// reading the description file failed: `{0:?}`
+    ReadingDescriptionFailed(std::io::Error),
+    /// getting the SnapshotFile from the backend failed
+    GettingSnapshotFileFailed,
+    /// getting the SnapshotFile by ID failed
+    GettingSnapshotFileByIdFailed,
+    /// unpacking SnapshotFile result failed
+    UnpackingSnapshotFileResultFailed,
+    /// collecting IDs failed: `{0:?}`
+    FindingIdsFailed(Vec<String>),
+    /// removing dots from paths failed: `{0:?}`
+    RemovingDotsFromPathFailed(std::io::Error),
+    /// canonicalizing path failed: `{0:?}`
+    CanonicalizingPathFailed(std::io::Error),
+}
+
+pub(crate) type SnapshotFileResult<T> = Result<T, SnapshotFileErrorKind>;
+
 /// Options for creating a new [`SnapshotFile`] structure for a new backup snapshot.
 ///
 /// This struct derives [`serde::Deserialize`] allowing to use it in config files.

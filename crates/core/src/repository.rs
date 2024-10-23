@@ -1,5 +1,5 @@
-mod command_input;
-mod warm_up;
+pub(crate) mod command_input;
+pub(crate) mod warm_up;
 
 pub use command_input::CommandInput;
 
@@ -48,7 +48,7 @@ use crate::{
         restore::{collect_and_prepare, restore_repository, RestoreOptions, RestorePlan},
     },
     crypto::aespoly1305::Key,
-    error::{CommandErrorKind, KeyFileErrorKind, RepositoryErrorKind, RusticErrorKind},
+    error::{ErrorKind, RusticResult},
     index::{
         binarysorted::{IndexCollector, IndexType},
         GlobalIndex, IndexEntry, ReadGlobalIndex, ReadIndex,

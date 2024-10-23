@@ -18,6 +18,27 @@ use crate::{
     repofile::configfile::RepositoryId,
 };
 
+/// [`CacheBackendErrorKind`] describes the errors that can be returned by a Caching action in Backends
+#[derive(thiserror::Error, Debug, displaydoc::Display)]
+pub enum CacheBackendErrorKind {
+    /// Cache directory could not be determined, please set the environment variable XDG_CACHE_HOME or HOME!
+    NoCacheDirectory,
+    /// Error in cache backend {context} for {tpe:?} with {id}: {source}
+    Io {
+        context: String,
+        source: std::io::Error,
+        tpe: Option<FileType>,
+        id: Id,
+    },
+    /// Ensuring tag failed for cache directory {path}: {source}
+    EnsureTagFailed {
+        source: std::io::Error,
+        path: PathBuf,
+    },
+}
+
+pub(crate) type CacheBackendResult<T> = Result<T, CacheBackendErrorKind>;
+
 /// Backend that caches data.
 ///
 /// This backend caches data in a directory.

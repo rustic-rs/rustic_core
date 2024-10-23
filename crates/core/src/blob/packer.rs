@@ -29,6 +29,22 @@ use crate::{
     },
 };
 
+/// [`PackerErrorKind`] describes the errors that can be returned for a Packer
+#[derive(thiserror::Error, Debug, displaydoc::Display)]
+#[non_exhaustive]
+pub enum PackerErrorKind {
+    /// getting total size failed
+    GettingTotalSizeFailed,
+    /// Conversion from `{from}` to `{to}` failed: {source}
+    ConversionFailed {
+        to: &'static str,
+        from: &'static str,
+        source: std::num::TryFromIntError,
+    },
+}
+
+pub(crate) type PackerResult<T> = Result<T, PackerErrorKind>;
+
 pub(super) mod constants {
     use std::time::Duration;
 

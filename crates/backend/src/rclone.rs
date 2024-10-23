@@ -18,9 +18,29 @@ use crate::rest::RestBackend;
 
 use rustic_core::{CommandInput, FileType, Id, ReadBackend, RusticResult, WriteBackend};
 
-use crate::{error::RcloneErrorKind, rest::RestBackend};
-
-use rustic_core::{CommandInput, FileType, Id, ReadBackend, WriteBackend};
+/// [`RcloneErrorKind`] describes the errors that can be returned by a backend provider
+#[derive(thiserror::Error, Debug, displaydoc::Display)]
+#[non_exhaustive]
+pub enum RcloneErrorKind {
+    /// 'rclone version' doesn't give any output
+    NoOutputForRcloneVersion,
+    /// cannot get stdout of rclone
+    NoStdOutForRclone,
+    /// rclone exited with `{0:?}`
+    RCloneExitWithBadStatus(ExitStatus),
+    /// url must start with http:\/\/! url: {0:?}
+    UrlNotStartingWithHttp(String),
+    /// StdIo Error: `{0:?}`
+    #[error(transparent)]
+    FromIoError(std::io::Error),
+    /// utf8 error: `{0:?}`
+    #[error(transparent)]
+    FromUtf8Error(Utf8Error),
+    /// error parsing version number from `{0:?}`
+    FromParseVersion(String),
+    /// Using rclone without authentication! Upgrade to rclone >= 1.52.2 (current version: `{0}`)!
+    RCloneWithoutAuthentication(String),
+}
 
 pub(super) mod constants {
     /// The default command called if no other is specified
