@@ -427,36 +427,33 @@ impl WriteBackend for LocalBackend {
         trace!("creating repo at {:?}", self.path);
         fs::create_dir_all(&self.path).map_err(|err| {
             RusticError::new(
-                ErrorKind::Backend,
+                ErrorKind::Io,
                 "Failed to create the directory. Please check the path and try again.",
             )
-            .add_context("path", self.path.to_string_lossy())
+            .add_context("path", self.path.display().to_string())
             .source(err.into())
         })?;
 
         for tpe in ALL_FILE_TYPES {
-            fs::create_dir_all(self.path.join(tpe.dirname())).map_err(|err| {
+            let path = self.path.join(tpe.dirname());
+            fs::create_dir_all(path).map_err(|err| {
                 RusticError::new(
-                    ErrorKind::Backend,
+                    ErrorKind::Io,
                     "Failed to create the directory. Please check the path and try again.",
                 )
-                .add_context("path", self.path.join(tpe.dirname()).to_string_lossy())
+                .add_context("path", path.display().to_string())
                 .source(err.into())
             })?;
         }
+
         for i in 0u8..=255 {
-            fs::create_dir_all(self.path.join("data").join(hex::encode([i]))).map_err(|err| {
+            let path = self.path.join("data").join(hex::encode([i]));
+            fs::create_dir_all(path).map_err(|err| {
                 RusticError::new(
-                    ErrorKind::Backend,
+                    ErrorKind::Io,
                     "Failed to create the directory. Please check the path and try again.",
                 )
-                .add_context(
-                    "path",
-                    self.path
-                        .join("data")
-                        .join(hex::encode([i]))
-                        .to_string_lossy(),
-                )
+                .add_context("path", path.display().to_string())
                 .source(err.into())
             })?;
         }
