@@ -122,15 +122,18 @@ pub struct Node {
 }
 
 #[serde_as]
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, strum::Display)]
 #[serde(tag = "type", rename_all = "lowercase")]
 /// Types a [`Node`] can have with type-specific additional information
 pub enum NodeType {
     /// Node is a regular file
+    #[strum(to_string = "file")]
     File,
     /// Node is a directory
+    #[strum(to_string = "dir")]
     Dir,
     /// Node is a symlink
+    #[strum(to_string = "symlink:{linktarget}")]
     Symlink {
         /// The target of the symlink
         ///
@@ -147,20 +150,24 @@ pub enum NodeType {
         linktarget_raw: Option<Vec<u8>>,
     },
     /// Node is a block device file
+    #[strum(to_string = "dev:{device}")]
     Dev {
         #[serde(default)]
         /// Device id
         device: u64,
     },
     /// Node is a char device file
+    #[strum(to_string = "chardev:{device}")]
     Chardev {
         #[serde(default)]
         /// Device id
         device: u64,
     },
     /// Node is a fifo
+    #[strum(to_string = "fifo")]
     Fifo,
     /// Node is a socket
+    #[strum(to_string = "socket")]
     Socket,
 }
 

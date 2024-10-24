@@ -5,6 +5,7 @@ use crate::{
     blob::{BlobId, BlobType},
     error::RusticResult,
     repository::{IndexedFull, Repository},
+    ErrorKind, RusticError,
 };
 
 /// Dumps the contents of a file.
@@ -31,8 +32,11 @@ pub(crate) fn dump<P, S: IndexedFull>(
     w: &mut impl Write,
 ) -> RusticResult<()> {
     if node.node_type != NodeType::File {
-        return Err(CommandErrorKind::DumpNotSupported(node.node_type.clone()).into())
-            .map_err(|_err| todo!("Error transition"));
+        return Err(RusticError::new(
+            ErrorKind::Command,
+            "Dump is not supported for non-file node types. You could try to use `cat` instead.",
+        )
+        .add_context("node type", node.node_type.to_string()));
     }
 
     for id in node.content.as_ref().unwrap() {
