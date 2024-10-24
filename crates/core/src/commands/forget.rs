@@ -6,7 +6,7 @@ use serde_derive::{Deserialize, Serialize};
 use serde_with::{serde_as, skip_serializing_none, DisplayFromStr};
 
 use crate::{
-    error::RusticResult,
+    error::{ErrorKind, RusticError, RusticResult},
     progress::ProgressBars,
     repofile::{
         snapshotfile::{SnapshotGroup, SnapshotGroupCriterion, SnapshotId},
@@ -523,7 +523,10 @@ impl KeepOptions {
         now: DateTime<Local>,
     ) -> RusticResult<Vec<ForgetSnapshot>> {
         if !self.is_valid() {
-            return Err(CommandErrorKind::NoKeepOption).map_err(|_err| todo!("Error transition"));
+            return Err(RusticError::new(
+                ErrorKind::Command,
+                "No valid keep options specified, please make sure to specify at least one keep-* option.",
+            ));
         }
 
         let mut group_keep = self.clone();
