@@ -100,6 +100,7 @@ impl CryptoKey for Key {
                 )
                 .add_context("nonce", format!("{:?}", nonce))
                 .source(err.into())
+                .code("C001".into())
             })
     }
 
