@@ -9,7 +9,7 @@ use serde_derive::{Deserialize, Serialize};
 
 use crate::{
     crypto::hasher::hash,
-    error::{RusticError, ErrorKind, RusticResult},
+    error::{ErrorKind, RusticError, RusticResult},
 };
 
 pub(super) mod constants {
@@ -86,7 +86,7 @@ impl FromStr for Id {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let mut id = Self::default();
         hex::decode_to_slice(s, &mut id.0).map_err(|err| {
-            RusticError::new(ErrorKind::Parsing, 
+            RusticError::new(ErrorKind::Parsing,
                 format!("Failed to decode hex string into Id. The string must be a valid hexadecimal string: {s}")
             ).source(err.into())
         })?;

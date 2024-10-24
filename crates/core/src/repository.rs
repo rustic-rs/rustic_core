@@ -190,9 +190,8 @@ impl RepositoryOptions {
         match (&self.password, &self.password_file, &self.password_command) {
             (Some(pwd), _, _) => Ok(Some(pwd.clone())),
             (_, Some(file), _) => {
-                let mut file = BufReader::new(
-                    File::open(file).map_err(ErrorKind::OpeningPasswordFileFailed)?,
-                );
+                let mut file =
+                    BufReader::new(File::open(file).map_err(ErrorKind::OpeningPasswordFileFailed)?);
                 Ok(Some(read_password_from_reader(&mut file)?))
             }
             (_, _, Some(command)) if command.is_set() => {
