@@ -10,6 +10,7 @@ use crate::{
     progress::ProgressBars,
     repofile::SnapshotFile,
     repository::{IndexedFull, IndexedTree, Open, Repository},
+    ErrorKind, RusticError,
 };
 
 /// Prints the contents of a file.
@@ -112,10 +113,12 @@ pub(crate) fn cat_tree<P: ProgressBars, S: IndexedTree>(
         &repo.pb.progress_counter("getting snapshot..."),
     )?;
     let node = Tree::node_from_path(repo.dbe(), repo.index(), snap.tree, Path::new(path))?;
-    let id = node
-        .subtree
-        .ok_or_else(|| CommandErrorKind::PathIsNoDir(path.to_string()))
-        .map_err(|_err| todo!("Error transition"))?;
+    let id = node.subtree.ok_or_else(|| {
+        RusticError::new(
+            ErrorKind::Command,
+            "Path in Node subtree is not a directory. Please provide a directory path.",
+        )
+    })?;
     let data = repo
         .index()
         .blob_from_backend(repo.dbe(), BlobType::Tree, &BlobId::from(*id))?;
