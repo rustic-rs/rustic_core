@@ -14,6 +14,7 @@ use crate::{
     progress::{Progress, ProgressBars},
     repofile::{packfile::PackId, IndexFile, IndexPack, PackHeader, PackHeaderRef},
     repository::{Open, Repository},
+    RusticError,
 };
 
 #[cfg_attr(feature = "clap", derive(clap::Parser))]
@@ -44,10 +45,12 @@ pub(crate) fn repair_index<P: ProgressBars, S: Open>(
     dry_run: bool,
 ) -> RusticResult<()> {
     if repo.config().append_only == Some(true) {
-        return Err(CommandErrorKind::NotAllowedWithAppendOnly(
-            "index repair".to_string(),
-        ))
-        .map_err(|_err| todo!("Error transition"));
+        return Err(
+            RusticError::new(
+                ErrorKind::Repository,
+                "index repair is not allowed in append-only repositories. Please disable append-only mode first, if you know what you are doing.",
+            )
+        );
     }
 
     let be = repo.dbe();

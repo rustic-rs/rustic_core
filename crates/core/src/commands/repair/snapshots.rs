@@ -14,7 +14,7 @@ use crate::{
         tree::{Tree, TreeId},
         BlobId, BlobType,
     },
-    error::RusticResult,
+    error::{ErrorKind, RusticError, RusticResult},
     index::{indexer::Indexer, ReadGlobalIndex, ReadIndex},
     progress::ProgressBars,
     repofile::{snapshotfile::SnapshotId, SnapshotFile, StringList},
@@ -99,7 +99,10 @@ pub(crate) fn repair_snapshots<P: ProgressBars, S: IndexedFull>(
 
     if opts.delete && config_file.append_only == Some(true) {
         return Err(
-            CommandErrorKind::NotAllowedWithAppendOnly("snapshot removal".to_string()).into(),
+            RusticError::new(
+                ErrorKind::Repository,
+                "snapshot removal is not allowed in append-only repositories. Please disable append-only mode first, if you know what you are doing.",
+            )
         );
     }
 
