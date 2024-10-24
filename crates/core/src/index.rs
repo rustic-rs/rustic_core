@@ -13,6 +13,7 @@ use crate::{
         indexfile::{IndexBlob, IndexFile},
         packfile::PackId,
     },
+    ErrorKind, RusticError,
 };
 
 pub(crate) mod binarysorted;
@@ -202,7 +203,13 @@ pub trait ReadIndex {
         id: &BlobId,
     ) -> RusticResult<Bytes> {
         self.get_id(tpe, id).map_or_else(
-            || Err(IndexErrorKind::BlobInIndexNotFound).map_err(|_err| todo!("Error transition")),
+            || {
+                Err(
+                    RusticError::new(ErrorKind::Index, "Blob not found in index")
+                        .add_context("blob id", id.to_string())
+                        .add_context("blob type", tpe.to_string()),
+                )
+            },
             |ie| ie.read_data(be),
         )
     }

@@ -22,7 +22,7 @@ use crate::{
         ReadGlobalIndex,
     },
     repofile::{configfile::ConfigFile, snapshotfile::SnapshotFile},
-    Progress,
+    ErrorKind, Progress, RusticError,
 };
 
 /// [`ArchiverErrorKind`] describes the errors that can be returned from the archiver
@@ -241,9 +241,13 @@ impl<'a, BE: DecryptFullBackend, I: ReadGlobalIndex> Archiver<'a, BE, I> {
 
         self.indexer.write().unwrap().finalize()?;
 
-        summary
-            .finalize(self.snap.time)
-            .map_err(|_err| todo!("Error transition"))?;
+        summary.finalize(self.snap.time).map_err(|err| {
+            RusticError::new(
+                ErrorKind::Processing,
+                "Could not finalize summary, please check the logs for more information.",
+            )
+            .source(err.into())
+        })?;
         self.snap.summary = Some(summary);
 
         if !skip_identical_parent || Some(self.snap.tree) != self.parent.tree_id() {

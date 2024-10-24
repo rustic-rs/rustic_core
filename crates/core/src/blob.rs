@@ -11,14 +11,27 @@ use crate::define_new_id_struct;
 pub const ALL_BLOB_TYPES: [BlobType; 2] = [BlobType::Tree, BlobType::Data];
 
 #[derive(
-    Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Enum,
+    Serialize,
+    Deserialize,
+    Clone,
+    Copy,
+    Debug,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    Enum,
+    strum::Display,
 )]
 /// The type a `blob` or a `packfile` can have
 pub enum BlobType {
     #[serde(rename = "tree")]
+    #[strum(to_string = "tree")]
     /// This is a tree blob
     Tree,
     #[serde(rename = "data")]
+    #[strum(to_string = "data")]
     /// This is a data blob
     Data,
 }

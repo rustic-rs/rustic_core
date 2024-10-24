@@ -256,6 +256,8 @@ pub enum ErrorKind {
     Polynomial,
     /// Multithreading Error
     Multithreading,
+    /// Processing Error
+    Processing,
     // /// The repository password is incorrect. Please try again.
     // IncorrectRepositoryPassword,
     // /// No repository given. Please use the --repository option.
