@@ -152,7 +152,8 @@ pub use crate::{
         PathList, SnapshotGroup, SnapshotGroupCriterion, SnapshotOptions, StringList,
     },
     repository::{
-        CommandInput, FullIndex, IndexedFull, IndexedIds, IndexedStatus, IndexedTree, Open,
-        OpenStatus, Repository, RepositoryOptions,
+        command_input::{CommandInput, CommandInputErrorKind},
+        FullIndex, IndexedFull, IndexedIds, IndexedStatus, IndexedTree, Open, OpenStatus,
+        Repository, RepositoryOptions,
     },
 };

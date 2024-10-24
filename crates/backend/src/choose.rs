@@ -1,6 +1,6 @@
 //! This module contains [`BackendOptions`] and helpers to choose a backend from a given url.
 use derive_setters::Setters;
-use rustic_core::RusticError;
+use rustic_core::{ErrorKind, RusticError};
 use std::{collections::HashMap, sync::Arc};
 use strum_macros::{Display, EnumString};
 
@@ -23,13 +23,6 @@ use crate::rest::RestBackend;
 
 #[cfg(feature = "clap")]
 use clap::ValueHint;
-
-/// [`ChooseBackendErrorKind`] describes the errors that can be returned by the choose backend
-#[derive(thiserror::Error, Debug, displaydoc::Display)]
-#[non_exhaustive]
-pub enum ChooseBackendErrorKind {}
-
-pub(crate) type ChooseBackendResult<T> = Result<T, ChooseBackendErrorKind>;
 
 /// Options for a backend.
 #[cfg_attr(feature = "clap", derive(clap::Parser))]
@@ -88,7 +81,7 @@ impl BackendOptions {
             .get_backend(self.repository.as_ref(), options)?
             .ok_or_else(|| {
                 RusticError::new(
-                    rustic_core::ErrorKind::Backend,
+                    ErrorKind::Backend,
                     "No repository given. Please make sure, that you have set the repository.",
                 )
             })?;
@@ -128,7 +121,7 @@ impl BackendOptions {
                         ErrorKind::Backend,
                         "Could not load the backend. Please check the given backend and try again.",
                     )
-                    .add_context("name", be_type)
+                    .add_context("name", be_type.to_string())
                     .source(err.into())
                 })
             })

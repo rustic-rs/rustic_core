@@ -1,8 +1,6 @@
 pub(crate) mod command_input;
 pub(crate) mod warm_up;
 
-pub use command_input::CommandInput;
-
 use std::{
     cmp::Ordering,
     fs::File,
@@ -61,7 +59,10 @@ use crate::{
         snapshotfile::{SnapshotGroup, SnapshotGroupCriterion, SnapshotId},
         ConfigFile, KeyId, PathList, RepoFile, RepoId, SnapshotFile, SnapshotSummary, Tree,
     },
-    repository::warm_up::{warm_up, warm_up_wait},
+    repository::{
+        command_input::CommandInput,
+        warm_up::{warm_up, warm_up_wait},
+    },
     vfs::OpenFile,
     RepositoryBackends, RusticError,
 };

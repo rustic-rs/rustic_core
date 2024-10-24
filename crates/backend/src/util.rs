@@ -1,5 +1,5 @@
 use crate::SupportedBackend;
-use rustic_core::{BackendErrorKind, BackendResult, RusticError};
+use rustic_core::{ErrorKind, RusticError, RusticResult};
 
 /// A backend location. This is a string that represents the location of the backend.
 #[derive(PartialEq, Eq, Debug)]
@@ -58,18 +58,20 @@ pub fn location_to_type_and_path(
             BackendLocation(raw_location.to_string()),
         )),
         Some((scheme, path)) => Ok((
-            SupportedBackend::try_from(scheme)?,
+            SupportedBackend::try_from(scheme).map_err(|err| {
+                RusticError::new(
+                ErrorKind::Parsing,
+                "The backend type is not supported. Please check the given backend and try again.",
+            )
+            .add_context("name", scheme)
+            .source(err.into())
+            })?,
             BackendLocation(path.to_string()),
         )),
         None => Ok((
             SupportedBackend::Local,
             BackendLocation(raw_location.to_string()),
         )),
-        _ => Err(RusticError::new(
-            ErrorKind::Backend,
-            "The location is not convertible to a backend location. Please check the given location and try again.",
-        )
-        .add_context("location", raw_location)),
     }
 }
 

@@ -98,7 +98,7 @@ impl CryptoKey for Key {
                     ErrorKind::Cryptography,
                     "Data decryption failed, MAC check failed.",
                 )
-                .add_context("nonce", format!("{:?}", nonce))
+                .add_context("nonce", format!("{nonce:?}"))
                 .source(err.into())
                 .code("C001".into())
             })
@@ -124,7 +124,7 @@ impl CryptoKey for Key {
             .encrypt_in_place_detached(&nonce, &[], &mut res[16..])
             .map_err(|err| {
                 RusticError::new(ErrorKind::Cryptography, "Data encryption failed.")
-                    .add_context("nonce", format!("{:?}", nonce))
+                    .add_context("nonce", format!("{nonce:?}"))
                     .source(err.into())
             })?;
         res.extend_from_slice(&tag);

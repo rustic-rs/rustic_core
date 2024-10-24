@@ -93,6 +93,7 @@ opendal = { version = "0.50.0", features = ["services-b2", "services-sftp", "ser
 opendal = { version = "0.50.0", features = ["services-b2", "services-swift", "services-azblob", "services-azdls", "services-cos", "services-fs", "services-ftp", "services-dropbox", "services-gdrive", "services-gcs", "services-ghac", "services-http", "services-ipmfs", "services-memory", "services-obs", "services-onedrive", "services-oss", "services-s3", "services-webdav", "services-webhdfs", "services-azfile", "layers-blocking", "layers-throttle"], optional = true }
 
 [dev-dependencies]
+anyhow = { workspace = true }
 rstest = { workspace = true }
 toml = "0.8.19"
 

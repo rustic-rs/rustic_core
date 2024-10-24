@@ -84,7 +84,7 @@ impl Display for RusticError {
         }
 
         if let Some(severity) = &self.severity {
-            write!(f, "\n\nSeverity: {severity:?}", severity = severity)?;
+            write!(f, "\n\nSeverity: {severity:?}")?;
         }
 
         if let Some(status) = &self.status {
@@ -111,7 +111,7 @@ impl Display for RusticError {
         )?;
 
         if let Some(backtrace) = &self.backtrace {
-            write!(f, "\n\nBacktrace:\n{:?}", backtrace)?;
+            write!(f, "\n\nBacktrace:\n{backtrace:?}")?;
         }
 
         Ok(())
@@ -120,6 +120,7 @@ impl Display for RusticError {
 
 // Accessors for anything we do want to expose publicly.
 impl RusticError {
+    /// Creates a new error with the given kind and guidance.
     pub fn new(kind: ErrorKind, guidance: impl Into<String>) -> Self {
         Self {
             kind,
@@ -138,6 +139,7 @@ impl RusticError {
         }
     }
 
+    /// Checks if the error has a specific error code.
     pub fn is_code(&self, code: &str) -> bool {
         self.code.as_ref().map_or(false, |c| c.as_str() == code)
     }
@@ -154,6 +156,7 @@ impl RusticError {
         matches!(self.kind, ErrorKind::Password)
     }
 
+    /// Creates a new error from a given error.
     pub fn from<T: std::error::Error + Display + Send + Sync + 'static>(
         error: T,
         kind: ErrorKind,
@@ -175,24 +178,40 @@ impl RusticError {
         }
     }
 
+    /// Adds a context to the error.
+    #[must_use]
     pub fn add_context(mut self, key: &'static str, value: impl Into<String>) -> Self {
         self.context.push((key, value.into()));
         self
     }
 }
 
+/// Severity of an error, ranging from informational to fatal.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Severity {
+    /// Informational
     Info,
+
+    /// Warning
     Warning,
+
+    /// Error
     Error,
+
+    /// Fatal
     Fatal,
 }
 
+/// Status of an error, indicating whether it is permanent, temporary, or persistent.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Status {
+    /// Permanent, may not be retried
     Permanent,
+
+    /// Temporary, may be retried
     Temporary,
+
+    /// Persistent, may be retried, but may not succeed
     Persistent,
 }
 
@@ -341,15 +360,15 @@ pub mod immut_str {
         #[inline]
         pub fn as_str(&self) -> &str {
             match self {
-                ImmutStr::Static(s) => s,
-                ImmutStr::Owned(s) => s.as_ref(),
+                Self::Static(s) => s,
+                Self::Owned(s) => s.as_ref(),
             }
         }
 
         pub fn is_owned(&self) -> bool {
             match self {
-                ImmutStr::Static(_) => false,
-                ImmutStr::Owned(_) => true,
+                Self::Static(_) => false,
+                Self::Owned(_) => true,
             }
         }
     }
@@ -362,13 +381,13 @@ pub mod immut_str {
 
     impl From<&'static str> for ImmutStr {
         fn from(s: &'static str) -> Self {
-            ImmutStr::Static(s)
+            Self::Static(s)
         }
     }
 
     impl From<String> for ImmutStr {
         fn from(s: String) -> Self {
-            ImmutStr::Owned(s.into_boxed_str())
+            Self::Owned(s.into_boxed_str())
         }
     }
 

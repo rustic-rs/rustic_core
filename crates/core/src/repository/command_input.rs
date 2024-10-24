@@ -10,7 +10,7 @@ use serde_with::{serde_as, DisplayFromStr, PickFirst};
 
 use crate::error::RusticResult;
 
-/// [`CommandInputErrorKind`] describes the errors that can be returned from the CommandInput
+/// [`CommandInputErrorKind`] describes the errors that can be returned from the `CommandInput`
 #[derive(thiserror::Error, Debug, displaydoc::Display)]
 #[non_exhaustive]
 pub enum CommandInputErrorKind {
