@@ -63,7 +63,7 @@ use crate::{
     },
     repository::warm_up::{warm_up, warm_up_wait},
     vfs::OpenFile,
-    RepositoryBackends,
+    RepositoryBackends, RusticError,
 };
 
 #[cfg(feature = "clap")]
@@ -187,22 +187,33 @@ impl RepositoryOptions {
         match (&self.password, &self.password_file, &self.password_command) {
             (Some(pwd), _, _) => Ok(Some(pwd.clone())),
             (_, Some(file), _) => {
-                let mut file =
-                    BufReader::new(File::open(file).map_err(ErrorKind::OpeningPasswordFileFailed)?);
+                let mut file = BufReader::new(File::open(file).map_err(|err| {
+                    RusticError::new(
+                        ErrorKind::Password,
+                        "Opening password file failed. Is the path correct?",
+                    )
+                    .add_context("path", file.display().to_string())
+                    .source(err.into())
+                })?);
                 Ok(Some(read_password_from_reader(&mut file)?))
             }
             (_, _, Some(command)) if command.is_set() => {
                 debug!("commands: {command:?}");
-                let command = Command::new(command.command())
+                let run_command = Command::new(command.command())
                     .args(command.args())
                     .stdout(Stdio::piped())
                     .spawn();
 
-                let process = match command {
+                let process = match run_command {
                     Ok(process) => process,
                     Err(err) => {
                         error!("password-command could not be executed: {}", err);
-                        return Err(ErrorKind::PasswordCommandExecutionFailed.into());
+                        return Err(RusticError::new(
+                            ErrorKind::Password,
+                            "Password command could not be executed.",
+                        )
+                        .add_context("command", command.to_string())
+                        .source(err.into()));
                     }
                 };
 
@@ -210,7 +221,12 @@ impl RepositoryOptions {
                     Ok(output) => output,
                     Err(err) => {
                         error!("error reading output from password-command: {}", err);
-                        return Err(ErrorKind::ReadingPasswordFromCommandFailed.into());
+                        return Err(RusticError::new(
+                            ErrorKind::Password,
+                            "Error reading output from password command.",
+                        )
+                        .add_context("command", command.to_string())
+                        .source(err.into()));
                     }
                 };
 
@@ -221,14 +237,16 @@ impl RepositoryOptions {
                         None => "was terminated".into(),
                     };
                     error!("password-command {s}");
-                    return Err(ErrorKind::PasswordCommandExecutionFailed.into());
+                    return Err(RusticError::new(
+                        ErrorKind::Password,
+                        "Password command did not exit successfully.",
+                    )
+                    .add_context("command", command.to_string())
+                    .add_context("status", s));
                 }
 
                 let mut pwd = BufReader::new(&*output.stdout);
-                Ok(Some(match read_password_from_reader(&mut pwd) {
-                    Ok(val) => val,
-                    Err(_) => return Err(ErrorKind::ReadingPasswordFromCommandFailed.into()),
-                }))
+                Ok(Some(read_password_from_reader(&mut pwd)?))
             }
             (None, None, _) => Ok(None),
         }
@@ -243,14 +261,13 @@ impl RepositoryOptions {
 ///
 /// # Errors
 ///
-/// * [`RusticErrorKind::ReadingPasswordFromReaderFailed`] - If reading the password failed
-///
-/// [`RusticErrorKind::ReadingPasswordFromReaderFailed`]: crate::error::RusticErrorKind::ReadingPasswordFromReaderFailed
 pub fn read_password_from_reader(file: &mut impl BufRead) -> RusticResult<String> {
     let mut password = String::new();
-    _ = file
-        .read_line(&mut password)
-        .map_err(ErrorKind::ReadingPasswordFromReaderFailed)?;
+    _ = file.read_line(&mut password).map_err(|err| {
+        RusticError::new(ErrorKind::Password, "Reading password from reader failed. Is the file empty? Please check the file and the password.")
+            .add_context("password", password.clone())
+            .source(err.into())
+    })?;
 
     // Remove the \n from the line if present
     if password.ends_with('\n') {
@@ -348,7 +365,11 @@ impl<P> Repository<P, ()> {
 
         if let Some(warm_up) = &opts.warm_up_command {
             if warm_up.args().iter().all(|c| !c.contains("%id")) {
-                return Err(ErrorKind::NoIDSpecified.into());
+                return Err(RusticError::new(
+                    ErrorKind::Command,
+                    "No `%id` specified in warm-up command. Please specify `%id` in the command.",
+                )
+                .add_context("command", warm_up.to_string()));
             }
             info!("using warm-up command {warm_up}");
         }
@@ -413,15 +434,16 @@ impl<P, S> Repository<P, S> {
     /// [`RusticErrorKind::ListingRepositoryConfigFileFailed`]: crate::error::RusticErrorKind::ListingRepositoryConfigFileFailed
     /// [`RusticErrorKind::MoreThanOneRepositoryConfig`]: crate::error::RusticErrorKind::MoreThanOneRepositoryConfig
     pub fn config_id(&self) -> RusticResult<Option<ConfigId>> {
-        let config_ids = self
-            .be
-            .list(FileType::Config)
-            .map_err(|_| ErrorKind::ListingRepositoryConfigFileFailed)?;
+        let config_ids = self.be.list(FileType::Config)?;
 
         match config_ids.len() {
             1 => Ok(Some(ConfigId::from(config_ids[0]))),
             0 => Ok(None),
-            _ => Err(ErrorKind::MoreThanOneRepositoryConfig(self.name.clone()).into()),
+            _ => Err(RusticError::new(
+                ErrorKind::Config,
+                "More than one repository found. Please check the config file.",
+            )
+            .add_context("name", self.name.clone())),
         }
     }
 
@@ -461,7 +483,13 @@ impl<P, S> Repository<P, S> {
     /// [`RusticErrorKind::ListingRepositoryConfigFileFailed`]: crate::error::RusticErrorKind::ListingRepositoryConfigFileFailed
     /// [`RusticErrorKind::MoreThanOneRepositoryConfig`]: crate::error::RusticErrorKind::MoreThanOneRepositoryConfig
     pub fn open(self) -> RusticResult<Repository<P, OpenStatus>> {
-        let password = self.password()?.ok_or(ErrorKind::NoPasswordGiven)?;
+        let password = self.password()?.ok_or({
+            RusticError::new(
+                ErrorKind::Password,
+                "No password given, or Password was empty. Please specify a valid password.",
+            )
+        })?;
+
         self.open_with_password(&password)
     }
 
@@ -489,10 +517,13 @@ impl<P, S> Repository<P, S> {
     /// [`RusticErrorKind::ListingRepositoryConfigFileFailed`]: crate::error::RusticErrorKind::ListingRepositoryConfigFileFailed
     /// [`RusticErrorKind::MoreThanOneRepositoryConfig`]: crate::error::RusticErrorKind::MoreThanOneRepositoryConfig
     pub fn open_with_password(self, password: &str) -> RusticResult<Repository<P, OpenStatus>> {
-        let config_id = self
-            .config_id()?
-            .ok_or(ErrorKind::NoRepositoryConfigFound(self.name.clone()))
-            .map_err(|_err| todo!("Error transition"))?;
+        let config_id = self.config_id()?.ok_or(
+            RusticError::new(
+                ErrorKind::Config,
+                "No repository config file found. Please check the repository.",
+            )
+            .add_context("name", self.name.clone()),
+        )?;
 
         if let Some(be_hot) = &self.be_hot {
             let mut keys = self.be.list_with_size(FileType::Key)?;
@@ -500,8 +531,11 @@ impl<P, S> Repository<P, S> {
             let mut hot_keys = be_hot.list_with_size(FileType::Key)?;
             hot_keys.sort_unstable_by_key(|key| key.0);
             if keys != hot_keys {
-                return Err(ErrorKind::KeysDontMatchForRepositories(self.name).into())
-                    .map_err(|_err| todo!("Error transition"));
+                return Err(RusticError::new(
+                    ErrorKind::Key,
+                    "Keys of hot and cold repositories don't match. Please check the keys.",
+                )
+                .add_context("name", self.name.clone()));
             }
         }
 
@@ -547,7 +581,14 @@ impl<P, S> Repository<P, S> {
         key_opts: &KeyOptions,
         config_opts: &ConfigOptions,
     ) -> RusticResult<Repository<P, OpenStatus>> {
-        let password = self.password()?.ok_or(ErrorKind::NoPasswordGiven)?;
+        let password = self.password()?.ok_or(
+            RusticError::new(
+                ErrorKind::Password,
+                "No password given, or Password was empty. Please specify a valid password.",
+            )
+            .add_context("name", self.name.clone()),
+        )?;
+
         self.init_with_password(&password, key_opts, config_opts)
     }
 
@@ -581,8 +622,13 @@ impl<P, S> Repository<P, S> {
         config_opts: &ConfigOptions,
     ) -> RusticResult<Repository<P, OpenStatus>> {
         if self.config_id()?.is_some() {
-            return Err(ErrorKind::ConfigFileExists.into());
+            return Err(RusticError::new(
+                ErrorKind::Config,
+                "Config file already exists. Please check the repository.",
+            )
+            .add_context("name", self.name.clone()));
         }
+
         let (key, config) = commands::init::init(&self, pass, key_opts, config_opts)?;
 
         self.open_raw(key, config)
@@ -629,15 +675,22 @@ impl<P, S> Repository<P, S> {
     ///
     /// # Errors
     ///
-    /// * [`RusticErrorKind::HotRepositoryFlagMissing`] - If the config file has `is_hot` set to `true` but the repository is not hot
-    /// * [`RusticErrorKind::IsNotHotRepository`] - If the config file has `is_hot` set to `false` but the repository is hot
-    ///
-    /// [`RusticErrorKind::HotRepositoryFlagMissing`]: crate::error::RusticErrorKind::HotRepositoryFlagMissing
-    /// [`RusticErrorKind::IsNotHotRepository`]: crate::error::RusticErrorKind::IsNotHotRepository
+    /// * If the config file has `is_hot` set to `true` but the repository is not hot
+    /// * If the config file has `is_hot` set to `false` but the repository is hot
     fn open_raw(mut self, key: Key, config: ConfigFile) -> RusticResult<Repository<P, OpenStatus>> {
         match (config.is_hot == Some(true), self.be_hot.is_some()) {
-            (true, false) => return Err(ErrorKind::HotRepositoryFlagMissing.into()),
-            (false, true) => return Err(ErrorKind::IsNotHotRepository.into()),
+            (true, false) => return Err(
+                RusticError::new(
+                    ErrorKind::Repository,
+                    "The given repository is a hot repository! Please use `--repo-hot` in combination with the normal repo. Aborting.",
+                )
+            ),
+            (false, true) => return Err(
+                RusticError::new(
+                    ErrorKind::Repository,
+                    "The given repository is not a hot repository! Aborting.",
+                )
+            ),
             _ => {}
         }
 
@@ -1096,7 +1149,10 @@ impl<P: ProgressBars, S: Open> Repository<P, S> {
     pub fn delete_snapshots(&self, ids: &[SnapshotId]) -> RusticResult<()> {
         if self.config().append_only == Some(true) {
             return Err(
-                ErrorKind::NotAllowedWithAppendOnly("snapshots removal".to_string()).into(),
+                RusticError::new(
+                    ErrorKind::Repository,
+                    "Repository is in append-only mode and snapshots cannot be deleted from it. Aborting.",
+                )
             );
         }
         let p = self.pb.progress_counter("removing snapshots...");
@@ -1568,16 +1624,17 @@ impl<P, S: IndexedFull> Repository<P, S> {
     ///
     /// # Errors
     ///
-    /// * [`RusticErrorKind::IdNotFound`] - If the id is not found in the index
-    ///
-    /// [`RusticErrorKind::IdNotFound`]: crate::error::RusticErrorKind::IdNotFound
+    /// * If the id is not found in the index
     pub fn get_index_entry<T: PackedId>(&self, id: &T) -> RusticResult<IndexEntry> {
         let blob_id: BlobId = (*id).into();
-        let ie = self
-            .index()
-            .get_id(T::TYPE, &blob_id)
-            .ok_or_else(|| ErrorKind::IdNotFound(blob_id))
-            .map_err(|_err| todo!("Error transition"))?;
+        let ie = self.index().get_id(T::TYPE, &blob_id).ok_or_else(|| {
+            RusticError::new(
+                ErrorKind::Index,
+                "BlobID not found in index, but should be there. This is a bug. Please report it.",
+            )
+            .add_context("blob id", blob_id.to_string())
+        })?;
+
         Ok(ie)
     }
 
