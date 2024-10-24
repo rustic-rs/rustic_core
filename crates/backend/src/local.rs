@@ -562,7 +562,14 @@ impl WriteBackend for LocalBackend {
     fn remove(&self, tpe: FileType, id: &Id, _cacheable: bool) -> RusticResult<()> {
         trace!("removing tpe: {:?}, id: {}", &tpe, &id);
         let filename = self.path(tpe, id);
-        fs::remove_file(&filename).map_err(LocalBackendErrorKind::FileRemovalFailed)?;
+        fs::remove_file(&filename).map_err(|err|
+            RusticError::new(
+                ErrorKind::Backend,
+                "Failed to remove the file. Was the file already removed or is it in use? Please check the file and remove it manually.",
+            )
+            .add_context("path", filename.to_string_lossy())
+            .source(err.into())
+        )?;
         if let Some(command) = &self.post_delete_command {
             if let Err(err) = Self::call_command(tpe, id, &filename, command) {
                 warn!("post-delete: {err}");
