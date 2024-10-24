@@ -30,7 +30,7 @@ use crate::{
         tree::TreeStreamerOnce,
         BlobId, BlobType, BlobTypeMap, Initialize,
     },
-    error::{CommandErrorKind, RusticErrorKind, RusticResult},
+    error::{RusticError, RusticResult},
     index::{
         binarysorted::{IndexCollector, IndexType},
         indexer::Indexer,
@@ -42,6 +42,7 @@ use crate::{
         SnapshotFile, SnapshotId,
     },
     repository::{Open, Repository},
+    ErrorKind,
 };
 
 pub(super) mod constants {
@@ -198,16 +199,16 @@ pub enum LimitOption {
 }
 
 impl FromStr for LimitOption {
-    type Err = CommandErrorKind;
+    type Err = RusticError;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         Ok(match s.chars().last().unwrap_or('0') {
             '%' => Self::Percentage({
                 let mut copy = s.to_string();
                 _ = copy.pop();
-                copy.parse()?
+                copy.parse().map_err(|_err| todo!("Error transition"))?
             }),
             'd' if s == "unlimited" => Self::Unlimited,
-            _ => Self::Size(ByteSize::from_str(s).map_err(CommandErrorKind::FromByteSizeParser)?),
+            _ => Self::Size(ByteSize::from_str(s).map_err(|_err| todo!("Error transition"))?),
         })
     }
 }
@@ -676,10 +677,9 @@ impl PrunePlan {
     ///
     /// # Errors
     ///
-    /// * [`CommandErrorKind::RepackUncompressedRepoV1`] - If `repack_uncompressed` is set and the repository is a version 1 repository
+    /// * If `repack_uncompressed` is set and the repository is a version 1 repository
     /// * [`CommandErrorKind::FromOutOfRangeError`] - If `keep_pack` or `keep_delete` is out of range
     ///
-    /// [`CommandErrorKind::RepackUncompressedRepoV1`]: crate::error::CommandErrorKind::RepackUncompressedRepoV1
     /// [`CommandErrorKind::FromOutOfRangeError`]: crate::error::CommandErrorKind::FromOutOfRangeError
     pub fn from_prune_options<P: ProgressBars, S: Open>(
         repo: &Repository<P, S>,
@@ -688,8 +688,14 @@ impl PrunePlan {
         let pb = &repo.pb;
         let be = repo.dbe();
 
-        if repo.config().version < 2 && opts.repack_uncompressed {
-            return Err(CommandErrorKind::RepackUncompressedRepoV1.into());
+        let version = repo.config().version;
+
+        if version < 2 && opts.repack_uncompressed {
+            return Err(RusticError::new(
+                ErrorKind::Config,
+                "Repository is version 1, cannot repack uncompressed packs. ",
+            )
+            .add_context("config version", version.to_string()));
         }
 
         let mut index_files = Vec::new();
@@ -718,8 +724,7 @@ impl PrunePlan {
         // list existing pack files
         let p = pb.progress_spinner("getting packs from repository...");
         let existing_packs: BTreeMap<_, _> = be
-            .list_with_size(FileType::Pack)
-            .map_err(RusticErrorKind::Backend)?
+            .list_with_size(FileType::Pack)?
             .into_iter()
             .map(|(id, size)| (PackId::from(id), size))
             .collect();
@@ -734,8 +739,8 @@ impl PrunePlan {
         let pack_sizer =
             total_size.map(|tpe, size| PackSizer::from_config(repo.config(), tpe, size));
         pruner.decide_packs(
-            Duration::from_std(*opts.keep_pack).map_err(CommandErrorKind::FromOutOfRangeError)?,
-            Duration::from_std(*opts.keep_delete).map_err(CommandErrorKind::FromOutOfRangeError)?,
+            Duration::from_std(*opts.keep_pack).map_err(|_err| todo!("Error transition"))?,
+            Duration::from_std(*opts.keep_delete).map_err(|_err| todo!("Error transition"))?,
             repack_cacheable_only,
             opts.repack_uncompressed,
             opts.repack_all,
@@ -781,9 +786,13 @@ impl PrunePlan {
     fn check(&self) -> RusticResult<()> {
         for (id, count) in &self.used_ids {
             if *count == 0 {
-                return Err(CommandErrorKind::BlobsMissing(*id).into());
+                return Err(
+                    RusticError::new(ErrorKind::Command, "Blob is missing in index files, this should not happen. Please report this issue.")
+                        .add_context("blob id", id.to_string()),
+                );
             }
         }
+
         Ok(())
     }
 
@@ -1050,15 +1059,29 @@ impl PrunePlan {
             let check_size = || {
                 match existing_size {
                     Some(size) if size == pack.size => Ok(()), // size is ok => continue
-                    Some(size) => Err(CommandErrorKind::PackSizeNotMatching(
-                        pack.id, pack.size, size,
-                    )),
-                    None => Err(CommandErrorKind::PackNotExisting(pack.id)),
+                    Some(size) => Err(RusticError::new(
+                        ErrorKind::Command,
+                        "Pack size does not match the size in the index file. This should not happen. Please report this issue.",
+                    )
+                    .add_context("pack id", pack.id.to_string())
+                    .add_context("size in index (expected)", pack.size.to_string())
+                    .add_context("size in pack (real)", size.to_string())
+                ),
+                    None => Err(RusticError::new(
+                        ErrorKind::Command,
+                        "Pack does not exist. This should not happen. Please report this issue.",
+                    ).add_context("pack id", pack.id.to_string())),
                 }
             };
 
             match pack.to_do {
-                PackToDo::Undecided => return Err(CommandErrorKind::NoDecision(pack.id).into()),
+                PackToDo::Undecided => {
+                    return Err(RusticError::new(
+                        ErrorKind::Command,
+                        "Pack got no decision what to do with it, please report this!",
+                    )
+                    .add_context("pack id", pack.id.to_string()));
+                }
                 PackToDo::Keep | PackToDo::Recover => {
                     for blob in &pack.blobs {
                         _ = self.used_ids.remove(&blob.id);
@@ -1188,7 +1211,10 @@ pub(crate) fn prune_repository<P: ProgressBars, S: Open>(
     prune_plan: PrunePlan,
 ) -> RusticResult<()> {
     if repo.config().append_only == Some(true) {
-        return Err(CommandErrorKind::NotAllowedWithAppendOnly("prune".to_string()).into());
+        return Err(RusticError::new(
+            ErrorKind::Repository,
+            "Repository is in append-only mode, pruning is not allowed. Aborting.",
+        ));
     }
     repo.warm_up_wait(prune_plan.repack_packs().into_iter())?;
     let be = repo.dbe();
@@ -1301,7 +1327,13 @@ pub(crate) fn prune_repository<P: ProgressBars, S: Open>(
         .into_par_iter()
         .try_for_each(|pack| -> RusticResult<_> {
             match pack.to_do {
-                PackToDo::Undecided => return Err(CommandErrorKind::NoDecision(pack.id).into()),
+                PackToDo::Undecided => {
+                    return Err(RusticError::new(
+                        ErrorKind::Command,
+                        "Pack got no decision what to do with it, please report this!",
+                    )
+                    .add_context("pack id", pack.id.to_string()));
+                }
                 PackToDo::Keep => {
                     // keep pack: add to new index
                     let pack = pack.into_index_pack();
@@ -1528,8 +1560,7 @@ fn find_used_blobs(
 
     let p = pb.progress_counter("reading snapshots...");
     let list: Vec<_> = be
-        .list(FileType::Snapshot)
-        .map_err(RusticErrorKind::Backend)?
+        .list(FileType::Snapshot)?
         .into_iter()
         .filter(|id| !ignore_snaps.contains(&SnapshotId::from(*id)))
         .collect();

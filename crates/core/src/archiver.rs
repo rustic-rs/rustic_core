@@ -16,10 +16,33 @@ use crate::{
     },
     backend::{decrypt::DecryptFullBackend, ReadSource, ReadSourceEntry},
     blob::BlobType,
-    index::{indexer::Indexer, indexer::SharedIndexer, ReadGlobalIndex},
+    error::RusticResult,
+    index::{
+        indexer::{Indexer, SharedIndexer},
+        ReadGlobalIndex,
+    },
     repofile::{configfile::ConfigFile, snapshotfile::SnapshotFile},
-    Progress, RusticResult,
+    ErrorKind, Progress, RusticError,
 };
+
+/// [`ArchiverErrorKind`] describes the errors that can be returned from the archiver
+#[derive(thiserror::Error, Debug, displaydoc::Display)]
+#[non_exhaustive]
+pub enum ArchiverErrorKind {
+    /// tree stack empty
+    TreeStackEmpty,
+    /// cannot open file or directory `{path}`
+    OpeningFileFailed {
+        /// path of the file
+        path: PathBuf,
+    },
+    /// option should contain a value, but contained `None`
+    UnpackingTreeTypeOptionalFailed,
+    /// couldn't determine size for item in Archiver
+    CouldNotDetermineSize,
+}
+
+pub(crate) type ArchiverResult<T> = Result<T, ArchiverErrorKind>;
 
 /// The `Archiver` is responsible for archiving files and trees.
 /// It will read the file, chunk it, and write the chunks to the backend.
@@ -84,6 +107,7 @@ impl<'a, BE: DecryptFullBackend, I: ReadGlobalIndex> Archiver<'a, BE, I> {
 
         let file_archiver = FileArchiver::new(be.clone(), index, indexer.clone(), config)?;
         let tree_archiver = TreeArchiver::new(be.clone(), index, indexer.clone(), config, summary)?;
+
         Ok(Self {
             file_archiver,
             tree_archiver,
@@ -201,8 +225,12 @@ impl<'a, BE: DecryptFullBackend, I: ReadGlobalIndex> Archiver<'a, BE, I> {
                 })
                 .try_for_each(|item| self.tree_archiver.add(item))
             })
-            .unwrap()?;
-            src_size_handle.join().unwrap();
+            .expect("Scoped Archiver thread should not panic!")?;
+
+            src_size_handle
+                .join()
+                .expect("Scoped Size Handler thread should not panic!");
+
             Ok(())
         })?;
 
@@ -213,7 +241,13 @@ impl<'a, BE: DecryptFullBackend, I: ReadGlobalIndex> Archiver<'a, BE, I> {
 
         self.indexer.write().unwrap().finalize()?;
 
-        summary.finalize(self.snap.time)?;
+        summary.finalize(self.snap.time).map_err(|err| {
+            RusticError::new(
+                ErrorKind::Processing,
+                "Could not finalize summary, please check the logs for more information.",
+            )
+            .source(err.into())
+        })?;
         self.snap.summary = Some(summary);
 
         if !skip_identical_parent || Some(self.snap.tree) != self.parent.tree_id() {

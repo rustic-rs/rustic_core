@@ -10,7 +10,7 @@ use crate::{
         key::{init_key, KeyOptions},
     },
     crypto::aespoly1305::Key,
-    error::{RusticErrorKind, RusticResult},
+    error::RusticResult,
     id::Id,
     repofile::{configfile::RepositoryId, ConfigFile},
     repository::Repository,
@@ -85,7 +85,7 @@ pub(crate) fn init_with_config<P, S>(
     key_opts: &KeyOptions,
     config: &ConfigFile,
 ) -> RusticResult<Key> {
-    repo.be.create().map_err(RusticErrorKind::Backend)?;
+    repo.be.create()?;
     let (key, id) = init_key(repo, key_opts, pass)?;
     info!("key {id} successfully added.");
     save_config(repo, config.clone(), key)?;

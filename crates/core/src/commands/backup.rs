@@ -229,12 +229,22 @@ pub(crate) fn backup<P: ProgressBars, S: IndexedIds>(
     let as_path = opts
         .as_path
         .as_ref()
-        .map(|p| -> RusticResult<_> { Ok(p.parse_dot()?.to_path_buf()) })
+        .map(|p| -> RusticResult<_> {
+            Ok(p.parse_dot()
+                .map_err(|_err| todo!("Error transition"))?
+                .to_path_buf())
+        })
         .transpose()?;
 
     match &as_path {
-        Some(p) => snap.paths.set_paths(&[p.clone()])?,
-        None => snap.paths.set_paths(&backup_path)?,
+        Some(p) => snap
+            .paths
+            .set_paths(&[p.clone()])
+            .map_err(|_err| todo!("Error transition"))?,
+        None => snap
+            .paths
+            .set_paths(&backup_path)
+            .map_err(|_err| todo!("Error transition"))?,
     };
 
     let (parent_id, parent) = opts.parent_opts.get_parent(repo, &snap, backup_stdin);

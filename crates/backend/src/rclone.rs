@@ -5,7 +5,6 @@ use std::{
     thread::JoinHandle,
 };
 
-use anyhow::Result;
 use bytes::Bytes;
 use constants::DEFAULT_COMMAND;
 use log::{debug, info};
@@ -15,9 +14,32 @@ use rand::{
 };
 use semver::{BuildMetadata, Prerelease, Version, VersionReq};
 
-use crate::{error::RcloneErrorKind, rest::RestBackend};
+use crate::rest::RestBackend;
 
-use rustic_core::{CommandInput, FileType, Id, ReadBackend, WriteBackend};
+use rustic_core::{
+    CommandInput, ErrorKind, FileType, Id, ReadBackend, RusticError, RusticResult, WriteBackend,
+};
+
+/// [`RcloneErrorKind`] describes the errors that can be returned by a backend provider
+#[derive(thiserror::Error, Debug, displaydoc::Display)]
+#[non_exhaustive]
+pub enum RcloneErrorKind {
+    /// 'rclone version' doesn't give any output
+    NoOutputForRcloneVersion,
+    /// cannot get stdout of rclone
+    NoStdOutForRclone,
+    /// rclone exited with `{0:?}`
+    RCloneExitWithBadStatus(ExitStatus),
+    /// url must start with http:\/\/! url: {0:?}
+    UrlNotStartingWithHttp(String),
+    /// StdIo Error: `{0:?}`
+    #[error(transparent)]
+    FromIoError(std::io::Error),
+    /// error parsing version number from `{0:?}`
+    FromParseVersion(String),
+    /// Using rclone without authentication! Upgrade to rclone >= 1.52.2 (current version: `{0}`)!
+    RCloneWithoutAuthentication(String),
+}
 
 pub(super) mod constants {
     /// The default command called if no other is specified
@@ -70,15 +92,30 @@ impl Drop for RcloneBackend {
 /// [`RcloneErrorKind::FromUtf8Error`]: RcloneErrorKind::FromUtf8Error
 /// [`RcloneErrorKind::NoOutputForRcloneVersion`]: RcloneErrorKind::NoOutputForRcloneVersion
 /// [`RcloneErrorKind::FromParseVersion`]: RcloneErrorKind::FromParseVersion
-fn check_clone_version(rclone_version_output: &[u8]) -> Result<()> {
+fn check_clone_version(rclone_version_output: &[u8]) -> RusticResult<()> {
     let rclone_version = std::str::from_utf8(rclone_version_output)
-        .map_err(RcloneErrorKind::FromUtf8Error)?
+        .map_err(|err| {
+            RusticError::new(
+                ErrorKind::Parsing,
+                "Expected rclone version to be valid utf8, but it was not.",
+            )
+            .source(err.into())
+        })?
         .lines()
         .next()
-        .ok_or_else(|| RcloneErrorKind::NoOutputForRcloneVersion)?
+        .ok_or_else(|| {
+            RusticError::new(
+                ErrorKind::Parsing,
+                "Expected rclone version to have at least one line, but it did not. Please check the rclone version output manually.",
+            )
+        })?
         .trim_start_matches(|c: char| !c.is_numeric());
 
-    let mut parsed_version = Version::parse(rclone_version)?;
+    let mut parsed_version = Version::parse(rclone_version).map_err(|err| {
+        RusticError::new(ErrorKind::Parsing, "Error parsing rclone version.")
+            .add_context("version", rclone_version)
+            .source(err.into())
+    })?;
 
     // we need to set the pre and build fields to empty to make the comparison work
     // otherwise the comparison will take the pre and build fields into account
@@ -91,10 +128,21 @@ fn check_clone_version(rclone_version_output: &[u8]) -> Result<()> {
     // we hard fail here to prevent this, as we can't guarantee the security of the data
     // also because 1.52.2 has been released on Jun 24, 2020, we can assume that this is a
     // reasonable lower bound for the version
-    if VersionReq::parse("<1.52.2")?.matches(&parsed_version) {
-        return Err(
-            RcloneErrorKind::RCloneWithoutAuthentication(rclone_version.to_string()).into(),
-        );
+    if VersionReq::parse("<1.52.2")
+        .map_err(|err| {
+            RusticError::new(
+                ErrorKind::Parsing,
+                "Error parsing version requirement. This should not happen.",
+            )
+            .source(err.into())
+        })?
+        .matches(&parsed_version)
+    {
+        return Err(RusticError::new(
+            ErrorKind::Unsupported,
+            "Unsupported rclone version. Using rclone without authentication! Upgrade to rclone >= 1.52.2!",
+        )
+        .add_context("current version", rclone_version.to_string()));
     }
 
     Ok(())
@@ -127,7 +175,7 @@ impl RcloneBackend {
     ///
     /// If the rclone command is not found.
     // TODO: This should be an error, not a panic.
-    pub fn new(url: impl AsRef<str>, options: HashMap<String, String>) -> Result<Self> {
+    pub fn new(url: impl AsRef<str>, options: HashMap<String, String>) -> RusticResult<Self> {
         let rclone_command = options.get("rclone-command");
         let use_password = options
             .get("use-password")
@@ -247,7 +295,7 @@ impl ReadBackend for RcloneBackend {
     /// * `tpe` - The type of the file.
     ///
     /// If the size could not be determined.
-    fn list_with_size(&self, tpe: FileType) -> Result<Vec<(Id, u32)>> {
+    fn list_with_size(&self, tpe: FileType) -> RusticResult<Vec<(Id, u32)>> {
         self.rest.list_with_size(tpe)
     }
 
@@ -261,7 +309,7 @@ impl ReadBackend for RcloneBackend {
     /// # Returns
     ///
     /// The data read.
-    fn read_full(&self, tpe: FileType, id: &Id) -> Result<Bytes> {
+    fn read_full(&self, tpe: FileType, id: &Id) -> RusticResult<Bytes> {
         self.rest.read_full(tpe, id)
     }
 
@@ -285,14 +333,14 @@ impl ReadBackend for RcloneBackend {
         cacheable: bool,
         offset: u32,
         length: u32,
-    ) -> Result<Bytes> {
+    ) -> RusticResult<Bytes> {
         self.rest.read_partial(tpe, id, cacheable, offset, length)
     }
 }
 
 impl WriteBackend for RcloneBackend {
     /// Creates a new file.
-    fn create(&self) -> Result<()> {
+    fn create(&self) -> RusticResult<()> {
         self.rest.create()
     }
 
@@ -304,7 +352,7 @@ impl WriteBackend for RcloneBackend {
     /// * `id` - The id of the file.
     /// * `cacheable` - Whether the data should be cached.
     /// * `buf` - The data to write.
-    fn write_bytes(&self, tpe: FileType, id: &Id, cacheable: bool, buf: Bytes) -> Result<()> {
+    fn write_bytes(&self, tpe: FileType, id: &Id, cacheable: bool, buf: Bytes) -> RusticResult<()> {
         self.rest.write_bytes(tpe, id, cacheable, buf)
     }
 
@@ -315,7 +363,7 @@ impl WriteBackend for RcloneBackend {
     /// * `tpe` - The type of the file.
     /// * `id` - The id of the file.
     /// * `cacheable` - Whether the file is cacheable.
-    fn remove(&self, tpe: FileType, id: &Id, cacheable: bool) -> Result<()> {
+    fn remove(&self, tpe: FileType, id: &Id, cacheable: bool) -> RusticResult<()> {
         self.rest.remove(tpe, id, cacheable)
     }
 }

@@ -253,7 +253,7 @@ fn test_backup_with_tar_gz_passes(
 
     // re-read index
     let repo = repo.to_indexed_ids()?;
-    // third backup with tags and explicitely given parent
+    // third backup with tags and explicitly given parent
     let snap = SnapshotOptions::default()
         .tags([StringList::from_str("a,b")?])
         .to_snapshot()?;

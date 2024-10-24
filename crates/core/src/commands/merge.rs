@@ -11,7 +11,7 @@ use crate::{
         tree::{self, Tree, TreeId},
         BlobId, BlobType,
     },
-    error::{CommandErrorKind, RusticResult},
+    error::RusticResult,
     index::{indexer::Indexer, ReadIndex},
     progress::{Progress, ProgressBars},
     repofile::{PathList, SnapshotFile, SnapshotSummary},
@@ -44,7 +44,9 @@ pub(crate) fn merge_snapshots<P: ProgressBars, S: IndexedTree>(
         .collect::<PathList>()
         .merge();
 
-    snap.paths.set_paths(&paths.paths())?;
+    snap.paths
+        .set_paths(&paths.paths())
+        .map_err(|_err| todo!("Error transition"))?;
 
     // set snapshot time to time of latest snapshot to be merged
     snap.time = snapshots
@@ -58,7 +60,9 @@ pub(crate) fn merge_snapshots<P: ProgressBars, S: IndexedTree>(
     let trees: Vec<TreeId> = snapshots.iter().map(|sn| sn.tree).collect();
     snap.tree = merge_trees(repo, &trees, cmp, &mut summary)?;
 
-    summary.finalize(now)?;
+    summary
+        .finalize(now)
+        .map_err(|_err| todo!("Error transition"))?;
     snap.summary = Some(summary);
 
     snap.id = repo.dbe().save_file(&snap)?.into();
@@ -104,9 +108,9 @@ pub(crate) fn merge_trees<P: ProgressBars, S: IndexedTree>(
         repo.config(),
         index.total_size(BlobType::Tree),
     )?;
-    let save = |tree: Tree| {
-        let (chunk, new_id) = tree.serialize()?;
-        let size = u64::try_from(chunk.len()).map_err(CommandErrorKind::ConversionFromIntFailed)?;
+    let save = |tree: Tree| -> RusticResult<_> {
+        let (chunk, new_id) = tree.serialize().map_err(|_err| todo!("Error transition"))?;
+        let size = u64::try_from(chunk.len()).map_err(|_err| todo!("Error transition"))?;
         if !index.has_tree(&new_id) {
             packer.add(chunk.into(), BlobId::from(*new_id))?;
         }

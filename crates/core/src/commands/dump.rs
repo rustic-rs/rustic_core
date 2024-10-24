@@ -3,8 +3,9 @@ use std::io::Write;
 use crate::{
     backend::node::{Node, NodeType},
     blob::{BlobId, BlobType},
-    error::{CommandErrorKind, RusticResult},
+    error::RusticResult,
     repository::{IndexedFull, Repository},
+    ErrorKind, RusticError,
 };
 
 /// Dumps the contents of a file.
@@ -31,12 +32,17 @@ pub(crate) fn dump<P, S: IndexedFull>(
     w: &mut impl Write,
 ) -> RusticResult<()> {
     if node.node_type != NodeType::File {
-        return Err(CommandErrorKind::DumpNotSupported(node.node_type.clone()).into());
+        return Err(RusticError::new(
+            ErrorKind::Command,
+            "Dump is not supported for non-file node types. You could try to use `cat` instead.",
+        )
+        .add_context("node type", node.node_type.to_string()));
     }
 
     for id in node.content.as_ref().unwrap() {
         let data = repo.get_blob_cached(&BlobId::from(**id), BlobType::Data)?;
-        w.write_all(&data)?;
+        w.write_all(&data)
+            .map_err(|_err| todo!("Error transition"))?;
     }
     Ok(())
 }

@@ -23,10 +23,11 @@ use crate::{
         node::{Node, NodeType},
         FileType, ReadBackend,
     },
-    error::{CommandErrorKind, RusticResult},
+    error::RusticResult,
     progress::{Progress, ProgressBars},
     repofile::packfile::PackId,
     repository::{IndexedFull, IndexedTree, Open, Repository},
+    ErrorKind, RusticError,
 };
 
 pub(crate) mod constants {
@@ -222,9 +223,15 @@ pub(crate) fn collect_and_prepare<P: ProgressBars, S: IndexedFull>(
                     stats.dirs.restore += 1;
                     debug!("to restore: {path:?}");
                     if !dry_run {
-                        dest.create_dir(path).map_err(|err| {
-                            CommandErrorKind::ErrorCreating(path.clone(), Box::new(err))
-                        })?;
+                        dest.create_dir(path)
+                            .map_err(|err| {
+                                RusticError::new(
+                                    ErrorKind::Io,
+                                    "Failed to create the directory. Please check the path and try again.",
+                                )
+                                .add_context("path", path.display().to_string())
+                                .source(err.into())
+                            })?;
                     }
                 }
             }
@@ -232,11 +239,7 @@ pub(crate) fn collect_and_prepare<P: ProgressBars, S: IndexedFull>(
                 // collect blobs needed for restoring
                 match (
                     exists,
-                    restore_infos
-                        .add_file(dest, node, path.clone(), repo, opts.verify_existing)
-                        .map_err(|err| {
-                            CommandErrorKind::ErrorCollecting(path.clone(), Box::new(err))
-                        })?,
+                    restore_infos.add_file(dest, node, path.clone(), repo, opts.verify_existing)?,
                 ) {
                     // Note that exists = false and Existing or Verified can happen if the file is changed between scanning the dir
                     // and calling add_file. So we don't care about exists but trust add_file here.
@@ -449,8 +452,14 @@ fn restore_contents<P: ProgressBars, S: Open>(
     for (i, size) in file_lengths.iter().enumerate() {
         if *size == 0 {
             let path = &filenames[i];
-            dest.set_length(path, *size)
-                .map_err(|err| CommandErrorKind::ErrorSettingLength(path.clone(), Box::new(err)))?;
+            dest.set_length(path, *size).map_err(|err| {
+                RusticError::new(
+                    ErrorKind::Io,
+                    "Failed to set the length of the file. Please check the path and try again.",
+                )
+                .add_context("path", path.display().to_string())
+                .source(err.into())
+            })?;
         }
     }
 
@@ -491,10 +500,20 @@ fn restore_contents<P: ProgressBars, S: Open>(
         })
         .collect();
 
+    let threads = constants::MAX_READER_THREADS_NUM;
+
     let pool = ThreadPoolBuilder::new()
-        .num_threads(constants::MAX_READER_THREADS_NUM)
+        .num_threads(threads)
         .build()
-        .map_err(CommandErrorKind::FromRayonError)?;
+        .map_err(|err| {
+            RusticError::new(
+                ErrorKind::Multithreading,
+                "Failed to create the thread pool. Please try again.",
+            )
+            .add_context("num threads", threads.to_string())
+            .source(err.into())
+        })?;
+
     pool.in_place_scope(|s| {
         for (pack, offset, length, from_file, name_dests) in blobs {
             let p = &p;
@@ -537,14 +556,7 @@ fn restore_contents<P: ProgressBars, S: Open>(
                                 let mut sizes_guard = sizes.lock().unwrap();
                                 let filesize = sizes_guard[file_idx];
                                 if filesize > 0 {
-                                    dest.set_length(path, filesize)
-                                        .map_err(|err| {
-                                            CommandErrorKind::ErrorSettingLength(
-                                                path.clone(),
-                                                Box::new(err),
-                                            )
-                                        })
-                                        .unwrap();
+                                    dest.set_length(path, filesize).unwrap();
                                     sizes_guard[file_idx] = 0;
                                 }
                                 drop(sizes_guard);
@@ -664,7 +676,8 @@ impl RestorePlan {
             if let Some(meta) = open_file
                 .as_ref()
                 .map(std::fs::File::metadata)
-                .transpose()?
+                .transpose()
+                .map_err(|_err| todo!("Error transition"))?
             {
                 if meta.len() == 0 {
                     // Empty file exists
@@ -677,7 +690,8 @@ impl RestorePlan {
             if let Some(meta) = open_file
                 .as_ref()
                 .map(std::fs::File::metadata)
-                .transpose()?
+                .transpose()
+                .map_err(|_err| todo!("Error transition"))?
             {
                 // TODO: This is the same logic as in backend/ignore.rs => consollidate!
                 let mtime = meta
@@ -706,8 +720,14 @@ impl RestorePlan {
             };
             let length = bl.data_length();
 
-            let usize_length =
-                usize::try_from(length).map_err(CommandErrorKind::ConversionFromIntFailed)?;
+            let usize_length = usize::try_from(length).map_err(|err| {
+                RusticError::new(
+                    ErrorKind::Conversion,
+                    "Failed to convert the length to usize. Please try again.",
+                )
+                .add_context("length", length.to_string())
+                .source(err.into())
+            })?;
 
             let matches = open_file
                 .as_mut()

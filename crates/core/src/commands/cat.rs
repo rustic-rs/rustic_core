@@ -5,11 +5,12 @@ use bytes::Bytes;
 use crate::{
     backend::{decrypt::DecryptReadBackend, FileType, FindInBackend},
     blob::{tree::Tree, BlobId, BlobType},
-    error::{CommandErrorKind, RusticResult},
+    error::RusticResult,
     index::ReadIndex,
     progress::ProgressBars,
     repofile::SnapshotFile,
     repository::{IndexedFull, IndexedTree, Open, Repository},
+    ErrorKind, RusticError,
 };
 
 /// Prints the contents of a file.
@@ -112,9 +113,13 @@ pub(crate) fn cat_tree<P: ProgressBars, S: IndexedTree>(
         &repo.pb.progress_counter("getting snapshot..."),
     )?;
     let node = Tree::node_from_path(repo.dbe(), repo.index(), snap.tree, Path::new(path))?;
-    let id = node
-        .subtree
-        .ok_or_else(|| CommandErrorKind::PathIsNoDir(path.to_string()))?;
+    let id = node.subtree.ok_or_else(|| {
+        RusticError::new(
+            ErrorKind::Command,
+            "Path in Node subtree is not a directory. Please provide a directory path.",
+        )
+        .add_context("path", path.to_string())
+    })?;
     let data = repo
         .index()
         .blob_from_backend(repo.dbe(), BlobType::Tree, &BlobId::from(*id))?;

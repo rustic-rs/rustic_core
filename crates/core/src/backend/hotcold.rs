@@ -1,10 +1,10 @@
 use std::sync::Arc;
 
-use anyhow::Result;
 use bytes::Bytes;
 
 use crate::{
     backend::{FileType, ReadBackend, WriteBackend},
+    error::RusticResult,
     id::Id,
 };
 
@@ -45,11 +45,11 @@ impl ReadBackend for HotColdBackend {
         self.be.location()
     }
 
-    fn list_with_size(&self, tpe: FileType) -> Result<Vec<(Id, u32)>> {
+    fn list_with_size(&self, tpe: FileType) -> RusticResult<Vec<(Id, u32)>> {
         self.be.list_with_size(tpe)
     }
 
-    fn read_full(&self, tpe: FileType, id: &Id) -> Result<Bytes> {
+    fn read_full(&self, tpe: FileType, id: &Id) -> RusticResult<Bytes> {
         self.be_hot.read_full(tpe, id)
     }
 
@@ -60,7 +60,7 @@ impl ReadBackend for HotColdBackend {
         cacheable: bool,
         offset: u32,
         length: u32,
-    ) -> Result<Bytes> {
+    ) -> RusticResult<Bytes> {
         if cacheable || tpe != FileType::Pack {
             self.be_hot.read_partial(tpe, id, cacheable, offset, length)
         } else {
@@ -72,25 +72,25 @@ impl ReadBackend for HotColdBackend {
         self.be.needs_warm_up()
     }
 
-    fn warm_up(&self, tpe: FileType, id: &Id) -> Result<()> {
+    fn warm_up(&self, tpe: FileType, id: &Id) -> RusticResult<()> {
         self.be.warm_up(tpe, id)
     }
 }
 
 impl WriteBackend for HotColdBackend {
-    fn create(&self) -> Result<()> {
+    fn create(&self) -> RusticResult<()> {
         self.be.create()?;
         self.be_hot.create()
     }
 
-    fn write_bytes(&self, tpe: FileType, id: &Id, cacheable: bool, buf: Bytes) -> Result<()> {
+    fn write_bytes(&self, tpe: FileType, id: &Id, cacheable: bool, buf: Bytes) -> RusticResult<()> {
         if tpe != FileType::Config && (cacheable || tpe != FileType::Pack) {
             self.be_hot.write_bytes(tpe, id, cacheable, buf.clone())?;
         }
         self.be.write_bytes(tpe, id, cacheable, buf)
     }
 
-    fn remove(&self, tpe: FileType, id: &Id, cacheable: bool) -> Result<()> {
+    fn remove(&self, tpe: FileType, id: &Id, cacheable: bool) -> RusticResult<()> {
         // First remove cold file
         self.be.remove(tpe, id, cacheable)?;
         if cacheable || tpe != FileType::Pack {

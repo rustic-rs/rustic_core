@@ -18,15 +18,27 @@ pub use crate::vfs::webdavfs::WebDavFS;
 
 use crate::{
     blob::{tree::TreeId, BlobId, DataId},
-    error::VfsErrorKind,
-    repofile::{BlobType, Metadata, Node, NodeType, SnapshotFile},
-};
-use crate::{
+    error::RusticResult,
     index::ReadIndex,
+    repofile::{BlobType, Metadata, Node, NodeType, SnapshotFile},
     repository::{IndexedFull, IndexedTree, Repository},
     vfs::format::FormattedSnapshot,
-    RusticResult,
 };
+
+/// [`VfsErrorKind`] describes the errors that can be returned from the Virtual File System
+#[derive(thiserror::Error, Debug, displaydoc::Display)]
+pub enum VfsErrorKind {
+    /// No directory entries for symlink found: `{0:?}`
+    NoDirectoryEntriesForSymlinkFound(OsString),
+    /// Directory exists as non-virtual directory
+    DirectoryExistsAsNonVirtual,
+    /// Only normal paths allowed
+    OnlyNormalPathsAreAllowed,
+    /// Name `{0:?}`` doesn't exist
+    NameDoesNotExist(OsString),
+}
+
+pub(crate) type VfsResult<T> = Result<T, VfsErrorKind>;
 
 #[derive(Debug, Clone, Copy)]
 /// `IdenticalSnapshot` describes how to handle identical snapshots.
@@ -94,7 +106,7 @@ impl VfsTree {
     ///
     /// [`VfsErrorKind::DirectoryExistsAsNonVirtual`]: crate::error::VfsErrorKind::DirectoryExistsAsNonVirtual
     /// [`VfsErrorKind::OnlyNormalPathsAreAllowed`]: crate::error::VfsErrorKind::OnlyNormalPathsAreAllowed
-    fn add_tree(&mut self, path: &Path, new_tree: Self) -> RusticResult<()> {
+    fn add_tree(&mut self, path: &Path, new_tree: Self) -> VfsResult<()> {
         let mut tree = self;
         let mut components = path.components();
         let Some(Component::Normal(last)) = components.next_back() else {
@@ -137,7 +149,7 @@ impl VfsTree {
     /// # Returns
     ///
     /// If the path is within a real repository tree, this returns the [`VfsTree::RusticTree`] and the remaining path
-    fn get_path(&self, path: &Path) -> RusticResult<VfsPath<'_>> {
+    fn get_path(&self, path: &Path) -> VfsResult<VfsPath<'_>> {
         let mut tree = self;
         let mut components = path.components();
         loop {
@@ -249,7 +261,7 @@ impl Vfs {
             let filename = path.file_name().map(OsStr::to_os_string);
             let parent_path = path.parent().map(Path::to_path_buf);
 
-            // Save pathes for latest entries, if requested
+            // Save paths for latest entries, if requested
             if matches!(latest_option, Latest::AsLink) {
                 _ = dirs_for_link.insert(parent_path.clone(), filename.clone());
             }
@@ -264,10 +276,12 @@ impl Vfs {
                     && last_tree == snap.tree
                 {
                     if let Some(name) = last_name {
-                        tree.add_tree(path, VfsTree::Link(name))?;
+                        tree.add_tree(path, VfsTree::Link(name))
+                            .map_err(|_err| todo!("Error transition"))?;
                     }
                 } else {
-                    tree.add_tree(path, VfsTree::RusticTree(snap.tree))?;
+                    tree.add_tree(path, VfsTree::RusticTree(snap.tree))
+                        .map_err(|_err| todo!("Error transition"))?;
                 }
             }
             last_parent = parent_path;
@@ -282,7 +296,8 @@ impl Vfs {
                 for (path, target) in dirs_for_link {
                     if let (Some(mut path), Some(target)) = (path, target) {
                         path.push("latest");
-                        tree.add_tree(&path, VfsTree::Link(target))?;
+                        tree.add_tree(&path, VfsTree::Link(target))
+                            .map_err(|_err| todo!("Error transition"))?;
                     }
                 }
             }
@@ -290,7 +305,8 @@ impl Vfs {
                 for (path, subtree) in dirs_for_snap {
                     if let Some(mut path) = path {
                         path.push("latest");
-                        tree.add_tree(&path, VfsTree::RusticTree(subtree))?;
+                        tree.add_tree(&path, VfsTree::RusticTree(subtree))
+                            .map_err(|_err| todo!("Error transition"))?;
                     }
                 }
             }
@@ -321,7 +337,11 @@ impl Vfs {
         path: &Path,
     ) -> RusticResult<Node> {
         let meta = Metadata::default();
-        match self.tree.get_path(path)? {
+        match self
+            .tree
+            .get_path(path)
+            .map_err(|_err| todo!("Error transition"))?
+        {
             VfsPath::RusticPath(tree_id, path) => Ok(repo.node_from_path(*tree_id, &path)?),
             VfsPath::VirtualTree(_) => {
                 Ok(Node::new(String::new(), NodeType::Dir, meta, None, None))
@@ -364,7 +384,11 @@ impl Vfs {
         repo: &Repository<P, S>,
         path: &Path,
     ) -> RusticResult<Vec<Node>> {
-        let result = match self.tree.get_path(path)? {
+        let result = match self
+            .tree
+            .get_path(path)
+            .map_err(|_err| todo!("Error transition"))?
+        {
             VfsPath::RusticPath(tree_id, path) => {
                 let node = repo.node_from_path(*tree_id, &path)?;
                 if node.is_dir() {
@@ -385,7 +409,8 @@ impl Vfs {
                 })
                 .collect(),
             VfsPath::Link(str) => {
-                return Err(VfsErrorKind::NoDirectoryEntriesForSymlinkFound(str.clone()).into());
+                return Err(VfsErrorKind::NoDirectoryEntriesForSymlinkFound(str.clone()))
+                    .map_err(|_err| todo!("Error transition"));
             }
         };
         Ok(result)
@@ -461,7 +486,7 @@ impl OpenFile {
             })
             .collect();
 
-        // content is assumed to be partioned, so we add a starts_at:MAX entry
+        // content is assumed to be partitioned, so we add a starts_at:MAX entry
         content.push(BlobInfo {
             id: DataId::default(),
             starts_at: usize::MAX,
@@ -496,21 +521,30 @@ impl OpenFile {
         // find the start of relevant blobs => find the largest index such that self.content[i].starts_at <= offset, but
         // self.content[i+1] > offset  (note that a last dummy element has been added)
         let mut i = self.content.partition_point(|c| c.starts_at <= offset) - 1;
+
         offset -= self.content[i].starts_at;
+
         let mut result = BytesMut::with_capacity(length);
 
         while length > 0 && i < self.content.len() - 1 {
             let data = repo.get_blob_cached(&BlobId::from(*self.content[i].id), BlobType::Data)?;
+
             if offset > data.len() {
                 // we cannot read behind the blob. This only happens if offset is too large to fit in the last blob
                 break;
             }
+
             let to_copy = (data.len() - offset).min(length);
+
             result.extend_from_slice(&data[offset..offset + to_copy]);
+
             offset = 0;
+
             length -= to_copy;
+
             i += 1;
         }
+
         Ok(result.into())
     }
 }

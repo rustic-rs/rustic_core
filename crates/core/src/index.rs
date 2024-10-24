@@ -4,20 +4,37 @@ use bytes::Bytes;
 use derive_more::Constructor;
 
 use crate::{
-    backend::{decrypt::DecryptReadBackend, FileType},
+    backend::{decrypt::DecryptReadBackend, CryptBackendErrorKind, FileType},
     blob::{tree::TreeId, BlobId, BlobType, DataId},
-    error::IndexErrorKind,
+    error::RusticResult,
     index::binarysorted::{Index, IndexCollector, IndexType},
     progress::Progress,
     repofile::{
         indexfile::{IndexBlob, IndexFile},
         packfile::PackId,
     },
-    RusticResult,
+    ErrorKind, RusticError,
 };
 
 pub(crate) mod binarysorted;
 pub(crate) mod indexer;
+
+/// [`IndexErrorKind`] describes the errors that can be returned by processing Indizes
+#[derive(thiserror::Error, Debug, displaydoc::Display)]
+#[non_exhaustive]
+pub enum IndexErrorKind {
+    /// blob not found in index
+    BlobInIndexNotFound,
+    /// failed to get a blob from the backend
+    GettingBlobIndexEntryFromBackendFailed,
+    /// saving IndexFile failed
+    SavingIndexFileFailed {
+        /// the error that occurred
+        source: CryptBackendErrorKind,
+    },
+}
+
+pub(crate) type IndexResult<T> = Result<T, IndexErrorKind>;
 
 /// An entry in the index
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Constructor)]
@@ -70,6 +87,7 @@ impl IndexEntry {
             self.length,
             self.uncompressed_length,
         )?;
+
         Ok(data)
     }
 
@@ -185,7 +203,13 @@ pub trait ReadIndex {
         id: &BlobId,
     ) -> RusticResult<Bytes> {
         self.get_id(tpe, id).map_or_else(
-            || Err(IndexErrorKind::BlobInIndexNotFound.into()),
+            || {
+                Err(
+                    RusticError::new(ErrorKind::Index, "Blob not found in index")
+                        .add_context("blob id", id.to_string())
+                        .add_context("blob type", tpe.to_string()),
+                )
+            },
             |ie| ie.read_data(be),
         )
     }

@@ -2,6 +2,8 @@
 use std::{
     collections::{BTreeSet, HashMap},
     fmt::Debug,
+    num::{ParseFloatError, ParseIntError},
+    path::PathBuf,
     str::FromStr,
 };
 
@@ -18,7 +20,7 @@ use crate::{
     backend::{cache::Cache, decrypt::DecryptReadBackend, node::NodeType, FileType, ReadBackend},
     blob::{tree::TreeStreamerOnce, BlobId, BlobType},
     crypto::hasher::hash,
-    error::{CommandErrorKind, RusticErrorKind, RusticResult},
+    error::{RusticError, RusticResult},
     id::Id,
     index::{
         binarysorted::{IndexCollector, IndexType},
@@ -29,8 +31,101 @@ use crate::{
         packfile::PackId, IndexFile, IndexPack, PackHeader, PackHeaderLength, PackHeaderRef,
     },
     repository::{Open, Repository},
-    TreeId,
+    ErrorKind, TreeId,
 };
+
+#[non_exhaustive]
+#[derive(thiserror::Error, Debug, displaydoc::Display)]
+pub enum CheckCommandErrorKind {
+    /// error reading pack {id} : {source}
+    ErrorReadingPack {
+        id: PackId,
+        source: Box<RusticError>,
+    },
+    /// cold file for hot file Type: {file_type:?}, Id: {id} does not exist
+    NoColdFile { id: Id, file_type: FileType },
+    /// Type: {file_type:?}, Id: {id}: hot size: {size_hot}, actual size: {size}
+    HotFileSizeMismatch {
+        id: Id,
+        file_type: FileType,
+        size_hot: u32,
+        size: u32,
+    },
+    /// hot file Type: {file_type:?}, Id: {id} is missing!
+    NoHotFile { id: Id, file_type: FileType },
+    /// Error reading cached file Type: {file_type:?}, Id: {id} : {source}
+    ErrorReadingCache {
+        id: Id,
+        file_type: FileType,
+        source: Box<RusticError>,
+    },
+    /// Error reading file Type: {file_type:?}, Id: {id} : {source}
+    ErrorReadingFile {
+        id: Id,
+        file_type: FileType,
+        source: Box<RusticError>,
+    },
+    /// Cached file Type: {file_type:?}, Id: {id} is not identical to backend!
+    CacheMismatch { id: Id, file_type: FileType },
+    /// pack {id}: No time is set! Run prune to correct this!
+    PackTimeNotSet { id: PackId },
+    /// pack {id}: blob {blob_id} blob type does not match: type: {blob_type:?}, expected: {expected:?}
+    PackBlobTypesMismatch {
+        id: PackId,
+        blob_id: BlobId,
+        blob_type: BlobType,
+        expected: BlobType,
+    },
+    /// pack {id}: blob {blob_id} offset in index: {offset}, expected: {expected}
+    PackBlobOffsetMismatch {
+        id: PackId,
+        blob_id: BlobId,
+        offset: u32,
+        expected: u32,
+    },
+    /// pack {id} not referenced in index. Can be a parallel backup job. To repair: 'rustic repair index'.
+    PackNotReferenced { id: Id },
+    /// pack {id}: size computed by index: {index_size}, actual size: {size}. To repair: 'rustic repair index'.
+    PackSizeMismatchIndex { id: Id, index_size: u32, size: u32 },
+    /// pack {id} is referenced by the index but not present! To repair: 'rustic repair index'."
+    NoPack { id: PackId },
+    /// file {file:?} doesn't have a content
+    FileHasNoContent { file: PathBuf },
+    /// file {file:?} blob {blob_num} has null ID
+    FileBlobHasNullId { file: PathBuf, blob_num: usize },
+    /// file {file:?} blob {blob_id} is missing in index
+    FileBlobNotInIndex { file: PathBuf, blob_id: Id },
+    /// dir {dir:?} doesn't have a subtree
+    NoSubTree { dir: PathBuf },
+    /// "dir {dir:?} subtree has null ID
+    NullSubTree { dir: PathBuf },
+    /// pack {id}: data size does not match expected size. Read: {size} bytes, expected: {expected} bytes
+    PackSizeMismatch {
+        id: PackId,
+        size: usize,
+        expected: usize,
+    },
+    /// pack {id}: Hash mismatch. Computed hash: {computed}
+    PackHashMismatch { id: PackId, computed: PackId },
+    /// pack {id}: Header length in pack file doesn't match index. In pack: {length}, computed: {computed}
+    PackHeaderLengthMismatch {
+        id: PackId,
+        length: u32,
+        computed: u32,
+    },
+    /// pack {id}: Header from pack file does not match the index
+    PackHeaderMismatchIndex { id: PackId },
+    /// pack {id}, blob {blob_id}: Actual uncompressed length does not fit saved uncompressed length
+    PackBlobLengthMismatch { id: PackId, blob_id: BlobId },
+    /// pack {id}, blob {blob_id}: Hash mismatch. Computed hash: {computed}
+    PackBlobHashMismatch {
+        id: PackId,
+        blob_id: BlobId,
+        computed: BlobId,
+    },
+}
+
+pub(crate) type CheckCommandResult = Result<(), CheckCommandErrorKind>;
 
 #[derive(Clone, Copy, Debug, Default)]
 #[non_exhaustive]
@@ -97,8 +192,8 @@ impl ReadSubsetOption {
     }
 }
 
-/// parses n/m inclding named settings depending on current date
-fn parse_n_m(now: NaiveDateTime, n_in: &str, m_in: &str) -> Result<(u32, u32), CommandErrorKind> {
+/// parses n/m including named settings depending on current date
+fn parse_n_m(now: NaiveDateTime, n_in: &str, m_in: &str) -> Result<(u32, u32), ParseIntError> {
     let is_leap_year = |dt: NaiveDateTime| {
         let year = dt.year();
         year % 4 == 0 && (year % 25 != 0 || year % 16 == 0)
@@ -139,20 +234,44 @@ fn parse_n_m(now: NaiveDateTime, n_in: &str, m_in: &str) -> Result<(u32, u32), C
 }
 
 impl FromStr for ReadSubsetOption {
-    type Err = CommandErrorKind;
+    type Err = RusticError;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let result = if s == "all" {
             Self::All
         } else if let Some(p) = s.strip_suffix('%') {
             // try to read percentage
-            Self::Percentage(p.parse()?)
+            Self::Percentage(p.parse().map_err(|err: ParseFloatError| {
+                RusticError::new(
+                    ErrorKind::Parsing,
+                    "Error parsing percentage for ReadSubset option. Did you forget the '%'?",
+                )
+                .add_context("value", p.to_string())
+                .source(err.into())
+            })?)
         } else if let Some((n, m)) = s.split_once('/') {
             let now = Local::now().naive_local();
-            Self::IdSubSet(parse_n_m(now, n, m)?)
+            Self::IdSubSet(parse_n_m(now, n, m).map_err(
+                |err|
+                    RusticError::new(
+                        ErrorKind::Parsing,
+                        "Error parsing n/m for ReadSubset option. Allowed values: 'all', 'x%', 'n/m' or a size.",
+                    )
+                    .add_context("value", s)
+                    .add_context("n/m", format!("{}/{}", n, m))
+                    .add_context("now", now.to_string())
+                    .source(err.into())
+            )?)
         } else {
             Self::Size(
                 ByteSize::from_str(s)
-                    .map_err(CommandErrorKind::FromByteSizeParser)?
+                    .map_err(|err| {
+                        RusticError::new(
+                            ErrorKind::Parsing,
+                            "Error parsing size for ReadSubset option. Allowed values: 'all', 'x%', 'n/m' or a size.",
+                        )
+                        .add_context("value", s)
+                        .source(err.into())
+                    })?
                     .as_u64(),
             )
         };
@@ -219,9 +338,7 @@ pub(crate) fn check_repository<P: ProgressBars, S: Open>(
                 //
                 // This lists files here and later when reading index / checking snapshots
                 // TODO: Only list the files once...
-                _ = be
-                    .list_with_size(file_type)
-                    .map_err(RusticErrorKind::Backend)?;
+                _ = be.list_with_size(file_type)?;
 
                 let p = pb.progress_bytes(format!("checking {file_type:?} in cache..."));
                 // TODO: Make concurrency (20) customizable
@@ -309,14 +426,11 @@ fn check_hot_files(
 ) -> RusticResult<()> {
     let p = pb.progress_spinner(format!("checking {file_type:?} in hot repo..."));
     let mut files = be
-        .list_with_size(file_type)
-        .map_err(RusticErrorKind::Backend)?
+        .list_with_size(file_type)?
         .into_iter()
         .collect::<HashMap<_, _>>();
 
-    let files_hot = be_hot
-        .list_with_size(file_type)
-        .map_err(RusticErrorKind::Backend)?;
+    let files_hot = be_hot.list_with_size(file_type)?;
 
     for (id, size_hot) in files_hot {
         match files.remove(&id) {
@@ -488,10 +602,7 @@ fn check_packs(
 ///
 /// If a pack is missing or has a different size
 fn check_packs_list(be: &impl ReadBackend, mut packs: HashMap<PackId, u32>) -> RusticResult<()> {
-    for (id, size) in be
-        .list_with_size(FileType::Pack)
-        .map_err(RusticErrorKind::Backend)?
-    {
+    for (id, size) in be.list_with_size(FileType::Pack)? {
         match packs.remove(&PackId::from(id)) {
             None => warn!("pack {id} not referenced in index. Can be a parallel backup job. To repair: 'rustic repair index'."),
             Some(index_size) if index_size != size => {
@@ -522,10 +633,7 @@ fn check_packs_list_hot(
     mut treepacks: HashMap<PackId, u32>,
     packs: &HashMap<PackId, u32>,
 ) -> RusticResult<()> {
-    for (id, size) in be
-        .list_with_size(FileType::Pack)
-        .map_err(RusticErrorKind::Backend)?
-    {
+    for (id, size) in be.list_with_size(FileType::Pack)? {
         match treepacks.remove(&PackId::from(id)) {
             None => {
                 if packs.contains_key(&PackId::from(id)) {
@@ -667,7 +775,17 @@ fn check_pack(
 
     // check header length
     let header_len = PackHeaderRef::from_index_pack(&index_pack).size();
-    let pack_header_len = PackHeaderLength::from_binary(&data.split_off(data.len() - 4))?.to_u32();
+    let pack_header_len = PackHeaderLength::from_binary(&data.split_off(data.len() - 4))
+        .map_err(|err| {
+            RusticError::new(
+                ErrorKind::Command,
+                "Error reading pack header length. This is a bug. Please report this error.",
+            )
+            .add_context("pack id", id.to_string())
+            .add_context("header length", header_len.to_string())
+            .source(err.into())
+        })?
+        .to_u32();
     if pack_header_len != header_len {
         error!("pack {id}: Header length in pack file doesn't match index. In pack: {pack_header_len}, calculated: {header_len}");
         return Ok(());
@@ -676,7 +794,16 @@ fn check_pack(
     // check header
     let header = be.decrypt(&data.split_off(data.len() - header_len as usize))?;
 
-    let pack_blobs = PackHeader::from_binary(&header)?.into_blobs();
+    let pack_blobs = PackHeader::from_binary(&header)
+        .map_err(|err| {
+            RusticError::new(
+                ErrorKind::Command,
+                "Error reading pack header. This is a bug. Please report this error.",
+            )
+            .add_context("pack id", id.to_string())
+            .source(err.into())
+        })?
+        .into_blobs();
     let mut blobs = index_pack.blobs;
     blobs.sort_unstable_by_key(|b| b.offset);
     if pack_blobs != blobs {

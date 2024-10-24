@@ -7,8 +7,17 @@ use crate::{
         polynom::{Polynom, Polynom64},
         rolling_hash::{Rabin64, RollingHash64},
     },
-    error::{PolynomialErrorKind, RusticResult},
+    error::RusticResult,
+    ErrorKind, RusticError,
 };
+
+/// [`PolynomialErrorKind`] describes the errors that can happen while dealing with Polynomials
+#[derive(thiserror::Error, Debug, displaydoc::Display)]
+#[non_exhaustive]
+pub enum PolynomialErrorKind {
+    /// no suitable polynomial found
+    NoSuitablePolynomialFound,
+}
 
 pub(super) mod constants {
     /// The Splitmask is used to determine if a chunk is a chunk boundary.
@@ -173,9 +182,7 @@ impl<R: Read + Send> Iterator for ChunkIter<R> {
 ///
 /// # Errors
 ///
-/// * [`PolynomialErrorKind::NoSuitablePolynomialFound`] - If no polynomial could be found in one million tries.
-///
-/// [`PolynomialErrorKind::NoSuitablePolynomialFound`]: crate::error::PolynomialErrorKind::NoSuitablePolynomialFound
+/// * If no polynomial could be found in one million tries.
 pub fn random_poly() -> RusticResult<u64> {
     for _ in 0..constants::RAND_POLY_MAX_TRIES {
         let mut poly: u64 = thread_rng().gen();
@@ -191,7 +198,11 @@ pub fn random_poly() -> RusticResult<u64> {
             return Ok(poly);
         }
     }
-    Err(PolynomialErrorKind::NoSuitablePolynomialFound.into())
+
+    Err(RusticError::new(
+        ErrorKind::Polynomial,
+        "No suitable polynomial found, this should essentially never happen. Please try again, and then report this as a bug.",
+    ))
 }
 
 /// A trait for extending polynomials.
