@@ -6,17 +6,15 @@ use serde_with::{base64::Base64, serde_as, skip_serializing_none};
 
 use crate::{
     backend::{FileType, ReadBackend},
-    crypto::{aespoly1305::Key, CryptoErrorKind, CryptoKey},
+    crypto::{aespoly1305::Key, CryptoKey},
     error::RusticResult,
-    impl_repoid,
+    impl_repoid, ErrorKind, RusticError,
 };
 
 /// [`KeyFileErrorKind`] describes the errors that can be returned for `KeyFile`s
 #[derive(thiserror::Error, Debug, displaydoc::Display)]
 #[non_exhaustive]
 pub enum KeyFileErrorKind {
-    /// no suitable key found!
-    NoSuitableKeyFound,
     /// listing KeyFiles failed
     ListingKeyFilesFailed,
     /// couldn't get KeyFile from backend
@@ -34,8 +32,6 @@ pub enum KeyFileErrorKind {
     OutputLengthInvalid(scrypt::errors::InvalidOutputLen),
     /// invalid scrypt parameters: `{0:?}`
     InvalidSCryptParameters(scrypt::errors::InvalidParams),
-    /// Could not get key from decrypt data: `{key:?}` : `{source}`
-    CouldNotGetKeyFromDecryptData { key: Key, source: CryptoErrorKind },
     /// deserializing master key from slice failed: `{source}`
     DeserializingMasterKeyFromSliceFailed { source: serde_json::Error },
     /// conversion from {from} to {to} failed for {x} : {source}
@@ -151,18 +147,19 @@ impl KeyFile {
     ///
     /// [`KeyFileErrorKind::DeserializingFromSliceFailed`]: crate::error::KeyFileErrorKind::DeserializingFromSliceFailed
     pub fn key_from_data(&self, key: &Key) -> RusticResult<Key> {
-        let dec_data = key
-            .decrypt_data(&self.data)
-            .map_err(|err| KeyFileErrorKind::CouldNotGetKeyFromDecryptData {
-                key: key.clone(),
-                source: err,
-            })
-            .map_err(|_err| todo!("Error transition"))?;
+        let dec_data = key.decrypt_data(&self.data)?;
 
-        Ok(serde_json::from_slice::<MasterKey>(&dec_data)
-            .map_err(|err| KeyFileErrorKind::DeserializingMasterKeyFromSliceFailed { source: err })
-            .map_err(|_err| todo!("Error transition"))?
-            .key())
+        let key = serde_json::from_slice::<MasterKey>(&dec_data)
+            .map_err(|err| {
+                RusticError::new(
+                    ErrorKind::Key,
+                    "Deserializing master key from slice failed. Please check the key file.",
+                )
+                .source(err.into())
+            })?
+            .key();
+
+        Ok(key)
     }
 
     /// Extract a key from the data of the [`KeyFile`] using the key
@@ -406,12 +403,14 @@ pub(crate) fn find_key_in_backend<B: ReadBackend>(
         for id in be.list(FileType::Key)? {
             match key_from_backend(be, &id.into(), passwd) {
                 Ok(key) => return Ok(key),
-                // TODO: We get a RusticError here and we need to determine, if we have a WrongKey error
-                // TODO: We should probably implement something for that on RusticError or use a variant for this
-                Err(KeyFileErrorKind::DataDecryptionFailed(_)) => continue,
+                Err(err) if err.is_code("C001") => continue,
                 err => return err,
             }
         }
-        Err(KeyFileErrorKind::NoSuitableKeyFound).map_err(|_err| todo!("Error transition"))
+
+        Err(RusticError::new(
+            ErrorKind::Key,
+            "No suitable key found for the given password. Please check your password and try again.",
+        ))
     }
 }

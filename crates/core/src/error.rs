@@ -138,6 +138,10 @@ impl RusticError {
         }
     }
 
+    pub fn is_code(&self, code: &str) -> bool {
+        self.code.as_ref().map_or(false, |c| c.as_str() == code)
+    }
+
     /// Expose the inner error kind.
     ///
     /// This is useful for matching on the error kind.

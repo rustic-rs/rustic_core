@@ -3,18 +3,6 @@ use crate::RusticResult;
 pub(crate) mod aespoly1305;
 pub(crate) mod hasher;
 
-/// [`CryptoErrorKind`] describes the errors that can happen while dealing with Cryptographic functions
-#[derive(thiserror::Error, Debug, displaydoc::Display, Copy, Clone)]
-#[non_exhaustive]
-pub enum CryptoErrorKind {
-    /// data decryption failed: `{0:?}`
-    DataDecryptionFailed(aes256ctr_poly1305aes::aead::Error),
-    /// data encryption failed: `{0:?}`
-    DataEncryptionFailed(aes256ctr_poly1305aes::aead::Error),
-    /// crypto key too short
-    CryptoKeyTooShort,
-}
-
 /// A trait for encrypting and decrypting data.
 pub trait CryptoKey: Clone + Copy + Sized + Send + Sync + 'static {
     /// Decrypt the given data.
