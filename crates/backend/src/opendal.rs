@@ -1,18 +1,20 @@
 /// `OpenDAL` backend for rustic.
-use std::{collections::HashMap, str::FromStr, sync::OnceLock};
+use std::{collections::HashMap, num::TryFromIntError, str::FromStr, sync::OnceLock};
 
 use bytes::Bytes;
 use bytesize::ByteSize;
 use log::trace;
 use opendal::{
     layers::{BlockingLayer, ConcurrentLimitLayer, LoggingLayer, RetryLayer, ThrottleLayer},
-    BlockingOperator, ErrorKind, Metakey, Operator, Scheme,
+    BlockingOperator, Metakey, Operator, Scheme,
 };
 use rayon::prelude::{IntoParallelIterator, ParallelIterator};
 use tokio::runtime::Runtime;
 use typed_path::UnixPathBuf;
 
-use rustic_core::{FileType, Id, ReadBackend, RusticResult, WriteBackend, ALL_FILE_TYPES};
+use rustic_core::{
+    ErrorKind, FileType, Id, ReadBackend, RusticError, RusticResult, WriteBackend, ALL_FILE_TYPES,
+};
 
 mod constants {
     /// Default number of retries
@@ -46,19 +48,35 @@ pub struct Throttle {
 
 impl FromStr for Throttle {
     type Err = RusticError;
-    fn from_str(s: &str) -> RusticResult<Self> {
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
         let mut values = s
             .split(',')
             .map(|s| {
-                ByteSize::from_str(s.trim()).map_err(|err| Err(format!("Error: {err}")).into())
+                ByteSize::from_str(s.trim()).map_err(|err| {
+                    RusticError::new(
+                        ErrorKind::Parsing,
+                        "Parsing ByteSize from throttle string failed",
+                    )
+                    .add_context("string", s)
+                    .source(err.into())
+                })
             })
-            .map(|b| -> RusticResult<u32> { Ok(b?.as_u64().try_into()?) });
+            .map(|b| -> RusticResult<u32> {
+                Ok(b?.as_u64().try_into().map_err(|err: TryFromIntError| {
+                    RusticError::new(ErrorKind::Parsing, "Converting ByteSize to u32 failed")
+                        .source(err.into())
+                })?)
+            });
         let bandwidth = values
             .next()
-            .ok_or_else(|| Err("no bandwidth given".to_string()).into())??;
+            .transpose()?
+            .ok_or_else(|| RusticError::new(ErrorKind::Parsing, "No bandwidth given."))?;
+
         let burst = values
             .next()
-            .ok_or_else(|| Err("no burst given".to_string()).into())??;
+            .transpose()?
+            .ok_or_else(|| RusticError::new(ErrorKind::Parsing, "No burst given."))?;
+
         Ok(Self { bandwidth, burst })
     }
 }
@@ -82,20 +100,22 @@ impl OpenDALBackend {
         let max_retries = match options.get("retry").map(String::as_str) {
             Some("false" | "off") => 0,
             None | Some("default") => constants::DEFAULT_RETRY,
-            Some(value) => usize::from_str(value)?,
+            Some(value) => usize::from_str(value).map_err(|_err| todo!("Error transition"))?,
         };
         let connections = options
             .get("connections")
             .map(|c| usize::from_str(c))
-            .transpose()?;
+            .transpose()
+            .map_err(|_err| todo!("Error transition"))?;
 
         let throttle = options
             .get("throttle")
             .map(|t| Throttle::from_str(t))
             .transpose()?;
 
-        let schema = Scheme::from_str(path.as_ref())?;
-        let mut operator = Operator::via_iter(schema, options)?
+        let schema = Scheme::from_str(path.as_ref()).map_err(|_err| todo!("Error transition"))?;
+        let mut operator = Operator::via_iter(schema, options)
+            .map_err(|_err| todo!("Error transition"))?
             .layer(RetryLayer::new().with_max_times(max_retries).with_jitter());
 
         if let Some(Throttle { bandwidth, burst }) = throttle {
@@ -109,7 +129,7 @@ impl OpenDALBackend {
         let _guard = runtime().enter();
         let operator = operator
             .layer(LoggingLayer::default())
-            .layer(BlockingLayer::create()?)
+            .layer(BlockingLayer::create().map_err(|_err| todo!("Error transition"))?)
             .blocking();
 
         Ok(Self { operator })
@@ -162,18 +182,25 @@ impl ReadBackend for OpenDALBackend {
     fn list(&self, tpe: FileType) -> RusticResult<Vec<Id>> {
         trace!("listing tpe: {tpe:?}");
         if tpe == FileType::Config {
-            return Ok(if self.operator.is_exist("config")? {
-                vec![Id::default()]
-            } else {
-                Vec::new()
-            });
+            return Ok(
+                if self
+                    .operator
+                    .is_exist("config")
+                    .map_err(|_err| todo!("Error transition"))?
+                {
+                    vec![Id::default()]
+                } else {
+                    Vec::new()
+                },
+            );
         }
 
         Ok(self
             .operator
             .list_with(&(tpe.dirname().to_string() + "/"))
             .recursive(true)
-            .call()?
+            .call()
+            .map_err(|_err| todo!("Error transition"))?
             .into_iter()
             .filter(|e| e.metadata().is_file())
             .filter_map(|e| e.name().parse().ok())
@@ -190,9 +217,15 @@ impl ReadBackend for OpenDALBackend {
         trace!("listing tpe: {tpe:?}");
         if tpe == FileType::Config {
             return match self.operator.stat("config") {
-                Ok(entry) => Ok(vec![(Id::default(), entry.content_length().try_into()?)]),
-                Err(err) if err.kind() == ErrorKind::NotFound => Ok(Vec::new()),
-                Err(err) => Err(err.into()),
+                Ok(entry) => Ok(vec![(
+                    Id::default(),
+                    entry
+                        .content_length()
+                        .try_into()
+                        .map_err(|_err| todo!("Error transition"))?,
+                )]),
+                Err(err) if err.kind() == opendal::ErrorKind::NotFound => Ok(Vec::new()),
+                Err(err) => Err(err).map_err(|_err| todo!("Error transition")),
             };
         }
 
@@ -201,11 +234,18 @@ impl ReadBackend for OpenDALBackend {
             .list_with(&(tpe.dirname().to_string() + "/"))
             .recursive(true)
             .metakey(Metakey::ContentLength)
-            .call()?
+            .call()
+            .map_err(|_err| todo!("Error transition"))?
             .into_iter()
             .filter(|e| e.metadata().is_file())
             .map(|e| -> RusticResult<(Id, u32)> {
-                Ok((e.name().parse()?, e.metadata().content_length().try_into()?))
+                Ok((
+                    e.name().parse()?,
+                    e.metadata()
+                        .content_length()
+                        .try_into()
+                        .map_err(|_err| todo!("Error transition"))?,
+                ))
             })
             .filter_map(RusticResult::ok)
             .collect())
@@ -214,7 +254,11 @@ impl ReadBackend for OpenDALBackend {
     fn read_full(&self, tpe: FileType, id: &Id) -> RusticResult<Bytes> {
         trace!("reading tpe: {tpe:?}, id: {id}");
 
-        Ok(self.operator.read(&self.path(tpe, id))?.to_bytes())
+        Ok(self
+            .operator
+            .read(&self.path(tpe, id))
+            .map_err(|_err| todo!("Error transition"))?
+            .to_bytes())
     }
 
     fn read_partial(
@@ -231,7 +275,8 @@ impl ReadBackend for OpenDALBackend {
             .operator
             .read_with(&self.path(tpe, id))
             .range(range)
-            .call()?
+            .call()
+            .map_err(|_err| todo!("Error transition"))?
             .to_bytes())
     }
 }
@@ -243,18 +288,22 @@ impl WriteBackend for OpenDALBackend {
 
         for tpe in ALL_FILE_TYPES {
             self.operator
-                .create_dir(&(tpe.dirname().to_string() + "/"))?;
+                .create_dir(&(tpe.dirname().to_string() + "/"))
+                .map_err(|_err| todo!("Error transition"))?;
         }
         // creating 256 dirs can be slow on remote backends, hence we parallelize it.
-        (0u8..=255).into_par_iter().try_for_each(|i| {
-            self.operator.create_dir(
-                &(UnixPathBuf::from("data")
-                    .join(hex::encode([i]))
-                    .to_string_lossy()
-                    .to_string()
-                    + "/"),
-            )
-        })?;
+        (0u8..=255)
+            .into_par_iter()
+            .try_for_each(|i| {
+                self.operator.create_dir(
+                    &(UnixPathBuf::from("data")
+                        .join(hex::encode([i]))
+                        .to_string_lossy()
+                        .to_string()
+                        + "/"),
+                )
+            })
+            .map_err(|_err| todo!("Error transition"))?;
 
         Ok(())
     }
@@ -276,7 +325,9 @@ impl WriteBackend for OpenDALBackend {
     ) -> RusticResult<()> {
         trace!("writing tpe: {:?}, id: {}", &tpe, &id);
         let filename = self.path(tpe, id);
-        self.operator.write(&filename, buf)?;
+        self.operator
+            .write(&filename, buf)
+            .map_err(|_err| todo!("Error transition"))?;
         Ok(())
     }
 
@@ -290,7 +341,9 @@ impl WriteBackend for OpenDALBackend {
     fn remove(&self, tpe: FileType, id: &Id, _cacheable: bool) -> RusticResult<()> {
         trace!("removing tpe: {:?}, id: {}", &tpe, &id);
         let filename = self.path(tpe, id);
-        self.operator.delete(&filename)?;
+        self.operator
+            .delete(&filename)
+            .map_err(|_err| todo!("Error transition"))?;
         Ok(())
     }
 }
@@ -298,6 +351,7 @@ impl WriteBackend for OpenDALBackend {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use anyhow::Result;
     use rstest::rstest;
     use serde::Deserialize;
     use std::{fs, path::PathBuf};
@@ -324,7 +378,7 @@ mod tests {
     #[rstest]
     fn new_opendal_backend(
         #[files("tests/fixtures/opendal/*.toml")] test_case: PathBuf,
-    ) -> RusticResult<()> {
+    ) -> Result<()> {
         #[derive(Deserialize)]
         struct TestCase {
             path: String,
