@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.5.4](https://github.com/rustic-rs/rustic_core/compare/rustic_core-v0.5.3...rustic_core-v0.5.4) - 2024-10-24
+
+### Added
+
+- *(commands)* Add convenient names for read-data-subset n/m ([#328](https://github.com/rustic-rs/rustic_core/pull/328))
+
+### Fixed
+
+- OpenFile::read_at no longer errors on invalid offset or length ([#331](https://github.com/rustic-rs/rustic_core/pull/331))
+
+### Other
+
+- *(deps)* update actions ([#338](https://github.com/rustic-rs/rustic_core/pull/338))
+
 ## [0.5.3](https://github.com/rustic-rs/rustic_core/compare/rustic_core-v0.5.2...rustic_core-v0.5.3) - 2024-10-10
 
 ### Other
