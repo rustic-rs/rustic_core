@@ -9,10 +9,7 @@ use std::{
     io::{BufRead, BufReader, Write},
     path::{Path, PathBuf},
     process::{Command, Stdio},
-    sync::{
-        atomic::{AtomicBool, Ordering as AtomicOrdering},
-        Arc,
-    },
+    sync::Arc,
 };
 
 use bytes::Bytes;
@@ -59,7 +56,7 @@ use crate::{
     progress::{NoProgressBars, Progress, ProgressBars},
     repofile::{
         configfile::ConfigId,
-        keyfile::{find_key_in_backend, KeyFileErrorKind},
+        keyfile::find_key_in_backend,
         packfile::PackId,
         snapshotfile::{SnapshotGroup, SnapshotGroupCriterion, SnapshotId},
         ConfigFile, KeyId, PathList, RepoFile, RepoId, SnapshotFile, SnapshotSummary, Tree,
@@ -1146,13 +1143,9 @@ impl<P: ProgressBars, S: Open> Repository<P, S> {
             .map(|snap| snap.tree)
             .collect();
 
-        let errors = check_repository(self, opts, trees, err_send)?;
+        check_repository(self, opts, trees)?;
 
-        if errors {
-            Err(CommandErrorKind::CheckFailed.into()).map_err(|_err| todo!("Error transition"))
-        } else {
-            Ok(())
-        }
+        Ok(())
     }
 
     /// Check the repository and given trees for errors or inconsistencies
