@@ -234,6 +234,8 @@ pub enum ErrorKind {
     Permission,
     /// Polynomial Error
     Polynomial,
+    /// Multithreading Error
+    Multithreading,
     // /// The repository password is incorrect. Please try again.
     // IncorrectRepositoryPassword,
     // /// No repository given. Please use the --repository option.
