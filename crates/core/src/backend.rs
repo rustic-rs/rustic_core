@@ -75,7 +75,7 @@ pub enum CryptBackendErrorKind {
     WritingDataInCryptBackendFailed,
     /// failed to list Ids
     ListingIdsInDecryptionBackendFailed,
-    /// writing full hash failed in CryptBackend
+    /// writing full hash failed in `CryptBackend`
     WritingFullHashFailed,
     /// decoding Zstd compressed data failed: `{0:?}`
     DecodingZstdCompressedDataFailed(std::io::Error),

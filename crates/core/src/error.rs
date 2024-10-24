@@ -6,12 +6,11 @@
 // use std::fmt;
 
 use derive_setters::Setters;
+use smol_str::SmolStr;
 use std::{
     backtrace::Backtrace,
     fmt::{self, Display},
 };
-
-use crate::error::immut_str::ImmutStr;
 
 pub(crate) mod constants {
     pub const DEFAULT_DOCS_URL: &str = "https://rustic.cli.rs/docs/errors/";
@@ -33,22 +32,22 @@ pub struct RusticError {
     source: Option<Box<(dyn std::error::Error + Send + Sync)>>,
 
     /// The error message with guidance.
-    guidance: ImmutStr,
+    guidance: SmolStr,
 
     /// The context of the error.
-    context: Vec<(&'static str, String)>,
+    context: Box<[(&'static str, SmolStr)]>,
 
     /// The URL of the documentation for the error.
-    docs_url: Option<ImmutStr>,
+    docs_url: Option<SmolStr>,
 
     /// Error code.
-    code: Option<ImmutStr>,
+    code: Option<SmolStr>,
 
     /// The URL of the issue tracker for opening a new issue.
-    new_issue_url: Option<ImmutStr>,
+    new_issue_url: Option<SmolStr>,
 
     /// The URL of an already existing issue that is related to this error.
-    existing_issue_url: Option<ImmutStr>,
+    existing_issue_url: Option<SmolStr>,
 
     /// Severity of the error.
     severity: Option<Severity>,
@@ -92,7 +91,7 @@ impl Display for RusticError {
         }
 
         if let Some(code) = &self.code {
-            let default_docs_url = ImmutStr::from(constants::DEFAULT_DOCS_URL);
+            let default_docs_url = SmolStr::from(constants::DEFAULT_DOCS_URL);
             let docs_url = self.docs_url.as_ref().unwrap_or(&default_docs_url);
 
             write!(f, "\n\nFor more information, see: {docs_url}/{code}")?;
@@ -102,7 +101,7 @@ impl Display for RusticError {
             write!(f, "\n\nThis might be a related issue, please check it for a possible workaround and/or further guidance: {existing_issue_url}")?;
         }
 
-        let default_issue_url = ImmutStr::from(constants::DEFAULT_ISSUE_URL);
+        let default_issue_url = SmolStr::from(constants::DEFAULT_ISSUE_URL);
         let new_issue_url = self.new_issue_url.as_ref().unwrap_or(&default_issue_url);
 
         write!(
@@ -125,7 +124,7 @@ impl RusticError {
         Self {
             kind,
             guidance: guidance.into().into(),
-            context: Vec::default(),
+            context: Box::default(),
             source: None,
             code: None,
             docs_url: None,
@@ -164,7 +163,7 @@ impl RusticError {
         Self {
             kind,
             guidance: error.to_string().into(),
-            context: Vec::default(),
+            context: Box::default(),
             source: Some(Box::new(error)),
             code: None,
             docs_url: None,
@@ -181,7 +180,9 @@ impl RusticError {
     /// Adds a context to the error.
     #[must_use]
     pub fn add_context(mut self, key: &'static str, value: impl Into<String>) -> Self {
-        self.context.push((key, value.into()));
+        let mut context = self.context.to_vec();
+        context.push((key, value.into().into()));
+        self.context = context.into_boxed_slice();
         self
     }
 }
@@ -328,82 +329,6 @@ pub enum ErrorKind {
 // - **Backend Access Errors**: e.g., `BackendNotSupported`, `BackendLoadError`, `NoSuitableIdFound`, `IdNotUnique`
 // - **Rclone Errors**: e.g., `NoOutputForRcloneVersion`, `NoStdOutForRclone`, `RCloneExitWithBadStatus`
 // - **REST API Errors**: e.g., `NotSupportedForRetry`, `UrlParsingFailed`
-
-pub mod immut_str {
-    //! Copyright 2024 Cloudflare, Inc.
-    //!
-    //! Licensed under the Apache License, Version 2.0 (the "License");
-    //! you may not use this file except in compliance with the License.
-    //! You may obtain a copy of the License at
-    //!
-    //! http://www.apache.org/licenses/LICENSE-2.0
-    //!
-    //! Unless required by applicable law or agreed to in writing, software
-    //! distributed under the License is distributed on an "AS IS" BASIS,
-    //! WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-    //! See the License for the specific language governing permissions and
-    //! limitations under the License.
-    //!
-    //! Taken from <https://github.com/cloudflare/pingora/blob/51516839f7155dd74d5cf93006ec1df9ea126b11/pingora-error/src/immut_str.rs>
-
-    use std::fmt;
-
-    /// A data struct that holds either immutable string or reference to static str.
-    /// Compared to String or `Box<str>`, it avoids memory allocation on static str.
-    #[derive(Debug, PartialEq, Eq, Clone)]
-    pub enum ImmutStr {
-        Static(&'static str),
-        Owned(Box<str>),
-    }
-
-    impl ImmutStr {
-        #[inline]
-        pub fn as_str(&self) -> &str {
-            match self {
-                Self::Static(s) => s,
-                Self::Owned(s) => s.as_ref(),
-            }
-        }
-
-        pub fn is_owned(&self) -> bool {
-            match self {
-                Self::Static(_) => false,
-                Self::Owned(_) => true,
-            }
-        }
-    }
-
-    impl fmt::Display for ImmutStr {
-        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-            write!(f, "{}", self.as_str())
-        }
-    }
-
-    impl From<&'static str> for ImmutStr {
-        fn from(s: &'static str) -> Self {
-            Self::Static(s)
-        }
-    }
-
-    impl From<String> for ImmutStr {
-        fn from(s: String) -> Self {
-            Self::Owned(s.into_boxed_str())
-        }
-    }
-
-    #[cfg(test)]
-    mod tests {
-        use super::*;
-
-        #[test]
-        fn test_static_vs_owned() {
-            let s: ImmutStr = "test".into();
-            assert!(!s.is_owned());
-            let s: ImmutStr = "test".to_string().into();
-            assert!(s.is_owned());
-        }
-    }
-}
 
 #[cfg(test)]
 mod tests {
