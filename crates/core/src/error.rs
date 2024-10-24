@@ -219,7 +219,7 @@ pub enum ErrorKind {
     /// Blob Error
     Blob,
     /// Crypto Error
-    Crypto,
+    Cryptography,
     /// Compression Error
     Compression,
     /// Parsing Error

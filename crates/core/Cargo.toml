@@ -58,7 +58,7 @@ pariter = "0.5.1"
 rayon = "1.10.0"
 
 # crypto
-aes256ctr_poly1305aes = "0.2.0"
+aes256ctr_poly1305aes = { version = "0.2.0", features = ["std"] }
 rand = "0.8.5"
 scrypt = { version = "0.11.0", default-features = false }
 

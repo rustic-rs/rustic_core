@@ -1,3 +1,5 @@
+use crate::RusticResult;
+
 pub(crate) mod aespoly1305;
 pub(crate) mod hasher;
 
@@ -13,8 +15,6 @@ pub enum CryptoErrorKind {
     CryptoKeyTooShort,
 }
 
-pub(crate) type CryptoResult<T> = Result<T, CryptoErrorKind>;
-
 /// A trait for encrypting and decrypting data.
 pub trait CryptoKey: Clone + Copy + Sized + Send + Sync + 'static {
     /// Decrypt the given data.
@@ -26,7 +26,7 @@ pub trait CryptoKey: Clone + Copy + Sized + Send + Sync + 'static {
     /// # Returns
     ///
     /// A vector containing the decrypted data.
-    fn decrypt_data(&self, data: &[u8]) -> CryptoResult<Vec<u8>>;
+    fn decrypt_data(&self, data: &[u8]) -> RusticResult<Vec<u8>>;
 
     /// Encrypt the given data.
     ///
@@ -37,5 +37,5 @@ pub trait CryptoKey: Clone + Copy + Sized + Send + Sync + 'static {
     /// # Returns
     ///
     /// A vector containing the encrypted data.
-    fn encrypt_data(&self, data: &[u8]) -> CryptoResult<Vec<u8>>;
+    fn encrypt_data(&self, data: &[u8]) -> RusticResult<Vec<u8>>;
 }
