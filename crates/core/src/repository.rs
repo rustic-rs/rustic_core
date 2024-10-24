@@ -1168,27 +1168,7 @@ impl<P: ProgressBars, S: Open> Repository<P, S> {
     ///
     /// If the error handling thread panicked
     pub fn check_with_trees(&self, opts: CheckOptions, trees: Vec<TreeId>) -> RusticResult<()> {
-        let (err_send, err_recv) = crossbeam_channel::unbounded();
-
-        let errors_occurred = Arc::new(AtomicBool::new(false));
-        let errors_occurred_clone = errors_occurred.clone();
-
-        let err_handle = std::thread::spawn(move || {
-            for err in err_recv {
-                errors_occurred_clone.store(true, AtomicOrdering::Relaxed);
-                error!("{}", err);
-            }
-        });
-
-        check_repository(self, opts, trees, err_send)?;
-
-        err_handle.join().expect("Error handling thread panicked");
-
-        if errors_occurred.load(AtomicOrdering::Relaxed) {
-            Err(CommandErrorKind::CheckFailed.into()).map_err(|_err| todo!("Error transition"))
-        } else {
-            Ok(())
-        }
+        check_repository(self, opts, trees)
     }
 
     /// Get the plan about what should be pruned and/or repacked.
