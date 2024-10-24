@@ -16,7 +16,9 @@ use semver::{BuildMetadata, Prerelease, Version, VersionReq};
 
 use crate::rest::RestBackend;
 
-use rustic_core::{CommandInput, FileType, Id, ReadBackend, RusticResult, WriteBackend};
+use rustic_core::{
+    CommandInput, ErrorKind, FileType, Id, ReadBackend, RusticError, RusticResult, WriteBackend,
+};
 
 /// [`RcloneErrorKind`] describes the errors that can be returned by a backend provider
 #[derive(thiserror::Error, Debug, displaydoc::Display)]
@@ -33,9 +35,6 @@ pub enum RcloneErrorKind {
     /// StdIo Error: `{0:?}`
     #[error(transparent)]
     FromIoError(std::io::Error),
-    /// utf8 error: `{0:?}`
-    #[error(transparent)]
-    FromUtf8Error(Utf8Error),
     /// error parsing version number from `{0:?}`
     FromParseVersion(String),
     /// Using rclone without authentication! Upgrade to rclone >= 1.52.2 (current version: `{0}`)!
@@ -95,13 +94,28 @@ impl Drop for RcloneBackend {
 /// [`RcloneErrorKind::FromParseVersion`]: RcloneErrorKind::FromParseVersion
 fn check_clone_version(rclone_version_output: &[u8]) -> RusticResult<()> {
     let rclone_version = std::str::from_utf8(rclone_version_output)
-        .map_err(RcloneErrorKind::FromUtf8Error)?
+        .map_err(|err| {
+            RusticError::new(
+                ErrorKind::Parsing,
+                "Expected rclone version to be valid utf8, but it was not.",
+            )
+            .source(err.into())
+        })?
         .lines()
         .next()
-        .ok_or_else(|| RcloneErrorKind::NoOutputForRcloneVersion)?
+        .ok_or_else(|| {
+            RusticError::new(
+                ErrorKind::Parsing,
+                "Expected rclone version to have at least one line, but it did not. Please check the rclone version output manually.",
+            )
+        })?
         .trim_start_matches(|c: char| !c.is_numeric());
 
-    let mut parsed_version = Version::parse(rclone_version)?;
+    let mut parsed_version = Version::parse(rclone_version).map_err(|err| {
+        RusticError::new(ErrorKind::Parsing, "Error parsing rclone version.")
+            .add_context("version", rclone_version)
+            .source(err.into())
+    })?;
 
     // we need to set the pre and build fields to empty to make the comparison work
     // otherwise the comparison will take the pre and build fields into account
@@ -114,10 +128,21 @@ fn check_clone_version(rclone_version_output: &[u8]) -> RusticResult<()> {
     // we hard fail here to prevent this, as we can't guarantee the security of the data
     // also because 1.52.2 has been released on Jun 24, 2020, we can assume that this is a
     // reasonable lower bound for the version
-    if VersionReq::parse("<1.52.2")?.matches(&parsed_version) {
-        return Err(
-            RcloneErrorKind::RCloneWithoutAuthentication(rclone_version.to_string()).into(),
-        );
+    if VersionReq::parse("<1.52.2")
+        .map_err(|err| {
+            RusticError::new(
+                ErrorKind::Parsing,
+                "Error parsing version requirement. This should not happen.",
+            )
+            .source(err.into())
+        })?
+        .matches(&parsed_version)
+    {
+        return Err(RusticError::new(
+            ErrorKind::Unsupported,
+            "Unsupported rclone version. Using rclone without authentication! Upgrade to rclone >= 1.52.2!",
+        )
+        .add_context("current version", rclone_version.to_string()));
     }
 
     Ok(())
