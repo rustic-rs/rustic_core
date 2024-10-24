@@ -1,5 +1,5 @@
 /// `OpenDAL` backend for rustic.
-use std::{collections::HashMap, path::PathBuf, str::FromStr, sync::OnceLock};
+use std::{collections::HashMap, str::FromStr, sync::OnceLock};
 
 use anyhow::{anyhow, Error, Result};
 use bytes::Bytes;
@@ -11,6 +11,7 @@ use opendal::{
 };
 use rayon::prelude::{IntoParallelIterator, ParallelIterator};
 use tokio::runtime::Runtime;
+use typed_path::UnixPathBuf;
 
 use rustic_core::{FileType, Id, ReadBackend, WriteBackend, ALL_FILE_TYPES};
 
@@ -126,11 +127,12 @@ impl OpenDALBackend {
     fn path(&self, tpe: FileType, id: &Id) -> String {
         let hex_id = id.to_hex();
         match tpe {
-            FileType::Config => PathBuf::from("config"),
-            FileType::Pack => PathBuf::from("data").join(&hex_id[0..2]).join(hex_id),
-            _ => PathBuf::from(tpe.dirname()).join(hex_id),
+            FileType::Config => UnixPathBuf::from("config"),
+            FileType::Pack => UnixPathBuf::from("data")
+                .join(&hex_id[0..2])
+                .join(&hex_id[..]),
+            _ => UnixPathBuf::from(tpe.dirname()).join(&hex_id[..]),
         }
-        .to_string_lossy()
         .to_string()
     }
 }
@@ -243,7 +245,7 @@ impl WriteBackend for OpenDALBackend {
         // creating 256 dirs can be slow on remote backends, hence we parallelize it.
         (0u8..=255).into_par_iter().try_for_each(|i| {
             self.operator.create_dir(
-                &(PathBuf::from("data")
+                &(UnixPathBuf::from("data")
                     .join(hex::encode([i]))
                     .to_string_lossy()
                     .to_string()
@@ -286,11 +288,10 @@ impl WriteBackend for OpenDALBackend {
 
 #[cfg(test)]
 mod tests {
-    use std::fs;
-
     use super::*;
     use rstest::rstest;
     use serde::Deserialize;
+    use std::{fs, path::PathBuf};
 
     #[rstest]
     #[case("10kB,10MB", Throttle{bandwidth:10_000, burst:10_000_000})]
