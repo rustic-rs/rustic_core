@@ -22,16 +22,14 @@ pub const ALL_BLOB_TYPES: [BlobType; 2] = [BlobType::Tree, BlobType::Data];
     Ord,
     Hash,
     Enum,
-    strum::Display,
+    derive_more::Display,
 )]
 /// The type a `blob` or a `packfile` can have
 pub enum BlobType {
     #[serde(rename = "tree")]
-    #[strum(to_string = "tree")]
     /// This is a tree blob
     Tree,
     #[serde(rename = "data")]
-    #[strum(to_string = "data")]
     /// This is a data blob
     Data,
 }
