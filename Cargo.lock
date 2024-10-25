@@ -3385,7 +3385,6 @@ dependencies = [
  "anyhow",
  "bytes",
  "enum-map",
- "once_cell",
  "rustic_core",
  "tempfile",
 ]
