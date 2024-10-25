@@ -13,34 +13,31 @@ use reqwest::{
 use serde::Deserialize;
 use thiserror::Error;
 
-use rustic_core::{FileType, Id, ReadBackend, WriteBackend};
+use rustic_core::{ErrorKind, FileType, Id, ReadBackend, RusticError, RusticResult, WriteBackend};
 
 /// [`RestErrorKind`] describes the errors that can be returned while dealing with the REST API
 #[derive(Error, Debug, Display)]
 #[non_exhaustive]
 pub enum RestErrorKind {
-    /// value `{0:?}` not supported for option retry!
-    NotSupportedForRetry(String),
-    /// parsing failed for url: `{0:?}`
-    UrlParsingFailed(url::ParseError),
     #[cfg(feature = "rest")]
     /// requesting resource failed: `{0:?}`
     RequestingResourceFailed(reqwest::Error),
-    /// couldn't parse duration in humantime library: `{0:?}`
-    CouldNotParseDuration(humantime::DurationError),
     #[cfg(feature = "rest")]
     /// backoff failed: {0:?}
     BackoffError(backoff::Error<reqwest::Error>),
-    #[cfg(feature = "rest")]
-    /// Failed to build HTTP client: `{0:?}`
-    BuildingClientFailed(reqwest::Error),
-    /// joining URL failed on: {0:?}
+    /// joining URL failed on: {0}
     JoiningUrlFailed(url::ParseError),
 }
 
-mod consts {
+pub(super) mod constants {
+    use std::time::Duration;
+
     /// Default number of retries
     pub(super) const DEFAULT_RETRY: usize = 5;
+
+    /// Default timeout for the client
+    /// This is set to 10 minutes
+    pub(super) const DEFAULT_TIMEOUT: Duration = Duration::from_secs(600);
 }
 
 // trait CheckError to add user-defined method check_error on Response
@@ -88,7 +85,7 @@ struct LimitRetryBackoff {
 impl Default for LimitRetryBackoff {
     fn default() -> Self {
         Self {
-            max_retries: consts::DEFAULT_RETRY,
+            max_retries: constants::DEFAULT_RETRY,
             retries: 0,
             exp: ExponentialBackoffBuilder::new()
                 .with_max_elapsed_time(None) // no maximum elapsed time; we count number of retires
@@ -152,53 +149,77 @@ impl RestBackend {
     ///
     /// # Errors
     ///
-    /// * [`RestErrorKind::UrlParsingFailed`] - If the url could not be parsed.
-    /// * [`RestErrorKind::BuildingClientFailed`] - If the client could not be built.
-    ///
-    /// [`RestErrorKind::UrlParsingFailed`]: RestErrorKind::UrlParsingFailed
-    /// [`RestErrorKind::BuildingClientFailed`]: RestErrorKind::BuildingClientFailed
+    /// * If the url could not be parsed.
+    /// * If the client could not be built.
     pub fn new(
         url: impl AsRef<str>,
         options: impl IntoIterator<Item = (String, String)>,
     ) -> RusticResult<Self> {
-        let url = url.as_ref();
+        let url = url.as_ref().to_string();
+
         let url = if url.ends_with('/') {
-            Url::parse(url).map_err(RestErrorKind::UrlParsingFailed)?
+            url
         } else {
             // add a trailing '/' if there is none
-            let mut url = url.to_string();
+            let mut url = url;
             url.push('/');
-            Url::parse(&url).map_err(RestErrorKind::UrlParsingFailed)?
+            url
         };
+
+        let url = Url::parse(&url).map_err(|err| {
+            RusticError::new(ErrorKind::Parsing, "URL parsing failed")
+                .add_context("url", url)
+                .source(err.into())
+        })?;
 
         let mut headers = HeaderMap::new();
         _ = headers.insert("User-Agent", HeaderValue::from_static("rustic"));
 
         let mut client = ClientBuilder::new()
             .default_headers(headers)
-            .timeout(Duration::from_secs(600)) // set default timeout to 10 minutes (we can have *large* packfiles)
+            .timeout(constants::DEFAULT_TIMEOUT) // set default timeout to 10 minutes (we can have *large* packfiles)
             .build()
-            .map_err(RestErrorKind::BuildingClientFailed)?;
+            .map_err(|err| {
+                RusticError::new(ErrorKind::Backend, "Failed to build HTTP client")
+                    .source(err.into())
+            })?;
         let mut backoff = LimitRetryBackoff::default();
 
+        // FIXME: If we have multiple times the same option, this could lead to unexpected behavior
         for (option, value) in options {
             if option == "retry" {
                 let max_retries = match value.as_str() {
                     "false" | "off" => 0,
-                    "default" => consts::DEFAULT_RETRY,
-                    _ => usize::from_str(&value)
-                        .map_err(|_| RestErrorKind::NotSupportedForRetry(value))?,
+                    "default" => constants::DEFAULT_RETRY,
+                    _ => usize::from_str(&value).map_err(|err| {
+                        RusticError::new(
+                            ErrorKind::Parsing,
+                            "Cannot parse value, value not supported for option retry.",
+                        )
+                        .add_context("value", value)
+                        .add_context("option", "retry")
+                        .source(err.into())
+                    })?,
                 };
                 backoff.max_retries = max_retries;
             } else if option == "timeout" {
-                let timeout = match humantime::Duration::from_str(&value) {
-                    Ok(val) => val,
-                    Err(e) => return Err(RestErrorKind::CouldNotParseDuration(e).into()),
-                };
-                client = match ClientBuilder::new().timeout(*timeout).build() {
-                    Ok(val) => val,
-                    Err(err) => return Err(RestErrorKind::BuildingClientFailed(err).into()),
-                };
+                let timeout = humantime::Duration::from_str(&value).map_err(|err| {
+                    RusticError::new(
+                        ErrorKind::Parsing,
+                        "Could not parse value as `humantime` duration.",
+                    )
+                    .add_context("value", value)
+                    .add_context("option", "timeout")
+                    .source(err.into())
+                })?;
+
+                client = ClientBuilder::new()
+                    .timeout(*timeout)
+                    .build()
+                    .map_err(|err| {
+                        RusticError::new(ErrorKind::Backend, "Failed to build HTTP client")
+                            .source(err.into())
+                    })?;
             }
         }
 
@@ -218,7 +239,7 @@ impl RestBackend {
     ///
     /// # Errors
     ///
-    /// If the url could not be created.
+    /// * If the url could not be created.
     fn url(&self, tpe: FileType, id: &Id) -> Result<Url, RestErrorKind> {
         let id_path = if tpe == FileType::Config {
             "config".to_string()
@@ -229,10 +250,10 @@ impl RestBackend {
             path.push_str(&hex_id);
             path
         };
-        Ok(self
-            .url
+
+        self.url
             .join(&id_path)
-            .map_err(RestErrorKind::JoiningUrlFailed)?)
+            .map_err(RestErrorKind::JoiningUrlFailed)
     }
 }
 
@@ -256,7 +277,7 @@ impl ReadBackend for RestBackend {
     ///
     /// # Errors
     ///
-    /// * [`RestErrorKind::JoiningUrlFailed`] - If the url could not be created.
+    /// * If the url could not be created.
     ///
     /// # Notes
     ///
@@ -265,8 +286,6 @@ impl ReadBackend for RestBackend {
     /// # Returns
     ///
     /// A vector of tuples containing the id and size of the files.
-    ///
-    /// [`RestErrorKind::JoiningUrlFailed`]: RestErrorKind::JoiningUrlFailed
     fn list_with_size(&self, tpe: FileType) -> RusticResult<Vec<(Id, u32)>> {
         // format which is delivered by the REST-service
         #[derive(Deserialize)]
@@ -276,17 +295,23 @@ impl ReadBackend for RestBackend {
         }
 
         trace!("listing tpe: {tpe:?}");
-        let url = if tpe == FileType::Config {
-            self.url
-                .join("config")
-                .map_err(RestErrorKind::JoiningUrlFailed)?
+
+        // TODO: Explain why we need special handling here
+        let path = if tpe == FileType::Config {
+            "config".to_string()
         } else {
             let mut path = tpe.dirname().to_string();
             path.push('/');
-            self.url
-                .join(&path)
-                .map_err(RestErrorKind::JoiningUrlFailed)?
+            path
         };
+
+        let url = self.url.join(&path).map_err(|err| {
+            RusticError::new(ErrorKind::Parsing, "Joining URL failed")
+                .add_context("url", self.url.as_str())
+                .add_context("tpe", tpe.to_string())
+                .add_context("tpe dir", tpe.dirname().to_string())
+                .source(err.into())
+        })?;
 
         backoff::retry_notify(
             self.backoff.clone(),
@@ -319,7 +344,7 @@ impl ReadBackend for RestBackend {
             },
             notify,
         )
-        .map_err(|e| RestErrorKind::BackoffError(e).into())
+        .map_err(construct_backoff_error)
     }
 
     /// Returns the content of a file.
@@ -331,14 +356,16 @@ impl ReadBackend for RestBackend {
     ///
     /// # Errors
     ///
-    /// * [`reqwest::Error`] - If the request failed.
-    /// * [`RestErrorKind::BackoffError`] - If the backoff failed.
-    ///
-    /// [`RestErrorKind::BackoffError`]: RestErrorKind::BackoffError
+    /// * If the request failed.
+    /// * If the backoff failed.
     fn read_full(&self, tpe: FileType, id: &Id) -> RusticResult<Bytes> {
         trace!("reading tpe: {tpe:?}, id: {id}");
-        let url = self.url(tpe, id)?;
-        Ok(backoff::retry_notify(
+
+        let url = self
+            .url(tpe, id)
+            .map_err(|err| construct_join_url_error(err, tpe, id, &self.url))?;
+
+        backoff::retry_notify(
             self.backoff.clone(),
             || {
                 Ok(self
@@ -350,7 +377,7 @@ impl ReadBackend for RestBackend {
             },
             notify,
         )
-        .map_err(RestErrorKind::BackoffError)?)
+        .map_err(construct_backoff_error)
     }
 
     /// Returns a part of the content of a file.
@@ -379,8 +406,16 @@ impl ReadBackend for RestBackend {
         trace!("reading tpe: {tpe:?}, id: {id}, offset: {offset}, length: {length}");
         let offset2 = offset + length - 1;
         let header_value = format!("bytes={offset}-{offset2}");
-        let url = self.url(tpe, id)?;
-        Ok(backoff::retry_notify(
+        let url = self.url(tpe, id).map_err(|err| {
+            RusticError::new(ErrorKind::Parsing, "Joining URL failed")
+                .add_context("url", self.url.as_str())
+                .add_context("tpe", tpe.to_string())
+                .add_context("tpe dir", tpe.dirname().to_string())
+                .add_context("id", id.to_string())
+                .source(err.into())
+        })?;
+
+        backoff::retry_notify(
             self.backoff.clone(),
             || {
                 Ok(self
@@ -393,8 +428,30 @@ impl ReadBackend for RestBackend {
             },
             notify,
         )
-        .map_err(RestErrorKind::BackoffError)?)
+        .map_err(construct_backoff_error)
     }
+}
+
+fn construct_backoff_error(err: backoff::Error<reqwest::Error>) -> RusticError {
+    RusticError::new(
+        ErrorKind::Backend,
+        "Backoff failed, please check the logs for more information.",
+    )
+    .source(err.into())
+}
+
+fn construct_join_url_error(
+    err: RestErrorKind,
+    tpe: FileType,
+    id: &Id,
+    self_url: &Url,
+) -> RusticError {
+    RusticError::new(ErrorKind::Parsing, "Joining URL failed")
+        .add_context("url", self_url.as_str())
+        .add_context("tpe", tpe.to_string())
+        .add_context("tpe dir", tpe.dirname().to_string())
+        .add_context("id", id.to_string())
+        .source(err.into())
 }
 
 impl WriteBackend for RestBackend {
@@ -402,15 +459,16 @@ impl WriteBackend for RestBackend {
     ///
     /// # Errors
     ///
-    /// * [`RestErrorKind::BackoffError`] - If the backoff failed.
-    ///
-    /// [`RestErrorKind::BackoffError`]: RestErrorKind::BackoffError
+    /// * If the backoff failed.
     fn create(&self) -> RusticResult<()> {
-        let url = self
-            .url
-            .join("?create=true")
-            .map_err(RestErrorKind::JoiningUrlFailed)?;
-        Ok(backoff::retry_notify(
+        let url = self.url.join("?create=true").map_err(|err| {
+            RusticError::new(ErrorKind::Parsing, "Joining URL failed")
+                .add_context("url", self.url.as_str())
+                .add_context("join input", "?create=true")
+                .source(err.into())
+        })?;
+
+        backoff::retry_notify(
             self.backoff.clone(),
             || {
                 _ = self.client.post(url.clone()).send()?.check_error()?;
@@ -418,7 +476,7 @@ impl WriteBackend for RestBackend {
             },
             notify,
         )
-        .map_err(RestErrorKind::BackoffError)?)
+        .map_err(construct_backoff_error)
     }
 
     /// Writes bytes to the given file.
@@ -432,9 +490,7 @@ impl WriteBackend for RestBackend {
     ///
     /// # Errors
     ///
-    /// * [`RestErrorKind::BackoffError`] - If the backoff failed.
-    ///
-    /// [`RestErrorKind::BackoffError`]: RestErrorKind::BackoffError
+    /// * If the backoff failed.
     fn write_bytes(
         &self,
         tpe: FileType,
@@ -443,8 +499,15 @@ impl WriteBackend for RestBackend {
         buf: Bytes,
     ) -> RusticResult<()> {
         trace!("writing tpe: {:?}, id: {}", &tpe, &id);
-        let req_builder = self.client.post(self.url(tpe, id)?).body(buf);
-        Ok(backoff::retry_notify(
+        let req_builder = self
+            .client
+            .post(
+                self.url(tpe, id)
+                    .map_err(|err| construct_join_url_error(err, tpe, id, &self.url))?,
+            )
+            .body(buf);
+
+        backoff::retry_notify(
             self.backoff.clone(),
             || {
                 // Note: try_clone() always gives Some(_) as the body is Bytes which is cloneable
@@ -453,7 +516,7 @@ impl WriteBackend for RestBackend {
             },
             notify,
         )
-        .map_err(RestErrorKind::BackoffError)?)
+        .map_err(construct_backoff_error)
     }
 
     /// Removes the given file.
@@ -466,13 +529,14 @@ impl WriteBackend for RestBackend {
     ///
     /// # Errors
     ///
-    /// * [`RestErrorKind::BackoffError`] - If the backoff failed.
-    ///
-    /// [`RestErrorKind::BackoffError`]: RestErrorKind::BackoffError
+    /// * If the backoff failed.
     fn remove(&self, tpe: FileType, id: &Id, _cacheable: bool) -> RusticResult<()> {
         trace!("removing tpe: {:?}, id: {}", &tpe, &id);
-        let url = self.url(tpe, id)?;
-        Ok(backoff::retry_notify(
+        let url = self
+            .url(tpe, id)
+            .map_err(|err| construct_join_url_error(err, tpe, id, &self.url))?;
+
+        backoff::retry_notify(
             self.backoff.clone(),
             || {
                 _ = self.client.delete(url.clone()).send()?.check_error()?;
@@ -480,6 +544,6 @@ impl WriteBackend for RestBackend {
             },
             notify,
         )
-        .map_err(RestErrorKind::BackoffError)?)
+        .map_err(construct_backoff_error)
     }
 }
