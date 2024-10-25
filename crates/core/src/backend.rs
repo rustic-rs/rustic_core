@@ -103,7 +103,7 @@ pub const ALL_FILE_TYPES: [FileType; 4] = [
 ];
 
 /// Type for describing the kind of a file that can occur.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, Enum)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, Enum, derive_more::Display)]
 pub enum FileType {
     /// Config file
     #[serde(rename = "config")]
