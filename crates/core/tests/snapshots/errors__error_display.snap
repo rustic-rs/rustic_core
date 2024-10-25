@@ -1,0 +1,25 @@
+---
+source: crates/core/tests/errors.rs
+expression: TEST_ERROR.to_string()
+---
+IO Error occurred in `rustic_core`
+
+Message:
+A file could not be read, make sure the file is existing and readable by the system.
+
+Context:
+path: /path/to/file,
+called: used s3 backend
+
+Caused by: networking error
+
+Severity: Error
+
+Status: Permanent
+
+For more information, see: https://rustic.cli.rs/docs/errors/E001
+
+If you think this is an undiscovered bug, please open an issue at: https://github.com/rustic-rs/rustic_core/issues/new
+
+Backtrace:
+<disabled>

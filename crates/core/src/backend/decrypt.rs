@@ -541,9 +541,7 @@ impl<C: CryptoKey> DecryptReadBackend for DecryptBackend<C> {
     ///
     /// A vector containing the decrypted data.
     fn decrypt(&self, data: &[u8]) -> RusticResult<Vec<u8>> {
-        self.key
-            .decrypt_data(data)
-            .map_err(|_err| todo!("Error transition"))
+        self.key.decrypt_data(data)
     }
 
     /// Reads encrypted data from the backend.

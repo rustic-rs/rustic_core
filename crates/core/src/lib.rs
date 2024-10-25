@@ -145,7 +145,7 @@ pub use crate::{
         repoinfo::{BlobInfo, IndexInfos, PackInfo, RepoFileInfo, RepoFileInfos},
         restore::{FileDirStats, RestoreOptions, RestorePlan, RestoreStats},
     },
-    error::{ErrorKind, RusticError, RusticResult, Severity},
+    error::{ErrorKind, RusticError, RusticResult, Severity, Status},
     id::{HexId, Id},
     progress::{NoProgress, NoProgressBars, Progress, ProgressBars},
     repofile::snapshotfile::{

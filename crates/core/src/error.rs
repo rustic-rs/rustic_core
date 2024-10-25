@@ -61,12 +61,12 @@ pub struct RusticError {
 
 impl Display for RusticError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "An error occurred in `rustic_core`: {}", self.kind)?;
+        write!(f, "{} occurred in `rustic_core`", self.kind)?;
 
-        write!(f, "\nMessage: {}", self.guidance)?;
+        write!(f, "\n\nMessage:\n{}", self.guidance)?;
 
         if !self.context.is_empty() {
-            write!(f, "\n\n Context:\n")?;
+            write!(f, "\n\nContext:\n")?;
             write!(
                 f,
                 "{}",
@@ -74,7 +74,7 @@ impl Display for RusticError {
                     .iter()
                     .map(|(k, v)| format!("{k}: {v}"))
                     .collect::<Vec<_>>()
-                    .join(", ")
+                    .join(",\n")
             )?;
         }
 
@@ -94,7 +94,7 @@ impl Display for RusticError {
             let default_docs_url = SmolStr::from(constants::DEFAULT_DOCS_URL);
             let docs_url = self.docs_url.as_ref().unwrap_or(&default_docs_url);
 
-            write!(f, "\n\nFor more information, see: {docs_url}/{code}")?;
+            write!(f, "\n\nFor more information, see: {docs_url}{code}")?;
         }
 
         if let Some(existing_issue_url) = &self.existing_issue_url {
@@ -335,43 +335,3 @@ pub enum ErrorKind {
 // - **Backend Access Errors**: e.g., `BackendNotSupported`, `BackendLoadError`, `NoSuitableIdFound`, `IdNotUnique`
 // - **Rclone Errors**: e.g., `NoOutputForRcloneVersion`, `NoStdOutForRclone`, `RCloneExitWithBadStatus`
 // - **REST API Errors**: e.g., `NotSupportedForRetry`, `UrlParsingFailed`
-
-#[cfg(test)]
-mod tests {
-    use std::sync::LazyLock;
-
-    use super::*;
-
-    static TEST_ERROR: LazyLock<RusticError> = LazyLock::new(|| RusticError {
-        kind: ErrorKind::Io,
-        guidance:
-            "A file could not be read, make sure the file is existing and readable by the system."
-                .into(),
-        status: Some(Status::Permanent),
-        severity: Some(Severity::Error),
-        code: Some("E001".to_string().into()),
-        context: vec![
-            ("path", "/path/to/file".into()),
-            ("called", "used s3 backend".into()),
-        ]
-        .into_boxed_slice(),
-        source: Some(Box::new(std::io::Error::new(
-            std::io::ErrorKind::Other,
-            "networking error",
-        ))),
-        backtrace: Some(Backtrace::disabled()),
-        docs_url: None,
-        new_issue_url: None,
-        existing_issue_url: None,
-    });
-
-    #[test]
-    fn test_error_display() {
-        insta::assert_snapshot!(TEST_ERROR.to_string());
-    }
-
-    #[test]
-    fn test_error_debug() {
-        insta::assert_debug_snapshot!(TEST_ERROR);
-    }
-}

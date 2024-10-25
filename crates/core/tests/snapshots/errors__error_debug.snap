@@ -1,0 +1,39 @@
+---
+source: crates/core/tests/errors.rs
+expression: error
+---
+RusticError {
+    kind: Io,
+    source: Some(
+        Custom {
+            kind: Other,
+            error: "networking error",
+        },
+    ),
+    guidance: "A file could not be read, make sure the file is existing and readable by the system.",
+    context: [
+        (
+            "path",
+            "/path/to/file",
+        ),
+        (
+            "called",
+            "used s3 backend",
+        ),
+    ],
+    docs_url: None,
+    code: Some(
+        "E001",
+    ),
+    new_issue_url: None,
+    existing_issue_url: None,
+    severity: Some(
+        Error,
+    ),
+    status: Some(
+        Permanent,
+    ),
+    backtrace: Some(
+        <disabled>,
+    ),
+}

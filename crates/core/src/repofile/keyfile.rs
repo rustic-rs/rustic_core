@@ -259,14 +259,14 @@ impl KeyFile {
     fn from_backend<B: ReadBackend>(be: &B, id: &KeyId) -> RusticResult<Self> {
         let data = be.read_full(FileType::Key, id)?;
 
-        Ok(serde_json::from_slice(&data)
+        serde_json::from_slice(&data)
             .map_err(
                 |err| KeyFileErrorKind::DeserializingFromSliceForKeyIdFailed {
                     key_id: id.clone(),
                     source: err,
                 },
             )
-            .map_err(|_err| todo!("Error transition"))?)
+            .map_err(|_err| todo!("Error transition"))
     }
 }
 
