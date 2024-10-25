@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.5.5](https://github.com/rustic-rs/rustic_core/compare/rustic_core-v0.5.4...rustic_core-v0.5.5) - 2024-10-25
+
+### Fixed
+
+- *(errors)* forwarding Display impl should work again ([#342](https://github.com/rustic-rs/rustic_core/pull/342))
+
 ## [0.5.4](https://github.com/rustic-rs/rustic_core/compare/rustic_core-v0.5.3...rustic_core-v0.5.4) - 2024-10-24
 
 ### Added

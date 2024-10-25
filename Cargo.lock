@@ -3306,7 +3306,7 @@ version = "0.2.2"
 
 [[package]]
 name = "rustic_core"
-version = "0.5.4"
+version = "0.5.5"
 dependencies = [
  "aes256ctr_poly1305aes",
  "anyhow",
@@ -3379,7 +3379,7 @@ dependencies = [
 
 [[package]]
 name = "rustic_testing"
-version = "0.2.2"
+version = "0.2.3"
 dependencies = [
  "aho-corasick",
  "anyhow",
