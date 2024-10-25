@@ -185,10 +185,10 @@ pub enum CommandErrorKind {
     PackNotExisting(PackId),
     /// pack `{0}` got no decision what to do
     NoDecision(PackId),
-    /// [`std::num::ParseFloatError`]
+    /// `{0}`
     #[error(transparent)]
     FromParseFloatError(#[from] ParseFloatError),
-    /// [`std::num::ParseIntError`]
+    /// `{0}`
     #[error(transparent)]
     FromParseIntError(#[from] ParseIntError),
     /// Bytesize parser failed: `{0}`
@@ -199,7 +199,7 @@ pub enum CommandErrorKind {
     FromOutOfRangeError(#[from] OutOfRangeError),
     /// node type `{0:?}` not supported by dump
     DumpNotSupported(NodeType),
-    /// [`serde_json::Error`]
+    /// `{0}`
     #[error(transparent)]
     FromJsonError(#[from] serde_json::Error),
     /// version `{0}` is not supported. Allowed values: {1:?}
@@ -222,7 +222,7 @@ pub enum CommandErrorKind {
     ErrorCollecting(PathBuf, Box<RusticError>),
     /// error setting length for `{0:?}`: `{1:?}`
     ErrorSettingLength(PathBuf, Box<RusticError>),
-    /// [`rayon::ThreadPoolBuildError`]
+    /// `{0}`
     #[error(transparent)]
     FromRayonError(#[from] rayon::ThreadPoolBuildError),
     /// Conversion from integer failed: `{0:?}`
@@ -231,7 +231,7 @@ pub enum CommandErrorKind {
     NotAllowedWithAppendOnly(String),
     /// Specify one of the keep-* options for forget! Please use keep-none to keep no snapshot.
     NoKeepOption,
-    /// [`shell_words::ParseError`]
+    /// `{0}`
     #[error(transparent)]
     FromParseError(#[from] shell_words::ParseError),
 }
@@ -345,25 +345,25 @@ pub enum BackendAccessErrorKind {
     NoSuitableIdFound(String),
     /// id `{0}` is not unique
     IdNotUnique(String),
-    /// [`std::io::Error`]
+    /// `{0}`
     #[error(transparent)]
     FromIoError(#[from] std::io::Error),
-    /// [`std::num::TryFromIntError`]
+    /// `{0}`
     #[error(transparent)]
     FromTryIntError(#[from] TryFromIntError),
-    /// [`LocalDestinationErrorKind`]
+    /// `{0}`
     #[error(transparent)]
     FromLocalError(#[from] LocalDestinationErrorKind),
-    /// [`IdErrorKind`]
+    /// `{0}`
     #[error(transparent)]
     FromIdError(#[from] IdErrorKind),
-    /// [`IndexErrorKind`]
+    /// `{0}`
     #[error(transparent)]
     FromIgnoreError(#[from] IgnoreErrorKind),
-    /// [`CryptBackendErrorKind`]
+    /// `{0}`
     #[error(transparent)]
     FromBackendDecryptionError(#[from] CryptBackendErrorKind),
-    /// [`ignore::Error`]
+    /// `{0}`
     #[error(transparent)]
     GenericError(#[from] ignore::Error),
     /// creating data in backend failed
@@ -431,7 +431,7 @@ pub enum PackFileErrorKind {
     PartialReadOfPackfileFailed,
     /// writing Bytes failed
     WritingBytesFailed,
-    /// [`CryptBackendErrorKind`]
+    /// `{0}`
     #[error(transparent)]
     PackDecryptionFailed(#[from] CryptBackendErrorKind),
 }
@@ -476,12 +476,12 @@ pub enum PackerErrorKind {
     CompressingDataFailed(#[from] std::io::Error),
     /// getting total size failed
     GettingTotalSizeFailed,
-    /// [`crossbeam_channel::SendError`]
+    /// `{0}`
     #[error(transparent)]
     SendingCrossbeamMessageFailed(
         #[from] crossbeam_channel::SendError<(bytes::Bytes, BlobId, Option<u32>)>,
     ),
-    /// [`crossbeam_channel::SendError`]
+    /// `{0}`
     #[error(transparent)]
     SendingCrossbeamMessageFailedForIndexPack(
         #[from] crossbeam_channel::SendError<(bytes::Bytes, IndexPack)>,
@@ -525,10 +525,10 @@ pub enum TreeErrorKind {
     BuildingNodeStreamerFailed(#[from] ignore::Error),
     /// failed to read file string from glob file: `{0:?}`
     ReadingFileStringFromGlobsFailed(#[from] std::io::Error),
-    /// [`crossbeam_channel::SendError`]
+    /// `{0}`
     #[error(transparent)]
     SendingCrossbeamMessageFailed(#[from] crossbeam_channel::SendError<(PathBuf, TreeId, usize)>),
-    /// [`crossbeam_channel::RecvError`]
+    /// `{0}`
     #[error(transparent)]
     ReceivingCrossbreamMessageFailed(#[from] crossbeam_channel::RecvError),
 }
@@ -538,7 +538,7 @@ pub enum TreeErrorKind {
 pub enum CacheBackendErrorKind {
     /// no cache dir
     NoCacheDirectory,
-    /// [`std::io::Error`]
+    /// `{0}`
     #[error(transparent)]
     FromIoError(#[from] std::io::Error),
     /// setting option on CacheBackend failed
@@ -576,13 +576,13 @@ pub enum CryptBackendErrorKind {
     WritingDataInCryptBackendFailed,
     /// failed to list Ids
     ListingIdsInDecryptionBackendFailed,
-    /// [`CryptoErrorKind`]
+    /// `{0}`
     #[error(transparent)]
     FromKey(#[from] CryptoErrorKind),
-    /// [`std::io::Error`]
+    /// `{0}`
     #[error(transparent)]
     FromIo(#[from] std::io::Error),
-    /// [`serde_json::Error`]
+    /// `{0}`
     #[error(transparent)]
     FromJson(#[from] serde_json::Error),
     /// writing full hash failed in CryptBackend
@@ -626,7 +626,7 @@ pub enum IgnoreErrorKind {
         path: PathBuf,
         source: std::io::Error,
     },
-    /// [`std::num::TryFromIntError`]
+    /// `{0}`
     #[error(transparent)]
     FromTryFromIntError(#[from] TryFromIntError),
 }
@@ -638,16 +638,16 @@ pub enum LocalDestinationErrorKind {
     DirectoryCreationFailed(#[from] std::io::Error),
     /// file `{0:?}` should have a parent
     FileDoesNotHaveParent(PathBuf),
-    /// [`std::num::TryFromIntError`]   
+    /// `{0}`
     #[error(transparent)]
     FromTryIntError(#[from] TryFromIntError),
-    /// [`IdErrorKind`]
+    /// `{0}`
     #[error(transparent)]
     FromIdError(#[from] IdErrorKind),
-    /// [`walkdir::Error`]
+    /// `{0}`
     #[error(transparent)]
     FromWalkdirError(#[from] walkdir::Error),
-    /// [`Errno`]
+    /// `{0}`
     #[error(transparent)]
     #[cfg(not(windows))]
     FromErrnoError(#[from] Errno),
@@ -741,19 +741,19 @@ pub enum ArchiverErrorKind {
     FailedToSaveFileInBackend(#[from] CryptBackendErrorKind),
     /// finalizing SnapshotSummary failed: `{0:?}`
     FinalizingSnapshotSummaryFailed(#[from] SnapshotFileErrorKind),
-    /// [`PackerErrorKind`]
+    /// `{0}`
     #[error(transparent)]
     FromPacker(#[from] PackerErrorKind),
-    /// [`TreeErrorKind`]
+    /// `{0}`
     #[error(transparent)]
     FromTree(#[from] TreeErrorKind),
-    /// [`ConfigFileErrorKind`]
+    /// `{0}`
     #[error(transparent)]
     FromConfigFile(#[from] ConfigFileErrorKind),
-    /// [`std::io::Error`]
+    /// `{0}`
     #[error(transparent)]
     FromStdIo(#[from] std::io::Error),
-    /// [`StripPrefixError`]
+    /// `{0}`
     #[error(transparent)]
     FromStripPrefix(#[from] StripPrefixError),
     /// conversion from `u64` to `usize` failed: `{0:?}`
