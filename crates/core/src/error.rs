@@ -258,6 +258,10 @@ pub enum ErrorKind {
     Multithreading,
     /// Processing Error
     Processing,
+    /// Something is not supported
+    Unsupported,
+    /// External Command
+    ExternalCommand,
     // /// The repository password is incorrect. Please try again.
     // IncorrectRepositoryPassword,
     // /// No repository given. Please use the --repository option.
