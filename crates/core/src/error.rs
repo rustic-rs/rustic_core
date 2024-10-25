@@ -342,18 +342,19 @@ mod tests {
 
     use super::*;
 
-    static TEST_ERROR: LazyLock<Error> = LazyLock::new(|| RusticError {
+    static TEST_ERROR: LazyLock<RusticError> = LazyLock::new(|| RusticError {
         kind: ErrorKind::Io,
         guidance:
             "A file could not be read, make sure the file is existing and readable by the system."
-                .to_string(),
+                .into(),
         status: Some(Status::Permanent),
         severity: Some(Severity::Error),
         code: Some("E001".to_string().into()),
         context: vec![
-            ("path", "/path/to/file".to_string()),
-            ("called", "used s3 backend".to_string()),
-        ],
+            ("path", "/path/to/file".into()),
+            ("called", "used s3 backend".into()),
+        ]
+        .into_boxed_slice(),
         source: Some(Box::new(std::io::Error::new(
             std::io::ErrorKind::Other,
             "networking error",
@@ -366,11 +367,11 @@ mod tests {
 
     #[test]
     fn test_error_display() {
-        todo!("Implement test_error_display");
+        insta::assert_snapshot!(TEST_ERROR.to_string());
     }
 
     #[test]
     fn test_error_debug() {
-        todo!("Implement test_error_debug");
+        insta::assert_debug_snapshot!(TEST_ERROR);
     }
 }
