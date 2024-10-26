@@ -28,8 +28,10 @@ use nix::{
 use crate::backend::ignore::mapper::map_mode_from_go;
 #[cfg(not(windows))]
 use crate::backend::node::NodeType;
-use crate::backend::node::{ExtendedAttribute, Metadata, Node};
-use crate::error::RusticResult;
+use crate::{
+    backend::node::{ExtendedAttribute, Metadata, Node},
+    error::{ErrorKind, RusticError, RusticResult},
+};
 
 /// [`LocalDestinationErrorKind`] describes the errors that can be returned by an action on the filesystem in Backends
 #[derive(thiserror::Error, Debug, displaydoc::Display)]
@@ -150,17 +152,28 @@ impl LocalDestination {
         let path: PathBuf = path.into();
         let is_file = path.is_file() || (!path.is_dir() && !is_dir && expect_file);
 
+        // FIXME: Refactor logic to avoid duplication
         if create {
             if is_file {
                 if let Some(path) = path.parent() {
-                    fs::create_dir_all(path)
-                        .map_err(LocalDestinationErrorKind::DirectoryCreationFailed)
-                        .map_err(|_err| todo!("Error transition"))?;
+                    fs::create_dir_all(path).map_err(|err| {
+                        RusticError::with_source(
+                            ErrorKind::Io,
+                            "The directory could not be created.",
+                            err,
+                        )
+                        .attach_context("path", path.display().to_string())
+                    })?;
                 }
             } else {
-                fs::create_dir_all(&path)
-                    .map_err(LocalDestinationErrorKind::DirectoryCreationFailed)
-                    .map_err(|_err| todo!("Error transition"))?;
+                fs::create_dir_all(&path).map_err(|err| {
+                    RusticError::with_source(
+                        ErrorKind::Io,
+                        "The directory could not be created.",
+                        err,
+                    )
+                    .attach_context("path", path.display().to_string())
+                })?;
             }
         }
 
