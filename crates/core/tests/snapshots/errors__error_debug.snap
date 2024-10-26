@@ -22,7 +22,7 @@ RusticError {
         ),
     ],
     docs_url: None,
-    code: Some(
+    error_code: Some(
         "E001",
     ),
     new_issue_url: None,
