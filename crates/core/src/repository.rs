@@ -543,11 +543,7 @@ impl<P, S> Repository<P, S> {
             }
         }
 
-        let key = find_key_in_backend(&self.be, &password, None).map_err(|err| {
-            err.attach_error_code("C002")
-                .overwrite_kind(ErrorKind::Password)
-                .overwrite_guidance("The password that has been entered, seems to be incorrect. Please check the password.")
-        })?;
+        let key = find_key_in_backend(&self.be, &password, None)?;
 
         info!("repository {}: password is correct.", self.name);
 

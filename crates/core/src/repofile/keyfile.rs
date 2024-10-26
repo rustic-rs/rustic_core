@@ -431,8 +431,8 @@ pub(crate) fn find_key_in_backend<B: ReadBackend>(
         }
 
         Err(RusticError::new(
-            ErrorKind::Key,
-            "No suitable key found for the given password. Please check your password and try again.",
-        ))
+            ErrorKind::Password,
+            "The password that has been entered, seems to be incorrect. No suitable key found for the given password. Please check your password and try again.",
+        ).attach_error_code("C002"))
     }
 }
