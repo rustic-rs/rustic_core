@@ -53,18 +53,21 @@ impl FromStr for Throttle {
             .split(',')
             .map(|s| {
                 ByteSize::from_str(s.trim()).map_err(|err| {
-                    RusticError::new(
+                    RusticError::with_source(
                         ErrorKind::Parsing,
                         "Parsing ByteSize from throttle string failed",
+                        err,
                     )
-                    .add_context("string", s)
-                    .source(err.into())
+                    .attach_context("string", s)
                 })
             })
             .map(|b| -> RusticResult<u32> {
                 Ok(b?.as_u64().try_into().map_err(|err: TryFromIntError| {
-                    RusticError::new(ErrorKind::Parsing, "Converting ByteSize to u32 failed")
-                        .source(err.into())
+                    RusticError::with_source(
+                        ErrorKind::Parsing,
+                        "Converting ByteSize to u32 failed",
+                        err,
+                    )
                 })?)
             });
         let bandwidth = values

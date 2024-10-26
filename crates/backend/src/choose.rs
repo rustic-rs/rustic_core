@@ -117,12 +117,12 @@ impl BackendOptions {
             .map(|string| {
                 let (be_type, location) = location_to_type_and_path(string)?;
                 be_type.to_backend(location, options.into()).map_err(|err| {
-                    RusticError::new(
+                    RusticError::with_source(
                         ErrorKind::Backend,
                         "Could not load the backend. Please check the given backend and try again.",
+                        err,
                     )
-                    .add_context("name", be_type.to_string())
-                    .source(err.into())
+                    .attach_context("name", be_type.to_string())
                 })
             })
             .transpose()

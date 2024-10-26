@@ -118,7 +118,7 @@ pub(crate) fn cat_tree<P: ProgressBars, S: IndexedTree>(
             ErrorKind::Command,
             "Path in Node subtree is not a directory. Please provide a directory path.",
         )
-        .add_context("path", path.to_string())
+        .attach_context("path", path.to_string())
     })?;
     let data = repo
         .index()

@@ -695,7 +695,7 @@ impl PrunePlan {
                 ErrorKind::Config,
                 "Repository is version 1, cannot repack uncompressed packs. ",
             )
-            .add_context("config version", version.to_string()));
+            .attach_context("config version", version.to_string()));
         }
 
         let mut index_files = Vec::new();
@@ -788,7 +788,7 @@ impl PrunePlan {
             if *count == 0 {
                 return Err(
                     RusticError::new(ErrorKind::Command, "Blob is missing in index files, this should not happen. Please report this issue.")
-                        .add_context("blob id", id.to_string()),
+                        .attach_context("blob id", id.to_string()),
                 );
             }
         }
@@ -1063,14 +1063,14 @@ impl PrunePlan {
                         ErrorKind::Command,
                         "Pack size does not match the size in the index file. This should not happen. Please report this issue.",
                     )
-                    .add_context("pack id", pack.id.to_string())
-                    .add_context("size in index (expected)", pack.size.to_string())
-                    .add_context("size in pack (real)", size.to_string())
+                    .attach_context("pack id", pack.id.to_string())
+                    .attach_context("size in index (expected)", pack.size.to_string())
+                    .attach_context("size in pack (real)", size.to_string())
                 ),
                     None => Err(RusticError::new(
                         ErrorKind::Command,
                         "Pack does not exist. This should not happen. Please report this issue.",
-                    ).add_context("pack id", pack.id.to_string())),
+                    ).attach_context("pack id", pack.id.to_string())),
                 }
             };
 
@@ -1080,7 +1080,7 @@ impl PrunePlan {
                         ErrorKind::Command,
                         "Pack got no decision what to do with it, please report this!",
                     )
-                    .add_context("pack id", pack.id.to_string()));
+                    .attach_context("pack id", pack.id.to_string()));
                 }
                 PackToDo::Keep | PackToDo::Recover => {
                     for blob in &pack.blobs {
@@ -1332,7 +1332,7 @@ pub(crate) fn prune_repository<P: ProgressBars, S: Open>(
                         ErrorKind::Command,
                         "Pack got no decision what to do with it, please report this!",
                     )
-                    .add_context("pack id", pack.id.to_string()));
+                    .attach_context("pack id", pack.id.to_string()));
                 }
                 PackToDo::Keep => {
                     // keep pack: add to new index

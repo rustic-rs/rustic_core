@@ -241,36 +241,36 @@ impl FromStr for ReadSubsetOption {
         } else if let Some(p) = s.strip_suffix('%') {
             // try to read percentage
             Self::Percentage(p.parse().map_err(|err: ParseFloatError| {
-                RusticError::new(
+                RusticError::with_source(
                     ErrorKind::Parsing,
                     "Error parsing percentage for ReadSubset option. Did you forget the '%'?",
+                    err,
                 )
-                .add_context("value", p.to_string())
-                .source(err.into())
+                .attach_context("value", p.to_string())
             })?)
         } else if let Some((n, m)) = s.split_once('/') {
             let now = Local::now().naive_local();
             Self::IdSubSet(parse_n_m(now, n, m).map_err(
                 |err|
-                    RusticError::new(
+                    RusticError::with_source(
                         ErrorKind::Parsing,
                         "Error parsing n/m for ReadSubset option. Allowed values: 'all', 'x%', 'n/m' or a size.",
+                        err
                     )
-                    .add_context("value", s)
-                    .add_context("n/m", format!("{}/{}", n, m))
-                    .add_context("now", now.to_string())
-                    .source(err.into())
+                    .attach_context("value", s)
+                    .attach_context("n/m", format!("{}/{}", n, m))
+                    .attach_context("now", now.to_string())
             )?)
         } else {
             Self::Size(
                 ByteSize::from_str(s)
                     .map_err(|err| {
-                        RusticError::new(
+                        RusticError::with_source(
                             ErrorKind::Parsing,
                             "Error parsing size for ReadSubset option. Allowed values: 'all', 'x%', 'n/m' or a size.",
+                            err
                         )
-                        .add_context("value", s)
-                        .source(err.into())
+                        .attach_context("value", s)
                     })?
                     .as_u64(),
             )
@@ -777,13 +777,13 @@ fn check_pack(
     let header_len = PackHeaderRef::from_index_pack(&index_pack).size();
     let pack_header_len = PackHeaderLength::from_binary(&data.split_off(data.len() - 4))
         .map_err(|err| {
-            RusticError::new(
+            RusticError::with_source(
                 ErrorKind::Command,
                 "Error reading pack header length. This is a bug. Please report this error.",
+                err,
             )
-            .add_context("pack id", id.to_string())
-            .add_context("header length", header_len.to_string())
-            .source(err.into())
+            .attach_context("pack id", id.to_string())
+            .attach_context("header length", header_len.to_string())
         })?
         .to_u32();
     if pack_header_len != header_len {
@@ -796,12 +796,12 @@ fn check_pack(
 
     let pack_blobs = PackHeader::from_binary(&header)
         .map_err(|err| {
-            RusticError::new(
+            RusticError::with_source(
                 ErrorKind::Command,
                 "Error reading pack header. This is a bug. Please report this error.",
+                err,
             )
-            .add_context("pack id", id.to_string())
-            .source(err.into())
+            .attach_context("pack id", id.to_string())
         })?
         .into_blobs();
     let mut blobs = index_pack.blobs;

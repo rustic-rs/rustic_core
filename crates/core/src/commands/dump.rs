@@ -36,7 +36,7 @@ pub(crate) fn dump<P, S: IndexedFull>(
             ErrorKind::Command,
             "Dump is not supported for non-file node types. You could try to use `cat` instead.",
         )
-        .add_context("node type", node.node_type.to_string()));
+        .attach_context("node type", node.node_type.to_string()));
     }
 
     for id in node.content.as_ref().unwrap() {

@@ -167,9 +167,8 @@ impl RestBackend {
         };
 
         let url = Url::parse(&url).map_err(|err| {
-            RusticError::new(ErrorKind::Parsing, "URL parsing failed")
-                .add_context("url", url)
-                .source(err.into())
+            RusticError::with_source(ErrorKind::Parsing, "URL parsing failed", err)
+                .attach_context("url", url)
         })?;
 
         let mut headers = HeaderMap::new();
@@ -180,8 +179,7 @@ impl RestBackend {
             .timeout(constants::DEFAULT_TIMEOUT) // set default timeout to 10 minutes (we can have *large* packfiles)
             .build()
             .map_err(|err| {
-                RusticError::new(ErrorKind::Backend, "Failed to build HTTP client")
-                    .source(err.into())
+                RusticError::with_source(ErrorKind::Backend, "Failed to build HTTP client", err)
             })?;
         let mut backoff = LimitRetryBackoff::default();
 
@@ -192,33 +190,36 @@ impl RestBackend {
                     "false" | "off" => 0,
                     "default" => constants::DEFAULT_RETRY,
                     _ => usize::from_str(&value).map_err(|err| {
-                        RusticError::new(
+                        RusticError::with_source(
                             ErrorKind::Parsing,
                             "Cannot parse value, value not supported for option retry.",
+                            err,
                         )
-                        .add_context("value", value)
-                        .add_context("option", "retry")
-                        .source(err.into())
+                        .attach_context("value", value)
+                        .attach_context("option", "retry")
                     })?,
                 };
                 backoff.max_retries = max_retries;
             } else if option == "timeout" {
                 let timeout = humantime::Duration::from_str(&value).map_err(|err| {
-                    RusticError::new(
+                    RusticError::with_source(
                         ErrorKind::Parsing,
                         "Could not parse value as `humantime` duration.",
+                        err,
                     )
-                    .add_context("value", value)
-                    .add_context("option", "timeout")
-                    .source(err.into())
+                    .attach_context("value", value)
+                    .attach_context("option", "timeout")
                 })?;
 
                 client = ClientBuilder::new()
                     .timeout(*timeout)
                     .build()
                     .map_err(|err| {
-                        RusticError::new(ErrorKind::Backend, "Failed to build HTTP client")
-                            .source(err.into())
+                        RusticError::with_source(
+                            ErrorKind::Backend,
+                            "Failed to build HTTP client",
+                            err,
+                        )
                     })?;
             }
         }
@@ -306,11 +307,10 @@ impl ReadBackend for RestBackend {
         };
 
         let url = self.url.join(&path).map_err(|err| {
-            RusticError::new(ErrorKind::Parsing, "Joining URL failed")
-                .add_context("url", self.url.as_str())
-                .add_context("tpe", tpe.to_string())
-                .add_context("tpe dir", tpe.dirname().to_string())
-                .source(err.into())
+            RusticError::with_source(ErrorKind::Parsing, "Joining URL failed", err)
+                .attach_context("url", self.url.as_str())
+                .attach_context("tpe", tpe.to_string())
+                .attach_context("tpe dir", tpe.dirname().to_string())
         })?;
 
         backoff::retry_notify(
@@ -407,12 +407,11 @@ impl ReadBackend for RestBackend {
         let offset2 = offset + length - 1;
         let header_value = format!("bytes={offset}-{offset2}");
         let url = self.url(tpe, id).map_err(|err| {
-            RusticError::new(ErrorKind::Parsing, "Joining URL failed")
-                .add_context("url", self.url.as_str())
-                .add_context("tpe", tpe.to_string())
-                .add_context("tpe dir", tpe.dirname().to_string())
-                .add_context("id", id.to_string())
-                .source(err.into())
+            RusticError::with_source(ErrorKind::Parsing, "Joining URL failed", err)
+                .attach_context("url", self.url.as_str())
+                .attach_context("tpe", tpe.to_string())
+                .attach_context("tpe dir", tpe.dirname().to_string())
+                .attach_context("id", id.to_string())
         })?;
 
         backoff::retry_notify(
@@ -433,11 +432,11 @@ impl ReadBackend for RestBackend {
 }
 
 fn construct_backoff_error(err: backoff::Error<reqwest::Error>) -> RusticError {
-    RusticError::new(
+    RusticError::with_source(
         ErrorKind::Backend,
         "Backoff failed, please check the logs for more information.",
+        err,
     )
-    .source(err.into())
 }
 
 fn construct_join_url_error(
@@ -446,12 +445,11 @@ fn construct_join_url_error(
     id: &Id,
     self_url: &Url,
 ) -> RusticError {
-    RusticError::new(ErrorKind::Parsing, "Joining URL failed")
-        .add_context("url", self_url.as_str())
-        .add_context("tpe", tpe.to_string())
-        .add_context("tpe dir", tpe.dirname().to_string())
-        .add_context("id", id.to_string())
-        .source(err.into())
+    RusticError::with_source(ErrorKind::Parsing, "Joining URL failed", err)
+        .attach_context("url", self_url.as_str())
+        .attach_context("tpe", tpe.to_string())
+        .attach_context("tpe dir", tpe.dirname().to_string())
+        .attach_context("id", id.to_string())
 }
 
 impl WriteBackend for RestBackend {
@@ -462,10 +460,9 @@ impl WriteBackend for RestBackend {
     /// * If the backoff failed.
     fn create(&self) -> RusticResult<()> {
         let url = self.url.join("?create=true").map_err(|err| {
-            RusticError::new(ErrorKind::Parsing, "Joining URL failed")
-                .add_context("url", self.url.as_str())
-                .add_context("join input", "?create=true")
-                .source(err.into())
+            RusticError::with_source(ErrorKind::Parsing, "Joining URL failed", err)
+                .attach_context("url", self.url.as_str())
+                .attach_context("join input", "?create=true")
         })?;
 
         backoff::retry_notify(

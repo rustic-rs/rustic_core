@@ -76,11 +76,11 @@ impl Drop for RcloneBackend {
 fn check_clone_version(rclone_version_output: &[u8]) -> RusticResult<()> {
     let rclone_version = std::str::from_utf8(rclone_version_output)
         .map_err(|err| {
-            RusticError::new(
+            RusticError::with_source(
                 ErrorKind::Parsing,
                 "Expected rclone version to be valid utf8, but it was not.",
+                err
             )
-            .source(err.into())
         })?
         .lines()
         .next()
@@ -93,9 +93,8 @@ fn check_clone_version(rclone_version_output: &[u8]) -> RusticResult<()> {
         .trim_start_matches(|c: char| !c.is_numeric());
 
     let mut parsed_version = Version::parse(rclone_version).map_err(|err| {
-        RusticError::new(ErrorKind::Parsing, "Error parsing rclone version.")
-            .add_context("version", rclone_version)
-            .source(err.into())
+        RusticError::with_source(ErrorKind::Parsing, "Error parsing rclone version.", err)
+            .attach_context("version", rclone_version)
     })?;
 
     // we need to set the pre and build fields to empty to make the comparison work
@@ -111,11 +110,11 @@ fn check_clone_version(rclone_version_output: &[u8]) -> RusticResult<()> {
     // reasonable lower bound for the version
     if VersionReq::parse("<1.52.2")
         .map_err(|err| {
-            RusticError::new(
+            RusticError::with_source(
                 ErrorKind::Parsing,
                 "Error parsing version requirement. This should not happen.",
+                err,
             )
-            .source(err.into())
         })?
         .matches(&parsed_version)
     {
@@ -123,7 +122,7 @@ fn check_clone_version(rclone_version_output: &[u8]) -> RusticResult<()> {
             ErrorKind::Unsupported,
             "Unsupported rclone version. We must not use rclone without authentication! Please upgrade to rclone >= 1.52.2!",
         )
-        .add_context("current version", rclone_version.to_string()));
+        .attach_context("current version", rclone_version.to_string()));
     }
 
     Ok(())
@@ -161,11 +160,11 @@ impl RcloneBackend {
         let use_password = options
             .get("use-password")
             .map(|v| v.parse().map_err(|err: ParseBoolError|
-                RusticError::new(
+                RusticError::with_source(
                     ErrorKind::Parsing,
                     "Expected 'use-password' to be a boolean, but it was not. Please check the configuration file.",
+                    err
                 )
-                .source(err.into())
             ))
             .transpose()?
             .unwrap_or(true);
@@ -174,10 +173,11 @@ impl RcloneBackend {
             let rclone_version_output = Command::new("rclone")
                 .arg("version")
                 .output()
-                .map_err(|err| RusticError::new(
+                .map_err(|err| RusticError::with_source(
                     ErrorKind::ExternalCommand,
                     "Experienced an error while running `rclone version` command. Please check if rclone is installed and in your PATH.",
-                ).source(err.into()))?
+                    err
+                ))?
                 .stdout;
 
             // if we want to use a password and rclone_command is not explicitly set,
@@ -193,11 +193,11 @@ impl RcloneBackend {
         rclone_command.push(' ');
         rclone_command.push_str(url.as_ref());
         let rclone_command: CommandInput = rclone_command.parse().map_err(
-            |err: CommandInputErrorKind| RusticError::new(
+            |err: CommandInputErrorKind| RusticError::with_source(
                 ErrorKind::Parsing,
                 "Expected rclone command to be valid, but it was not. Please check the configuration file.",
+                err
             )
-            .source(err.into())
         )?;
         debug!("starting rclone via {rclone_command:?}");
 
@@ -214,12 +214,13 @@ impl RcloneBackend {
             .stderr(Stdio::piped())
             .spawn()
             .map_err(|err|
-            RusticError::new(
+            RusticError::with_source(
                 ErrorKind::ExternalCommand,
                 "Experienced an error while running rclone. Please check if rclone is installed and working correctly.",
+                err
             )
-            .add_context("rclone command", rclone_command.to_string())
-            .source(err.into()))?;
+            .attach_context("rclone command", rclone_command.to_string())
+            )?;
 
         let mut stderr = BufReader::new(
             child
@@ -235,17 +236,17 @@ impl RcloneBackend {
             None => {
                 loop {
                     if let Some(status) = child.try_wait().map_err(|err|
-                        RusticError::new(
+                        RusticError::with_source(
                             ErrorKind::ExternalCommand,
                             "Experienced an error while running rclone. Please check if rclone is installed and working correctly.",
+                            err
                         )
-                        .source(err.into())
                     )? {
                         return Err(
                             RusticError::new(
                                 ErrorKind::ExternalCommand,
                                 "rclone exited before it could start the REST server. Please check the exit status for more information.",
-                            ).add_context("exit status", status.to_string())
+                            ).attach_context("exit status", status.to_string())
                         );
                     }
                     let mut line = String::new();
@@ -253,11 +254,11 @@ impl RcloneBackend {
                     _ = stderr
                         .read_line(&mut line)
                         .map_err(|err|
-                            RusticError::new(
+                            RusticError::with_source(
                                 ErrorKind::Io,
                                 "Experienced an error while reading rclone output. Please check if rclone is installed and working correctly.",
+                                err
                             )
-                            .source(err.into())
                         )?;
 
                     match line.find(constants::SEARCHSTRING) {
@@ -282,7 +283,7 @@ impl RcloneBackend {
                     ErrorKind::Io,
                     "Please make sure, the URL starts with 'http://'!",
                 )
-                .add_context("url", rest_url));
+                .attach_context("url", rest_url));
             }
             rest_url = format!("http://{user}:{password}@{}", &rest_url[7..]);
         }

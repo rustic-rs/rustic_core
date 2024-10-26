@@ -23,6 +23,7 @@ use crate::{
     repofile::{BlobType, Metadata, Node, NodeType, SnapshotFile},
     repository::{IndexedFull, IndexedTree, Repository},
     vfs::format::FormattedSnapshot,
+    ErrorKind, RusticError,
 };
 
 /// [`VfsErrorKind`] describes the errors that can be returned from the Virtual File System
@@ -276,12 +277,26 @@ impl Vfs {
                     && last_tree == snap.tree
                 {
                     if let Some(name) = last_name {
-                        tree.add_tree(path, VfsTree::Link(name))
-                            .map_err(|_err| todo!("Error transition"))?;
+                        tree.add_tree(path, VfsTree::Link(name.clone())).map_err(|err| {
+                            RusticError::with_source(
+                                ErrorKind::Vfs,
+                                "Failed to add a link to root tree. This should not happen, please report this bug.",
+                                err
+                            )
+                            .attach_context("path", path.display().to_string())
+                            .attach_context("name", name.to_string_lossy())
+                        })?;
                     }
                 } else {
-                    tree.add_tree(path, VfsTree::RusticTree(snap.tree))
-                        .map_err(|_err| todo!("Error transition"))?;
+                    tree.add_tree(path, VfsTree::RusticTree(snap.tree)).map_err(|err| {
+                            RusticError::with_source(
+                                ErrorKind::Vfs,
+                                "Failed to add repository tree to root tree. This should not happen, please report this bug.",
+                                err
+                            )
+                            .attach_context("path", path.display().to_string())
+                            .attach_context("tree id", snap.tree.to_string())
+                        })?;
                 }
             }
             last_parent = parent_path;
@@ -296,8 +311,17 @@ impl Vfs {
                 for (path, target) in dirs_for_link {
                     if let (Some(mut path), Some(target)) = (path, target) {
                         path.push("latest");
-                        tree.add_tree(&path, VfsTree::Link(target))
-                            .map_err(|_err| todo!("Error transition"))?;
+                        tree.add_tree(&path, VfsTree::Link(target.clone()))
+                            .map_err(|err| {
+                            RusticError::with_source(
+                                ErrorKind::Vfs,
+                                "Failed to link latest entries to root tree. This should not happen, please report this bug.",
+                                err
+                            )
+                            .attach_context("latest", "link")
+                            .attach_context("path", path.display().to_string())
+                            .attach_context("target", target.to_string_lossy())
+                        })?;
                     }
                 }
             }
@@ -306,7 +330,16 @@ impl Vfs {
                     if let Some(mut path) = path {
                         path.push("latest");
                         tree.add_tree(&path, VfsTree::RusticTree(subtree))
-                            .map_err(|_err| todo!("Error transition"))?;
+                            .map_err(|err| {
+                            RusticError::with_source(
+                                ErrorKind::Vfs,
+                                "Failed to add latest subtree to root tree. This should not happen, please report this bug.",
+                                err
+                            )
+                            .attach_context("latest", "dir")
+                            .attach_context("path", path.display().to_string())
+                            .attach_context("tree id", subtree.to_string())
+                        })?;
                     }
                 }
             }
@@ -337,11 +370,14 @@ impl Vfs {
         path: &Path,
     ) -> RusticResult<Node> {
         let meta = Metadata::default();
-        match self
-            .tree
-            .get_path(path)
-            .map_err(|_err| todo!("Error transition"))?
-        {
+        match self.tree.get_path(path).map_err(|err| {
+            RusticError::with_source(
+                ErrorKind::Vfs,
+                "Failed to get tree at given path. This should not happen, please report this bug.",
+                err,
+            )
+            .attach_context("path", path.display().to_string())
+        })? {
             VfsPath::RusticPath(tree_id, path) => Ok(repo.node_from_path(*tree_id, &path)?),
             VfsPath::VirtualTree(_) => {
                 Ok(Node::new(String::new(), NodeType::Dir, meta, None, None))
@@ -384,11 +420,14 @@ impl Vfs {
         repo: &Repository<P, S>,
         path: &Path,
     ) -> RusticResult<Vec<Node>> {
-        let result = match self
-            .tree
-            .get_path(path)
-            .map_err(|_err| todo!("Error transition"))?
-        {
+        let result = match self.tree.get_path(path).map_err(|err| {
+            RusticError::with_source(
+                ErrorKind::Vfs,
+                "Failed to get tree at given path. This should not happen, please report this bug.",
+                err,
+            )
+            .attach_context("path", path.display().to_string())
+        })? {
             VfsPath::RusticPath(tree_id, path) => {
                 let node = repo.node_from_path(*tree_id, &path)?;
                 if node.is_dir() {

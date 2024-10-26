@@ -82,13 +82,16 @@ pub struct Id(
 );
 
 impl FromStr for Id {
-    type Err = RusticError;
+    type Err = Box<RusticError>;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let mut id = Self::default();
         hex::decode_to_slice(s, &mut id.0).map_err(|err| {
-            RusticError::new(ErrorKind::Parsing,
-                format!("Failed to decode hex string into Id. The string must be a valid hexadecimal string: {s}")
-            ).source(err.into())
+            RusticError::with_source(
+                ErrorKind::Parsing,
+                "Failed to decode hex string into Id. The value must be a valid hexadecimal string.",
+                err
+            )
+            .attach_context("value", s)
         })?;
 
         Ok(id)

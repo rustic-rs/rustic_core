@@ -74,7 +74,7 @@ pub mod in_memory_backend {
         ) -> RusticResult<()> {
             if self.0.write().unwrap()[tpe].insert(*id, buf).is_some() {
                 return Err(RusticError::new(ErrorKind::Backend, "Id already exists.")
-                    .add_context("id", id.to_string()));
+                    .attach_context("id", id.to_string()));
             }
 
             Ok(())
@@ -83,7 +83,7 @@ pub mod in_memory_backend {
         fn remove(&self, tpe: FileType, id: &Id, _cacheable: bool) -> RusticResult<()> {
             if self.0.write().unwrap()[tpe].remove(id).is_none() {
                 return Err(RusticError::new(ErrorKind::Backend, "Id does not exist.")
-                    .add_context("id", id.to_string()));
+                    .attach_context("id", id.to_string()));
             }
             Ok(())
         }

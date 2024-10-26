@@ -9,9 +9,9 @@ fn error() -> RusticError {
         ErrorKind::Io,
         "A file could not be read, make sure the file is existing and readable by the system.",
     )
-    .status(Status::Permanent)
-    .severity(Severity::Error)
-    .code("E001".into())
+    .attach_status(Status::Permanent)
+    .attach_severity(Severity::Error)
+    .attach_error_code("E001".into())
     .add_context("path", "/path/to/file")
     .add_context("called", "used s3 backend")
     .source(std::io::Error::new(std::io::ErrorKind::Other, "networking error").into())

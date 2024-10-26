@@ -23,6 +23,7 @@ use crate::{
     index::{indexer::SharedIndexer, ReadGlobalIndex},
     progress::Progress,
     repofile::configfile::ConfigFile,
+    ErrorKind, RusticError,
 };
 
 /// The `FileArchiver` is responsible for archiving files.
@@ -144,7 +145,14 @@ impl<'a, BE: DecryptWriteBackend, I: ReadGlobalIndex> FileArchiver<'a, BE, I> {
     ) -> RusticResult<(Node, u64)> {
         let chunks: Vec<_> = ChunkIter::new(
             r,
-            usize::try_from(node.meta.size).map_err(|_err| todo!("Error transition"))?,
+            usize::try_from(node.meta.size).map_err(|err| {
+                RusticError::with_source(
+                    ErrorKind::Conversion,
+                    "Failed to convert node size to usize",
+                    err,
+                )
+                .attach_context("size", node.meta.size.to_string())
+            })?,
             self.rabin.clone(),
         )
         .map(|chunk| {

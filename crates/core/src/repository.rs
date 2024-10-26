@@ -189,12 +189,12 @@ impl RepositoryOptions {
             (Some(pwd), _, _) => Ok(Some(pwd.clone())),
             (_, Some(file), _) => {
                 let mut file = BufReader::new(File::open(file).map_err(|err| {
-                    RusticError::new(
+                    RusticError::with_source(
                         ErrorKind::Password,
                         "Opening password file failed. Is the path correct?",
+                        err,
                     )
-                    .add_context("path", file.display().to_string())
-                    .source(err.into())
+                    .attach_context("path", file.display().to_string())
                 })?);
                 Ok(Some(read_password_from_reader(&mut file)?))
             }
@@ -209,12 +209,12 @@ impl RepositoryOptions {
                     Ok(process) => process,
                     Err(err) => {
                         error!("password-command could not be executed: {}", err);
-                        return Err(RusticError::new(
+                        return Err(RusticError::with_source(
                             ErrorKind::Password,
                             "Password command could not be executed.",
+                            err,
                         )
-                        .add_context("command", command.to_string())
-                        .source(err.into()));
+                        .attach_context("command", command.to_string()));
                     }
                 };
 
@@ -222,12 +222,12 @@ impl RepositoryOptions {
                     Ok(output) => output,
                     Err(err) => {
                         error!("error reading output from password-command: {}", err);
-                        return Err(RusticError::new(
+                        return Err(RusticError::with_source(
                             ErrorKind::Password,
                             "Error reading output from password command.",
+                            err,
                         )
-                        .add_context("command", command.to_string())
-                        .source(err.into()));
+                        .attach_context("command", command.to_string()));
                     }
                 };
 
@@ -242,8 +242,8 @@ impl RepositoryOptions {
                         ErrorKind::Password,
                         "Password command did not exit successfully.",
                     )
-                    .add_context("command", command.to_string())
-                    .add_context("status", s));
+                    .attach_context("command", command.to_string())
+                    .attach_context("status", s));
                 }
 
                 let mut pwd = BufReader::new(&*output.stdout);
@@ -265,9 +265,12 @@ impl RepositoryOptions {
 pub fn read_password_from_reader(file: &mut impl BufRead) -> RusticResult<String> {
     let mut password = String::new();
     _ = file.read_line(&mut password).map_err(|err| {
-        RusticError::new(ErrorKind::Password, "Reading password from reader failed. Is the file empty? Please check the file and the password.")
-            .add_context("password", password.clone())
-            .source(err.into())
+        RusticError::with_source(
+            ErrorKind::Password, 
+            "Reading password from reader failed. Is the file empty? Please check the file and the password.",
+            err
+        )
+        .attach_context("password", password.clone())
     })?;
 
     // Remove the \n from the line if present
@@ -370,7 +373,7 @@ impl<P> Repository<P, ()> {
                     ErrorKind::Command,
                     "No `%id` specified in warm-up command. Please specify `%id` in the command.",
                 )
-                .add_context("command", warm_up.to_string()));
+                .attach_context("command", warm_up.to_string()));
             }
             info!("using warm-up command {warm_up}");
         }
@@ -444,7 +447,7 @@ impl<P, S> Repository<P, S> {
                 ErrorKind::Config,
                 "More than one repository found. Please check the config file.",
             )
-            .add_context("name", self.name.clone())),
+            .attach_context("name", self.name.clone())),
         }
     }
 
@@ -523,7 +526,7 @@ impl<P, S> Repository<P, S> {
                 ErrorKind::Config,
                 "No repository config file found. Please check the repository.",
             )
-            .add_context("name", self.name.clone()),
+            .attach_context("name", self.name.clone()),
         )?;
 
         if let Some(be_hot) = &self.be_hot {
@@ -536,7 +539,7 @@ impl<P, S> Repository<P, S> {
                     ErrorKind::Key,
                     "Keys of hot and cold repositories don't match. Please check the keys.",
                 )
-                .add_context("name", self.name.clone()));
+                .attach_context("name", self.name.clone()));
             }
         }
 
@@ -587,7 +590,7 @@ impl<P, S> Repository<P, S> {
                 ErrorKind::Password,
                 "No password given, or Password was empty. Please specify a valid password.",
             )
-            .add_context("name", self.name.clone()),
+            .attach_context("name", self.name.clone()),
         )?;
 
         self.init_with_password(&password, key_opts, config_opts)
@@ -627,7 +630,7 @@ impl<P, S> Repository<P, S> {
                 ErrorKind::Config,
                 "Config file already exists. Please check the repository.",
             )
-            .add_context("name", self.name.clone()));
+            .attach_context("name", self.name.clone()));
         }
 
         let (key, config) = commands::init::init(&self, pass, key_opts, config_opts)?;
@@ -1633,7 +1636,7 @@ impl<P, S: IndexedFull> Repository<P, S> {
                 ErrorKind::Index,
                 "BlobID not found in index, but should be there. This is a bug. Please report it.",
             )
-            .add_context("blob id", blob_id.to_string())
+            .attach_context("blob id", blob_id.to_string())
         })?;
 
         Ok(ie)

@@ -151,11 +151,11 @@ impl KeyFile {
 
         let key = serde_json::from_slice::<MasterKey>(&dec_data)
             .map_err(|err| {
-                RusticError::new(
+                RusticError::with_source(
                     ErrorKind::Key,
                     "Deserializing master key from slice failed. Please check the key file.",
+                    err,
                 )
-                .source(err.into())
             })?
             .key();
 

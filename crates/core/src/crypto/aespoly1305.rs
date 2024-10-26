@@ -94,13 +94,13 @@ impl CryptoKey for Key {
         Aes256CtrPoly1305Aes::new(&self.0)
             .decrypt(nonce, &data[16..])
             .map_err(|err| {
-                RusticError::new(
+                RusticError::with_source(
                     ErrorKind::Cryptography,
                     "Data decryption failed, MAC check failed.",
+                    err,
                 )
-                .add_context("nonce", format!("{nonce:?}"))
-                .source(err.into())
-                .code("C001".into())
+                .attach_context("nonce", format!("{nonce:?}"))
+                .attach_error_code("C001".into())
             })
     }
 
@@ -123,9 +123,8 @@ impl CryptoKey for Key {
         let tag = Aes256CtrPoly1305Aes::new(&self.0)
             .encrypt_in_place_detached(&nonce, &[], &mut res[16..])
             .map_err(|err| {
-                RusticError::new(ErrorKind::Cryptography, "Data encryption failed.")
-                    .add_context("nonce", format!("{nonce:?}"))
-                    .source(err.into())
+                RusticError::with_source(ErrorKind::Cryptography, "Data encryption failed.", err)
+                    .attach_context("nonce", format!("{nonce:?}"))
             })?;
         res.extend_from_slice(&tag);
         Ok(res)

@@ -7,7 +7,7 @@ use std::{
 
 use crate::{
     backend::{ReadSource, ReadSourceEntry},
-    error::RusticResult,
+    error::{ErrorKind, RusticError, RusticResult},
     repository::command_input::{CommandInput, CommandInputErrorKind},
 };
 
@@ -70,6 +70,14 @@ impl ReadSource for ChildStdoutSource {
 
     fn entries(&self) -> Self::Iter {
         let open = self.process.lock().unwrap().stdout.take();
-        once(ReadSourceEntry::from_path(self.path.clone(), open))
+        once(
+            ReadSourceEntry::from_path(self.path.clone(), open).map_err(|err| {
+                RusticError::with_source(
+                    ErrorKind::Backend,
+                    "Failed to create ReadSourceEntry from ChildStdout",
+                    err,
+                )
+            }),
+        )
     }
 }

@@ -206,8 +206,8 @@ pub trait ReadIndex {
             || {
                 Err(
                     RusticError::new(ErrorKind::Index, "Blob not found in index")
-                        .add_context("blob id", id.to_string())
-                        .add_context("blob type", tpe.to_string()),
+                        .attach_context("blob id", id.to_string())
+                        .attach_context("blob type", tpe.to_string()),
                 )
             },
             |ie| ie.read_data(be),

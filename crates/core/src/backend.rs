@@ -492,11 +492,10 @@ pub struct ReadSourceEntry<O> {
 }
 
 impl<O> ReadSourceEntry<O> {
-    fn from_path(path: PathBuf, open: Option<O>) -> RusticResult<Self> {
+    fn from_path(path: PathBuf, open: Option<O>) -> BackendResult<Self> {
         let node = Node::new_node(
             path.file_name()
-                .ok_or_else(|| BackendErrorKind::PathNotAllowed(path.clone()))
-                .map_err(|_err| todo!("Error transition"))?,
+                .ok_or_else(|| BackendErrorKind::PathNotAllowed(path.clone()))?,
             NodeType::File,
             Metadata::default(),
         );

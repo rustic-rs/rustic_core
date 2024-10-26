@@ -225,12 +225,12 @@ pub(crate) fn collect_and_prepare<P: ProgressBars, S: IndexedFull>(
                     if !dry_run {
                         dest.create_dir(path)
                             .map_err(|err| {
-                                RusticError::new(
+                                RusticError::with_source(
                                     ErrorKind::Io,
                                     "Failed to create the directory. Please check the path and try again.",
+                                    err
                                 )
-                                .add_context("path", path.display().to_string())
-                                .source(err.into())
+                                .attach_context("path", path.display().to_string())
                             })?;
                     }
                 }
@@ -453,12 +453,12 @@ fn restore_contents<P: ProgressBars, S: Open>(
         if *size == 0 {
             let path = &filenames[i];
             dest.set_length(path, *size).map_err(|err| {
-                RusticError::new(
+                RusticError::with_source(
                     ErrorKind::Io,
                     "Failed to set the length of the file. Please check the path and try again.",
+                    err,
                 )
-                .add_context("path", path.display().to_string())
-                .source(err.into())
+                .attach_context("path", path.display().to_string())
             })?;
         }
     }
@@ -506,12 +506,12 @@ fn restore_contents<P: ProgressBars, S: Open>(
         .num_threads(threads)
         .build()
         .map_err(|err| {
-            RusticError::new(
+            RusticError::with_source(
                 ErrorKind::Multithreading,
                 "Failed to create the thread pool. Please try again.",
+                err,
             )
-            .add_context("num threads", threads.to_string())
-            .source(err.into())
+            .attach_context("num threads", threads.to_string())
         })?;
 
     pool.in_place_scope(|s| {
@@ -721,12 +721,12 @@ impl RestorePlan {
             let length = bl.data_length();
 
             let usize_length = usize::try_from(length).map_err(|err| {
-                RusticError::new(
+                RusticError::with_source(
                     ErrorKind::Conversion,
                     "Failed to convert the length to usize. Please try again.",
+                    err,
                 )
-                .add_context("length", length.to_string())
-                .source(err.into())
+                .attach_context("length", length.to_string())
             })?;
 
             let matches = open_file

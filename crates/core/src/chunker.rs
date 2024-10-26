@@ -96,9 +96,9 @@ impl<R: Read + Send> ChunkIter<R> {
 }
 
 impl<R: Read + Send> Iterator for ChunkIter<R> {
-    type Item = io::Result<Vec<u8>>;
+    type Item = RusticResult<Vec<u8>>;
 
-    fn next(&mut self) -> Option<io::Result<Vec<u8>>> {
+    fn next(&mut self) -> Option<Self::Item> {
         if self.finished {
             return None;
         }
@@ -120,7 +120,13 @@ impl<R: Read + Send> Iterator for ChunkIter<R> {
             .read_to_end(&mut vec)
         {
             Ok(size) => size,
-            Err(err) => return Some(Err(err)),
+            Err(err) => {
+                return Some(Err(RusticError::with_source(
+                    ErrorKind::Io,
+                    "Failed to read from reader in iterator",
+                    err,
+                )));
+            }
         };
 
         // If self.min_size is not reached, we are done.
@@ -158,8 +164,12 @@ impl<R: Read + Send> Iterator for ChunkIter<R> {
                     }
 
                     Err(ref e) if e.kind() == io::ErrorKind::Interrupted => continue,
-                    Err(e) => {
-                        return Some(Err(e));
+                    Err(err) => {
+                        return Some(Err(RusticError::with_source(
+                            ErrorKind::Io,
+                            "Failed to read from reader in iterator",
+                            err,
+                        )));
                     }
                 }
             }
