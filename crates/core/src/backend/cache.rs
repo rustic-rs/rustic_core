@@ -1,7 +1,7 @@
 use std::{
     collections::HashMap,
     fs::{self, File},
-    io::{ErrorKind, Read, Seek, SeekFrom, Write},
+    io::{self, Read, Seek, SeekFrom, Write},
     path::PathBuf,
     sync::Arc,
 };
@@ -13,31 +13,10 @@ use walkdir::WalkDir;
 
 use crate::{
     backend::{FileType, ReadBackend, WriteBackend},
-    error::RusticResult,
+    error::{ErrorKind, RusticError, RusticResult},
     id::Id,
     repofile::configfile::RepositoryId,
 };
-
-/// [`CacheBackendErrorKind`] describes the errors that can be returned by a Caching action in Backends
-#[derive(thiserror::Error, Debug, displaydoc::Display)]
-pub enum CacheBackendErrorKind {
-    /// Cache directory could not be determined, please set the environment variable XDG_CACHE_HOME or HOME!
-    NoCacheDirectory,
-    /// Error in cache backend {context} for {tpe:?} with {id}: {source}
-    Io {
-        context: String,
-        source: std::io::Error,
-        tpe: Option<FileType>,
-        id: Id,
-    },
-    /// Ensuring tag failed for cache directory {path}: {source}
-    EnsureTagFailed {
-        source: std::io::Error,
-        path: PathBuf,
-    },
-}
-
-pub(crate) type CacheBackendResult<T> = Result<T, CacheBackendErrorKind>;
 
 /// Backend that caches data.
 ///
@@ -260,39 +239,50 @@ impl Cache {
         let mut path = if let Some(p) = path {
             p
         } else {
-            let mut dir = cache_dir()
-                .ok_or_else(|| CacheBackendErrorKind::NoCacheDirectory)
-                .map_err(|_err| todo!("Error transition"))?;
+            let mut dir = cache_dir().ok_or_else(|| 
+                RusticError::new(
+                    ErrorKind::Backend,
+                    "Cache directory could not be determined, please set the environment variable XDG_CACHE_HOME or HOME!" 
+                )
+            )?;
             dir.push("rustic");
             dir
         };
 
         fs::create_dir_all(&path)
-            .map_err(|err| CacheBackendErrorKind::Io {
-                context: "while creating cache directory".into(),
-                source: err,
-                tpe: None,
-                id: id.clone().into_inner(),
-            })
-            .map_err(|_err| todo!("Error transition"))?;
+            .map_err(|err| 
+                RusticError::with_source(
+                    ErrorKind::Io,
+                    "Failed to create cache directory",
+                    err
+                )
+                .attach_context("path", path.display().to_string())
+                .attach_context("id", id.to_string())
+        )?;
 
         cachedir::ensure_tag(&path)
-            .map_err(|err| CacheBackendErrorKind::EnsureTagFailed {
-                source: err,
-                path: path.clone(),
-            })
-            .map_err(|_err| todo!("Error transition"))?;
+            .map_err(|err| 
+                RusticError::with_source(
+                    ErrorKind::Io,
+                    "Failed to ensure cache directory tag",
+                    err
+                )
+                .attach_context("path", path.display().to_string())
+                .attach_context("id", id.to_string())
+        )?;
 
         path.push(id.to_hex());
 
         fs::create_dir_all(&path)
-            .map_err(|err| CacheBackendErrorKind::Io {
-                context: "while creating cache directory with id".into(),
-                source: err,
-                tpe: None,
-                id: id.clone().into_inner(),
-            })
-            .map_err(|_err| todo!("Error transition"))?;
+            .map_err(|err| 
+                RusticError::with_source(
+                    ErrorKind::Io,
+                    "Failed to create cache directory with id",
+                    err
+                )
+                .attach_context("path", path.display().to_string())
+                .attach_context("id", id.to_string())
+        )?;
 
         Ok(Self { path })
     }
@@ -420,20 +410,26 @@ impl Cache {
     /// [`CacheBackendErrorKind::FromIoError`]: crate::error::CacheBackendErrorKind::FromIoError
     pub fn read_full(&self, tpe: FileType, id: &Id) -> RusticResult<Option<Bytes>> {
         trace!("cache reading tpe: {:?}, id: {}", &tpe, &id);
-        match fs::read(self.path(tpe, id)) {
+        
+        let path = self.path(tpe, id);
+        
+        match fs::read(&path) {
             Ok(data) => {
                 trace!("cache hit!");
                 Ok(Some(data.into()))
             }
-            Err(err) if err.kind() == ErrorKind::NotFound => Ok(None),
-            Err(err) => Err(CacheBackendErrorKind::Io {
-                context: "while reading full data of file".into(),
-                source: err,
-                tpe: Some(tpe.clone()),
-                id: id.clone(),
-            })
-            .map_err(|_err| todo!("Error transition")),
-        }
+            Err(err) if err.kind() == io::ErrorKind::NotFound => Ok(None),
+            Err(err) => Err(
+                RusticError::with_source(
+                    ErrorKind::Io,
+                    "Failed to read full data of file",
+                    err
+                )
+                .attach_context("path", path.display().to_string())
+                .attach_context("tpe", tpe.to_string())
+                .attach_context("id", id.to_string())
+                )
+            }
     }
 
     /// Reads partial data of the given file.
@@ -463,26 +459,49 @@ impl Cache {
             &id,
             &offset
         );
+
         let mut file = match File::open(self.path(tpe, id)) {
             Ok(file) => file,
-            Err(err) if err.kind() == ErrorKind::NotFound => return Ok(None),
+            Err(err) if err.kind() == io::ErrorKind::NotFound => return Ok(None),
             Err(err) => {
-                return Err(CacheBackendErrorKind::Io {
-                    context: "while opening file".into(),
-                    source: err,
-                    tpe: Some(tpe.clone()),
-                    id: id.clone(),
-                })
-                .map_err(|_err| todo!("Error transition"))
+                return Err(
+                    RusticError::with_source(
+                        ErrorKind::Io,
+                        "Failed to open file",
+                        err
+                    )
+                    .attach_context("tpe", tpe.to_string())
+                    .attach_context("id", id.to_string())
+            )
             }
         };
+
         _ = file
             .seek(SeekFrom::Start(u64::from(offset)))
-            .map_err(|_err| todo!("Error transition"))?;
+            .map_err(|err| {
+                RusticError::with_source(ErrorKind::Io, "Failed to seek in file", err)
+                    .attach_context("tpe", tpe.to_string())
+                    .attach_context("id", id.to_string())
+                    .attach_context("offset", offset.to_string())
+            })?;
+
         let mut vec = vec![0; length as usize];
+
         file.read_exact(&mut vec)
-            .map_err(|_err| todo!("Error transition"))?;
+            .map_err(|err| 
+                RusticError::with_source(
+                    ErrorKind::Io,
+                    "Failed to read from file",
+                    err
+                )
+                .attach_context("tpe", tpe.to_string())
+                .attach_context("id", id.to_string())
+                .attach_context("offset", offset.to_string())
+                .attach_context("length", length.to_string())
+            )?;
+
         trace!("cache hit!");
+
         Ok(Some(vec.into()))
     }
 
@@ -502,14 +521,19 @@ impl Cache {
     pub fn write_bytes(&self, tpe: FileType, id: &Id, buf: &Bytes) -> RusticResult<()> {
         trace!("cache writing tpe: {:?}, id: {}", &tpe, &id);
 
-        fs::create_dir_all(self.dir(tpe, id))
-            .map_err(|err| CacheBackendErrorKind::Io {
-                context: "while creating directories".into(),
-                source: err,
-                tpe: Some(tpe.clone()),
-                id: id.clone(),
-            })
-            .map_err(|_err| todo!("Error transition"))?;
+        let dir = self.dir(tpe, id);
+
+        fs::create_dir_all(&dir)
+            .map_err(|err| 
+                RusticError::with_source(
+                    ErrorKind::Io,
+                    "Failed to create directories",
+                    err
+                )
+                .attach_context("path", dir.display().to_string())
+                .attach_context("tpe", tpe.to_string())
+                .attach_context("id", id.to_string())
+        )?;
 
         let filename = self.path(tpe, id);
 
@@ -518,22 +542,26 @@ impl Cache {
             .truncate(true)
             .write(true)
             .open(&filename)
-            .map_err(|err| CacheBackendErrorKind::Io {
-                context: "while opening file paths".into(),
-                source: err,
-                tpe: Some(tpe.clone()),
-                id: id.clone(),
-            })
-            .map_err(|_err| todo!("Error transition"))?;
+            .map_err(|err| 
+                RusticError::with_source(
+                    ErrorKind::Io,
+                    "Failed to open file",
+                    err
+                )
+                .attach_context("path", filename.display().to_string())
+        )?;
 
         file.write_all(buf)
-            .map_err(|err| CacheBackendErrorKind::Io {
-                context: "while writing to buffer".into(),
-                source: err,
-                tpe: Some(tpe.clone()),
-                id: id.clone(),
-            })
-            .map_err(|_err| todo!("Error transition"))?;
+            .map_err(|err| 
+                RusticError::with_source(
+                    ErrorKind::Io,
+                    "Failed to write to buffer",
+                    err
+                )
+                .attach_context("path", filename.display().to_string())
+                .attach_context("tpe", tpe.to_string())
+                .attach_context("id", id.to_string())
+        )?;
 
         Ok(())
     }
@@ -554,13 +582,16 @@ impl Cache {
         trace!("cache writing tpe: {:?}, id: {}", &tpe, &id);
         let filename = self.path(tpe, id);
         fs::remove_file(&filename)
-            .map_err(|err| CacheBackendErrorKind::Io {
-                context: format!("while removing file: {filename:?}"),
-                source: err,
-                tpe: Some(tpe.clone()),
-                id: id.clone(),
-            })
-            .map_err(|_err| todo!("Error transition"))?;
+            .map_err(|err| 
+                RusticError::with_source(
+                    ErrorKind::Io,
+                    "Failed to remove file",
+                    err
+                )
+                .attach_context("path", filename.display().to_string())
+                .attach_context("tpe", tpe.to_string())
+                .attach_context("id", id.to_string())
+        )?;
 
         Ok(())
     }
