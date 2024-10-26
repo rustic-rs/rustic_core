@@ -2,7 +2,6 @@ use std::{
     collections::HashMap,
     io::{BufRead, BufReader},
     process::{Child, Command, Stdio},
-    str::ParseBoolError,
     thread::JoinHandle,
 };
 
@@ -18,8 +17,7 @@ use semver::{BuildMetadata, Prerelease, Version, VersionReq};
 use crate::rest::RestBackend;
 
 use rustic_core::{
-    CommandInput, CommandInputErrorKind, ErrorKind, FileType, Id, ReadBackend, RusticError,
-    RusticResult, WriteBackend,
+    CommandInput, ErrorKind, FileType, Id, ReadBackend, RusticError, RusticResult, WriteBackend,
 };
 
 pub(super) mod constants {
@@ -159,7 +157,7 @@ impl RcloneBackend {
         let rclone_command = options.get("rclone-command");
         let use_password = options
             .get("use-password")
-            .map(|v| v.parse().map_err(|err: ParseBoolError|
+            .map(|v| v.parse().map_err(|err|
                 RusticError::with_source(
                     ErrorKind::Parsing,
                     "Expected 'use-password' to be a boolean, but it was not. Please check the configuration file.",
@@ -193,7 +191,7 @@ impl RcloneBackend {
         rclone_command.push(' ');
         rclone_command.push_str(url.as_ref());
         let rclone_command: CommandInput = rclone_command.parse().map_err(
-            |err: CommandInputErrorKind| RusticError::with_source(
+            |err| RusticError::with_source(
                 ErrorKind::Parsing,
                 "Expected rclone command to be valid, but it was not. Please check the configuration file.",
                 err

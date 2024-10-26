@@ -431,7 +431,7 @@ impl ReadBackend for RestBackend {
     }
 }
 
-fn construct_backoff_error(err: backoff::Error<reqwest::Error>) -> RusticError {
+fn construct_backoff_error(err: backoff::Error<reqwest::Error>) -> Box<RusticError> {
     RusticError::with_source(
         ErrorKind::Backend,
         "Backoff failed, please check the logs for more information.",
@@ -444,7 +444,7 @@ fn construct_join_url_error(
     tpe: FileType,
     id: &Id,
     self_url: &Url,
-) -> RusticError {
+) -> Box<RusticError> {
     RusticError::with_source(ErrorKind::Parsing, "Joining URL failed", err)
         .attach_context("url", self_url.as_str())
         .attach_context("tpe", tpe.to_string())

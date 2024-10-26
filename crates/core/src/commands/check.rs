@@ -2,7 +2,7 @@
 use std::{
     collections::{BTreeSet, HashMap},
     fmt::Debug,
-    num::{ParseFloatError, ParseIntError},
+    num::ParseIntError,
     path::PathBuf,
     str::FromStr,
 };
@@ -244,7 +244,7 @@ impl FromStr for ReadSubsetOption {
             Self::All
         } else if let Some(p) = s.strip_suffix('%') {
             // try to read percentage
-            let percentage = p.parse().map_err(|err: ParseFloatError| {
+            let percentage = p.parse().map_err(|err| {
                 RusticError::with_source(
                     ErrorKind::Parsing,
                     "Error parsing percentage for ReadSubset option. Did you forget the '%'?",

@@ -12,8 +12,8 @@ use log::{debug, trace, warn};
 use walkdir::WalkDir;
 
 use rustic_core::{
-    CommandInput, CommandInputErrorKind, ErrorKind, FileType, Id, ReadBackend, RusticError,
-    RusticResult, WriteBackend, ALL_FILE_TYPES,
+    CommandInput, ErrorKind, FileType, Id, ReadBackend, RusticError, RusticResult, WriteBackend,
+    ALL_FILE_TYPES,
 };
 
 /// [`LocalBackendErrorKind`] describes the errors that can be returned by an action on the filesystem in Backends
@@ -24,11 +24,11 @@ pub enum LocalBackendErrorKind {
     DirectoryCreationFailed(std::io::Error),
     /// querying metadata failed: `{0:?}`
     QueryingMetadataFailed(std::io::Error),
-    /// querying WalkDir metadata failed: `{0:?}`
+    /// querying `WalkDir` metadata failed: `{0:?}`
     QueryingWalkDirMetadataFailed(walkdir::Error),
     /// execution of command failed: `{0:?}`
     CommandExecutionFailed(std::io::Error),
-    /// command was not successful for filename {file_name}, type {file_type}, id {id}: {status}
+    /// command was not successful for filename `{file_name}`, type `{file_type}`, id `{id}`: `{status}`
     CommandNotSuccessful {
         /// File name
         file_name: String,
@@ -41,10 +41,10 @@ pub enum LocalBackendErrorKind {
     },
     /// error building automaton `{0:?}`
     FromAhoCorasick(aho_corasick::BuildError),
-    /// {0:?}
+    /// `{0:?}`
     #[error(transparent)]
     FromTryIntError(TryFromIntError),
-    /// {0:?}
+    /// `{0:?}`
     #[error(transparent)]
     FromWalkdirError(walkdir::Error),
     /// removing file failed: `{0:?}`
@@ -83,6 +83,10 @@ impl LocalBackend {
     ///
     /// * `path` - The base path of the backend
     /// * `options` - Additional options for the backend
+    ///
+    /// # Errors
+    ///
+    ///
     ///
     /// # Returns
     ///
@@ -180,18 +184,15 @@ impl LocalBackend {
 
         debug!("calling {actual_command}...");
 
-        let command: CommandInput =
-            actual_command
-                .parse()
-                .map_err(|err: CommandInputErrorKind| {
-                    RusticError::with_source(
-                        ErrorKind::Parsing,
-                        "Failed to parse command input. This is a bug. Please report it.",
-                        err,
-                    )
-                    .attach_context("command", actual_command)
-                    .attach_context("replacement", replace_with.join(", "))
-                })?;
+        let command: CommandInput = actual_command.parse().map_err(|err| {
+            RusticError::with_source(
+                ErrorKind::Parsing,
+                "Failed to parse command input. This is a bug. Please report it.",
+                err,
+            )
+            .attach_context("command", actual_command)
+            .attach_context("replacement", replace_with.join(", "))
+        })?;
 
         let status = Command::new(command.command())
             .args(command.args())
@@ -289,7 +290,7 @@ impl ReadBackend for LocalBackend {
                         )?
                         .len()
                         .try_into()
-                        .map_err(|err: TryFromIntError|
+                        .map_err(|err|
                             RusticError::with_source(
                                 ErrorKind::Backend,
                                 "Failed to convert file length to u32. This is a bug. Please report it.",
@@ -322,7 +323,7 @@ impl ReadBackend for LocalBackend {
                         ?
                         .len()
                         .try_into()
-                        .map_err(|err: TryFromIntError|
+                        .map_err(|err|
                             RusticError::with_source(
                                 ErrorKind::Backend,
                                 "Failed to convert file length to u32. This is a bug. Please report it.",
@@ -404,7 +405,7 @@ impl ReadBackend for LocalBackend {
 
         let mut vec = vec![
             0;
-            length.try_into().map_err(|err: TryFromIntError| {
+            length.try_into().map_err(|err| {
                 RusticError::with_source(
                     ErrorKind::Backend,
                     "Failed to convert length to u64. This is a bug. Please report it.",
@@ -508,7 +509,7 @@ impl WriteBackend for LocalBackend {
                 .attach_context("path", filename.to_string_lossy())
             })?;
 
-        file.set_len(buf.len().try_into().map_err(|err: TryFromIntError| {
+        file.set_len(buf.len().try_into().map_err(|err| {
             RusticError::with_source(
                 ErrorKind::Backend,
                 "Failed to convert length to u64. This is a bug. Please report it.",
