@@ -100,7 +100,7 @@ impl CryptoKey for Key {
                     err,
                 )
                 .attach_context("nonce", format!("{nonce:?}"))
-                .attach_error_code("C001".into())
+                .attach_error_code("C001")
             })
     }
 

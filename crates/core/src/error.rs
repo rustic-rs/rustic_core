@@ -374,8 +374,6 @@ pub enum ErrorKind {
     Index,
     /// Key Error
     Key,
-    /// Blob Error
-    Blob,
     /// Crypto Error
     Cryptography,
     /// Compression Error
@@ -398,6 +396,9 @@ pub enum ErrorKind {
     ExternalCommand,
     /// Virtual File System Error
     Vfs,
+    /// Blob, Pack, or Tree Error
+    // These are deep errors that are not expected to be handled by the user.
+    Internal,
     // /// The repository password is incorrect. Please try again.
     // IncorrectRepositoryPassword,
     // /// No repository given. Please use the --repository option.

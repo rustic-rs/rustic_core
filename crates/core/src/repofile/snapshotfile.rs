@@ -25,7 +25,7 @@ use crate::{
     impl_repofile,
     progress::Progress,
     repofile::RepoFile,
-    Id,
+    ErrorKind, Id, RusticError,
 };
 
 #[cfg(feature = "clap")]
@@ -45,8 +45,6 @@ pub enum SnapshotFileErrorKind {
     ValueNotAllowed(String),
     /// datetime out of range: `{0:?}`
     OutOfRange(OutOfRangeError),
-    /// reading the description file failed: `{0:?}`
-    ReadingDescriptionFailed(std::io::Error),
     /// getting the SnapshotFile from the backend failed
     GettingSnapshotFileFailed,
     /// getting the SnapshotFile by ID failed
@@ -151,8 +149,14 @@ impl SnapshotOptions {
     ///
     /// [`SnapshotFileErrorKind::NonUnicodeTag`]: crate::error::SnapshotFileErrorKind::NonUnicodeTag
     pub fn add_tags(mut self, tag: &str) -> RusticResult<Self> {
-        self.tags
-            .push(StringList::from_str(tag).map_err(|_err| todo!("Error transition"))?);
+        self.tags.push(StringList::from_str(tag).map_err(|err| {
+            RusticError::with_source(
+                ErrorKind::Parsing,
+                "Failed to create string list from tag. The value must be a valid unicode string.",
+                err,
+            )
+            .attach_context("tag", tag)
+        })?);
         Ok(self)
     }
 
@@ -407,8 +411,13 @@ impl SnapshotFile {
             let hostname = gethostname();
             hostname
                 .to_str()
-                .ok_or_else(|| SnapshotFileErrorKind::NonUnicodeHostname(hostname.clone()))
-                .map_err(|_err| todo!("Error transition"))?
+                .ok_or_else(|| {
+                    RusticError::new(
+                        ErrorKind::Conversion,
+                        "Failed to convert hostname to string. The value must be a valid unicode string.",
+                    )
+                    .attach_context("hostname", hostname.to_string_lossy().to_string())
+                })?
                 .to_string()
         };
 
@@ -416,10 +425,15 @@ impl SnapshotFile {
 
         let delete = match (opts.delete_never, opts.delete_after) {
             (true, _) => DeleteOption::Never,
-            (_, Some(d)) => DeleteOption::After(
-                time + Duration::from_std(*d)
-                    .map_err(SnapshotFileErrorKind::OutOfRange)
-                    .map_err(|_err| todo!("Error transition"))?,
+            (_, Some(duration)) => DeleteOption::After(
+                time + Duration::from_std(*duration).map_err(|err| {
+                    RusticError::with_source(
+                        ErrorKind::Conversion,
+                        "Failed to convert duration to std::time::Duration. Please make sure the value is a valid duration string.",
+                        err,
+                    )
+                    .attach_context("duration", duration.to_string())
+                })?,
             ),
             (false, None) => DeleteOption::NotSet,
         };
@@ -448,12 +462,15 @@ impl SnapshotFile {
         };
 
         // use description from description file if it is given
-        if let Some(ref file) = opts.description_from {
-            snap.description = Some(
-                std::fs::read_to_string(file)
-                    .map_err(SnapshotFileErrorKind::ReadingDescriptionFailed)
-                    .map_err(|_err| todo!("Error transition"))?,
-            );
+        if let Some(ref path) = opts.description_from {
+            snap.description = Some(std::fs::read_to_string(path).map_err(|err| {
+                RusticError::with_source(
+                    ErrorKind::Io,
+                    "Failed to read description file. Please make sure the file exists and is readable.",
+                    err,
+                )
+                .attach_context("path", path.to_string_lossy().to_string())
+            })?);
         }
 
         _ = snap.set_tags(opts.tags.clone());

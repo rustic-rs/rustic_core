@@ -5,7 +5,7 @@ use serde_with::skip_serializing_none;
 
 use crate::{
     backend::FileType, blob::BlobType, define_new_id_struct, error::RusticResult, impl_repofile,
-    repofile::RepoFile,
+    repofile::RepoFile, ErrorKind, RusticError,
 };
 
 /// [`ConfigFileErrorKind`] describes the errors that can be returned for `ConfigFile`s
@@ -157,12 +157,15 @@ impl ConfigFile {
     ///
     /// [`ConfigFileErrorKind::ParsingFailedForPolynomial`]: ConfigFileErrorKind::ParsingFailedForPolynomial
     pub fn poly(&self) -> RusticResult<u64> {
-        Ok(u64::from_str_radix(&self.chunker_polynomial, 16)
-            .map_err(|err| ConfigFileErrorKind::ParsingFailedForPolynomial {
-                polynomial: self.chunker_polynomial.clone(),
-                source: err,
-            })
-            .map_err(|_err| todo!("Error transition"))?)
+        let chunker_poly = u64::from_str_radix(&self.chunker_polynomial, 16)
+            .map_err(|err| RusticError::with_source(
+                ErrorKind::Parsing,
+                "Parsing u64 from hex failed for polynomial, the value must be a valid hexadecimal string.",
+                err)
+            .attach_context("polynomial",&self.chunker_polynomial.to_string()))
+            ?;
+
+        Ok(chunker_poly)
     }
 
     /// Get the compression level
@@ -177,11 +180,11 @@ impl ConfigFile {
             (1, _) | (2, Some(0)) => Ok(None),
             (2, None) => Ok(Some(0)), // use default (=0) zstd compression
             (2, Some(c)) => Ok(Some(c)),
-            _ => Err(ConfigFileErrorKind::ConfigVersionNotSupported {
-                version: self.version,
-                compression: self.compression,
-            })
-            .map_err(|_err| todo!("Error transition")),
+            _ => Err(RusticError::new(
+                ErrorKind::Config,
+                "Config version not supported. Please make sure, that you use the correct version.",
+            )
+            .attach_context("version", self.version.to_string())),
         }
     }
 

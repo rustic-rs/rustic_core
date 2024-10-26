@@ -114,18 +114,33 @@ impl KeyFile {
     /// [`KeyFileErrorKind::OutputLengthInvalid`]: crate::error::KeyFileErrorKind::OutputLengthInvalid
     pub fn kdf_key(&self, passwd: &impl AsRef<[u8]>) -> RusticResult<Key> {
         let params = Params::new(
-            log_2(self.n).map_err(|_err| todo!("Error transition"))?,
+            log_2(self.n).map_err(|err| {
+                RusticError::with_source(
+                    ErrorKind::Conversion,
+                    "Calculating log2 failed. Please check the key file and password.",
+                    err,
+                )
+            })?,
             self.r,
             self.p,
             Params::RECOMMENDED_LEN,
         )
-        .map_err(KeyFileErrorKind::InvalidSCryptParameters)
-        .map_err(|_err| todo!("Error transition"))?;
+        .map_err(|err| {
+            RusticError::with_source(
+                ErrorKind::Key,
+                "Invalid scrypt parameters. Please check the key file and password.",
+                err,
+            )
+        })?;
 
         let mut key = [0; 64];
-        scrypt::scrypt(passwd.as_ref(), &self.salt, &params, &mut key)
-            .map_err(KeyFileErrorKind::OutputLengthInvalid)
-            .map_err(|_err| todo!("Error transition"))?;
+        scrypt::scrypt(passwd.as_ref(), &self.salt, &params, &mut key).map_err(|err| {
+            RusticError::with_source(
+                ErrorKind::Key,
+                "Output length invalid. Please check the key file and password.",
+                err,
+            )
+        })?;
 
         Ok(Key::from_slice(&key))
     }
@@ -216,18 +231,25 @@ impl KeyFile {
         thread_rng().fill_bytes(&mut salt);
 
         let mut key = [0; 64];
-        scrypt::scrypt(passwd.as_ref(), &salt, &params, &mut key)
-            .map_err(KeyFileErrorKind::OutputLengthInvalid)
-            .map_err(|_err| todo!("Error transition"))?;
+        scrypt::scrypt(passwd.as_ref(), &salt, &params, &mut key).map_err(|err| {
+            RusticError::with_source(
+                ErrorKind::Key,
+                "Output length invalid. Please check the key file and password.",
+                err,
+            )
+        })?;
 
         let key = Key::from_slice(&key);
-        let data = key
-            .encrypt_data(
-                &serde_json::to_vec(&masterkey)
-                    .map_err(KeyFileErrorKind::CouldNotSerializeAsJsonByteVector)
-                    .map_err(|_err| todo!("Error transition"))?,
+
+        let json_byte_vec = serde_json::to_vec(&masterkey).map_err(|err| {
+            RusticError::with_source(
+                ErrorKind::Key,
+                "Could not serialize as JSON byte vector. This is a bug, please report it.",
+                err,
             )
-            .map_err(|_err| todo!("Error transition"))?;
+        })?;
+
+        let data = key.encrypt_data(&json_byte_vec)?;
 
         Ok(Self {
             hostname,

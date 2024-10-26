@@ -10,6 +10,7 @@ use crate::{
     id::Id,
     impl_repoid,
     repofile::indexfile::{IndexBlob, IndexPack},
+    ErrorKind, RusticError,
 };
 
 /// [`PackFileErrorKind`] describes the errors that can be returned for `PackFile`s
@@ -22,10 +23,6 @@ pub enum PackFileErrorKind {
     WritingBinaryRepresentationFailed(binrw::Error),
     /// Read header length is too large! Length: `{size_real}`, file size: `{pack_size}`
     HeaderLengthTooLarge { size_real: u32, pack_size: u32 },
-    /// Read header length doesn't match header contents! Length: `{size_real}`, computed: `{size_computed}`
-    HeaderLengthDoesNotMatchHeaderContents { size_real: u32, size_computed: u32 },
-    /// pack size computed from header doesn't match real pack isch! Computed: `{size_computed}`, real: `{size_real}`
-    HeaderPackSizeComputedDoesNotMatchRealPackFile { size_real: u32, size_computed: u32 },
     /// decrypting from binary failed
     BinaryDecryptionFailed,
     /// Partial read of PackFile failed
@@ -302,16 +299,23 @@ impl PackHeader {
 
         // get header length from the file
         let size_real = PackHeaderLength::from_binary(&data.split_off(size_guess as usize))
-            .map_err(|_err| todo!("Error transition"))?
+            .map_err(|err| {
+                RusticError::with_source(
+                    ErrorKind::Internal,
+                    "Reading pack header length failed",
+                    err,
+                )
+            })?
             .to_u32();
         trace!("header size: {size_real}");
 
         if size_real + constants::LENGTH_LEN > pack_size {
-            return Err(PackFileErrorKind::HeaderLengthTooLarge {
-                size_real,
-                pack_size,
-            })
-            .map_err(|_err| todo!("Error transition"));
+            return Err(
+                RusticError::new(ErrorKind::Internal, "Read header length is too large!")
+                    .attach_context("size real", size_real.to_string())
+                    .attach_context("pack size", pack_size.to_string())
+                    .attach_context("length field value", constants::LENGTH_LEN.to_string()),
+            );
         }
 
         // now read the header
@@ -324,25 +328,26 @@ impl PackHeader {
             be.read_partial(FileType::Pack, &id, false, offset, size_real)?
         };
 
-        let header =
-            Self::from_binary(&be.decrypt(&data)?).map_err(|_err| todo!("Error transition"))?;
+        let header = Self::from_binary(&be.decrypt(&data)?).map_err(|err| {
+            RusticError::with_source(ErrorKind::Internal, "Reading pack header failed.", err)
+        })?;
 
         if header.size() != size_real {
-            return Err(PackFileErrorKind::HeaderLengthDoesNotMatchHeaderContents {
-                size_real,
-                size_computed: header.size(),
-            })
-            .map_err(|_err| todo!("Error transition"));
+            return Err(RusticError::new(
+                ErrorKind::Internal,
+                "Read header length doesn't match header contents!",
+            )
+            .attach_context("size real", size_real.to_string())
+            .attach_context("size computed", header.size().to_string()));
         }
 
         if header.pack_size() != pack_size {
-            return Err(
-                PackFileErrorKind::HeaderPackSizeComputedDoesNotMatchRealPackFile {
-                    size_real: pack_size,
-                    size_computed: header.pack_size(),
-                },
+            return Err(RusticError::new(
+                ErrorKind::Internal,
+                "pack size computed from header doesn't match real pack file size!",
             )
-            .map_err(|_err| todo!("Error transition"));
+            .attach_context("size real", pack_size.to_string())
+            .attach_context("size computed", header.pack_size().to_string()));
         }
 
         Ok(header)
