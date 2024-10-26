@@ -487,7 +487,7 @@ impl<P, S> Repository<P, S> {
     /// [`RusticErrorKind::ListingRepositoryConfigFileFailed`]: crate::error::RusticErrorKind::ListingRepositoryConfigFileFailed
     /// [`RusticErrorKind::MoreThanOneRepositoryConfig`]: crate::error::RusticErrorKind::MoreThanOneRepositoryConfig
     pub fn open(self) -> RusticResult<Repository<P, OpenStatus>> {
-        let password = self.password()?.ok_or({
+        let password = self.password()?.ok_or_else(|| {
             RusticError::new(
                 ErrorKind::Password,
                 "No password given, or Password was empty. Please specify a valid password.",
@@ -521,13 +521,13 @@ impl<P, S> Repository<P, S> {
     /// [`RusticErrorKind::ListingRepositoryConfigFileFailed`]: crate::error::RusticErrorKind::ListingRepositoryConfigFileFailed
     /// [`RusticErrorKind::MoreThanOneRepositoryConfig`]: crate::error::RusticErrorKind::MoreThanOneRepositoryConfig
     pub fn open_with_password(self, password: &str) -> RusticResult<Repository<P, OpenStatus>> {
-        let config_id = self.config_id()?.ok_or(
+        let config_id = self.config_id()?.ok_or_else(|| {
             RusticError::new(
                 ErrorKind::Config,
                 "No repository config file found. Please check the repository.",
             )
-            .attach_context("name", self.name.clone()),
-        )?;
+            .attach_context("name", self.name.clone())
+        })?;
 
         if let Some(be_hot) = &self.be_hot {
             let mut keys = self.be.list_with_size(FileType::Key)?;
@@ -585,13 +585,13 @@ impl<P, S> Repository<P, S> {
         key_opts: &KeyOptions,
         config_opts: &ConfigOptions,
     ) -> RusticResult<Repository<P, OpenStatus>> {
-        let password = self.password()?.ok_or(
+        let password = self.password()?.ok_or_else(|| {
             RusticError::new(
                 ErrorKind::Password,
                 "No password given, or Password was empty. Please specify a valid password.",
             )
-            .attach_context("name", self.name.clone()),
-        )?;
+            .attach_context("name", self.name.clone())
+        })?;
 
         self.init_with_password(&password, key_opts, config_opts)
     }
@@ -630,7 +630,7 @@ impl<P, S> Repository<P, S> {
                 ErrorKind::Config,
                 "Config file already exists. Please check the repository.",
             )
-            .attach_context("name", self.name.clone()));
+            .attach_context("name", self.name));
         }
 
         let (key, config) = commands::init::init(&self, pass, key_opts, config_opts)?;

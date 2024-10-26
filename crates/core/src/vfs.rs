@@ -35,7 +35,7 @@ pub enum VfsErrorKind {
     DirectoryExistsAsNonVirtual,
     /// Only normal paths allowed
     OnlyNormalPathsAreAllowed,
-    /// Name `{0:?}`` doesn't exist
+    /// Name `{0:?}` doesn't exist
     NameDoesNotExist(OsString),
 }
 
@@ -111,7 +111,7 @@ impl VfsTree {
         let mut tree = self;
         let mut components = path.components();
         let Some(Component::Normal(last)) = components.next_back() else {
-            return Err(VfsErrorKind::OnlyNormalPathsAreAllowed.into());
+            return Err(VfsErrorKind::OnlyNormalPathsAreAllowed);
         };
 
         for comp in components {
@@ -123,14 +123,14 @@ impl VfsTree {
                             .or_insert(Self::VirtualTree(BTreeMap::new()));
                     }
                     _ => {
-                        return Err(VfsErrorKind::DirectoryExistsAsNonVirtual.into());
+                        return Err(VfsErrorKind::DirectoryExistsAsNonVirtual);
                     }
                 }
             }
         }
 
         let Self::VirtualTree(virtual_tree) = tree else {
-            return Err(VfsErrorKind::DirectoryExistsAsNonVirtual.into());
+            return Err(VfsErrorKind::DirectoryExistsAsNonVirtual);
         };
 
         _ = virtual_tree.insert(last.to_os_string(), new_tree);
@@ -164,7 +164,7 @@ impl VfsTree {
                         if let Some(new_tree) = virtual_tree.get(name) {
                             tree = new_tree;
                         } else {
-                            return Err(VfsErrorKind::NameDoesNotExist(name.to_os_string()).into());
+                            return Err(VfsErrorKind::NameDoesNotExist(name.to_os_string()));
                         };
                     }
                     None => {

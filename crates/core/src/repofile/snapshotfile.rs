@@ -45,11 +45,11 @@ pub enum SnapshotFileErrorKind {
     ValueNotAllowed(String),
     /// datetime out of range: `{0:?}`
     OutOfRange(OutOfRangeError),
-    /// getting the SnapshotFile from the backend failed
+    /// getting the `SnapshotFile` from the backend failed
     GettingSnapshotFileFailed,
-    /// getting the SnapshotFile by ID failed
+    /// getting the `SnapshotFile` by ID failed
     GettingSnapshotFileByIdFailed,
-    /// unpacking SnapshotFile result failed
+    /// unpacking `SnapshotFile` result failed
     UnpackingSnapshotFileResultFailed,
     /// collecting IDs failed: `{0:?}`
     FindingIdsFailed(Vec<String>),
@@ -1011,7 +1011,7 @@ impl FromStr for SnapshotGroupCriterion {
                 "paths" => crit.paths = true,
                 "tags" => crit.tags = true,
                 "" => continue,
-                v => return Err(SnapshotFileErrorKind::ValueNotAllowed(v.into()).into()),
+                v => return Err(SnapshotFileErrorKind::ValueNotAllowed(v.into())),
             }
         }
         Ok(crit)

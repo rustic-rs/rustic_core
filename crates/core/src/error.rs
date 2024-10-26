@@ -215,7 +215,7 @@ impl RusticError {
 impl RusticError {
     /// Attach what kind the error is.
     pub fn attach_kind(self, value: impl Into<ErrorKind>) -> Box<Self> {
-        Box::new(RusticError {
+        Box::new(Self {
             kind: value.into(),
             ..self
         })
@@ -226,7 +226,7 @@ impl RusticError {
         self,
         value: impl Into<Box<(dyn std::error::Error + Send + Sync)>>,
     ) -> Box<Self> {
-        Box::new(RusticError {
+        Box::new(Self {
             source: Some(value.into()),
             ..self
         })
@@ -234,7 +234,7 @@ impl RusticError {
 
     /// Attach the error message with guidance.
     pub fn attach_guidance(self, value: impl Into<SmolStr>) -> Box<Self> {
-        Box::new(RusticError {
+        Box::new(Self {
             guidance: value.into(),
             ..self
         })
@@ -244,7 +244,7 @@ impl RusticError {
     /// Attach context to the error.
     pub fn attach_context(mut self, key: &'static str, value: impl Into<SmolStr>) -> Box<Self> {
         let mut context = self.context.to_vec();
-        context.push((key, value.into().into()));
+        context.push((key, value.into()));
         self.context = context.into_boxed_slice();
         Box::new(self)
     }
@@ -256,7 +256,7 @@ impl RusticError {
     /// This should not be used in most cases, as it will overwrite any existing contexts.
     /// Rather use `attach_context` for multiple contexts.
     pub fn overwrite_context(self, value: impl Into<Box<[(&'static str, SmolStr)]>>) -> Box<Self> {
-        Box::new(RusticError {
+        Box::new(Self {
             context: value.into(),
             ..self
         })
@@ -264,7 +264,7 @@ impl RusticError {
 
     /// Attach the URL of the documentation for the error.
     pub fn attach_docs_url(self, value: impl Into<SmolStr>) -> Box<Self> {
-        Box::new(RusticError {
+        Box::new(Self {
             docs_url: Some(value.into()),
             ..self
         })
@@ -272,7 +272,7 @@ impl RusticError {
 
     /// Attach an error code.
     pub fn attach_error_code(self, value: impl Into<SmolStr>) -> Box<Self> {
-        Box::new(RusticError {
+        Box::new(Self {
             error_code: Some(value.into()),
             ..self
         })
@@ -280,7 +280,7 @@ impl RusticError {
 
     /// Attach the URL of the issue tracker for opening a new issue.
     pub fn attach_new_issue_url(self, value: impl Into<SmolStr>) -> Box<Self> {
-        Box::new(RusticError {
+        Box::new(Self {
             new_issue_url: Some(value.into()),
             ..self
         })
@@ -288,7 +288,7 @@ impl RusticError {
 
     /// Attach the URL of an already existing issue that is related to this error.
     pub fn attach_existing_issue_url(self, value: impl Into<SmolStr>) -> Box<Self> {
-        Box::new(RusticError {
+        Box::new(Self {
             existing_issue_url: Some(value.into()),
             ..self
         })
@@ -296,7 +296,7 @@ impl RusticError {
 
     /// Attach the severity of the error.
     pub fn attach_severity(self, value: impl Into<Severity>) -> Box<Self> {
-        Box::new(RusticError {
+        Box::new(Self {
             severity: Some(value.into()),
             ..self
         })
@@ -304,7 +304,7 @@ impl RusticError {
 
     /// Attach the status of the error.
     pub fn attach_status(self, value: impl Into<Status>) -> Box<Self> {
-        Box::new(RusticError {
+        Box::new(Self {
             status: Some(value.into()),
             ..self
         })
@@ -314,7 +314,7 @@ impl RusticError {
     ///
     /// This should not be used in most cases, as the backtrace is automatically captured.
     pub fn attach_backtrace_manually(self, value: impl Into<Backtrace>) -> Box<Self> {
-        Box::new(RusticError {
+        Box::new(Self {
             backtrace: Some(value.into()),
             ..self
         })

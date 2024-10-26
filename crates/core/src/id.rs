@@ -45,7 +45,7 @@ macro_rules! define_new_id_struct {
         pub struct $a($crate::Id);
 
         impl $a {
-            /// impl into_inner
+            /// impl `into_inner`
             #[must_use]
             pub fn into_inner(self) -> $crate::Id {
                 self.0

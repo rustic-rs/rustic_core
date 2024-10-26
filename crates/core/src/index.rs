@@ -27,7 +27,7 @@ pub enum IndexErrorKind {
     BlobInIndexNotFound,
     /// failed to get a blob from the backend
     GettingBlobIndexEntryFromBackendFailed,
-    /// saving IndexFile failed
+    /// saving `IndexFile` failed
     SavingIndexFileFailed {
         /// the error that occurred
         source: CryptBackendErrorKind,

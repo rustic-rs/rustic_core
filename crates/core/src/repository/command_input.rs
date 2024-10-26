@@ -16,25 +16,43 @@ use crate::error::RusticResult;
 pub enum CommandInputErrorKind {
     /// Command execution failed: {context}:{what} : {source}
     CommandExecutionFailed {
+        /// The context in which the command was called
         context: String,
+
+        /// The action that was performed
         what: String,
+
+        /// The source of the error
         source: std::io::Error,
     },
     /// Command error status: {context}:{what} : {status}
     CommandErrorStatus {
+        /// The context in which the command was called
         context: String,
+
+        /// The action that was performed
         what: String,
+
+        /// The exit status of the command
         status: ExitStatus,
     },
     /// Splitting arguments failed: {arguments} : {source}
     SplittingArgumentsFailed {
+        /// The arguments that were tried to be split
         arguments: String,
+
+        /// The source of the error
         source: shell_words::ParseError,
     },
     /// Process execution failed: {command:?} : {path:?} : {source}
     ProcessExecutionFailed {
+        /// The command that was tried to be executed
         command: CommandInput,
+
+        /// The path in which the command was tried to be executed
         path: std::path::PathBuf,
+
+        /// The source of the error
         source: std::io::Error,
     },
 }
@@ -253,10 +271,8 @@ impl OnFailure {
 /// helper to split arguments
 // TODO: Maybe use special parser (winsplit?) for windows?
 fn split(s: &str) -> CommandInputResult<Vec<String>> {
-    Ok(
-        shell_words::split(s).map_err(|err| CommandInputErrorKind::SplittingArgumentsFailed {
-            arguments: s.to_string(),
-            source: err,
-        })?,
-    )
+    shell_words::split(s).map_err(|err| CommandInputErrorKind::SplittingArgumentsFailed {
+        arguments: s.to_string(),
+        source: err,
+    })
 }
