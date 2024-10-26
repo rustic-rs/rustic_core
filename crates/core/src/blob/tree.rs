@@ -27,6 +27,7 @@ use crate::{
     index::ReadGlobalIndex,
     progress::Progress,
     repofile::snapshotfile::SnapshotSummary,
+    ErrorKind, RusticError,
 };
 
 /// [`TreeErrorKind`] describes the errors that can come up dealing with Trees
@@ -148,13 +149,19 @@ impl Tree {
     ) -> RusticResult<Self> {
         let data = index
             .get_tree(&id)
-            .ok_or_else(|| TreeErrorKind::BlobIdNotFound(id))
-            .map_err(|_err| todo!("Error transition"))?
+            .ok_or_else(|| {
+                RusticError::new(ErrorKind::Internal, "Blob ID not found in index")
+                    .attach_context("tree id", id.to_string())
+            })?
             .read_data(be)?;
 
-        let tree = serde_json::from_slice(&data)
-            .map_err(TreeErrorKind::DeserializingTreeFailed)
-            .map_err(|_err| todo!("Error transition"))?;
+        let tree = serde_json::from_slice(&data).map_err(|err| {
+            RusticError::with_source(
+                ErrorKind::Internal,
+                "Failed to deserialize tree from JSON. This is a bug. Please report it.",
+                err,
+            )
+        })?;
 
         Ok(tree)
     }
@@ -186,18 +193,35 @@ impl Tree {
         node.subtree = Some(id);
 
         for p in path.components() {
-            if let Some(p) = comp_to_osstr(p).map_err(|_err| todo!("Error transition"))? {
+            if let Some(p) = comp_to_osstr(p).map_err(|err| {
+                RusticError::with_source(
+                    ErrorKind::Internal,
+                    "Failed to convert Path component to OsString. This is a bug. Please report it.",
+                    err,
+                )
+                .attach_context("path", path.display().to_string())
+            })? {
                 let id = node
                     .subtree
-                    .ok_or_else(|| TreeErrorKind::NotADirectory(p.clone()))
-                    .map_err(|_err| todo!("Error transition"))?;
+                    .ok_or_else(|| 
+                        RusticError::new(
+                            ErrorKind::Internal,
+                            "Node is not a directory. This is a bug. Please report it.",
+                        ).attach_context("node", p.to_string_lossy().to_string())
+                    )
+                    ?;
                 let tree = Self::from_backend(be, index, id)?;
                 node = tree
                     .nodes
                     .into_iter()
                     .find(|node| node.name() == p)
-                    .ok_or_else(|| TreeErrorKind::PathNotFound(p.clone()))
-                    .map_err(|_err| todo!("Error transition"))?;
+                    .ok_or_else(|| 
+                        RusticError::new(
+                            ErrorKind::Internal,
+                            "Node not found in tree. This is a bug. Please report it.",
+                        ).attach_context("node", p.to_string_lossy().to_string())
+                    )
+                    ?;
             }
         }
 
@@ -237,8 +261,12 @@ impl Tree {
                 } else {
                     let id = node
                         .subtree
-                        .ok_or_else(|| TreeErrorKind::NotADirectory(path_comp[idx].clone()))
-                        .map_err(|_err| todo!("Error transition"))?;
+                        .ok_or_else(|| 
+                            RusticError::new(
+                                ErrorKind::Internal,
+                                "Subtree ID not found. This is a bug. Please report it.",
+                            ).attach_context("node", path_comp[idx].to_string_lossy().to_string())
+                        )?;
 
                     find_node_from_component(
                         be,
@@ -261,7 +289,13 @@ impl Tree {
             .components()
             .filter_map(|p| comp_to_osstr(p).transpose())
             .collect::<TreeResult<_>>()
-            .map_err(|_err| todo!("Error transition"))?;
+            .map_err(|err| 
+                RusticError::with_source(
+                    ErrorKind::Internal,
+                    "Failed to convert Path component to OsString. This is a bug. Please report it.",
+                    err,
+                ).attach_context("path", path.display().to_string())
+            )?;
 
         // caching all results
         let mut results_cache = vec![BTreeMap::new(); path_comp.len()];
@@ -335,8 +369,13 @@ impl Tree {
                 if node.is_dir() {
                     let id = node
                         .subtree
-                        .ok_or_else(|| TreeErrorKind::NotADirectory(node.name()))
-                        .map_err(|_err| todo!("Error transition"))?;
+                        .ok_or_else(|| 
+                            RusticError::new(
+                                ErrorKind::Internal,
+                                "Subtree ID not found. This is a bug. Please report it.",
+                            ).attach_context("node", node.name().to_string_lossy().to_string())
+                        )?;
+
                     result.append(&mut find_matching_nodes_recursive(
                         be, index, id, &node_path, state, matches,
                     )?);
@@ -588,50 +627,97 @@ where
         for g in &opts.glob {
             _ = override_builder
                 .add(g)
-                .map_err(TreeErrorKind::BuildingNodeStreamerFailed)
-                .map_err(|_err| todo!("Error transition"))?;
+                .map_err(|err| 
+                    RusticError::with_source(
+                        ErrorKind::Internal,
+                        "Failed to add glob pattern to override builder. This is a bug. Please report it.",
+                        err,
+                    )
+                    .attach_context("glob", g.to_string())
+                )?;
         }
 
         for file in &opts.glob_file {
             for line in std::fs::read_to_string(file)
-                .map_err(TreeErrorKind::ReadingFileStringFromGlobsFailed)
-                .map_err(|_err| todo!("Error transition"))?
+                .map_err(|err|
+                    RusticError::with_source(
+                        ErrorKind::Internal,
+                        "Failed to read string from glob file. This is a bug. Please report it.",
+                        err,
+                    )
+                    .attach_context("glob file", file.to_string())
+                )?
                 .lines()
             {
                 _ = override_builder
                     .add(line)
-                    .map_err(TreeErrorKind::BuildingNodeStreamerFailed)
-                    .map_err(|_err| todo!("Error transition"))?;
+                    .map_err(|err|
+                        RusticError::with_source(
+                            ErrorKind::Internal,
+                            "Failed to add glob pattern line to override builder. This is a bug. Please report it.",
+                            err,
+                        )
+                        .attach_context("glob pattern line", line.to_string())
+                    )?;
+
             }
         }
 
         _ = override_builder
             .case_insensitive(true)
-            .map_err(TreeErrorKind::BuildingNodeStreamerFailed)
-            .map_err(|_err| todo!("Error transition"))?;
+            .map_err(|err|
+                RusticError::with_source(
+                    ErrorKind::Internal,
+                    "Failed to set case insensitivity in override builder. This is a bug. Please report it.",
+                    err,
+                )
+            )?;
         for g in &opts.iglob {
             _ = override_builder
                 .add(g)
-                .map_err(TreeErrorKind::BuildingNodeStreamerFailed)
-                .map_err(|_err| todo!("Error transition"))?;
+                .map_err(|err|
+                    RusticError::with_source(
+                        ErrorKind::Internal,
+                        "Failed to add iglob pattern to override builder. This is a bug. Please report it.",
+                        err,
+                    )
+                    .attach_context("iglob", g.to_string())
+                )?;
         }
 
         for file in &opts.iglob_file {
             for line in std::fs::read_to_string(file)
-                .map_err(TreeErrorKind::ReadingFileStringFromGlobsFailed)
-                .map_err(|_err| todo!("Error transition"))?
+                .map_err(|err|
+                    RusticError::with_source(
+                        ErrorKind::Internal,
+                        "Failed to read string from iglob file. This is a bug. Please report it.",
+                        err,
+                    )
+                    .attach_context("iglob file", file.to_string())
+                )?
                 .lines()
             {
                 _ = override_builder
                     .add(line)
-                    .map_err(TreeErrorKind::BuildingNodeStreamerFailed)
-                    .map_err(|_err| todo!("Error transition"))?;
+                    .map_err(|err|
+                        RusticError::with_source(
+                            ErrorKind::Internal,
+                            "Failed to add iglob pattern line to override builder. This is a bug. Please report it.",
+                            err,
+                        )
+                        .attach_context("iglob pattern line", line.to_string())
+                    )?;
             }
         }
         let overrides = override_builder
             .build()
-            .map_err(TreeErrorKind::BuildingNodeStreamerFailed)
-            .map_err(|_err| todo!("Error transition"))?;
+            .map_err(|err|
+                RusticError::with_source(
+                    ErrorKind::Internal,
+                    "Failed to build matcher for a set of glob overrides. This is a bug. Please report it.",
+                    err,
+                )
+            )?;
 
         Self::new_streamer(be, index, node, Some(overrides), opts.recursive)
     }
@@ -761,7 +847,15 @@ impl<P: Progress> TreeStreamerOnce<P> {
         for (count, id) in ids.into_iter().enumerate() {
             if !streamer
                 .add_pending(PathBuf::new(), id, count)
-                .map_err(|_err| todo!("Error transition"))?
+                .map_err(|err| 
+                    RusticError::with_source(
+                        ErrorKind::Internal,
+                        "Failed to add tree ID to pending queue. This is a bug. Please report it.",
+                        err,
+                    )
+                    .attach_context("tree id", id.to_string())
+                    .attach_context("count", count.to_string())
+                )?
             {
                 streamer.p.inc(1);
                 streamer.finished_ids += 1;

@@ -26,6 +26,7 @@ use crate::{
         packfile::{PackHeaderLength, PackHeaderRef, PackId},
         snapshotfile::SnapshotSummary,
     },
+    ErrorKind, RusticError,
 };
 
 /// [`PackerErrorKind`] describes the errors that can be returned for a Packer
@@ -497,8 +498,16 @@ impl<BE: DecryptWriteBackend> RawPacker<BE> {
     ///
     /// If the packfile could not be saved
     fn finalize(&mut self) -> RusticResult<PackerStats> {
-        self.save().map_err(|_err| todo!("Error transition"))?;
+        self.save().map_err(|err| {
+            RusticError::with_source(
+                ErrorKind::Internal,
+                "Failed to save packfile. Data may be lost. Please report this issue and upload the log file.",
+                err,
+            )
+        })?;
+
         self.file_writer.take().unwrap().finalize()?;
+
         Ok(std::mem::take(&mut self.stats))
     }
 
@@ -857,7 +866,13 @@ impl<BE: DecryptFullBackend> Repacker<BE> {
                 blob.uncompressed_length,
                 Some(self.size_limit),
             )
-            .map_err(|_err| todo!("Error transition"))?;
+            .map_err(|err| {
+                RusticError::with_source(
+                    ErrorKind::Internal,
+                    "Failed to fast-add (unchecked) blob to packfile.",
+                    err,
+                )
+            })?;
         Ok(())
     }
 
@@ -884,7 +899,13 @@ impl<BE: DecryptFullBackend> Repacker<BE> {
 
         self.packer
             .add_with_sizelimit(data, blob.id, Some(self.size_limit))
-            .map_err(|_err| todo!("Error transition"))?;
+            .map_err(|err| {
+                RusticError::with_source(
+                    ErrorKind::Internal,
+                    "Failed to add blob to packfile.",
+                    err,
+                )
+            })?;
 
         Ok(())
     }
