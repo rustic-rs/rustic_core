@@ -10,7 +10,7 @@ use sha2::{Digest, Sha256};
 #[case("test", true)]
 #[case("test2", true)]
 #[case("wrong", false)]
-fn working_keys(#[case] password: &str, #[case] should_work: bool) -> Result<()> {
+fn test_working_keys_passes(#[case] password: &str, #[case] should_work: bool) -> Result<()> {
     let be = InMemoryBackend::new();
     add_to_be(&be, FileType::Config, "tests/fixtures/config")?;
     add_to_be(&be, FileType::Key, "tests/fixtures/key1")?;
@@ -29,7 +29,7 @@ fn working_keys(#[case] password: &str, #[case] should_work: bool) -> Result<()>
 
 #[test]
 // using an invalid keyfile: Here the scrypt params are not valid
-fn failing_key() -> Result<()> {
+fn test_keys_failing_passes() -> Result<()> {
     let be = InMemoryBackend::new();
     add_to_be(&be, FileType::Config, "tests/fixtures/config")?;
     add_to_be(&be, FileType::Key, "tests/fixtures/key-failing")?;
