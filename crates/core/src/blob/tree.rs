@@ -203,7 +203,7 @@ impl Tree {
             })? {
                 let id = node
                     .subtree
-                    .ok_or_else(|| 
+                    .ok_or_else(||
                         RusticError::new(
                             ErrorKind::Internal,
                             "Node is not a directory. This is a bug. Please report it.",
@@ -215,7 +215,7 @@ impl Tree {
                     .nodes
                     .into_iter()
                     .find(|node| node.name() == p)
-                    .ok_or_else(|| 
+                    .ok_or_else(||
                         RusticError::new(
                             ErrorKind::Internal,
                             "Node not found in tree. This is a bug. Please report it.",
@@ -259,14 +259,13 @@ impl Tree {
                     let node_idx = nodes.entry(node).or_insert(new_idx);
                     Some(*node_idx)
                 } else {
-                    let id = node
-                        .subtree
-                        .ok_or_else(|| 
-                            RusticError::new(
-                                ErrorKind::Internal,
-                                "Subtree ID not found. This is a bug. Please report it.",
-                            ).attach_context("node", path_comp[idx].to_string_lossy().to_string())
-                        )?;
+                    let id = node.subtree.ok_or_else(|| {
+                        RusticError::new(
+                            ErrorKind::Internal,
+                            "Subtree ID not found. This is a bug. Please report it.",
+                        )
+                        .attach_context("node", path_comp[idx].to_string_lossy().to_string())
+                    })?;
 
                     find_node_from_component(
                         be,
@@ -289,7 +288,7 @@ impl Tree {
             .components()
             .filter_map(|p| comp_to_osstr(p).transpose())
             .collect::<TreeResult<_>>()
-            .map_err(|err| 
+            .map_err(|err|
                 RusticError::with_source(
                     ErrorKind::Internal,
                     "Failed to convert Path component to OsString. This is a bug. Please report it.",
@@ -367,14 +366,13 @@ impl Tree {
             for node in tree.nodes {
                 let node_path = path.join(node.name());
                 if node.is_dir() {
-                    let id = node
-                        .subtree
-                        .ok_or_else(|| 
-                            RusticError::new(
-                                ErrorKind::Internal,
-                                "Subtree ID not found. This is a bug. Please report it.",
-                            ).attach_context("node", node.name().to_string_lossy().to_string())
-                        )?;
+                    let id = node.subtree.ok_or_else(|| {
+                        RusticError::new(
+                            ErrorKind::Internal,
+                            "Subtree ID not found. This is a bug. Please report it.",
+                        )
+                        .attach_context("node", node.name().to_string_lossy().to_string())
+                    })?;
 
                     result.append(&mut find_matching_nodes_recursive(
                         be, index, id, &node_path, state, matches,
@@ -624,10 +622,13 @@ where
     ) -> RusticResult<Self> {
         let mut override_builder = OverrideBuilder::new("");
 
+        // FIXME: Refactor this to a function to be reused
+        // This is the same of backend::ignore::Localsource::new
+        // https://github.com/rustic-rs/rustic_core/blob/db82ed21db158e66ef4f8f3e6ba8c8b52d2fd42a/crates/core/src/backend/ignore.rs#L184
         for g in &opts.glob {
             _ = override_builder
                 .add(g)
-                .map_err(|err| 
+                .map_err(|err|
                     RusticError::with_source(
                         ErrorKind::Internal,
                         "Failed to add glob pattern to override builder. This is a bug. Please report it.",
@@ -639,14 +640,14 @@ where
 
         for file in &opts.glob_file {
             for line in std::fs::read_to_string(file)
-                .map_err(|err|
+                .map_err(|err| {
                     RusticError::with_source(
                         ErrorKind::Internal,
                         "Failed to read string from glob file. This is a bug. Please report it.",
                         err,
                     )
                     .attach_context("glob file", file.to_string())
-                )?
+                })?
                 .lines()
             {
                 _ = override_builder
@@ -659,7 +660,6 @@ where
                         )
                         .attach_context("glob pattern line", line.to_string())
                     )?;
-
             }
         }
 
@@ -687,14 +687,14 @@ where
 
         for file in &opts.iglob_file {
             for line in std::fs::read_to_string(file)
-                .map_err(|err|
+                .map_err(|err| {
                     RusticError::with_source(
                         ErrorKind::Internal,
                         "Failed to read string from iglob file. This is a bug. Please report it.",
                         err,
                     )
                     .attach_context("iglob file", file.to_string())
-                )?
+                })?
                 .lines()
             {
                 _ = override_builder
@@ -847,7 +847,7 @@ impl<P: Progress> TreeStreamerOnce<P> {
         for (count, id) in ids.into_iter().enumerate() {
             if !streamer
                 .add_pending(PathBuf::new(), id, count)
-                .map_err(|err| 
+                .map_err(|err| {
                     RusticError::with_source(
                         ErrorKind::Internal,
                         "Failed to add tree ID to pending queue. This is a bug. Please report it.",
@@ -855,7 +855,7 @@ impl<P: Progress> TreeStreamerOnce<P> {
                     )
                     .attach_context("tree id", id.to_string())
                     .attach_context("count", count.to_string())
-                )?
+                })?
             {
                 streamer.p.inc(1);
                 streamer.finished_ids += 1;

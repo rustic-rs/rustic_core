@@ -74,11 +74,10 @@ impl<BE: DecryptFullBackend> DecryptReadBackend for DryRunBackend<BE> {
             _ => {
                 return Err(
                     RusticError::new(
-                        ErrorKind::Backend,
+                        ErrorKind::Unsupported,
                         "Decryption not supported. The data is not in a supported format.",
                 ));
             }
-            
         }
         .into())
     }

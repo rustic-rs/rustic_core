@@ -10,7 +10,7 @@ pub use zstd::compression_level_range;
 use crate::{
     backend::{CryptBackendErrorKind, CryptBackendResult, FileType, ReadBackend, WriteBackend},
     crypto::{hasher::hash, CryptoKey},
-    error::RusticResult,
+    error::{ErrorKind, RusticError, RusticResult},
     id::Id,
     repofile::{RepoFile, RepoId},
     Progress,
@@ -77,12 +77,20 @@ pub trait DecryptReadBackend: ReadBackend + Clone + 'static {
     ) -> RusticResult<Bytes> {
         let mut data = self.decrypt(data)?;
         if let Some(length) = uncompressed_length {
-            data = decode_all(&*data)
-                .map_err(CryptBackendErrorKind::DecodingZstdCompressedDataFailed)
-                .map_err(|_err| todo!("Error transition"))?;
+            data = decode_all(&*data).map_err(|err| {
+                RusticError::with_source(
+                    ErrorKind::Compression,
+                    "Failed to decode zstd compressed data. The data may be corrupted.",
+                    err,
+                )
+            })?;
             if data.len() != length.get() as usize {
-                return Err(CryptBackendErrorKind::LengthOfUncompressedDataDoesNotMatch)
-                    .map_err(|_err| todo!("Error transition"));
+                return Err(RusticError::new(
+                    ErrorKind::Compression,
+                    "Length of uncompressed data does not match the given length. This is likely a bug. Please report this issue.",
+                )
+                .attach_context("expected_length", length.get().to_string())
+                .attach_context("actual_length", data.len().to_string()));
             }
         }
         Ok(data.into())
@@ -128,9 +136,15 @@ pub trait DecryptReadBackend: ReadBackend + Clone + 'static {
     /// If the file could not be read.
     fn get_file<F: RepoFile>(&self, id: &Id) -> RusticResult<F> {
         let data = self.read_encrypted_full(F::TYPE, id)?;
-        Ok(serde_json::from_slice(&data)
-            .map_err(CryptBackendErrorKind::DeserializingFromBytesOfJsonTextFailed)
-            .map_err(|_err| todo!("Error transition"))?)
+        let deserialized = serde_json::from_slice(&data).map_err(|err| {
+            RusticError::with_source(
+                ErrorKind::Internal,
+                "Failed to deserialize file from JSON.",
+                err,
+            )
+        })?;
+
+        Ok(deserialized)
     }
 
     /// Streams all files.
@@ -221,10 +235,7 @@ pub trait DecryptWriteBackend: WriteBackend + Clone + 'static {
     ///
     /// The hash of the written data.
     fn hash_write_full_uncompressed(&self, tpe: FileType, data: &[u8]) -> RusticResult<Id> {
-        let data = self
-            .key()
-            .encrypt_data(data)
-            .map_err(|_err| todo!("Error transition"))?;
+        let data = self.key().encrypt_data(data)?;
         let id = hash(&data);
         self.write_bytes(tpe, &id, false, data.into())?;
         Ok(id)
@@ -245,9 +256,14 @@ pub trait DecryptWriteBackend: WriteBackend + Clone + 'static {
     ///
     /// [`CryptBackendErrorKind::SerializingToJsonByteVectorFailed`]: crate::error::CryptBackendErrorKind::SerializingToJsonByteVectorFailed
     fn save_file<F: RepoFile>(&self, file: &F) -> RusticResult<Id> {
-        let data = serde_json::to_vec(file)
-            .map_err(CryptBackendErrorKind::SerializingToJsonByteVectorFailed)
-            .map_err(|_err| todo!("Error transition"))?;
+        let data = serde_json::to_vec(file).map_err(|err| {
+            RusticError::with_source(
+                ErrorKind::Internal,
+                "Failed to serialize file to JSON. This is likely a bug. Please report this issue.",
+                err,
+            )
+        })?;
+
         self.hash_write_full(F::TYPE, &data)
     }
 
@@ -267,9 +283,14 @@ pub trait DecryptWriteBackend: WriteBackend + Clone + 'static {
     ///
     /// [`CryptBackendErrorKind::SerializingToJsonByteVectorFailed`]: crate::error::CryptBackendErrorKind::SerializingToJsonByteVectorFailed
     fn save_file_uncompressed<F: RepoFile>(&self, file: &F) -> RusticResult<Id> {
-        let data = serde_json::to_vec(file)
-            .map_err(CryptBackendErrorKind::SerializingToJsonByteVectorFailed)
-            .map_err(|_err| todo!("Error transition"))?;
+        let data = serde_json::to_vec(file).map_err(|err| {
+            RusticError::with_source(
+                ErrorKind::Internal,
+                "Failed to serialize file to JSON. This is likely a bug. Please report this issue.",
+                err,
+            )
+        })?;
+
         self.hash_write_full_uncompressed(F::TYPE, &data)
     }
 
@@ -384,12 +405,18 @@ impl<C: CryptoKey> DecryptBackend<C> {
         let decrypted = self.decrypt(data)?;
         Ok(match decrypted.first() {
             Some(b'{' | b'[') => decrypted, // not compressed
-            Some(2) => decode_all(&decrypted[1..])
-                .map_err(CryptBackendErrorKind::DecodingZstdCompressedDataFailed)
-                .map_err(|_err| todo!("Error transition"))?, // 2 indicates compressed data following
+            Some(2) => decode_all(&decrypted[1..]).map_err(|err| {
+                RusticError::with_source(
+                    ErrorKind::Compression,
+                    "Failed to decode zstd compressed data. The data may be corrupted.",
+                    err,
+                )
+            })?, // 2 indicates compressed data following
             _ => {
-                return Err(CryptBackendErrorKind::DecryptionNotSupportedForBackend)
-                    .map_err(|_err| todo!("Error transition"))?
+                return Err(RusticError::new(
+                    ErrorKind::Unsupported,
+                    "Decryption not supported. The data is not in a supported format.",
+                ))?
             }
         })
     }
@@ -417,8 +444,12 @@ impl<C: CryptoKey> DecryptBackend<C> {
         if self.extra_verify {
             let check_data = self.decrypt_file(data_encrypted)?;
             if data != check_data {
-                return Err(CryptBackendErrorKind::ExtraVerificationFailed)
-                    .map_err(|_err| todo!("Error transition"));
+                return Err(
+                    RusticError::new(
+                        ErrorKind::Verification,
+                        "Extra verification failed: After decrypting and decompressing the data changed! The data may be corrupted.\nPlease check the backend for corruption and try again. You can also try to run `rustic check --read-data` to check for corruption. This may take a long time.",
+                    )
+                );
             }
         }
         Ok(())
@@ -459,11 +490,17 @@ impl<C: CryptoKey> DecryptBackend<C> {
         if self.extra_verify {
             let data_check =
                 self.read_encrypted_from_partial(data_encrypted, uncompressed_length)?;
+
             if data != data_check {
-                return Err(CryptBackendErrorKind::ExtraVerificationFailed)
-                    .map_err(|_err| todo!("Error transition"));
+                return Err(
+                    RusticError::new(
+                        ErrorKind::Verification,
+                        "Extra verification failed: After decrypting and decompressing the data changed! The data may be corrupted.\nPlease check the backend for corruption and try again. You can also try to run `rustic check --read-data` to check for corruption. This may take a long time.",
+                    )
+                );
             }
         }
+
         Ok(())
     }
 }
@@ -494,20 +531,34 @@ impl<C: CryptoKey> DecryptWriteBackend for DecryptBackend<C> {
     ///
     /// [`CryptBackendErrorKind::CopyEncodingDataFailed`]: crate::error::CryptBackendErrorKind::CopyEncodingDataFailed
     fn hash_write_full(&self, tpe: FileType, data: &[u8]) -> RusticResult<Id> {
-        let data_encrypted = self
-            .encrypt_file(data)
-            .map_err(|_err| todo!("Error transition"))?;
+        let data_encrypted = self.encrypt_file(data).map_err(|err| {
+            RusticError::with_source(
+                ErrorKind::Cryptography,
+                "Failed to encrypt data. The data may be corrupted.",
+                err,
+            )
+        })?;
+
         self.very_file(&data_encrypted, data)?;
+
         let id = hash(&data_encrypted);
+
         self.write_bytes(tpe, &id, false, data_encrypted.into())?;
         Ok(id)
     }
 
     fn process_data(&self, data: &[u8]) -> RusticResult<(Vec<u8>, u32, Option<NonZeroU32>)> {
-        let (data_encrypted, data_len, uncompressed_length) = self
-            .encrypt_data(data)
-            .map_err(|_err| todo!("Error transition"))?;
+        let (data_encrypted, data_len, uncompressed_length) =
+            self.encrypt_data(data).map_err(|err| {
+                RusticError::with_source(
+                    ErrorKind::Cryptography,
+                    "Failed to encrypt data. The data may be corrupted.",
+                    err,
+                )
+            })?;
+
         self.very_data(&data_encrypted, uncompressed_length, data)?;
+
         Ok((data_encrypted, data_len, uncompressed_length))
     }
 

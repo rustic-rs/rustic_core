@@ -413,7 +413,7 @@ impl SnapshotFile {
                 .to_str()
                 .ok_or_else(|| {
                     RusticError::new(
-                        ErrorKind::Conversion,
+                        ErrorKind::Internal,
                         "Failed to convert hostname to string. The value must be a valid unicode string.",
                     )
                     .attach_context("hostname", hostname.to_string_lossy().to_string())
@@ -428,7 +428,7 @@ impl SnapshotFile {
             (_, Some(duration)) => DeleteOption::After(
                 time + Duration::from_std(*duration).map_err(|err| {
                     RusticError::with_source(
-                        ErrorKind::Conversion,
+                        ErrorKind::Internal,
                         "Failed to convert duration to std::time::Duration. Please make sure the value is a valid duration string.",
                         err,
                     )

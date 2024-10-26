@@ -116,7 +116,7 @@ impl KeyFile {
         let params = Params::new(
             log_2(self.n).map_err(|err| {
                 RusticError::with_source(
-                    ErrorKind::Conversion,
+                    ErrorKind::Internal,
                     "Calculating log2 failed. Please check the key file and password.",
                     err,
                 )

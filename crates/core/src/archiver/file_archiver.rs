@@ -157,7 +157,7 @@ impl<'a, BE: DecryptWriteBackend, I: ReadGlobalIndex> FileArchiver<'a, BE, I> {
             r,
             usize::try_from(node.meta.size).map_err(|err| {
                 RusticError::with_source(
-                    ErrorKind::Conversion,
+                    ErrorKind::Internal,
                     "Failed to convert node size to usize",
                     err,
                 )

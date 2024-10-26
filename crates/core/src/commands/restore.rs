@@ -722,7 +722,7 @@ impl RestorePlan {
 
             let usize_length = usize::try_from(length).map_err(|err| {
                 RusticError::with_source(
-                    ErrorKind::Conversion,
+                    ErrorKind::Internal,
                     "Failed to convert the length to usize. Please try again.",
                     err,
                 )

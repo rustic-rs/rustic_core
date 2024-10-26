@@ -266,7 +266,7 @@ pub fn read_password_from_reader(file: &mut impl BufRead) -> RusticResult<String
     let mut password = String::new();
     _ = file.read_line(&mut password).map_err(|err| {
         RusticError::with_source(
-            ErrorKind::Password, 
+            ErrorKind::Password,
             "Reading password from reader failed. Is the file empty? Please check the file and the password.",
             err
         )

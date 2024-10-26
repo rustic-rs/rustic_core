@@ -210,7 +210,7 @@ pub fn random_poly() -> RusticResult<u64> {
     }
 
     Err(RusticError::new(
-        ErrorKind::Polynomial,
+        ErrorKind::Internal,
         "No suitable polynomial found, this should essentially never happen. Please try again, and then report this as a bug.",
     ))
 }

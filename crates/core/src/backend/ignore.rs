@@ -27,7 +27,7 @@ use crate::{
         node::{Metadata, Node, NodeType},
         ReadSource, ReadSourceEntry, ReadSourceOpen,
     },
-    error::RusticResult,
+    error::{ErrorKind, RusticError, RusticResult},
 };
 
 /// [`IgnoreErrorKind`] describes the errors that can be returned by a Ignore action in Backends
@@ -194,48 +194,91 @@ impl LocalSource {
 
         let mut override_builder = OverrideBuilder::new("");
 
+        // FIXME: Refactor this to a function to be reused
+        // This is the same of backend::ignore::Localsource::new
+        // https://github.com/rustic-rs/rustic_core/blob/db82ed21db158e66ef4f8f3e6ba8c8b52d2fd42a/crates/core/src/blob/tree.rs#L630
         for g in &filter_opts.globs {
             _ = override_builder
                 .add(g)
-                .map_err(|_err| todo!("Error transition"))?;
+                .map_err(|err|
+                    RusticError::with_source(
+                        ErrorKind::Internal,
+                        "Failed to add glob pattern to override builder. This is a bug. Please report it.",
+                        err,
+                    )
+                    .attach_context("glob", g.to_string())
+                )?;
         }
 
         for file in &filter_opts.glob_files {
             for line in std::fs::read_to_string(file)
-                .map_err(|err| IgnoreErrorKind::ErrorGlob {
-                    file: file.into(),
-                    source: err,
-                })
-                .map_err(|_err| todo!("Error transition"))?
+                .map_err(|err| {
+                    RusticError::with_source(
+                        ErrorKind::Internal,
+                        "Failed to read string from glob file. This is a bug. Please report it.",
+                        err,
+                    )
+                    .attach_context("glob file", file.to_string())
+                })?
                 .lines()
             {
                 _ = override_builder
                     .add(line)
-                    .map_err(|_err| todo!("Error transition"))?;
+                    .map_err(|err|
+                        RusticError::with_source(
+                            ErrorKind::Internal,
+                            "Failed to add glob pattern line to override builder. This is a bug. Please report it.",
+                            err,
+                        )
+                        .attach_context("glob pattern line", line.to_string())
+                    )?;
             }
         }
 
         _ = override_builder
             .case_insensitive(true)
-            .map_err(|_err| todo!("Error transition"))?;
+            .map_err(|err|
+                RusticError::with_source(
+                    ErrorKind::Internal,
+                    "Failed to set case insensitivity in override builder. This is a bug. Please report it.",
+                    err,
+                )
+            )?;
         for g in &filter_opts.iglobs {
             _ = override_builder
                 .add(g)
-                .map_err(|_err| todo!("Error transition"))?;
+                .map_err(|err|
+                    RusticError::with_source(
+                        ErrorKind::Internal,
+                        "Failed to add iglob pattern to override builder. This is a bug. Please report it.",
+                        err,
+                    )
+                    .attach_context("iglob", g.to_string())
+                )?;
         }
 
         for file in &filter_opts.iglob_files {
             for line in std::fs::read_to_string(file)
-                .map_err(|err| IgnoreErrorKind::ErrorGlob {
-                    file: file.into(),
-                    source: err,
-                })
-                .map_err(|_err| todo!("Error transition"))?
+                .map_err(|err| {
+                    RusticError::with_source(
+                        ErrorKind::Internal,
+                        "Failed to read string from iglob file. This is a bug. Please report it.",
+                        err,
+                    )
+                    .attach_context("iglob file", file.to_string())
+                })?
                 .lines()
             {
                 _ = override_builder
                     .add(line)
-                    .map_err(|_err| todo!("Error transition"))?;
+                    .map_err(|err|
+                        RusticError::with_source(
+                            ErrorKind::Internal,
+                            "Failed to add iglob pattern line to override builder. This is a bug. Please report it.",
+                            err,
+                        )
+                        .attach_context("iglob pattern line", line.to_string())
+                    )?;
             }
         }
 
@@ -255,7 +298,13 @@ impl LocalSource {
             .overrides(
                 override_builder
                     .build()
-                    .map_err(|_err| todo!("Error transition"))?,
+                    .map_err(|err|
+                RusticError::with_source(
+                    ErrorKind::Internal,
+                    "Failed to build matcher for a set of glob overrides. This is a bug. Please report it.",
+                    err,
+                )
+            )?,
             );
 
         let exclude_if_present = filter_opts.exclude_if_present.clone();
@@ -368,7 +417,13 @@ impl Iterator for LocalSourceWalker {
         }
         .map(|e| {
             map_entry(
-                e.map_err(|_err| todo!("Error transition"))?,
+                e.map_err(|err|
+                    RusticError::with_source(
+                        ErrorKind::Internal,
+                        "Failed to get next entry from walk iterator. This is a bug. Please report it.",
+                        err,
+                 )
+                )?,
                 self.save_opts.with_atime,
                 self.save_opts.ignore_devid,
             )

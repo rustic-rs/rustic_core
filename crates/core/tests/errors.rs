@@ -12,10 +12,9 @@ fn error() -> RusticError {
     .attach_status(Status::Permanent)
     .attach_severity(Severity::Error)
     .attach_error_code("E001".into())
-    .add_context("path", "/path/to/file")
-    .add_context("called", "used s3 backend")
-    .source(std::io::Error::new(std::io::ErrorKind::Other, "networking error").into())
-    .backtrace(Backtrace::disabled())
+    .attach_context("path", "/path/to/file")
+    .attach_context("called", "used s3 backend")
+    .attach_source(std::io::Error::new(std::io::ErrorKind::Other, "networking error").into())
 }
 
 #[rstest]

@@ -366,8 +366,6 @@ pub enum ErrorKind {
     Compression,
     /// Config Error
     Config,
-    /// Conversion Error
-    Conversion,
     /// Crypto Error
     Cryptography,
     /// External Command Error
@@ -387,14 +385,14 @@ pub enum ErrorKind {
     Password,
     /// Permission Error
     Permission,
-    /// Polynomial Error
-    Polynomial,
     /// Processing Error
     Processing,
     /// Repository Error
     Repository,
     /// Something is not supported
     Unsupported,
+    /// Verification Error
+    Verification,
     /// Virtual File System Error
     Vfs,
     // /// The repository password is incorrect. Please try again.
