@@ -21,11 +21,11 @@ use serde_with::{serde_as, skip_serializing_none, DisplayFromStr};
 use crate::{
     backend::{decrypt::DecryptReadBackend, FileType, FindInBackend},
     blob::tree::TreeId,
-    error::RusticResult,
+    error::{ErrorKind, RusticError, RusticResult},
     impl_repofile,
     progress::Progress,
     repofile::RepoFile,
-    ErrorKind, Id, RusticError,
+    Id,
 };
 
 #[cfg(feature = "clap")]

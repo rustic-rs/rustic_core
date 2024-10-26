@@ -7,8 +7,8 @@ use serde_with::{base64::Base64, serde_as, skip_serializing_none};
 use crate::{
     backend::{FileType, ReadBackend},
     crypto::{aespoly1305::Key, CryptoKey},
-    error::RusticResult,
-    impl_repoid, ErrorKind, RusticError,
+    error::{ErrorKind, RusticError, RusticResult},
+    impl_repoid,
 };
 
 /// [`KeyFileErrorKind`] describes the errors that can be returned for `KeyFile`s

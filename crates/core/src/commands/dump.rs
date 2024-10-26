@@ -3,9 +3,8 @@ use std::io::Write;
 use crate::{
     backend::node::{Node, NodeType},
     blob::{BlobId, BlobType},
-    error::RusticResult,
+    error::{ErrorKind, RusticError, RusticResult},
     repository::{IndexedFull, Repository},
-    ErrorKind, RusticError,
 };
 
 /// Dumps the contents of a file.

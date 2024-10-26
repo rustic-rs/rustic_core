@@ -4,7 +4,10 @@ use aes256ctr_poly1305aes::{
 };
 use rand::{thread_rng, RngCore};
 
-use crate::{crypto::CryptoKey, error::RusticResult, ErrorKind, RusticError};
+use crate::{
+    crypto::CryptoKey,
+    error::{ErrorKind, RusticError, RusticResult},
+};
 
 pub(crate) type Nonce = aead::Nonce<Aes256CtrPoly1305Aes>;
 pub(crate) type AeadKey = aes256ctr_poly1305aes::Key;

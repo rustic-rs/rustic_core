@@ -5,12 +5,11 @@ use bytes::Bytes;
 use crate::{
     backend::{decrypt::DecryptReadBackend, FileType, FindInBackend},
     blob::{tree::Tree, BlobId, BlobType},
-    error::RusticResult,
+    error::{ErrorKind, RusticError, RusticResult},
     index::ReadIndex,
     progress::ProgressBars,
     repofile::SnapshotFile,
     repository::{IndexedFull, IndexedTree, Open, Repository},
-    ErrorKind, RusticError,
 };
 
 /// Prints the contents of a file.

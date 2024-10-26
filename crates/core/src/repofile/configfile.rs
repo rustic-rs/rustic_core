@@ -4,8 +4,12 @@ use serde_derive::{Deserialize, Serialize};
 use serde_with::skip_serializing_none;
 
 use crate::{
-    backend::FileType, blob::BlobType, define_new_id_struct, error::RusticResult, impl_repofile,
-    repofile::RepoFile, ErrorKind, RusticError,
+    backend::FileType,
+    blob::BlobType,
+    define_new_id_struct,
+    error::{ErrorKind, RusticError, RusticResult},
+    impl_repofile,
+    repofile::RepoFile,
 };
 
 /// [`ConfigFileErrorKind`] describes the errors that can be returned for `ConfigFile`s

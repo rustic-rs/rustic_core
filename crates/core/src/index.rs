@@ -6,14 +6,13 @@ use derive_more::Constructor;
 use crate::{
     backend::{decrypt::DecryptReadBackend, CryptBackendErrorKind, FileType},
     blob::{tree::TreeId, BlobId, BlobType, DataId},
-    error::RusticResult,
+    error::{ErrorKind, RusticError, RusticResult},
     index::binarysorted::{Index, IndexCollector, IndexType},
     progress::Progress,
     repofile::{
         indexfile::{IndexBlob, IndexFile},
         packfile::PackId,
     },
-    ErrorKind, RusticError,
 };
 
 pub(crate) mod binarysorted;

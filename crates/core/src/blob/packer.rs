@@ -18,7 +18,7 @@ use crate::{
     },
     blob::{BlobId, BlobType},
     crypto::{hasher::hash, CryptoKey},
-    error::RusticResult,
+    error::{ErrorKind, RusticError, RusticResult},
     index::indexer::SharedIndexer,
     repofile::{
         configfile::ConfigFile,
@@ -26,7 +26,6 @@ use crate::{
         packfile::{PackHeaderLength, PackHeaderRef, PackId},
         snapshotfile::SnapshotSummary,
     },
-    ErrorKind, RusticError,
 };
 
 /// [`PackerErrorKind`] describes the errors that can be returned for a Packer

@@ -18,12 +18,11 @@ pub use crate::vfs::webdavfs::WebDavFS;
 
 use crate::{
     blob::{tree::TreeId, BlobId, DataId},
-    error::RusticResult,
+    error::{ErrorKind, RusticError, RusticResult},
     index::ReadIndex,
     repofile::{BlobType, Metadata, Node, NodeType, SnapshotFile},
     repository::{IndexedFull, IndexedTree, Repository},
     vfs::format::FormattedSnapshot,
-    ErrorKind, RusticError,
 };
 
 /// [`VfsErrorKind`] describes the errors that can be returned from the Virtual File System

@@ -16,13 +16,13 @@ use crate::{
     },
     backend::{decrypt::DecryptFullBackend, ReadSource, ReadSourceEntry},
     blob::BlobType,
-    error::RusticResult,
+    error::{ErrorKind, RusticError, RusticResult},
     index::{
         indexer::{Indexer, SharedIndexer},
         ReadGlobalIndex,
     },
     repofile::{configfile::ConfigFile, snapshotfile::SnapshotFile},
-    ErrorKind, Progress, RusticError,
+    Progress,
 };
 
 /// [`ArchiverErrorKind`] describes the errors that can be returned from the archiver

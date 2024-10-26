@@ -22,12 +22,11 @@ use crate::{
     },
     blob::BlobType,
     crypto::hasher::hash,
-    error::RusticResult,
+    error::{ErrorKind, RusticError, RusticResult},
     impl_blobid,
     index::ReadGlobalIndex,
     progress::Progress,
     repofile::snapshotfile::SnapshotSummary,
-    ErrorKind, RusticError,
 };
 
 /// [`TreeErrorKind`] describes the errors that can come up dealing with Trees

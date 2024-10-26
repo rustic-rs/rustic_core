@@ -6,11 +6,10 @@ use log::trace;
 use crate::{
     backend::{decrypt::DecryptReadBackend, FileType},
     blob::BlobType,
-    error::RusticResult,
+    error::{ErrorKind, RusticError, RusticResult},
     id::Id,
     impl_repoid,
     repofile::indexfile::{IndexBlob, IndexPack},
-    ErrorKind, RusticError,
 };
 
 /// [`PackFileErrorKind`] describes the errors that can be returned for `PackFile`s

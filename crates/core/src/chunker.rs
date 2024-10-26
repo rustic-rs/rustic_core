@@ -7,8 +7,7 @@ use crate::{
         polynom::{Polynom, Polynom64},
         rolling_hash::{Rabin64, RollingHash64},
     },
-    error::RusticResult,
-    ErrorKind, RusticError,
+    error::{ErrorKind, RusticError, RusticResult},
 };
 
 /// [`PolynomialErrorKind`] describes the errors that can happen while dealing with Polynomials
