@@ -4,16 +4,16 @@ use bytesize::ByteSize;
 use log::{debug, trace};
 
 use crate::{
-    archiver::{parent::ParentResult, tree::TreeType, ArchiverErrorKind},
+    archiver::{parent::ParentResult, tree::TreeType},
     backend::{decrypt::DecryptWriteBackend, node::Node},
     blob::{
         packer::Packer,
         tree::{Tree, TreeId},
         BlobType,
     },
+    error::{ErrorKind, RusticError, RusticResult},
     index::{indexer::SharedIndexer, ReadGlobalIndex},
     repofile::{configfile::ConfigFile, snapshotfile::SnapshotSummary},
-    RusticResult,
 };
 
 pub(crate) type TreeItem = TreeType<(ParentResult<()>, u64), ParentResult<TreeId>>;
@@ -107,11 +107,12 @@ impl<'a, BE: DecryptWriteBackend, I: ReadGlobalIndex> TreeArchiver<'a, BE, I> {
                 self.stack.push((path, node, parent, tree));
             }
             TreeType::EndTree => {
-                let (path, mut node, parent, tree) = self
-                    .stack
-                    .pop()
-                    .ok_or_else(|| ArchiverErrorKind::TreeStackEmpty)
-                    .map_err(|_err| todo!("Error transition"))?;
+                let (path, mut node, parent, tree) = self.stack.pop().ok_or_else(|| {
+                    RusticError::new(
+                        ErrorKind::Internal,
+                        "Tree stack is empty. This is a bug. Please report it.",
+                    )
+                })?;
 
                 // save tree
                 trace!("finishing {path:?}");
@@ -174,10 +175,14 @@ impl<'a, BE: DecryptWriteBackend, I: ReadGlobalIndex> TreeArchiver<'a, BE, I> {
     ///
     /// [`PackerErrorKind::SendingCrossbeamMessageFailed`]: crate::error::PackerErrorKind::SendingCrossbeamMessageFailed
     fn backup_tree(&mut self, path: &Path, parent: &ParentResult<TreeId>) -> RusticResult<TreeId> {
-        let (chunk, id) = self
-            .tree
-            .serialize()
-            .map_err(|_err| todo!("Error transition"))?;
+        let (chunk, id) = self.tree.serialize().map_err(|err| {
+            RusticError::with_source(
+                ErrorKind::Internal,
+                "Failed to serialize tree. This is a bug. Please report it.",
+                err,
+            )
+            .attach_context("path", path.to_string_lossy())
+        })?;
         let dirsize = chunk.len() as u64;
         let dirsize_bytes = ByteSize(dirsize).to_string_as(true);
 

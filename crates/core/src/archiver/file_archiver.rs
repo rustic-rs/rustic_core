@@ -5,7 +5,6 @@ use crate::{
         parent::{ItemWithParent, ParentResult},
         tree::TreeType,
         tree_archiver::TreeItem,
-        ArchiverErrorKind,
     },
     backend::{
         decrypt::DecryptWriteBackend,
@@ -19,11 +18,10 @@ use crate::{
     cdc::rolling_hash::Rabin64,
     chunker::ChunkIter,
     crypto::hasher::hash,
-    error::RusticResult,
+    error::{ErrorKind, RusticError, RusticResult},
     index::{indexer::SharedIndexer, ReadGlobalIndex},
     progress::Progress,
     repofile::configfile::ConfigFile,
-    ErrorKind, RusticError,
 };
 
 /// The `FileArchiver` is responsible for archiving files.
@@ -122,11 +120,23 @@ impl<'a, BE: DecryptWriteBackend, I: ReadGlobalIndex> FileArchiver<'a, BE, I> {
                     (node, size)
                 } else if node.node_type == NodeType::File {
                     let r = open
-                        .ok_or(ArchiverErrorKind::UnpackingTreeTypeOptionalFailed)
-                        .map_err(|_err| todo!("Error transition"))?
+                        .ok_or(
+                            RusticError::new(
+                                ErrorKind::Internal,
+                                "Failed to unpack tree type optional. Option should contain a value, but contained `None`. This is a bug. Please report it.",
+                            )
+                            .attach_context("path", path.display().to_string()),
+                        )?
                         .open()
-                        .map_err(|_| ArchiverErrorKind::OpeningFileFailed { path: path.clone() })
-                        .map_err(|_err| todo!("Error transition"))?;
+                        .map_err(|err| {
+                            RusticError::with_source(
+                                ErrorKind::Io,
+                                "Failed to open ReadSourceOpen",
+                                err,
+                            )
+                            .attach_context("path", path.display().to_string())
+                        })?;
+
                     self.backup_reader(r, node, p)?
                 } else {
                     (node, 0)
@@ -156,7 +166,7 @@ impl<'a, BE: DecryptWriteBackend, I: ReadGlobalIndex> FileArchiver<'a, BE, I> {
             self.rabin.clone(),
         )
         .map(|chunk| {
-            let chunk = chunk.map_err(|_err| todo!("Error transition"))?;
+            let chunk = chunk?;
             let id = hash(&chunk);
             let size = chunk.len() as u64;
 

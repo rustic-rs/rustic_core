@@ -31,13 +31,6 @@ use crate::{
 pub enum ArchiverErrorKind {
     /// tree stack empty
     TreeStackEmpty,
-    /// cannot open file or directory `{path}`
-    OpeningFileFailed {
-        /// path of the file
-        path: PathBuf,
-    },
-    /// option should contain a value, but contained `None`
-    UnpackingTreeTypeOptionalFailed,
     /// couldn't determine size for item in Archiver
     CouldNotDetermineSize,
 }

@@ -360,45 +360,43 @@ pub enum Status {
 pub enum ErrorKind {
     /// Backend Error
     Backend,
-    /// IO Error
-    Io,
-    /// Password Error
-    Password,
-    /// Repository Error
-    Repository,
     /// Command Error
     Command,
-    /// Config Error
-    Config,
-    /// Index Error
-    Index,
-    /// Key Error
-    Key,
-    /// Crypto Error
-    Cryptography,
     /// Compression Error
     Compression,
-    /// Parsing Error
-    Parsing,
+    /// Config Error
+    Config,
     /// Conversion Error
     Conversion,
+    /// Crypto Error
+    Cryptography,
+    /// External Command Error
+    ExternalCommand,
+    /// Blob, Pack, Index or Tree Error
+    // These are deep errors that are not expected to be handled by the user.
+    Internal,
+    /// IO Error
+    Io,
+    /// Key Error
+    Key,
+    /// Multithreading Error
+    Multithreading,
+    /// Parsing Error
+    Parsing,
+    /// Password Error
+    Password,
     /// Permission Error
     Permission,
     /// Polynomial Error
     Polynomial,
-    /// Multithreading Error
-    Multithreading,
     /// Processing Error
     Processing,
+    /// Repository Error
+    Repository,
     /// Something is not supported
     Unsupported,
-    /// External Command Error
-    ExternalCommand,
     /// Virtual File System Error
     Vfs,
-    /// Blob, Pack, or Tree Error
-    // These are deep errors that are not expected to be handled by the user.
-    Internal,
     // /// The repository password is incorrect. Please try again.
     // IncorrectRepositoryPassword,
     // /// No repository given. Please use the --repository option.

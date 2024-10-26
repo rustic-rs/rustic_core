@@ -205,7 +205,7 @@ pub trait ReadIndex {
         self.get_id(tpe, id).map_or_else(
             || {
                 Err(
-                    RusticError::new(ErrorKind::Index, "Blob not found in index")
+                    RusticError::new(ErrorKind::Internal, "Blob not found in index")
                         .attach_context("blob id", id.to_string())
                         .attach_context("blob type", tpe.to_string()),
                 )
