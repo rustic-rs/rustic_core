@@ -4,7 +4,7 @@ use derive_setters::Setters;
 use crate::{
     backend::{decrypt::DecryptWriteBackend, FileType, WriteBackend},
     crypto::{aespoly1305::Key, hasher::hash},
-    error::RusticResult,
+    error::{ErrorKind, RusticError, RusticResult},
     repofile::{KeyFile, KeyId},
     repository::{Open, Repository},
 };
@@ -112,10 +112,14 @@ pub(crate) fn add_key_to_repo<P, S>(
     let ko = opts.clone();
     let keyfile = KeyFile::generate(key, &pass, ko.hostname, ko.username, ko.with_created)?;
 
-    let data = serde_json::to_vec(&keyfile).map_err(|_err| todo!("Error transition"))?;
+    let data = serde_json::to_vec(&keyfile).map_err(|err| {
+        RusticError::with_source(ErrorKind::Io, "Failed to serialize keyfile to JSON.", err)
+    })?;
+
     let id = KeyId::from(hash(&data));
+
     repo.be
-        .write_bytes(FileType::Key, &id, false, data.into())
-        .map_err(|_err| todo!("Error transition"))?;
+        .write_bytes(FileType::Key, &id, false, data.into())?;
+
     Ok(id)
 }

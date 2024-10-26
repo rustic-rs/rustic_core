@@ -23,11 +23,10 @@ use crate::{
         node::{Node, NodeType},
         FileType, ReadBackend,
     },
-    error::RusticResult,
+    error::{ErrorKind, RusticError, RusticResult},
     progress::{Progress, ProgressBars},
     repofile::packfile::PackId,
     repository::{IndexedFull, IndexedTree, Open, Repository},
-    ErrorKind, RusticError,
 };
 
 pub(crate) mod constants {
@@ -677,7 +676,14 @@ impl RestorePlan {
                 .as_ref()
                 .map(std::fs::File::metadata)
                 .transpose()
-                .map_err(|_err| todo!("Error transition"))?
+                .map_err(|err|
+                    RusticError::with_source(
+                        ErrorKind::Io,
+                        "Failed to get the metadata of the file. Please check the path and try again.",
+                        err
+                    )
+                    .attach_context("path", name.display().to_string())
+                )?
             {
                 if meta.len() == 0 {
                     // Empty file exists
@@ -691,9 +697,16 @@ impl RestorePlan {
                 .as_ref()
                 .map(std::fs::File::metadata)
                 .transpose()
-                .map_err(|_err| todo!("Error transition"))?
+                .map_err(|err|
+                    RusticError::with_source(
+                        ErrorKind::Io,
+                        "Failed to get the metadata of the file. Please check the path and try again.",
+                        err
+                    )
+                    .attach_context("path", name.display().to_string())
+                )?
             {
-                // TODO: This is the same logic as in backend/ignore.rs => consollidate!
+                // TODO: This is the same logic as in backend/ignore.rs => consolidate!
                 let mtime = meta
                     .modified()
                     .ok()

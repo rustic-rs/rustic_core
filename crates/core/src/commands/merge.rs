@@ -11,7 +11,7 @@ use crate::{
         tree::{self, Tree, TreeId},
         BlobId, BlobType,
     },
-    error::RusticResult,
+    error::{ErrorKind, RusticError, RusticResult},
     index::{indexer::Indexer, ReadIndex},
     progress::{Progress, ProgressBars},
     repofile::{PathList, SnapshotFile, SnapshotSummary},
@@ -44,9 +44,10 @@ pub(crate) fn merge_snapshots<P: ProgressBars, S: IndexedTree>(
         .collect::<PathList>()
         .merge();
 
-    snap.paths
-        .set_paths(&paths.paths())
-        .map_err(|_err| todo!("Error transition"))?;
+    snap.paths.set_paths(&paths.paths()).map_err(|err| {
+        RusticError::with_source(ErrorKind::Internal, "Failed to set paths in snapshot.", err)
+            .attach_context("paths", paths.to_string())
+    })?;
 
     // set snapshot time to time of latest snapshot to be merged
     snap.time = snapshots
@@ -60,9 +61,9 @@ pub(crate) fn merge_snapshots<P: ProgressBars, S: IndexedTree>(
     let trees: Vec<TreeId> = snapshots.iter().map(|sn| sn.tree).collect();
     snap.tree = merge_trees(repo, &trees, cmp, &mut summary)?;
 
-    summary
-        .finalize(now)
-        .map_err(|_err| todo!("Error transition"))?;
+    summary.finalize(now).map_err(|err| {
+        RusticError::with_source(ErrorKind::Internal, "Failed to finalize summary.", err)
+    })?;
     snap.summary = Some(summary);
 
     snap.id = repo.dbe().save_file(&snap)?.into();
@@ -108,12 +109,25 @@ pub(crate) fn merge_trees<P: ProgressBars, S: IndexedTree>(
         repo.config(),
         index.total_size(BlobType::Tree),
     )?;
+
     let save = |tree: Tree| -> RusticResult<_> {
-        let (chunk, new_id) = tree.serialize().map_err(|_err| todo!("Error transition"))?;
-        let size = u64::try_from(chunk.len()).map_err(|_err| todo!("Error transition"))?;
+        let (chunk, new_id) = tree.serialize().map_err(|err| {
+            RusticError::with_source(ErrorKind::Internal, "Failed to serialize tree.", err)
+        })?;
+
+        let size = u64::try_from(chunk.len()).map_err(|err| {
+            RusticError::with_source(
+                ErrorKind::Internal,
+                "Failed to convert chunk length to u64.",
+                err,
+            )
+            .attach_context("chunk", chunk.len().to_string())
+        })?;
+
         if !index.has_tree(&new_id) {
             packer.add(chunk.into(), BlobId::from(*new_id))?;
         }
+
         Ok((new_id, size))
     };
 

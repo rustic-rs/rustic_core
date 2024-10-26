@@ -120,8 +120,8 @@ impl<'a, BE: DecryptWriteBackend, I: ReadGlobalIndex> FileArchiver<'a, BE, I> {
                     (node, size)
                 } else if node.node_type == NodeType::File {
                     let r = open
-                        .ok_or(
-                            RusticError::new(
+                        .ok_or_else(
+                            || RusticError::new(
                                 ErrorKind::Internal,
                                 "Failed to unpack tree type optional. Option should contain a value, but contained `None`. This is a bug. Please report it.",
                             )

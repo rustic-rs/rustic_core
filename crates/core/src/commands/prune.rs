@@ -30,7 +30,7 @@ use crate::{
         tree::TreeStreamerOnce,
         BlobId, BlobType, BlobTypeMap, Initialize,
     },
-    error::{RusticError, RusticResult},
+    error::{ErrorKind, RusticError, RusticResult},
     index::{
         binarysorted::{IndexCollector, IndexType},
         indexer::Indexer,
@@ -42,7 +42,6 @@ use crate::{
         SnapshotFile, SnapshotId,
     },
     repository::{Open, Repository},
-    ErrorKind,
 };
 
 pub(super) mod constants {
@@ -738,14 +737,30 @@ impl PrunePlan {
             .unwrap_or_else(|| repo.config().is_hot == Some(true));
         let pack_sizer =
             total_size.map(|tpe, size| PackSizer::from_config(repo.config(), tpe, size));
+
         pruner.decide_packs(
-            Duration::from_std(*opts.keep_pack).map_err(|_err| todo!("Error transition"))?,
-            Duration::from_std(*opts.keep_delete).map_err(|_err| todo!("Error transition"))?,
+            Duration::from_std(*opts.keep_pack).map_err(|err| {
+                RusticError::with_source(
+                    ErrorKind::Internal,
+                    "Failed to convert keep_pack duration to std::time::Duration.",
+                    err,
+                )
+                .attach_context("keep_pack", opts.keep_pack.to_string())
+            })?,
+            Duration::from_std(*opts.keep_delete).map_err(|err| {
+                RusticError::with_source(
+                    ErrorKind::Internal,
+                    "Failed to convert keep_delete duration to std::time::Duration.",
+                    err,
+                )
+                .attach_context("keep_delete", opts.keep_delete.to_string())
+            })?,
             repack_cacheable_only,
             opts.repack_uncompressed,
             opts.repack_all,
             &pack_sizer,
         )?;
+
         pruner.decide_repack(
             &opts.max_repack,
             &opts.max_unused,
@@ -753,6 +768,7 @@ impl PrunePlan {
             opts.no_resize,
             &pack_sizer,
         );
+
         pruner.check_existing_packs()?;
         pruner.filter_index_files(opts.instant_delete);
 

@@ -7,7 +7,7 @@ use derive_setters::Setters;
 use crate::{
     backend::decrypt::{DecryptBackend, DecryptWriteBackend},
     crypto::CryptoKey,
-    error::RusticResult,
+    error::{ErrorKind, RusticError, RusticResult},
     repofile::ConfigFile,
     repository::{Open, Repository},
 };
@@ -27,9 +27,9 @@ pub enum ConfigCommandErrorKind {
     CannotDowngrade(u32, u32),
     /// Size is too large: `{0}`
     SizeTooLarge(ByteSize),
-    /// min_packsize_tolerate_percent must be <= 100
+    /// `min_packsize_tolerate_percent` must be <= 100
     MinPackSizeTolerateWrong,
-    /// max_packsize_tolerate_percent must be >= 100 or 0"
+    /// `max_packsize_tolerate_percent` must be >= 100 or 0"
     MaxPackSizeTolerateWrong,
 }
 
@@ -268,8 +268,7 @@ impl ConfigOptions {
             config.treepack_size = Some(
                 size.as_u64()
                     .try_into()
-                    .map_err(|_| ConfigCommandErrorKind::SizeTooLarge(size))
-                    .map_err(|_err| todo!("Error transition"))?,
+                    .map_err(|err| construct_size_too_large_error(err, size))?,
             );
         }
         if let Some(factor) = self.set_treepack_growfactor {
@@ -279,8 +278,7 @@ impl ConfigOptions {
             config.treepack_size_limit = Some(
                 size.as_u64()
                     .try_into()
-                    .map_err(|_| ConfigCommandErrorKind::SizeTooLarge(size))
-                    .map_err(|_err| todo!("Error transition"))?,
+                    .map_err(|err| construct_size_too_large_error(err, size))?,
             );
         }
 
@@ -288,8 +286,7 @@ impl ConfigOptions {
             config.datapack_size = Some(
                 size.as_u64()
                     .try_into()
-                    .map_err(|_| ConfigCommandErrorKind::SizeTooLarge(size))
-                    .map_err(|_err| todo!("Error transition"))?,
+                    .map_err(|err| construct_size_too_large_error(err, size))?,
             );
         }
         if let Some(factor) = self.set_datapack_growfactor {
@@ -299,8 +296,7 @@ impl ConfigOptions {
             config.datapack_size_limit = Some(
                 size.as_u64()
                     .try_into()
-                    .map_err(|_| ConfigCommandErrorKind::SizeTooLarge(size))
-                    .map_err(|_err| todo!("Error transition"))?,
+                    .map_err(|err| construct_size_too_large_error(err, size))?,
             );
         }
 
@@ -324,4 +320,16 @@ impl ConfigOptions {
 
         Ok(())
     }
+}
+
+fn construct_size_too_large_error(
+    err: std::num::TryFromIntError,
+    size: ByteSize,
+) -> Box<RusticError> {
+    RusticError::with_source(
+        ErrorKind::Internal,
+        "Failed to convert ByteSize to u64. Size is too large.",
+        err,
+    )
+    .attach_context("size", size.to_string())
 }

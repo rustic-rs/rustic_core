@@ -78,12 +78,14 @@ pub(crate) fn repair_index<P: ProgressBars, S: Open>(
 
     let indexer = Indexer::new(be.clone()).into_shared();
     let p = repo.pb.progress_counter("reading pack headers");
-    p.set_length(
-        pack_read_header
-            .len()
-            .try_into()
-            .map_err(|_err| todo!("Error transition"))?,
-    );
+
+    p.set_length(pack_read_header.len().try_into().map_err(|err| {
+        RusticError::with_source(
+            ErrorKind::Internal,
+            "Failed to convert pack_read_header length to u64.",
+            err,
+        )
+    })?);
     for (id, size_hint, packsize) in pack_read_header {
         debug!("reading pack {id}...");
         match PackHeader::from_file(be, id, size_hint, packsize) {
@@ -190,12 +192,15 @@ pub(crate) fn index_checked_from_collector<P: ProgressBars, S: Open>(
     repo.warm_up_wait(pack_read_header.iter().map(|(id, _, _)| *id))?;
 
     let p = repo.pb.progress_counter("reading pack headers");
-    p.set_length(
-        pack_read_header
-            .len()
-            .try_into()
-            .map_err(|_err| todo!("Error transition"))?,
-    );
+
+    p.set_length(pack_read_header.len().try_into().map_err(|err| {
+        RusticError::with_source(
+            ErrorKind::Internal,
+            "Failed to convert pack_read_header length to u64.",
+            err,
+        )
+    })?);
+
     let index_packs: Vec<_> = pack_read_header
         .into_iter()
         .map(|(id, size_hint, packsize)| {

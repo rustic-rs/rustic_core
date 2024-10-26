@@ -16,7 +16,7 @@ use crate::{
         ignore::{LocalSource, LocalSourceFilterOptions, LocalSourceSaveOptions},
         stdin::StdinSource,
     },
-    error::RusticResult,
+    error::{ErrorKind, RusticError, RusticResult},
     progress::ProgressBars,
     repofile::{
         snapshotfile::{SnapshotGroup, SnapshotGroupCriterion, SnapshotId},
@@ -231,20 +231,34 @@ pub(crate) fn backup<P: ProgressBars, S: IndexedIds>(
         .as_ref()
         .map(|p| -> RusticResult<_> {
             Ok(p.parse_dot()
-                .map_err(|_err| todo!("Error transition"))?
+                .map_err(|err| {
+                    RusticError::with_source(
+                        ErrorKind::Parsing,
+                        "Failed to parse dotted path.",
+                        err,
+                    )
+                    .attach_context("path", p.display().to_string())
+                })?
                 .to_path_buf())
         })
         .transpose()?;
 
     match &as_path {
-        Some(p) => snap
-            .paths
-            .set_paths(&[p.clone()])
-            .map_err(|_err| todo!("Error transition"))?,
-        None => snap
-            .paths
-            .set_paths(&backup_path)
-            .map_err(|_err| todo!("Error transition"))?,
+        Some(p) => snap.paths.set_paths(&[p.clone()]).map_err(|err| {
+            RusticError::with_source(ErrorKind::Internal, "Failed to set paths in snapshot.", err)
+                .attach_context("paths", p.display().to_string())
+        })?,
+        None => snap.paths.set_paths(&backup_path).map_err(|err| {
+            RusticError::with_source(ErrorKind::Internal, "Failed to set paths in snapshot.", err)
+                .attach_context(
+                    "paths",
+                    backup_path
+                        .iter()
+                        .map(|p| p.display().to_string())
+                        .collect::<Vec<_>>()
+                        .join(","),
+                )
+        })?,
     };
 
     let (parent_id, parent) = opts.parent_opts.get_parent(repo, &snap, backup_stdin);

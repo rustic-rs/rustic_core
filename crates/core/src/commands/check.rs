@@ -35,89 +35,78 @@ use crate::{
 };
 
 #[non_exhaustive]
-#[derive(thiserror::Error, Debug, displaydoc::Display)]
-pub enum CheckCommandErrorKind {
-    /// error reading pack {id} : {source}
-    ErrorReadingPack {
-        id: PackId,
-        source: Box<RusticError>,
-    },
-    /// cold file for hot file Type: {file_type:?}, Id: {id} does not exist
+#[derive(Debug, displaydoc::Display)]
+pub enum CheckIssueKind {
+    /// error reading pack `{id}`
+    ErrorReadingPack { id: PackId },
+    /// cold file for hot file Type: `{file_type:?}`, Id: `{id}` does not exist
     NoColdFile { id: Id, file_type: FileType },
-    /// Type: {file_type:?}, Id: {id}: hot size: {size_hot}, actual size: {size}
+    /// Type: `{file_type:?}`, Id: `{id}`: hot size: `{size_hot}`, actual size: `{size}`
     HotFileSizeMismatch {
         id: Id,
         file_type: FileType,
         size_hot: u32,
         size: u32,
     },
-    /// hot file Type: {file_type:?}, Id: {id} is missing!
+    /// hot file Type: `{file_type:?}`, Id: {id} is missing!
     NoHotFile { id: Id, file_type: FileType },
-    /// Error reading cached file Type: {file_type:?}, Id: {id} : {source}
-    ErrorReadingCache {
-        id: Id,
-        file_type: FileType,
-        source: Box<RusticError>,
-    },
-    /// Error reading file Type: {file_type:?}, Id: {id} : {source}
-    ErrorReadingFile {
-        id: Id,
-        file_type: FileType,
-        source: Box<RusticError>,
-    },
-    /// Cached file Type: {file_type:?}, Id: {id} is not identical to backend!
+    /// Error reading cached file Type: `{file_type:?}`, Id: `{id}`
+    ErrorReadingCache { id: Id, file_type: FileType },
+    /// Error reading file Type: `{file_type:?}`, Id: `{id}`
+    ErrorReadingFile { id: Id, file_type: FileType },
+    /// Cached file Type: `{file_type:?}`, Id: `{id}` is not identical to backend!
     CacheMismatch { id: Id, file_type: FileType },
-    /// pack {id}: No time is set! Run prune to correct this!
+    /// pack `{id}`: No time is set! Run prune to correct this!
     PackTimeNotSet { id: PackId },
-    /// pack {id}: blob {blob_id} blob type does not match: type: {blob_type:?}, expected: {expected:?}
+    /// pack `{id}`: blob `{blob_id}` blob type does not match: type: `{blob_type:?}`, expected: `{expected:?}`
     PackBlobTypesMismatch {
         id: PackId,
         blob_id: BlobId,
         blob_type: BlobType,
         expected: BlobType,
     },
-    /// pack {id}: blob {blob_id} offset in index: {offset}, expected: {expected}
+    /// pack `{id}`: blob `{blob_id}` offset in index: `{offset}`, expected: `{expected}`
     PackBlobOffsetMismatch {
         id: PackId,
         blob_id: BlobId,
         offset: u32,
         expected: u32,
     },
-    /// pack {id} not referenced in index. Can be a parallel backup job. To repair: 'rustic repair index'.
+    /// pack `{id}` not referenced in index. Can be a parallel backup job. To repair: 'rustic repair index'.
     PackNotReferenced { id: Id },
-    /// pack {id}: size computed by index: {index_size}, actual size: {size}. To repair: 'rustic repair index'.
+    /// pack `{id}`: size computed by index: `{index_size}`, actual size: {size}. To repair: 'rustic repair index'.
     PackSizeMismatchIndex { id: Id, index_size: u32, size: u32 },
-    /// pack {id} is referenced by the index but not present! To repair: 'rustic repair index'."
+    /// pack `{id}` is referenced by the index but not present! To repair: 'rustic repair index'."
     NoPack { id: PackId },
-    /// file {file:?} doesn't have a content
+    /// file `{file:?}` doesn't have a content
     FileHasNoContent { file: PathBuf },
-    /// file {file:?} blob {blob_num} has null ID
+    /// file `{file:?}` blob `{blob_num}` has null ID
     FileBlobHasNullId { file: PathBuf, blob_num: usize },
-    /// file {file:?} blob {blob_id} is missing in index
+    /// file `{file:?}` blob `{blob_id}` is missing in index
     FileBlobNotInIndex { file: PathBuf, blob_id: Id },
-    /// dir {dir:?} doesn't have a subtree
+    /// dir `{dir:?}` doesn't have a subtree
     NoSubTree { dir: PathBuf },
-    /// "dir {dir:?} subtree has null ID
+    /// "dir `{dir:?}` subtree has null ID
     NullSubTree { dir: PathBuf },
-    /// pack {id}: data size does not match expected size. Read: {size} bytes, expected: {expected} bytes
+    /// pack `{id}`: data size does not match expected size. Read: `{size}` bytes, expected: `{expected}` bytes
     PackSizeMismatch {
         id: PackId,
         size: usize,
         expected: usize,
     },
-    /// pack {id}: Hash mismatch. Computed hash: {computed}
+    /// pack `{id}`: Hash mismatch. Computed hash: `{computed}`
     PackHashMismatch { id: PackId, computed: PackId },
-    /// pack {id}: Header length in pack file doesn't match index. In pack: {length}, computed: {computed}
+    /// pack `{id}`: Header length in pack file doesn't match index. In pack: `{length}`, computed: `{computed}`
     PackHeaderLengthMismatch {
         id: PackId,
         length: u32,
         computed: u32,
     },
-    /// pack {id}: Header from pack file does not match the index
+    /// pack `{id}`: Header from pack file does not match the index
     PackHeaderMismatchIndex { id: PackId },
-    /// pack {id}, blob {blob_id}: Actual uncompressed length does not fit saved uncompressed length
+    /// pack `{id}`, blob `{blob_id}`: Actual uncompressed length does not fit saved uncompressed length
     PackBlobLengthMismatch { id: PackId, blob_id: BlobId },
-    /// pack {id}, blob {blob_id}: Hash mismatch. Computed hash: {computed}
+    /// pack `{id}`, blob `{blob_id}`: Hash mismatch. Computed hash: `{computed}`
     PackBlobHashMismatch {
         id: PackId,
         blob_id: BlobId,
@@ -125,7 +114,22 @@ pub enum CheckCommandErrorKind {
     },
 }
 
-pub(crate) type CheckCommandResult = Result<(), CheckCommandErrorKind>;
+#[derive(Debug, Default)]
+pub struct CheckIssues(Vec<CheckIssueKind>);
+
+impl std::ops::DerefMut for CheckIssues {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+
+impl std::ops::Deref for CheckIssues {
+    type Target = Vec<CheckIssueKind>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
 
 #[derive(Clone, Copy, Debug, Default)]
 #[non_exhaustive]
@@ -234,23 +238,25 @@ fn parse_n_m(now: NaiveDateTime, n_in: &str, m_in: &str) -> Result<(u32, u32), P
 }
 
 impl FromStr for ReadSubsetOption {
-    type Err = RusticError;
+    type Err = Box<RusticError>;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let result = if s == "all" {
             Self::All
         } else if let Some(p) = s.strip_suffix('%') {
             // try to read percentage
-            Self::Percentage(p.parse().map_err(|err: ParseFloatError| {
+            let percentage = p.parse().map_err(|err: ParseFloatError| {
                 RusticError::with_source(
                     ErrorKind::Parsing,
                     "Error parsing percentage for ReadSubset option. Did you forget the '%'?",
                     err,
                 )
                 .attach_context("value", p.to_string())
-            })?)
+            })?;
+
+            Self::Percentage(percentage)
         } else if let Some((n, m)) = s.split_once('/') {
             let now = Local::now().naive_local();
-            Self::IdSubSet(parse_n_m(now, n, m).map_err(
+            let subset = parse_n_m(now, n, m).map_err(
                 |err|
                     RusticError::with_source(
                         ErrorKind::Parsing,
@@ -258,12 +264,13 @@ impl FromStr for ReadSubsetOption {
                         err
                     )
                     .attach_context("value", s)
-                    .attach_context("n/m", format!("{}/{}", n, m))
+                    .attach_context("n/m", format!("{n}/{m}"))
                     .attach_context("now", now.to_string())
-            )?)
+            )?;
+
+            Self::IdSubSet(subset)
         } else {
-            Self::Size(
-                ByteSize::from_str(s)
+            let byte_size = ByteSize::from_str(s)
                     .map_err(|err| {
                         RusticError::with_source(
                             ErrorKind::Parsing,
@@ -272,9 +279,11 @@ impl FromStr for ReadSubsetOption {
                         )
                         .attach_context("value", s)
                     })?
-                    .as_u64(),
-            )
+                    .as_u64();
+
+            Self::Size(byte_size)
         };
+
         Ok(result)
     }
 }
@@ -403,6 +412,7 @@ pub(crate) fn check_repository<P: ProgressBars, S: Open>(
         });
         p.finish();
     }
+
     Ok(())
 }
 

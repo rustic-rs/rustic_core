@@ -42,9 +42,9 @@ pub enum TreeErrorKind {
     PathNotFound(OsString),
     /// path should not contain current or parent dir
     ContainsCurrentOrParentDirectory,
-    /// serde_json couldn't serialize the tree: `{0:?}`
+    /// `serde_json` couldn't serialize the tree: `{0:?}`
     SerializingTreeFailed(serde_json::Error),
-    /// serde_json couldn't deserialize tree from bytes of JSON text: `{0:?}`
+    /// `serde_json` couldn't deserialize tree from bytes of JSON text: `{0:?}`
     DeserializingTreeFailed(serde_json::Error),
     /// slice is not UTF-8: `{0:?}`
     PathIsNotUtf8Conform(Utf8Error),
@@ -460,7 +460,7 @@ pub(crate) fn comp_to_osstr(p: Component<'_>) -> TreeResult<Option<OsString>> {
             ),
         },
         Component::Normal(p) => Some(p.to_os_string()),
-        _ => return Err(TreeErrorKind::ContainsCurrentOrParentDirectory.into()),
+        _ => return Err(TreeErrorKind::ContainsCurrentOrParentDirectory),
     };
     Ok(s)
 }

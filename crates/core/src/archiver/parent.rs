@@ -221,10 +221,7 @@ impl Parent {
     ///
     /// [`ArchiverErrorKind::TreeStackEmpty`]: crate::error::ArchiverErrorKind::TreeStackEmpty
     fn finish_dir(&mut self) -> ArchiverResult<()> {
-        let (tree, node_idx) = self
-            .stack
-            .pop()
-            .ok_or_else(|| ArchiverErrorKind::TreeStackEmpty)?;
+        let (tree, node_idx) = self.stack.pop().ok_or(ArchiverErrorKind::TreeStackEmpty)?;
 
         self.tree = tree;
         self.node_idx = node_idx;

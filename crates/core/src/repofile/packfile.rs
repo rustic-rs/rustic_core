@@ -25,7 +25,7 @@ pub enum PackFileErrorKind {
     HeaderLengthTooLarge { size_real: u32, pack_size: u32 },
     /// decrypting from binary failed
     BinaryDecryptionFailed,
-    /// Partial read of PackFile failed
+    /// Partial read of `PackFile` failed
     PartialReadOfPackfileFailed,
     /// writing Bytes failed
     WritingBytesFailed,
@@ -79,10 +79,7 @@ impl PackHeaderLength {
     /// [`PackFileErrorKind::ReadingBinaryRepresentationFailed`]: crate::error::PackFileErrorKind::ReadingBinaryRepresentationFailed
     pub(crate) fn from_binary(data: &[u8]) -> PackFileResult<Self> {
         let mut reader = Cursor::new(data);
-        Ok(
-            Self::read(&mut reader)
-                .map_err(PackFileErrorKind::ReadingBinaryRepresentationFailed)?,
-        )
+        Self::read(&mut reader).map_err(PackFileErrorKind::ReadingBinaryRepresentationFailed)
     }
 
     /// Generate the binary representation of the pack header length
@@ -251,9 +248,7 @@ impl PackHeader {
             let blob = match HeaderEntry::read(&mut reader) {
                 Ok(entry) => entry.into_blob(offset),
                 Err(err) if err.is_eof() => break,
-                Err(err) => {
-                    return Err(PackFileErrorKind::ReadingBinaryRepresentationFailed(err).into())
-                }
+                Err(err) => return Err(PackFileErrorKind::ReadingBinaryRepresentationFailed(err)),
             };
             offset += blob.length;
             blobs.push(blob);

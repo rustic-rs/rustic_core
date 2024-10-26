@@ -15,18 +15,18 @@ use crate::{
 #[derive(thiserror::Error, Debug, displaydoc::Display)]
 #[non_exhaustive]
 pub enum KeyFileErrorKind {
-    /// listing KeyFiles failed
+    /// listing `KeyFiles` failed
     ListingKeyFilesFailed,
-    /// couldn't get KeyFile from backend
+    /// couldn't get `KeyFile` from backend
     CouldNotGetKeyFileFromBackend,
-    /// serde_json couldn't deserialize the data for the key: `{key_id:?}` : `{source}`
+    /// `serde_json` couldn't deserialize the data for the key: `{key_id:?}` : `{source}`
     DeserializingFromSliceForKeyIdFailed {
         /// The id of the key
         key_id: KeyId,
         /// The error that occurred
         source: serde_json::Error,
     },
-    /// serde_json couldn't serialize the data into a JSON byte vector: `{0:?}`
+    /// `serde_json` couldn't serialize the data into a JSON byte vector: `{0:?}`
     CouldNotSerializeAsJsonByteVector(serde_json::Error),
     /// output length is invalid: `{0:?}`
     OutputLengthInvalid(scrypt::errors::InvalidOutputLen),
@@ -34,7 +34,7 @@ pub enum KeyFileErrorKind {
     InvalidSCryptParameters(scrypt::errors::InvalidParams),
     /// deserializing master key from slice failed: `{source}`
     DeserializingMasterKeyFromSliceFailed { source: serde_json::Error },
-    /// conversion from {from} to {to} failed for {x} : {source}
+    /// conversion from `{from}` to `{to}` failed for `{x}` : `{source}`
     ConversionFailed {
         from: &'static str,
         to: &'static str,
@@ -284,7 +284,7 @@ impl KeyFile {
         serde_json::from_slice(&data)
             .map_err(
                 |err| KeyFileErrorKind::DeserializingFromSliceForKeyIdFailed {
-                    key_id: id.clone(),
+                    key_id: *id,
                     source: err,
                 },
             )

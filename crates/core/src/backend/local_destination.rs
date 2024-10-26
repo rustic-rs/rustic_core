@@ -40,7 +40,7 @@ pub enum LocalDestinationErrorKind {
     DirectoryCreationFailed(std::io::Error),
     /// file `{0:?}` should have a parent
     FileDoesNotHaveParent(PathBuf),
-    /// DeviceID could not be converted to other type `{target}` of device `{device}`: `{source}`
+    /// `DeviceID` could not be converted to other type `{target}` of device `{device}`: `{source}`
     DeviceIdConversionFailed {
         target: String,
         device: u64,
@@ -218,8 +218,7 @@ impl LocalDestination {
     ///
     /// [`LocalDestinationErrorKind::DirectoryRemovalFailed`]: crate::error::LocalDestinationErrorKind::DirectoryRemovalFailed
     pub(crate) fn remove_dir(&self, dirname: impl AsRef<Path>) -> LocalDestinationResult<()> {
-        Ok(fs::remove_dir_all(dirname)
-            .map_err(LocalDestinationErrorKind::DirectoryRemovalFailed)?)
+        fs::remove_dir_all(dirname).map_err(LocalDestinationErrorKind::DirectoryRemovalFailed)
     }
 
     /// Remove the given file (relative to the base path)
@@ -241,7 +240,7 @@ impl LocalDestination {
     ///
     /// [`LocalDestinationErrorKind::FileRemovalFailed`]: crate::error::LocalDestinationErrorKind::FileRemovalFailed
     pub(crate) fn remove_file(&self, filename: impl AsRef<Path>) -> LocalDestinationResult<()> {
-        Ok(fs::remove_file(filename).map_err(LocalDestinationErrorKind::FileRemovalFailed)?)
+        fs::remove_file(filename).map_err(LocalDestinationErrorKind::FileRemovalFailed)
     }
 
     /// Create the given directory (relative to the base path)
