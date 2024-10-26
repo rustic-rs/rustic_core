@@ -23,7 +23,7 @@ RusticError {
     ],
     docs_url: None,
     error_code: Some(
-        "E001",
+        "C001",
     ),
     new_issue_url: None,
     existing_issue_url: None,

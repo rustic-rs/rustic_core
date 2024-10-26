@@ -10,7 +10,7 @@ fn error() -> Box<RusticError> {
     )
     .attach_status(Status::Permanent)
     .attach_severity(Severity::Error)
-    .attach_error_code("E001")
+    .attach_error_code("C001")
     .attach_context("path", "/path/to/file")
     .attach_context("called", "used s3 backend")
     .attach_source(std::io::Error::new(

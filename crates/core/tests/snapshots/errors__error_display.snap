@@ -17,7 +17,7 @@ Severity: Error
 
 Status: Permanent
 
-For more information, see: https://rustic.cli.rs/docs/errors/E001
+For more information, see: https://rustic.cli.rs/docs/errors/C001
 
 If you think this is an undiscovered bug, please open an issue at: https://github.com/rustic-rs/rustic_core/issues/new
 
