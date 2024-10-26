@@ -566,10 +566,15 @@ impl SnapshotFile {
                 }
             }
         }
+
         p.finish();
-        latest
-            .ok_or_else(|| SnapshotFileErrorKind::NoSnapshotsFound)
-            .map_err(|_err| todo!("Error transition"))
+
+        latest.ok_or_else(|| {
+            RusticError::new(
+                ErrorKind::Repository,
+                "No snapshots found. Please make sure there are snapshots in the repository.",
+            )
+        })
     }
 
     /// Get a [`SnapshotFile`] from the backend by (part of the) id
