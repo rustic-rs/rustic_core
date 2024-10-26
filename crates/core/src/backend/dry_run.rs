@@ -4,9 +4,9 @@ use zstd::decode_all;
 use crate::{
     backend::{
         decrypt::{DecryptFullBackend, DecryptReadBackend, DecryptWriteBackend},
-        CryptBackendErrorKind, FileType, ReadBackend, WriteBackend,
+        FileType, ReadBackend, WriteBackend,
     },
-    error::RusticResult,
+    error::{ErrorKind, RusticError, RusticResult},
     id::Id,
 };
 
@@ -63,12 +63,22 @@ impl<BE: DecryptFullBackend> DecryptReadBackend for DryRunBackend<BE> {
         Ok(match decrypted.first() {
             Some(b'{' | b'[') => decrypted, // not compressed
             Some(2) => decode_all(&decrypted[1..])
-                .map_err(CryptBackendErrorKind::DecodingZstdCompressedDataFailed)
-                .map_err(|_err| todo!("Error transition"))?, // 2 indicates compressed data following
+                .map_err(|err|
+                    RusticError::with_source(
+                        ErrorKind::Compression,
+                        "Decoding zstd compressed data failed. This can happen if the data is corrupted. Please check the backend for corruption and try again. You can also try to run `rustic check` to check for corruption.",
+                        err
+                        )
+                )
+                ?, // 2 indicates compressed data following
             _ => {
-                return Err(CryptBackendErrorKind::DecryptionNotSupportedForBackend)
-                    .map_err(|_err| todo!("Error transition"))
+                return Err(
+                    RusticError::new(
+                        ErrorKind::Backend,
+                        "Decryption not supported. The data is not in a supported format.",
+                ));
             }
+            
         }
         .into())
     }
