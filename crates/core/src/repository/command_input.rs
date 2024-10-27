@@ -8,7 +8,7 @@ use log::{debug, error, trace, warn};
 use serde::{Deserialize, Serialize, Serializer};
 use serde_with::{serde_as, DisplayFromStr, PickFirst};
 
-use crate::error::RusticResult;
+use crate::error::{ErrorKind, RusticError, RusticResult};
 
 /// [`CommandInputErrorKind`] describes the errors that can be returned from the `CommandInput`
 #[derive(thiserror::Error, Debug, displaydoc::Display)]
@@ -219,7 +219,7 @@ impl OnFailure {
         }
     }
 
-    /// Displays a result depending on the defined error handling which still yielding the same result
+    /// Displays a result depending on the defined error handling while still yielding the same result
     ///
     /// # Note
     ///
@@ -237,7 +237,14 @@ impl OnFailure {
                 Self::Ignore => {}
             }
         }
-        res.map_err(|_err| todo!("Error transition"))
+
+        res.map_err(|err| {
+            RusticError::with_source(
+                ErrorKind::ExternalCommand,
+                "Experienced an error while calling an external command.",
+                err,
+            )
+        })
     }
 
     /// Handle a status of a called command depending on the defined error handling

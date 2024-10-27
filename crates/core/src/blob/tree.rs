@@ -909,16 +909,18 @@ impl<P: Progress> Iterator for TreeStreamerOnce<P> {
             self.p.finish();
             return None;
         }
+
         let (path, tree, count) = match self.queue_out.recv() {
             Ok(Ok(res)) => res,
             Err(err) => {
-                return Some(
-                    Err(TreeErrorKind::Channel {
-                        kind: "receiving crossbeam message",
-                        source: err.into(),
-                    })
-                    .map_err(|_err| todo!("Error transition")),
-                )
+                return Some(Err(
+                    RusticError::with_source(
+                        ErrorKind::Internal,
+                        "Failed to receive tree from crossbeam channel. This is a bug. Please report it.",
+                        err,
+                    )
+                    .attach_context("finished ids", self.finished_ids.to_string())
+                ));
             }
             Ok(Err(err)) => return Some(Err(err)),
         };
@@ -927,17 +929,29 @@ impl<P: Progress> Iterator for TreeStreamerOnce<P> {
             if let Some(id) = node.subtree {
                 let mut path = path.clone();
                 path.push(node.name());
-                match self.add_pending(path, id, count) {
+                match self.add_pending(path.clone(), id, count) {
                     Ok(_) => {}
-                    Err(err) => return Some(Err(err).map_err(|_err| todo!("Error transition"))),
+                    Err(err) => return Some(Err(err).map_err(|err|
+                        RusticError::with_source(
+                            ErrorKind::Internal,
+                            "Failed to add tree ID to pending queue. This is a bug. Please report it.",
+                            err,
+                        )
+                        .attach_context("path", path.display().to_string())
+                        .attach_context("tree id", id.to_string())
+                        .attach_context("count", count.to_string())
+                    )),
                 }
             }
         }
+
         self.counter[count] -= 1;
+
         if self.counter[count] == 0 {
             self.p.inc(1);
             self.finished_ids += 1;
         }
+
         Some(Ok((path, tree)))
     }
 }

@@ -273,7 +273,7 @@ impl KeyFile {
     ///
     /// # Errors
     ///
-    // TODO!: Add errors!
+    /// * If the [`KeyFile`] could not be deserialized/read from the backend
     ///
     /// # Returns
     ///
@@ -281,14 +281,14 @@ impl KeyFile {
     fn from_backend<B: ReadBackend>(be: &B, id: &KeyId) -> RusticResult<Self> {
         let data = be.read_full(FileType::Key, id)?;
 
-        serde_json::from_slice(&data)
-            .map_err(
-                |err| KeyFileErrorKind::DeserializingFromSliceForKeyIdFailed {
-                    key_id: *id,
-                    source: err,
-                },
+        serde_json::from_slice(&data).map_err(|err| {
+            RusticError::with_source(
+                ErrorKind::Key,
+                "Couldn't deserialize the data for key.",
+                err,
             )
-            .map_err(|_err| todo!("Error transition"))
+            .attach_context("key id", id.to_string())
+        })
     }
 }
 

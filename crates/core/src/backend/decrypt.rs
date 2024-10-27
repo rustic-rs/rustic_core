@@ -8,7 +8,7 @@ use zstd::stream::{copy_encode, decode_all, encode_all};
 pub use zstd::compression_level_range;
 
 use crate::{
-    backend::{CryptBackendErrorKind, CryptBackendResult, FileType, ReadBackend, WriteBackend},
+    backend::{FileType, ReadBackend, WriteBackend},
     crypto::{hasher::hash, CryptoKey},
     error::{ErrorKind, RusticError, RusticResult},
     id::Id,
@@ -422,20 +422,22 @@ impl<C: CryptoKey> DecryptBackend<C> {
     }
 
     /// encrypt and potentially compress a repository file
-    fn encrypt_file(&self, data: &[u8]) -> CryptBackendResult<Vec<u8>> {
+    fn encrypt_file(&self, data: &[u8]) -> RusticResult<Vec<u8>> {
         let data_encrypted = match self.zstd {
             Some(level) => {
                 let mut out = vec![2_u8];
-                copy_encode(data, &mut out, level)
-                    .map_err(CryptBackendErrorKind::CopyEncodingDataFailed)?;
-                self.key()
-                    .encrypt_data(&out)
-                    .map_err(|_err| todo!("Error transition"))?
+                copy_encode(data, &mut out, level).map_err(|err| {
+                    RusticError::with_source(
+                        ErrorKind::Compression,
+                        "Compressing and appending data failed. The data may be corrupted.",
+                        err,
+                    )
+                    .attach_context("compression level", level.to_string())
+                })?;
+
+                self.key().encrypt_data(&out)?
             }
-            None => self
-                .key()
-                .encrypt_data(data)
-                .map_err(|_err| todo!("Error transition"))?,
+            None => self.key().encrypt_data(data)?,
         };
         Ok(data_encrypted)
     }
@@ -456,25 +458,31 @@ impl<C: CryptoKey> DecryptBackend<C> {
     }
 
     /// encrypt and potentially compress some data
-    fn encrypt_data(&self, data: &[u8]) -> CryptBackendResult<(Vec<u8>, u32, Option<NonZeroU32>)> {
+    fn encrypt_data(&self, data: &[u8]) -> RusticResult<(Vec<u8>, u32, Option<NonZeroU32>)> {
         let data_len: u32 = data
             .len()
             .try_into()
-            .map_err(CryptBackendErrorKind::IntConversionFailed)?;
+            .map_err(|err|
+                RusticError::with_source(
+                    ErrorKind::Internal,
+                    "Failed to convert data length to u32. This is likely a bug. Please report this issue.",
+                    err,
+                ).attach_context("length", data.len().to_string())
+            )?;
+
         let (data_encrypted, uncompressed_length) = match self.zstd {
-            None => (
-                self.key
-                    .encrypt_data(data)
-                    .map_err(|_err| todo!("Error transition"))?,
-                None,
-            ),
+            None => (self.key.encrypt_data(data)?, None),
             // compress if requested
             Some(level) => (
                 self.key
-                    .encrypt_data(
-                        &encode_all(data, level).map_err(|_err| todo!("Error transition"))?,
-                    )
-                    .map_err(|_err| todo!("Error transition"))?,
+                    .encrypt_data(&encode_all(data, level).map_err(|err| {
+                        RusticError::with_source(
+                            ErrorKind::Compression,
+                            "Failed to encode zstd compressed data. The data may be corrupted.",
+                            err,
+                        )
+                        .attach_context("compression level", level.to_string())
+                    })?)?,
                 NonZeroU32::new(data_len),
             ),
         };
@@ -531,13 +539,7 @@ impl<C: CryptoKey> DecryptWriteBackend for DecryptBackend<C> {
     ///
     /// [`CryptBackendErrorKind::CopyEncodingDataFailed`]: crate::error::CryptBackendErrorKind::CopyEncodingDataFailed
     fn hash_write_full(&self, tpe: FileType, data: &[u8]) -> RusticResult<Id> {
-        let data_encrypted = self.encrypt_file(data).map_err(|err| {
-            RusticError::with_source(
-                ErrorKind::Cryptography,
-                "Failed to encrypt data. The data may be corrupted.",
-                err,
-            )
-        })?;
+        let data_encrypted = self.encrypt_file(data)?;
 
         self.very_file(&data_encrypted, data)?;
 
@@ -548,14 +550,7 @@ impl<C: CryptoKey> DecryptWriteBackend for DecryptBackend<C> {
     }
 
     fn process_data(&self, data: &[u8]) -> RusticResult<(Vec<u8>, u32, Option<NonZeroU32>)> {
-        let (data_encrypted, data_len, uncompressed_length) =
-            self.encrypt_data(data).map_err(|err| {
-                RusticError::with_source(
-                    ErrorKind::Cryptography,
-                    "Failed to encrypt data. The data may be corrupted.",
-                    err,
-                )
-            })?;
+        let (data_encrypted, data_len, uncompressed_length) = self.encrypt_data(data)?;
 
         self.very_data(&data_encrypted, uncompressed_length, data)?;
 

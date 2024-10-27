@@ -1,6 +1,4 @@
 //! `config` subcommand
-use std::ops::RangeInclusive;
-
 use bytesize::ByteSize;
 use derive_setters::Setters;
 
@@ -11,29 +9,6 @@ use crate::{
     repofile::ConfigFile,
     repository::{Open, Repository},
 };
-
-#[non_exhaustive]
-#[derive(thiserror::Error, Debug, displaydoc::Display)]
-pub enum ConfigCommandErrorKind {
-    /// Not allowed on an append-only repository: `{0}`
-    NotAllowedWithAppendOnly(String),
-    /// compression level `{0}` is not supported for repo v1
-    NoCompressionV1Repo(i32),
-    /// version `{0}` is not supported. Allowed values: {1:?}
-    VersionNotSupported(u32, RangeInclusive<u32>),
-    /// compression level `{0}` is not supported. Allowed values: `{1:?}`
-    CompressionLevelNotSupported(i32, RangeInclusive<i32>),
-    /// cannot downgrade version from `{0}` to `{1}`
-    CannotDowngrade(u32, u32),
-    /// Size is too large: `{0}`
-    SizeTooLarge(ByteSize),
-    /// `min_packsize_tolerate_percent` must be <= 100
-    MinPackSizeTolerateWrong,
-    /// `max_packsize_tolerate_percent` must be >= 100 or 0"
-    MaxPackSizeTolerateWrong,
-}
-
-pub(crate) type ConfigCommandResult<T> = Result<T, ConfigCommandErrorKind>;
 
 /// Apply the [`ConfigOptions`] to a given [`ConfigFile`]
 ///
@@ -49,36 +24,27 @@ pub(crate) type ConfigCommandResult<T> = Result<T, ConfigCommandErrorKind>;
 ///
 /// # Errors
 ///
-/// * [`ConfigCommandErrorKind::VersionNotSupported`] - If the version is not supported
-/// * [`ConfigCommandErrorKind::CannotDowngrade`] - If the version is lower than the current version
-/// * [`ConfigCommandErrorKind::NoCompressionV1Repo`] - If compression is set for a v1 repo
-/// * [`ConfigCommandErrorKind::CompressionLevelNotSupported`] - If the compression level is not supported
-/// * [`ConfigCommandErrorKind::SizeTooLarge`] - If the size is too large
-/// * [`ConfigCommandErrorKind::MinPackSizeTolerateWrong`] - If the min packsize tolerance percent is wrong
-/// * [`ConfigCommandErrorKind::MaxPackSizeTolerateWrong`] - If the max packsize tolerance percent is wrong
-/// * [`CryptBackendErrorKind::SerializingToJsonByteVectorFailed`] - If the file could not be serialized to json.
+/// * If the version is not supported.
+/// * If the version is lower than the current version.
+/// * If compression is set for a v1 repo.
+/// * If the compression level is not supported.
+/// * If the size is too large.
+/// * If the min pack size tolerance percent is wrong.
+/// * If the max pack size tolerance percent is wrong.
+/// * If the file could not be serialized to json.
 ///
 /// # Returns
 ///
 /// Whether the config was changed
-///
-/// [`ConfigCommandErrorKind::VersionNotSupported`]: ConfigCommandErrorKind::VersionNotSupported
-/// [`ConfigCommandErrorKind::CannotDowngrade`]: ConfigCommandErrorKind::CannotDowngrade
-/// [`ConfigCommandErrorKind::NoCompressionV1Repo`]: ConfigCommandErrorKind::NoCompressionV1Repo
-/// [`ConfigCommandErrorKind::CompressionLevelNotSupported`]: ConfigCommandErrorKind::CompressionLevelNotSupported
-/// [`ConfigCommandErrorKind::SizeTooLarge`]: ConfigCommandErrorKind::SizeTooLarge
-/// [`ConfigCommandErrorKind::MinPackSizeTolerateWrong`]: ConfigCommandErrorKind::MinPackSizeTolerateWrong
-/// [`ConfigCommandErrorKind::MaxPackSizeTolerateWrong`]: ConfigCommandErrorKind::MaxPackSizeTolerateWrong
-/// [`CryptBackendErrorKind::SerializingToJsonByteVectorFailed`]: crate::error::CryptBackendErrorKind::SerializingToJsonByteVectorFailed
 pub(crate) fn apply_config<P, S: Open>(
     repo: &Repository<P, S>,
     opts: &ConfigOptions,
 ) -> RusticResult<bool> {
     if repo.config().append_only == Some(true) {
-        return Err(ConfigCommandErrorKind::NotAllowedWithAppendOnly(
-            "config change".to_string(),
-        ))
-        .map_err(|_err| todo!("Error transition"));
+        return Err(RusticError::new(
+            ErrorKind::Permission,
+            "Not allowed to change config on an append-only repository.",
+        ));
     }
 
     let mut new_config = repo.config().clone();
@@ -106,9 +72,7 @@ pub(crate) fn apply_config<P, S: Open>(
 ///
 /// # Errors
 ///
-/// * [`CryptBackendErrorKind::SerializingToJsonByteVectorFailed`] - If the file could not be serialized to json.
-///
-/// [`CryptBackendErrorKind::SerializingToJsonByteVectorFailed`]: crate::error::CryptBackendErrorKind::SerializingToJsonByteVectorFailed
+/// * If the file could not be serialized to json.
 pub(crate) fn save_config<P, S>(
     repo: &Repository<P, S>,
     mut new_config: ConfigFile,
@@ -213,49 +177,54 @@ impl ConfigOptions {
     ///
     /// # Errors
     ///
-    /// * [`ConfigCommandErrorKind::VersionNotSupported`] - If the version is not supported
-    /// * [`ConfigCommandErrorKind::CannotDowngrade`] - If the version is lower than the current version
-    /// * [`ConfigCommandErrorKind::NoCompressionV1Repo`] - If compression is set for a v1 repo
-    /// * [`ConfigCommandErrorKind::CompressionLevelNotSupported`] - If the compression level is not supported
-    /// * [`ConfigCommandErrorKind::SizeTooLarge`] - If the size is too large
-    /// * [`ConfigCommandErrorKind::MinPackSizeTolerateWrong`] - If the min packsize tolerate percent is wrong
-    /// * [`ConfigCommandErrorKind::MaxPackSizeTolerateWrong`] - If the max packsize tolerate percent is wrong
-    ///
-    /// [`ConfigCommandErrorKind::VersionNotSupported`]: ConfigCommandErrorKind::VersionNotSupported
-    /// [`ConfigCommandErrorKind::CannotDowngrade`]: ConfigCommandErrorKind::CannotDowngrade
-    /// [`ConfigCommandErrorKind::NoCompressionV1Repo`]: ConfigCommandErrorKind::NoCompressionV1Repo
-    /// [`ConfigCommandErrorKind::CompressionLevelNotSupported`]: ConfigCommandErrorKind::CompressionLevelNotSupported
-    /// [`ConfigCommandErrorKind::SizeTooLarge`]: ConfigCommandErrorKind::SizeTooLarge
-    /// [`ConfigCommandErrorKind::MinPackSizeTolerateWrong`]: ConfigCommandErrorKind::MinPackSizeTolerateWrong
-    /// [`ConfigCommandErrorKind::MaxPackSizeTolerateWrong`]: ConfigCommandErrorKind::MaxPackSizeTolerateWrong
+    /// * If the version is not supported
+    /// * If the version is lower than the current version
+    /// * If compression is set for a v1 repo
+    /// * If the compression level is not supported
+    /// * If the size is too large
+    /// * If the min packsize tolerate percent is wrong
+    /// * If the max packsize tolerate percent is wrong
     pub fn apply(&self, config: &mut ConfigFile) -> RusticResult<()> {
         if let Some(version) = self.set_version {
+            // only allow versions 1 and 2
             let range = 1..=2;
+
             if !range.contains(&version) {
-                return Err(ConfigCommandErrorKind::VersionNotSupported(version, range))
-                    .map_err(|_err| todo!("Error transition"));
+                return Err(RusticError::new(
+                    ErrorKind::Unsupported,
+                    "Config version not supported.",
+                )
+                .attach_context("current version", version.to_string())
+                .attach_context("allowed versions", format!("{range:?}")));
             } else if version < config.version {
-                return Err(ConfigCommandErrorKind::CannotDowngrade(
-                    config.version,
-                    version,
-                ))
-                .map_err(|_err| todo!("Error transition"));
+                return Err(RusticError::new(
+                    ErrorKind::Unsupported,
+                    "Downgrading config version is not supported. Please use a higher version.",
+                )
+                .attach_context("current version", config.version.to_string())
+                .attach_context("new version", version.to_string()));
             }
+
             config.version = version;
         }
 
         if let Some(compression) = self.set_compression {
             if config.version == 1 && compression != 0 {
-                return Err(ConfigCommandErrorKind::NoCompressionV1Repo(compression))
-                    .map_err(|_err| todo!("Error transition"));
+                return Err(RusticError::new(
+                    ErrorKind::Unsupported,
+                    "Compression not supported for v1 repos.",
+                )
+                .attach_context("compression", compression.to_string()));
             }
+
             let range = zstd::compression_level_range();
             if !range.contains(&compression) {
-                return Err(ConfigCommandErrorKind::CompressionLevelNotSupported(
-                    compression,
-                    range,
-                ))
-                .map_err(|_err| todo!("Error transition"));
+                return Err(RusticError::new(
+                    ErrorKind::Unsupported,
+                    "Compression level not supported.",
+                )
+                .attach_context("compression", compression.to_string())
+                .attach_context("allowed levels", format!("{range:?}")));
             }
             config.compression = Some(compression);
         }
@@ -302,16 +271,23 @@ impl ConfigOptions {
 
         if let Some(percent) = self.set_min_packsize_tolerate_percent {
             if percent > 100 {
-                return Err(ConfigCommandErrorKind::MinPackSizeTolerateWrong)
-                    .map_err(|_err| todo!("Error transition"));
+                return Err(RusticError::new(
+                    ErrorKind::InvalidInput,
+                    "`min_packsize_tolerate_percent` must be <= 100.",
+                )
+                .attach_context("percent", percent.to_string()));
             }
+
             config.min_packsize_tolerate_percent = Some(percent);
         }
 
         if let Some(percent) = self.set_max_packsize_tolerate_percent {
             if percent < 100 && percent > 0 {
-                return Err(ConfigCommandErrorKind::MaxPackSizeTolerateWrong)
-                    .map_err(|_err| todo!("Error transition"));
+                return Err(RusticError::new(
+                    ErrorKind::InvalidInput,
+                    "`max_packsize_tolerate_percent` must be >= 100 or 0.",
+                )
+                .attach_context("percent", percent.to_string()));
             }
             config.max_packsize_tolerate_percent = Some(percent);
         }

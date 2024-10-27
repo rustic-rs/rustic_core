@@ -6,6 +6,7 @@ use rayon::ThreadPoolBuilder;
 
 use crate::{
     backend::{FileType, ReadBackend},
+    error::{ErrorKind, RusticError, RusticResult},
     progress::{Progress, ProgressBars},
     repofile::packfile::PackId,
     repository::Repository,
@@ -44,7 +45,7 @@ pub(super) mod constants {
 pub(crate) fn warm_up_wait<P: ProgressBars, S>(
     repo: &Repository<P, S>,
     packs: impl ExactSizeIterator<Item = PackId>,
-) -> WarmupResult<()> {
+) -> RusticResult<()> {
     warm_up(repo, packs)?;
     if let Some(wait) = repo.opts.warm_up_wait {
         let p = repo.pb.progress_spinner(format!("waiting {wait}..."));
@@ -71,7 +72,7 @@ pub(crate) fn warm_up_wait<P: ProgressBars, S>(
 pub(crate) fn warm_up<P: ProgressBars, S>(
     repo: &Repository<P, S>,
     packs: impl ExactSizeIterator<Item = PackId>,
-) -> WarmupResult<()> {
+) -> RusticResult<()> {
     if let Some(warm_up_cmd) = &repo.opts.warm_up_command {
         warm_up_command(packs, warm_up_cmd, &repo.pb)?;
     } else if repo.be.needs_warm_up() {
@@ -97,7 +98,7 @@ fn warm_up_command<P: ProgressBars>(
     packs: impl ExactSizeIterator<Item = PackId>,
     command: &CommandInput,
     pb: &P,
-) -> WarmupResult<()> {
+) -> RusticResult<()> {
     let p = pb.progress_counter("warming up packs...");
     p.set_length(packs.len() as u64);
     for pack in packs {
@@ -106,11 +107,21 @@ fn warm_up_command<P: ProgressBars>(
             .iter()
             .map(|c| c.replace("%id", &pack.to_hex()))
             .collect();
+
         debug!("calling {command:?}...");
+
         let status = Command::new(command.command())
             .args(&args)
             .status()
-            .map_err(|_err| todo!("Error transition"))?;
+            .map_err(|err| {
+                RusticError::with_source(
+                    ErrorKind::ExternalCommand,
+                    "Error in executing warm-up command.",
+                    err,
+                )
+                .attach_context("command", command.to_string())
+            })?;
+
         if !status.success() {
             warn!("warm-up command was not successful for pack {pack:?}. {status}");
         }
@@ -134,14 +145,20 @@ fn warm_up_command<P: ProgressBars>(
 fn warm_up_repo<P: ProgressBars, S>(
     repo: &Repository<P, S>,
     packs: impl ExactSizeIterator<Item = PackId>,
-) -> WarmupResult<()> {
+) -> RusticResult<()> {
     let progress_bar = repo.pb.progress_counter("warming up packs...");
     progress_bar.set_length(packs.len() as u64);
 
     let pool = ThreadPoolBuilder::new()
         .num_threads(constants::MAX_READER_THREADS_NUM)
         .build()
-        .map_err(|_err| todo!("Error transition"))?;
+        .map_err(|err| {
+            RusticError::with_source(
+                ErrorKind::Multithreading,
+                "Failed to create thread pool for warm-up",
+                err,
+            )
+        })?;
     let progress_bar_ref = &progress_bar;
     let backend = &repo.be;
     pool.in_place_scope(|scope| {

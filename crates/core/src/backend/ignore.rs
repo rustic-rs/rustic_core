@@ -35,6 +35,8 @@ use crate::{
 /// [`IgnoreErrorKind`] describes the errors that can be returned by a Ignore action in Backends
 #[derive(thiserror::Error, Debug, displaydoc::Display)]
 pub enum IgnoreErrorKind {
+    /// Failed to get metadata for entry: `{source:?}`
+    FailedToGetMetadata { source: ignore::Error },
     #[cfg(all(not(windows), not(target_os = "openbsd")))]
     /// Error getting xattrs for `{path:?}`: `{source:?}`
     ErrorXattr {
@@ -414,12 +416,18 @@ impl Iterator for LocalSourceWalker {
                         ErrorKind::Internal,
                         "Failed to get next entry from walk iterator. This is a bug. Please report it.",
                         err,
-                 )
+                )
                 )?,
                 self.save_opts.with_atime,
                 self.save_opts.ignore_devid,
             )
-            .map_err(|_err| todo!("Error transition"))
+            .map_err(|err|
+                RusticError::with_source(
+                    ErrorKind::Internal,
+                    "Failed to map Directory entry to ReadSourceEntry. This is a bug. Please report it.",
+                    err,
+                )
+            )
         })
     }
 }
@@ -447,7 +455,9 @@ fn map_entry(
     _ignore_devid: bool,
 ) -> IgnoreResult<ReadSourceEntry<OpenFile>> {
     let name = entry.file_name();
-    let m = entry.metadata().map_err(|_err| todo!("Error transition"))?;
+    let m = entry
+        .metadata()
+        .map_err(|err| IgnoreErrorKind::FailedToGetMetadata { source: err })?;
 
     // TODO: Set them to suitable values
     let uid = None;

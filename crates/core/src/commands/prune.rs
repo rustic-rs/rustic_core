@@ -198,16 +198,30 @@ pub enum LimitOption {
 }
 
 impl FromStr for LimitOption {
-    type Err = RusticError;
+    type Err = Box<RusticError>;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         Ok(match s.chars().last().unwrap_or('0') {
             '%' => Self::Percentage({
                 let mut copy = s.to_string();
                 _ = copy.pop();
-                copy.parse().map_err(|_err| todo!("Error transition"))?
+                copy.parse().map_err(|err| {
+                    RusticError::with_source(
+                        ErrorKind::Parsing,
+                        "Failed to parse percentage limit.",
+                        err,
+                    )
+                    .attach_context("limit", s)
+                })?
             }),
             'd' if s == "unlimited" => Self::Unlimited,
-            _ => Self::Size(ByteSize::from_str(s).map_err(|_err| todo!("Error transition"))?),
+            _ => {
+                let byte_size = ByteSize::from_str(s).map_err(|err| {
+                    RusticError::with_source(ErrorKind::Parsing, "Failed to parse size limit.", err)
+                        .attach_context("limit", s)
+                })?;
+
+                Self::Size(byte_size)
+            }
         })
     }
 }

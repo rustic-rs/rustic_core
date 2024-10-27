@@ -23,7 +23,7 @@ use serde_derive::{Deserialize, Serialize};
 
 use crate::{
     backend::node::{Metadata, Node, NodeType},
-    error::RusticResult,
+    error::{ErrorKind, RusticError, RusticResult},
     id::Id,
 };
 
@@ -289,14 +289,13 @@ pub trait FindInBackend: ReadBackend {
             .enumerate()
             .map(|(i, id)| match id {
                 MapResult::Some(id) => Ok(id),
-                MapResult::None => Err(BackendErrorKind::NoSuitableIdFound(
-                    (vec[i]).as_ref().to_string(),
-                ))
-                .map_err(|_err| todo!("Error transition")),
-                MapResult::NonUnique => {
-                    Err(BackendErrorKind::IdNotUnique((vec[i]).as_ref().to_string()))
-                        .map_err(|_err| todo!("Error transition"))
-                }
+                MapResult::None => Err(RusticError::new(
+                    ErrorKind::Backend,
+                    "No suitable id found.",
+                )
+                .attach_context("item", vec[i].as_ref().to_string())),
+                MapResult::NonUnique => Err(RusticError::new(ErrorKind::Backend, "Id not unique.")
+                    .attach_context("item", vec[i].as_ref().to_string())),
             })
             .collect()
     }

@@ -28,8 +28,6 @@ use crate::{
 /// [`VfsErrorKind`] describes the errors that can be returned from the Virtual File System
 #[derive(thiserror::Error, Debug, displaydoc::Display)]
 pub enum VfsErrorKind {
-    /// No directory entries for symlink found: `{0:?}`
-    NoDirectoryEntriesForSymlinkFound(OsString),
     /// Directory exists as non-virtual directory
     DirectoryExistsAsNonVirtual,
     /// Only normal paths allowed
@@ -447,8 +445,11 @@ impl Vfs {
                 })
                 .collect(),
             VfsPath::Link(str) => {
-                return Err(VfsErrorKind::NoDirectoryEntriesForSymlinkFound(str.clone()))
-                    .map_err(|_err| todo!("Error transition"));
+                return Err(RusticError::new(
+                    ErrorKind::Vfs,
+                    "No directory entries for symlink found. Is the path valid unicode?",
+                )
+                .attach_context("symlink", str.to_string_lossy().to_string()));
             }
         };
         Ok(result)

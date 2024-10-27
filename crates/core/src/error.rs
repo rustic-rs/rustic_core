@@ -393,6 +393,8 @@ pub enum ErrorKind {
     Internal,
     /// IO Error
     Io,
+    /// Invalid Input Error
+    InvalidInput,
     /// Key Error
     Key,
     /// Multithreading Error

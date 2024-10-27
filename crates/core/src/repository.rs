@@ -764,7 +764,8 @@ impl<P: ProgressBars, S> Repository<P, S> {
     ///
     /// The result of the warm up
     pub fn warm_up(&self, packs: impl ExactSizeIterator<Item = PackId>) -> RusticResult<()> {
-        warm_up(self, packs).map_err(|_err| todo!("Error transition"))
+        warm_up(self, packs)
+            .map_err(|err| RusticError::with_source(ErrorKind::Command, "Warm-up failed.", err))
     }
 
     /// Warm up the given pack files and wait the configured waiting time.
@@ -781,7 +782,9 @@ impl<P: ProgressBars, S> Repository<P, S> {
     /// [`RusticErrorKind::FromSplitError`]: crate::error::RusticErrorKind::FromSplitError
     /// [`RusticErrorKind::FromThreadPoolbilderError`]: crate::error::RusticErrorKind::FromThreadPoolbilderError
     pub fn warm_up_wait(&self, packs: impl ExactSizeIterator<Item = PackId>) -> RusticResult<()> {
-        warm_up_wait(self, packs).map_err(|_err| todo!("Error transition"))
+        warm_up_wait(self, packs).map_err(|err| {
+            RusticError::with_source(ErrorKind::Command, "Warm-up with waiting time failed.", err)
+        })
     }
 }
 
