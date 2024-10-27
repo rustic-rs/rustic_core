@@ -1,4 +1,47 @@
 //! Error types and Result module.
+//!
+//! ## Error handling rules
+//!
+//! ### Visibility
+//!
+//! All `pub fn` (associated) functions need to return a `Result<T, RusticError> (==RusticResult<T>)`, if they are fallible.
+//! As they are user facing and will cross the API boundary we need to make sure they are high-quality errors containing all
+//! needed information and actionable guidance.
+//!
+//! `pub(crate) fn` visibility should use a local error and thus a Result and error type limited in visibility, e.g.
+//! `pub(crate) type ArchiverResult<T> = Result<T, ArchiverErrorKind>`.
+//!
+//! ### Downgrading
+//!
+//! `RusticError`s should **not** be downgraded, instead we **upgrade** the function signature to contain a `RusticResult`.
+//! For instance, if a function returns `Result<T, ArchiverErrorKind>` and we discover an error path that contains a `RusticError`,
+//! we don't need to convert that into an `ArchiverErrorKind`, we should change the function signature, so it returns either a
+//! `Result<T, RusticError> (==RusticResult<T>)` or nested results like `RusticResult<Result<T, ArchiverErrorKind>>`.
+//! So even if the visibility of that function is `fn` or `pub(crate) fn` it should return a `RusticResult` containing a `RusticError`.
+//!
+//! ### Conversion and Nested Results
+//!
+//! Converting between different error kinds or their variants e.g. `TreeErrorKind::Channel` -> `ArchiverErrorKind::Channel`
+//! should seldom happen (probably never?), as the caller is most likely not setup to handle such errors from a different layer,
+//! so at this point, we should return either a `RusticError` indicating this is a hard error. Or use a nested Result, e.g.
+//! `Result<Result<T, TreeErrorKind>, RusticError>`.
+//!
+//! Local error types in `pub fn` (associated) functions need to be manually converted into a `RusticError` with a good error message
+//! and other important information, e.g. actionable guidance for the user.
+//!
+//! ### Backend traits
+//!
+//! By using `RusticResult` in our `Backend` traits, we also make sure, we get back presentable errors for our users.
+//! We had them before as type erased errors, that we just bubbled up. Now we can provide more context and guidance.
+//!
+//! ### Traits
+//!
+//! All traits and implementations of (foreign) traits should use `RusticResult` as return type or `Box<RusticError>` as `Self::Err`.
+//!
+//! ### Display and Debug
+//!
+//! All types that we want to attach to an error should implement `Display` and `Debug` to provide a good error message and a nice way
+//! to display the error.
 
 // FIXME: Remove when 'displaydoc' has fixed/recommended further treatment upstream: https://github.com/yaahc/displaydoc/issues/48
 #![allow(clippy::doc_markdown)]
