@@ -84,3 +84,6 @@ pub use crate::{
     choose::{BackendOptions, SupportedBackend},
     local::LocalBackend,
 };
+
+// re-export for error handling
+pub use rustic_core::{ErrorKind, RusticError, RusticResult, Severity, Status};
