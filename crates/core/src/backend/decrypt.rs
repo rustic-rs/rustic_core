@@ -437,8 +437,8 @@ impl<C: CryptoKey> DecryptBackend<C> {
                 return Err(
                     RusticError::new(
                         ErrorKind::Verification,
-                        "Extra verification failed: After decrypting and decompressing the data changed! The data may be corrupted.\nPlease check the backend for corruption and try again. You can also try to run `rustic check --read-data` to check for corruption. This may take a long time.",
-                    )
+                        "Verification failed: After decrypting and decompressing the data changed! The data may be corrupted.\nPlease check the backend for corruption and try again. You can also try to run `rustic check --read-data` to check for corruption. This may take a long time.",
+                    ).attach_error_code("C003")
                 );
             }
         }
@@ -491,8 +491,8 @@ impl<C: CryptoKey> DecryptBackend<C> {
                 return Err(
                     RusticError::new(
                         ErrorKind::Verification,
-                        "Extra verification failed: After decrypting and decompressing the data changed! The data may be corrupted.\nPlease check the backend for corruption and try again. You can also try to run `rustic check --read-data` to check for corruption. This may take a long time.",
-                    )
+                        "Verification failed: After decrypting and decompressing the data changed! The data may be corrupted.\nPlease check the backend for corruption and try again. You can also try to run `rustic check --read-data` to check for corruption. This may take a long time.",
+                    ).attach_error_code("C003")
                 );
             }
         }
