@@ -58,7 +58,7 @@ pub enum IgnoreErrorKind {
         source: std::io::Error,
     },
     #[cfg(not(windows))]
-    /// Error converting ctime `{ctime}` and ctime_nsec `{ctime_nsec}` to Utc Timestamp: `{source:?}`
+    /// Error converting ctime `{ctime}` and `ctime_nsec` `{ctime_nsec}` to Utc Timestamp: `{source:?}`
     CtimeConversionToTimestampFailed {
         ctime: i64,
         ctime_nsec: i64,
@@ -183,6 +183,7 @@ impl LocalSource {
     ///
     /// [`IgnoreErrorKind::GenericError`]: crate::error::IgnoreErrorKind::GenericError
     /// [`IgnoreErrorKind::FromIoError`]: crate::error::IgnoreErrorKind::FromIoError
+    #[allow(clippy::too_many_lines)]
     pub fn new(
         save_opts: LocalSourceSaveOptions,
         filter_opts: &LocalSourceFilterOptions,

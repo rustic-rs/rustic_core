@@ -217,6 +217,7 @@ impl LocalDestination {
     /// This will remove the directory recursively.
     ///
     /// [`LocalDestinationErrorKind::DirectoryRemovalFailed`]: crate::error::LocalDestinationErrorKind::DirectoryRemovalFailed
+    #[allow(clippy::unused_self)]
     pub(crate) fn remove_dir(&self, dirname: impl AsRef<Path>) -> LocalDestinationResult<()> {
         fs::remove_dir_all(dirname).map_err(LocalDestinationErrorKind::DirectoryRemovalFailed)
     }
@@ -239,6 +240,7 @@ impl LocalDestination {
     /// * If the file is a directory or device, this will fail.
     ///
     /// [`LocalDestinationErrorKind::FileRemovalFailed`]: crate::error::LocalDestinationErrorKind::FileRemovalFailed
+    #[allow(clippy::unused_self)]
     pub(crate) fn remove_file(&self, filename: impl AsRef<Path>) -> LocalDestinationResult<()> {
         fs::remove_file(filename).map_err(LocalDestinationErrorKind::FileRemovalFailed)
     }

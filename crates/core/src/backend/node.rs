@@ -511,13 +511,13 @@ fn unescape_filename(s: &str) -> NodeResult<'_, OsString> {
                                         source: err,
                                     },
                                 )?;
-                                let c = std::char::from_u32(n).ok_or(
+                                let c = std::char::from_u32(n).ok_or_else(|| {
                                     NodeErrorKind::InvalidUnicode {
                                         file_name: s.to_string(),
                                         unicode: n,
                                         chars: chars.clone(),
-                                    },
-                                )?;
+                                    }
+                                })?;
                                 let mut bytes = vec![0u8; c.len_utf8()];
                                 _ = c.encode_utf8(&mut bytes);
                                 u.extend_from_slice(&bytes);
@@ -531,13 +531,13 @@ fn unescape_filename(s: &str) -> NodeResult<'_, OsString> {
                                         source: err,
                                     },
                                 )?;
-                                let c = std::char::from_u32(n).ok_or(
+                                let c = std::char::from_u32(n).ok_or_else(|| {
                                     NodeErrorKind::InvalidUnicode {
                                         file_name: s.to_string(),
                                         unicode: n,
                                         chars: chars.clone(),
-                                    },
-                                )?;
+                                    }
+                                })?;
                                 let mut bytes = vec![0u8; c.len_utf8()];
                                 _ = c.encode_utf8(&mut bytes);
                                 u.extend_from_slice(&bytes);

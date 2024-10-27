@@ -153,6 +153,7 @@ impl RcloneBackend {
     ///
     /// If the rclone command is not found.
     // TODO: This should be an error, not a panic.
+    #[allow(clippy::too_many_lines)]
     pub fn new(url: impl AsRef<str>, options: HashMap<String, String>) -> RusticResult<Self> {
         let rclone_command = options.get("rclone-command");
         let use_password = options
