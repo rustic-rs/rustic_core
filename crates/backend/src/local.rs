@@ -108,7 +108,10 @@ impl LocalBackend {
     ///
     /// # Errors
     ///
-    // TODO: Add error types
+    /// * If the patterns could not be compiled.
+    /// * If the command could not be parsed.
+    /// * If the command could not be executed.
+    /// * If the command was not successful.
     ///
     /// # Notes
     ///
@@ -321,7 +324,10 @@ impl ReadBackend for LocalBackend {
     ///
     /// # Errors
     ///
-    // TODO: Add error types
+    /// * If the file could not be opened.
+    /// * If the file could not be sought to the given position.
+    /// * If the length of the file could not be converted to u32.
+    /// * If the exact length of the file could not be read.
     fn read_partial(
         &self,
         tpe: FileType,
@@ -429,7 +435,11 @@ impl WriteBackend for LocalBackend {
     ///
     /// # Errors
     ///
-    // TODO: Add error types
+    /// * If the file could not be opened.
+    /// * If the length of the bytes could not be converted to u64.
+    /// * If the length of the file could not be set.
+    /// * If the bytes could not be written to the file.
+    /// * If the OS Metadata could not be synced to disk.
     fn write_bytes(
         &self,
         tpe: FileType,
