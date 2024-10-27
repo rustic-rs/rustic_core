@@ -57,7 +57,7 @@ impl<'a, BE: DecryptWriteBackend, I: ReadGlobalIndex> FileArchiver<'a, BE, I> {
     ///
     /// * If sending the message to the raw packer fails.
     /// * If converting the data length to u64 fails
-    pub fn new(
+    pub(crate) fn new(
         be: BE,
         index: &'a I,
         indexer: SharedIndexer<BE>,
