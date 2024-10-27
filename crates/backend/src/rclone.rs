@@ -135,15 +135,10 @@ impl RcloneBackend {
     ///
     /// # Errors
     ///
-    /// * [`RcloneErrorKind::FromIoError`] - If the rclone version could not be determined.
-    /// * [`RcloneErrorKind::NoStdOutForRclone`] - If the rclone version could not be determined.
-    /// * [`RcloneErrorKind::RCloneExitWithBadStatus`] - If rclone exited with a bad status.
-    /// * [`RcloneErrorKind::UrlNotStartingWithHttp`] - If the URL does not start with `http`.
-    ///
-    /// [`RcloneErrorKind::FromIoError`]: RcloneErrorKind::FromIoError
-    /// [`RcloneErrorKind::NoStdOutForRclone`]: RcloneErrorKind::NoStdOutForRclone
-    /// [`RcloneErrorKind::RCloneExitWithBadStatus`]: RcloneErrorKind::RCloneExitWithBadStatus
-    /// [`RcloneErrorKind::UrlNotStartingWithHttp`]: RcloneErrorKind::UrlNotStartingWithHttp
+    /// * If the rclone version could not be determined.
+    /// * If the rclone version could not be determined.
+    /// * If rclone exited with a bad status.
+    /// * If the URL does not start with `http`.
     ///
     /// # Returns
     ///
