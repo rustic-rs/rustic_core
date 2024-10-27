@@ -187,8 +187,7 @@ impl LocalSource {
         let mut override_builder = OverrideBuilder::new("");
 
         // FIXME: Refactor this to a function to be reused
-        // This is the same of backend::ignore::Localsource::new
-        // https://github.com/rustic-rs/rustic_core/blob/db82ed21db158e66ef4f8f3e6ba8c8b52d2fd42a/crates/core/src/blob/tree.rs#L630
+        // This is the same of `tree::NodeStreamer::new_with_glob()`
         for g in &filter_opts.globs {
             _ = override_builder
                 .add(g)
