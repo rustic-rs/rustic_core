@@ -3,7 +3,6 @@ use std::time::Duration;
 
 use backoff::{backoff::Backoff, ExponentialBackoff, ExponentialBackoffBuilder};
 use bytes::Bytes;
-use displaydoc::Display;
 use log::{trace, warn};
 use reqwest::{
     blocking::{Client, ClientBuilder, Response},
@@ -11,23 +10,12 @@ use reqwest::{
     Url,
 };
 use serde::Deserialize;
-use thiserror::Error;
 
 use rustic_core::{ErrorKind, FileType, Id, ReadBackend, RusticError, RusticResult, WriteBackend};
 
-/// [`RestErrorKind`] describes the errors that can be returned while dealing with the REST API
-#[derive(Error, Debug, Display)]
-#[non_exhaustive]
-pub enum RestErrorKind {
-    #[cfg(feature = "rest")]
-    /// requesting resource failed: `{0:?}`
-    RequestingResourceFailed(reqwest::Error),
-    #[cfg(feature = "rest")]
-    /// backoff failed: {0:?}
-    BackoffError(backoff::Error<reqwest::Error>),
-    /// joining URL failed on: {0}
-    JoiningUrlFailed(url::ParseError),
-}
+/// joining URL failed on: `{0}`
+#[derive(thiserror::Error, Clone, Copy, Debug, displaydoc::Display)]
+pub struct JoiningUrlFailedError(url::ParseError);
 
 pub(super) mod constants {
     use std::time::Duration;
@@ -240,8 +228,8 @@ impl RestBackend {
     ///
     /// # Errors
     ///
-    /// * If the url could not be created.
-    fn url(&self, tpe: FileType, id: &Id) -> Result<Url, RestErrorKind> {
+    /// * If the url could not be joined/created.
+    fn url(&self, tpe: FileType, id: &Id) -> Result<Url, JoiningUrlFailedError> {
         let id_path = if tpe == FileType::Config {
             "config".to_string()
         } else {
@@ -252,9 +240,7 @@ impl RestBackend {
             path
         };
 
-        self.url
-            .join(&id_path)
-            .map_err(RestErrorKind::JoiningUrlFailed)
+        self.url.join(&id_path).map_err(JoiningUrlFailedError)
     }
 }
 
@@ -438,7 +424,7 @@ fn construct_backoff_error(err: backoff::Error<reqwest::Error>) -> Box<RusticErr
 }
 
 fn construct_join_url_error(
-    err: RestErrorKind,
+    err: JoiningUrlFailedError,
     tpe: FileType,
     id: &Id,
     self_url: &Url,
