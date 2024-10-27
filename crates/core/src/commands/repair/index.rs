@@ -9,12 +9,11 @@ use crate::{
         decrypt::{DecryptReadBackend, DecryptWriteBackend},
         FileType, ReadBackend, WriteBackend,
     },
-    error::{ErrorKind, RusticResult},
+    error::{ErrorKind, RusticError, RusticResult},
     index::{binarysorted::IndexCollector, indexer::Indexer, GlobalIndex},
     progress::{Progress, ProgressBars},
     repofile::{packfile::PackId, IndexFile, IndexPack, PackHeader, PackHeaderRef},
     repository::{Open, Repository},
-    RusticError,
 };
 
 #[cfg_attr(feature = "clap", derive(clap::Parser))]
