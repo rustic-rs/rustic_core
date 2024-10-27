@@ -581,7 +581,7 @@ where
             recursive,
         })
     }
-    
+
     /// Creates a new `NodeStreamer` with glob patterns.
     ///
     /// # Arguments
