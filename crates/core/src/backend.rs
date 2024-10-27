@@ -10,7 +10,7 @@ pub(crate) mod node;
 pub(crate) mod stdin;
 pub(crate) mod warm_up;
 
-use std::{io::Read, num::TryFromIntError, ops::Deref, path::PathBuf, sync::Arc};
+use std::{io::Read, ops::Deref, path::PathBuf, sync::Arc};
 
 use bytes::Bytes;
 use enum_map::Enum;
@@ -31,64 +31,11 @@ use crate::{
 #[derive(thiserror::Error, Debug, displaydoc::Display)]
 #[non_exhaustive]
 pub enum BackendErrorKind {
-    /// backend `{0:?}` is not supported!
-    BackendNotSupported(String),
-    /// no suitable id found for `{0}`
-    NoSuitableIdFound(String),
-    /// id `{0}` is not unique
-    IdNotUnique(String),
-    /// creating data in backend failed
-    CreatingDataOnBackendFailed,
-    /// writing bytes to backend failed
-    WritingBytesToBackendFailed,
-    /// removing data from backend failed
-    RemovingDataFromBackendFailed,
-    /// failed to list files on Backend
-    ListingFilesOnBackendFailed,
     /// Path is not allowed: `{0:?}`
     PathNotAllowed(PathBuf),
-    /// Backend location not convertible: `{location}`
-    BackendLocationNotConvertible { location: String },
-}
-
-/// [`CryptBackendErrorKind`] describes the errors that can be returned by a Decryption action in Backends
-#[derive(thiserror::Error, Debug, displaydoc::Display)]
-#[non_exhaustive]
-pub enum CryptBackendErrorKind {
-    /// decryption not supported for backend
-    DecryptionNotSupportedForBackend,
-    /// length of uncompressed data does not match!
-    LengthOfUncompressedDataDoesNotMatch,
-    /// failed to read encrypted data during full read
-    DecryptionInFullReadFailed,
-    /// failed to read encrypted data during partial read
-    DecryptionInPartialReadFailed,
-    /// decrypting from backend failed
-    DecryptingFromBackendFailed,
-    /// deserializing from bytes of JSON Text failed: `{0:?}`
-    DeserializingFromBytesOfJsonTextFailed(serde_json::Error),
-    /// failed to write data in crypt backend
-    WritingDataInCryptBackendFailed,
-    /// failed to list Ids
-    ListingIdsInDecryptionBackendFailed,
-    /// writing full hash failed in `CryptBackend`
-    WritingFullHashFailed,
-    /// decoding Zstd compressed data failed: `{0:?}`
-    DecodingZstdCompressedDataFailed(std::io::Error),
-    /// Serializing to JSON byte vector failed: `{0:?}`
-    SerializingToJsonByteVectorFailed(serde_json::Error),
-    /// encrypting data failed
-    EncryptingDataFailed,
-    /// Compressing and appending data failed: `{0:?}`
-    CopyEncodingDataFailed(std::io::Error),
-    /// conversion for integer failed: `{0:?}`
-    IntConversionFailed(TryFromIntError),
-    /// Extra verification failed: After decrypting and decompressing the data changed!
-    ExtraVerificationFailed,
 }
 
 pub(crate) type BackendResult<T> = Result<T, BackendErrorKind>;
-pub(crate) type CryptBackendResult<T> = Result<T, CryptBackendErrorKind>;
 
 /// All [`FileType`]s which are located in separated directories
 pub const ALL_FILE_TYPES: [FileType; 4] = [

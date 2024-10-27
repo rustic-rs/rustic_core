@@ -299,7 +299,7 @@ impl LocalDestination {
     /// # Errors
     ///
     /// * If the user/group could not be set.
-    #[allow(clippy::unused_self)]
+    #[allow(clippy::unused_self, clippy::unnecessary_wraps)]
     pub(crate) fn set_user_group(
         &self,
         _item: impl AsRef<Path>,
@@ -355,7 +355,7 @@ impl LocalDestination {
     /// # Errors
     ///
     /// * If the uid/gid could not be set.
-    #[allow(clippy::unused_self)]
+    #[allow(clippy::unused_self, clippy::unnecessary_wraps)]
     pub(crate) fn set_uid_gid(
         &self,
         _item: impl AsRef<Path>,
@@ -403,7 +403,7 @@ impl LocalDestination {
     /// # Errors        
     ///
     /// * If the permissions could not be set.
-    #[allow(clippy::unused_self)]
+    #[allow(clippy::unused_self, clippy::unnecessary_wraps)]
     pub(crate) fn set_permission(
         &self,
         _item: impl AsRef<Path>,
@@ -456,7 +456,7 @@ impl LocalDestination {
     /// # Errors
     ///
     /// * If the extended attributes could not be set.
-    #[allow(clippy::unused_self)]
+    #[allow(clippy::unused_self, clippy::unnecessary_wraps)]
     pub(crate) fn set_extended_attributes(
         &self,
         _item: impl AsRef<Path>,
@@ -600,6 +600,7 @@ impl LocalDestination {
     /// # Returns
     ///
     /// Ok if the special file was created.
+    #[allow(clippy::unused_self, clippy::unnecessary_wraps)]
     pub(crate) fn create_special(
         &self,
         _item: impl AsRef<Path>,

@@ -1249,7 +1249,7 @@ impl PathList {
     /// # Errors
     ///
     /// * no errors can occur here
-    /// * RusticResult is used for consistency and future compatibility
+    /// * [`RusticResult`] is used for consistency and future compatibility
     pub fn from_string(source: &str) -> RusticResult<Self> {
         Ok(Self(vec![source.into()]))
     }

@@ -6,7 +6,7 @@ use std::{
 use log::warn;
 
 use crate::{
-    archiver::{tree::TreeType, ArchiverErrorKind, ArchiverResult},
+    archiver::{tree::TreeType, TreeStackEmptyError},
     backend::{decrypt::DecryptReadBackend, node::Node},
     blob::tree::{Tree, TreeId},
     index::ReadGlobalIndex,
@@ -218,8 +218,8 @@ impl Parent {
     /// # Errors
     ///
     /// * If the tree stack is empty.
-    fn finish_dir(&mut self) -> ArchiverResult<()> {
-        let (tree, node_idx) = self.stack.pop().ok_or(ArchiverErrorKind::TreeStackEmpty)?;
+    fn finish_dir(&mut self) -> Result<(), TreeStackEmptyError> {
+        let (tree, node_idx) = self.stack.pop().ok_or(TreeStackEmptyError)?;
 
         self.tree = tree;
         self.node_idx = node_idx;
@@ -252,7 +252,7 @@ impl Parent {
         be: &impl DecryptReadBackend,
         index: &impl ReadGlobalIndex,
         item: TreeType<O, OsString>,
-    ) -> ArchiverResult<ItemWithParent<O>> {
+    ) -> Result<ItemWithParent<O>, TreeStackEmptyError> {
         let result = match item {
             TreeType::NewTree((path, node, tree)) => {
                 let parent_result = self

@@ -13,16 +13,6 @@ use crate::{
     CommandInput,
 };
 
-/// [`WarmupErrorKind`] describes the errors that can be returned from Warmup
-#[derive(thiserror::Error, Debug, displaydoc::Display)]
-#[non_exhaustive]
-pub enum WarmupErrorKind {
-    /// Error in warm-up command
-    General,
-}
-
-pub(crate) type WarmupResult<T> = Result<T, WarmupErrorKind>;
-
 pub(super) mod constants {
     /// The maximum number of reader threads to use for warm-up.
     pub(super) const MAX_READER_THREADS_NUM: usize = 20;

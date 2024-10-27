@@ -10,14 +10,6 @@ use crate::{
     error::{ErrorKind, RusticError, RusticResult},
 };
 
-/// [`PolynomialErrorKind`] describes the errors that can happen while dealing with Polynomials
-#[derive(thiserror::Error, Debug, displaydoc::Display)]
-#[non_exhaustive]
-pub enum PolynomialErrorKind {
-    /// no suitable polynomial found
-    NoSuitablePolynomialFound,
-}
-
 pub(super) mod constants {
     /// The Splitmask is used to determine if a chunk is a chunk boundary.
     pub(super) const SPLITMASK: u64 = (1u64 << 20) - 1;

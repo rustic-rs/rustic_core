@@ -25,17 +25,9 @@ use crate::{
     Progress,
 };
 
-/// [`ArchiverErrorKind`] describes the errors that can be returned from the archiver
 #[derive(thiserror::Error, Debug, displaydoc::Display)]
-#[non_exhaustive]
-pub enum ArchiverErrorKind {
-    /// tree stack empty
-    TreeStackEmpty,
-    /// couldn't determine size for item in Archiver
-    CouldNotDetermineSize,
-}
-
-pub(crate) type ArchiverResult<T> = Result<T, ArchiverErrorKind>;
+/// Tree stack empty
+pub struct TreeStackEmptyError;
 
 /// The `Archiver` is responsible for archiving files and trees.
 /// It will read the file, chunk it, and write the chunks to the backend.
