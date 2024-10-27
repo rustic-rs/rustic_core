@@ -380,8 +380,6 @@ pub enum ErrorKind {
     Backend,
     /// Command Error
     Command,
-    /// Compression Error
-    Compression,
     /// Config Error
     Config,
     /// Crypto Error

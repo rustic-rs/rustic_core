@@ -79,14 +79,14 @@ pub trait DecryptReadBackend: ReadBackend + Clone + 'static {
         if let Some(length) = uncompressed_length {
             data = decode_all(&*data).map_err(|err| {
                 RusticError::with_source(
-                    ErrorKind::Compression,
+                    ErrorKind::Internal,
                     "Failed to decode zstd compressed data. The data may be corrupted.",
                     err,
                 )
             })?;
             if data.len() != length.get() as usize {
                 return Err(RusticError::new(
-                    ErrorKind::Compression,
+                    ErrorKind::Internal,
                     "Length of uncompressed data does not match the given length. This is likely a bug. Please report this issue.",
                 )
                 .attach_context("expected_length", length.get().to_string())
@@ -407,7 +407,7 @@ impl<C: CryptoKey> DecryptBackend<C> {
             Some(b'{' | b'[') => decrypted, // not compressed
             Some(2) => decode_all(&decrypted[1..]).map_err(|err| {
                 RusticError::with_source(
-                    ErrorKind::Compression,
+                    ErrorKind::Internal,
                     "Failed to decode zstd compressed data. The data may be corrupted.",
                     err,
                 )
@@ -428,7 +428,7 @@ impl<C: CryptoKey> DecryptBackend<C> {
                 let mut out = vec![2_u8];
                 copy_encode(data, &mut out, level).map_err(|err| {
                     RusticError::with_source(
-                        ErrorKind::Compression,
+                        ErrorKind::Internal,
                         "Compressing and appending data failed. The data may be corrupted.",
                         err,
                     )
@@ -477,7 +477,7 @@ impl<C: CryptoKey> DecryptBackend<C> {
                 self.key
                     .encrypt_data(&encode_all(data, level).map_err(|err| {
                         RusticError::with_source(
-                            ErrorKind::Compression,
+                            ErrorKind::Internal,
                             "Failed to encode zstd compressed data. The data may be corrupted.",
                             err,
                         )

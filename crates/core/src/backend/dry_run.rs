@@ -65,7 +65,7 @@ impl<BE: DecryptFullBackend> DecryptReadBackend for DryRunBackend<BE> {
             Some(2) => decode_all(&decrypted[1..])
                 .map_err(|err|
                     RusticError::with_source(
-                        ErrorKind::Compression,
+                        ErrorKind::Internal,
                         "Decoding zstd compressed data failed. This can happen if the data is corrupted. Please check the backend for corruption and try again. You can also try to run `rustic check` to check for corruption.",
                         err
                         )
