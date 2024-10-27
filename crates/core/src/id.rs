@@ -107,19 +107,15 @@ impl Id {
     ///
     /// # Errors
     ///
-    /// * [`IdErrorKind::HexError`] - If the string is not a valid hexadecimal string
+    /// * If the string is not a valid hexadecimal string
     ///
     /// # Examples
     ///
     /// ```
-    /// use rustic_core::Id;
-    ///
+    /// # use rustic_core::Id;
     /// let id = Id::from_hex("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef").unwrap();
-    ///
-    /// assert_eq!(id.to_hex().as_str(), "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef");
+    /// # assert_eq!(id.to_hex().as_str(), "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef");
     /// ```
-    ///
-    /// [`IdErrorKind::HexError`]: crate::error::IdErrorKind::HexError
     #[deprecated(note = "use FromStr::from_str instead")]
     pub fn from_hex(s: &str) -> RusticResult<Self> {
         s.parse()
@@ -153,7 +149,7 @@ impl Id {
     ///
     /// # Panics
     ///
-    /// Panics if the `hex` crate fails to encode the hash
+    /// * Panics if the `hex` crate fails to encode the hash
     // TODO! - remove the panic
     #[must_use]
     pub fn to_hex(self) -> HexId {
@@ -221,7 +217,7 @@ impl HexId {
     ///
     /// # Panics
     ///
-    /// If the [`HexId`] is not a valid UTF-8 string
+    /// * If the [`HexId`] is not a valid UTF-8 string
     #[must_use]
     pub fn as_str(&self) -> &str {
         // This is only ever filled with hex chars, which are ascii

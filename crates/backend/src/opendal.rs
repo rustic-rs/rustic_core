@@ -94,7 +94,7 @@ impl OpenDALBackend {
     ///
     /// # Errors
     ///
-    /// If the path is not a valid `OpenDAL` path, an error is returned.
+    /// * If the path is not a valid `OpenDAL` path.
     ///
     /// # Returns
     ///

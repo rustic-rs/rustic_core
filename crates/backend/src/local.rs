@@ -86,7 +86,7 @@ impl LocalBackend {
     ///
     /// # Errors
     ///
-    ///
+    // TODO: Add error types
     ///
     /// # Returns
     ///
@@ -173,7 +173,7 @@ impl LocalBackend {
 
         let ac = AhoCorasick::new(patterns).map_err(|err| {
             RusticError::with_source(
-                ErrorKind::Backend,
+                ErrorKind::Internal,
             "Experienced an error building AhoCorasick automaton for command replacement. This is a bug. Please report it.",
         err)
         })?;
@@ -264,13 +264,9 @@ impl ReadBackend for LocalBackend {
     ///
     /// # Errors
     ///
-    /// * [`LocalBackendErrorKind::QueryingMetadataFailed`] - If the metadata of the file could not be queried.
-    /// * [`LocalBackendErrorKind::FromTryIntError`] - If the length of the file could not be converted to u32.
-    /// * [`LocalBackendErrorKind::QueryingWalkDirMetadataFailed`] - If the metadata of the file could not be queried.
-    ///
-    /// [`LocalBackendErrorKind::QueryingMetadataFailed`]: LocalBackendErrorKind::QueryingMetadataFailed
-    /// [`LocalBackendErrorKind::FromTryIntError`]: LocalBackendErrorKind::FromTryIntError
-    /// [`LocalBackendErrorKind::QueryingWalkDirMetadataFailed`]: LocalBackendErrorKind::QueryingWalkDirMetadataFailed
+    /// * If the metadata of the file could not be queried.
+    /// * If the length of the file could not be converted to u32.
+    /// * If the metadata of the file could not be queried.
     fn list_with_size(&self, tpe: FileType) -> RusticResult<Vec<(Id, u32)>> {
         trace!("listing tpe: {tpe:?}");
         let path = self.path.join(tpe.dirname());
@@ -347,8 +343,8 @@ impl ReadBackend for LocalBackend {
     ///
     /// # Errors
     ///
-    /// - If the file could not be read.
-    /// - If the file could not be found.
+    /// * If the file could not be read.
+    /// * If the file could not be found.
     fn read_full(&self, tpe: FileType, id: &Id) -> RusticResult<Bytes> {
         trace!("reading tpe: {tpe:?}, id: {id}");
         Ok(fs::read(self.path(tpe, id))
@@ -375,7 +371,7 @@ impl ReadBackend for LocalBackend {
     ///
     /// # Errors
     ///
-    ///
+    // TODO: Add error types
     fn read_partial(
         &self,
         tpe: FileType,
@@ -434,9 +430,7 @@ impl WriteBackend for LocalBackend {
     ///
     /// # Errors
     ///
-    /// * [`LocalBackendErrorKind::DirectoryCreationFailed`] - If the directory could not be created.
-    ///
-    /// [`LocalBackendErrorKind::DirectoryCreationFailed`]: LocalBackendErrorKind::DirectoryCreationFailed
+    /// * If the directory could not be created.
     fn create(&self) -> RusticResult<()> {
         trace!("creating repo at {:?}", self.path);
         fs::create_dir_all(&self.path).map_err(|err| {
@@ -485,6 +479,7 @@ impl WriteBackend for LocalBackend {
     ///
     /// # Errors
     ///
+    // TODO: Add error types
     fn write_bytes(
         &self,
         tpe: FileType,
@@ -502,7 +497,7 @@ impl WriteBackend for LocalBackend {
             .open(&filename)
             .map_err(|err| {
                 RusticError::with_source(
-                    ErrorKind::Backend,
+                    ErrorKind::Io,
                     "Failed to open the file. Please check the file and try again.",
                     err,
                 )
@@ -511,7 +506,7 @@ impl WriteBackend for LocalBackend {
 
         file.set_len(buf.len().try_into().map_err(|err| {
             RusticError::with_source(
-                ErrorKind::Backend,
+                ErrorKind::Internal,
                 "Failed to convert length to u64. This is a bug. Please report it.",
                 err,
             )
@@ -519,7 +514,7 @@ impl WriteBackend for LocalBackend {
         })?)
         .map_err(|err| {
             RusticError::with_source(
-                ErrorKind::Backend,
+                ErrorKind::Io,
                 "Failed to set the length of the file. Please check the file and try again.",
                 err,
             )
@@ -528,7 +523,7 @@ impl WriteBackend for LocalBackend {
 
         file.write_all(&buf).map_err(|err| {
             RusticError::with_source(
-                ErrorKind::Backend,
+                ErrorKind::Io,
                 "Failed to write to the buffer. Please check the file and try again.",
                 err,
             )
@@ -537,7 +532,7 @@ impl WriteBackend for LocalBackend {
 
         file.sync_all().map_err(|err| {
             RusticError::with_source(
-                ErrorKind::Backend,
+                ErrorKind::Io,
                 "Failed to sync OS Metadata to disk. Please check the file and try again.",
                 err,
             )
@@ -562,9 +557,7 @@ impl WriteBackend for LocalBackend {
     ///
     /// # Errors
     ///
-    /// * [`LocalBackendErrorKind::FileRemovalFailed`] - If the file could not be removed.
-    ///
-    /// [`LocalBackendErrorKind::FileRemovalFailed`]: LocalBackendErrorKind::FileRemovalFailed
+    /// * If the file could not be removed.
     fn remove(&self, tpe: FileType, id: &Id, _cacheable: bool) -> RusticResult<()> {
         trace!("removing tpe: {:?}, id: {}", &tpe, &id);
         let filename = self.path(tpe, id);

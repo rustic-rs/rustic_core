@@ -335,9 +335,7 @@ impl ReadSourceOpen for OpenFile {
     ///
     /// # Errors
     ///
-    /// * [`IgnoreErrorKind::UnableToOpenFile`] - If the file could not be opened.
-    ///
-    /// [`IgnoreErrorKind::UnableToOpenFile`]: crate::error::IgnoreErrorKind::UnableToOpenFile
+    /// * If the file could not be opened.
     fn open(self) -> RusticResult<Self::Reader> {
         let path = self.0;
         File::open(&path).map_err(|err| {
@@ -363,7 +361,7 @@ impl ReadSource for LocalSource {
     ///
     /// # Errors
     ///
-    /// If the size could not be determined.
+    /// * If the size could not be determined.
     fn size(&self) -> RusticResult<Option<u64>> {
         let mut size = 0;
         for entry in self.builder.build() {
@@ -442,11 +440,8 @@ impl Iterator for LocalSourceWalker {
 ///
 /// # Errors
 ///
-/// * [`IgnoreErrorKind::GenericError`] - If metadata could not be read.
-/// * [`IgnoreErrorKind::FromIoError`] - If path of the entry could not be read.
-///
-/// [`IgnoreErrorKind::GenericError`]: crate::error::IgnoreErrorKind::GenericError
-/// [`IgnoreErrorKind::FromIoError`]: crate::error::IgnoreErrorKind::FromIoError
+/// * If metadata could not be read.
+/// * If path of the entry could not be read.
 #[cfg(windows)]
 #[allow(clippy::similar_names)]
 fn map_entry(
@@ -580,7 +575,7 @@ fn list_extended_attributes(path: &Path) -> IgnoreResult<Vec<ExtendedAttribute>>
 ///
 /// # Errors
 ///
-/// * [`IgnoreErrorKind::ErrorXattr`] - if Xattr couldn't be listed or couldn't be read
+/// * If Xattr couldn't be listed or couldn't be read
 #[cfg(all(not(windows), not(target_os = "openbsd")))]
 fn list_extended_attributes(path: &Path) -> IgnoreResult<Vec<ExtendedAttribute>> {
     xattr::list(path)
@@ -610,11 +605,8 @@ fn list_extended_attributes(path: &Path) -> IgnoreResult<Vec<ExtendedAttribute>>
 ///
 /// # Errors
 ///
-/// * [`IgnoreErrorKind::GenericError`] - If metadata could not be read.
-/// * [`IgnoreErrorKind::FromIoError`] - If the xattr of the entry could not be read.
-///
-/// [`IgnoreErrorKind::GenericError`]: crate::error::IgnoreErrorKind::GenericError
-/// [`IgnoreErrorKind::FromIoError`]: crate::error::IgnoreErrorKind::FromIoError
+/// * If metadata could not be read.
+/// * If the xattr of the entry could not be read.
 #[cfg(not(windows))]
 // map_entry: turn entry into (Path, Node)
 #[allow(clippy::similar_names)]

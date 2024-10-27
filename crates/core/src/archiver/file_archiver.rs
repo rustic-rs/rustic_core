@@ -55,11 +55,8 @@ impl<'a, BE: DecryptWriteBackend, I: ReadGlobalIndex> FileArchiver<'a, BE, I> {
     ///
     /// # Errors
     ///
-    /// * [`PackerErrorKind::SendingCrossbeamMessageFailed`] - If sending the message to the raw packer fails.
-    /// * [`PackerErrorKind::IntConversionFailed`] - If converting the data length to u64 fails
-    ///
-    /// [`PackerErrorKind::SendingCrossbeamMessageFailed`]: crate::error::PackerErrorKind::SendingCrossbeamMessageFailed
-    /// [`PackerErrorKind::IntConversionFailed`]: crate::error::PackerErrorKind::IntConversionFailed
+    /// * If sending the message to the raw packer fails.
+    /// * If converting the data length to u64 fails
     pub fn new(
         be: BE,
         index: &'a I,
@@ -98,13 +95,11 @@ impl<'a, BE: DecryptWriteBackend, I: ReadGlobalIndex> FileArchiver<'a, BE, I> {
     ///
     /// # Errors
     ///
-    /// [`ArchiverErrorKind::UnpackingTreeTypeOptionalFailed`] - If the item could not be unpacked.
+    /// * If the item could not be unpacked.
     ///
     /// # Returns
     ///
     /// The processed item.
-    ///
-    /// [`ArchiverErrorKind::UnpackingTreeTypeOptionalFailed`]: crate::error::ArchiverErrorKind::UnpackingTreeTypeOptionalFailed
     pub(crate) fn process<O: ReadSourceOpen>(
         &self,
         item: ItemWithParent<Option<O>>,
@@ -194,7 +189,7 @@ impl<'a, BE: DecryptWriteBackend, I: ReadGlobalIndex> FileArchiver<'a, BE, I> {
     ///
     /// # Panics
     ///
-    /// If the channel could not be dropped
+    /// * If the channel could not be dropped
     pub(crate) fn finalize(self) -> RusticResult<PackerStats> {
         self.data_packer.finalize()
     }

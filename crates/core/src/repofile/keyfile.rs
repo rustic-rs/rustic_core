@@ -103,15 +103,12 @@ impl KeyFile {
     ///
     /// # Errors
     ///
-    /// * [`KeyFileErrorKind::InvalidSCryptParameters`] - If the parameters of the key derivation function are invalid
-    /// * [`KeyFileErrorKind::OutputLengthInvalid`] - If the output length of the key derivation function is invalid
+    /// * If the parameters of the key derivation function are invalid
+    /// * If the output length of the key derivation function is invalid
     ///
     /// # Returns
     ///
     /// The generated key
-    ///
-    /// [`KeyFileErrorKind::InvalidSCryptParameters`]: crate::error::KeyFileErrorKind::InvalidSCryptParameters
-    /// [`KeyFileErrorKind::OutputLengthInvalid`]: crate::error::KeyFileErrorKind::OutputLengthInvalid
     pub fn kdf_key(&self, passwd: &impl AsRef<[u8]>) -> RusticResult<Key> {
         let params = Params::new(
             log_2(self.n).map_err(|err| {
@@ -154,13 +151,11 @@ impl KeyFile {
     ///
     /// # Errors
     ///
-    /// * [`KeyFileErrorKind::DeserializingFromSliceFailed`] - If the data could not be deserialized
+    /// * If the data could not be deserialized
     ///
     /// # Returns
     ///
     /// The extracted key
-    ///
-    /// [`KeyFileErrorKind::DeserializingFromSliceFailed`]: crate::error::KeyFileErrorKind::DeserializingFromSliceFailed
     pub fn key_from_data(&self, key: &Key) -> RusticResult<Key> {
         let dec_data = key.decrypt_data(&self.data)?;
 
@@ -186,13 +181,11 @@ impl KeyFile {
     ///
     /// # Errors
     ///
-    /// * [`KeyFileErrorKind::InvalidSCryptParameters`] - If the parameters of the key derivation function are invalid
+    /// * If the parameters of the key derivation function are invalid
     ///
     /// # Returns
     ///
     /// The extracted key
-    ///
-    /// [`KeyFileErrorKind::InvalidSCryptParameters`]: crate::error::KeyFileErrorKind::InvalidSCryptParameters
     pub fn key_from_password(&self, passwd: &impl AsRef<[u8]>) -> RusticResult<Key> {
         self.key_from_data(&self.kdf_key(passwd)?)
     }
@@ -209,15 +202,12 @@ impl KeyFile {
     ///
     /// # Errors
     ///
-    /// * [`KeyFileErrorKind::OutputLengthInvalid`] - If the output length of the key derivation function is invalid
-    /// * [`KeyFileErrorKind::CouldNotSerializeAsJsonByteVector`] - If the [`KeyFile`] could not be serialized
+    /// * If the output length of the key derivation function is invalid
+    /// * If the [`KeyFile`] could not be serialized
     ///
     /// # Returns
     ///
     /// The generated [`KeyFile`]
-    ///
-    /// [`KeyFileErrorKind::OutputLengthInvalid`]: crate::error::KeyFileErrorKind::OutputLengthInvalid
-    /// [`KeyFileErrorKind::CouldNotSerializeAsJsonByteVector`]: crate::error::KeyFileErrorKind::CouldNotSerializeAsJsonByteVector
     pub fn generate(
         key: Key,
         passwd: &impl AsRef<[u8]>,
@@ -300,13 +290,11 @@ impl KeyFile {
 ///
 /// # Errors
 ///
-/// * [`KeyFileErrorKind::ConversionFromU32ToU8Failed`] - If the conversion from `u32` to `u8` failed
+/// * If the conversion from `u32` to `u8` failed
 ///
 /// # Returns
 ///
 /// The logarithm to base 2 of the given number
-///
-/// [`KeyFileErrorKind::ConversionFromU32ToU8Failed`]: crate::error::KeyFileErrorKind::ConversionFromU32ToU8Failed
 fn log_2(x: u32) -> KeyFileResult<u8> {
     assert!(x > 0);
     Ok(u8::try_from(constants::num_bits::<u32>()).map_err(|err| {
@@ -407,13 +395,11 @@ pub(crate) fn key_from_backend<B: ReadBackend>(
 ///
 /// # Errors
 ///
-/// * [`KeyFileErrorKind::NoSuitableKeyFound`] - If no suitable key was found
+/// * If no suitable key was found
 ///
 /// # Returns
 ///
 /// The found key
-///
-/// [`KeyFileErrorKind::NoSuitableKeyFound`]: crate::error::KeyFileErrorKind::NoSuitableKeyFound
 pub(crate) fn find_key_in_backend<B: ReadBackend>(
     be: &B,
     passwd: &impl AsRef<[u8]>,

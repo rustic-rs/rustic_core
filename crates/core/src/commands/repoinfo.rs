@@ -187,7 +187,7 @@ pub struct RepoFileInfo {
 ///
 /// # Errors
 ///
-/// If files could not be listed.
+/// * If files could not be listed.
 pub(crate) fn collect_file_info(be: &impl ReadBackend) -> RusticResult<Vec<RepoFileInfo>> {
     let mut files = Vec::with_capacity(ALL_FILE_TYPES.len());
     for tpe in ALL_FILE_TYPES {

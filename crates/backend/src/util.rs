@@ -34,7 +34,7 @@ impl std::fmt::Display for BackendLocation {
 ///
 /// # Errors
 ///
-/// If the url is not a valid url, an error is returned.
+/// * If the url is not a valid url, an error is returned.
 ///
 /// # Returns
 ///

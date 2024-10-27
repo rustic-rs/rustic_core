@@ -58,19 +58,12 @@ impl Drop for RcloneBackend {
 ///
 /// # Errors
 ///
-/// * [`RcloneErrorKind::FromIoError`] - If the rclone version could not be determined.
-/// * [`RcloneErrorKind::FromUtf8Error`] - If the rclone version could not be determined.
-/// * [`RcloneErrorKind::NoOutputForRcloneVersion`] - If the rclone version could not be determined.
-/// * [`RcloneErrorKind::FromParseVersion`] - If the rclone version could not be determined.
+/// * If the rclone version could not be determined or parsed.
+/// * If the rclone version is not supported.
 ///
 /// # Returns
 ///
-/// * `Ok(())` - If the rclone version is supported.
-///
-/// [`RcloneErrorKind::FromIoError`]: RcloneErrorKind::FromIoError
-/// [`RcloneErrorKind::FromUtf8Error`]: RcloneErrorKind::FromUtf8Error
-/// [`RcloneErrorKind::NoOutputForRcloneVersion`]: RcloneErrorKind::NoOutputForRcloneVersion
-/// [`RcloneErrorKind::FromParseVersion`]: RcloneErrorKind::FromParseVersion
+/// * Ok(()), if the rclone version is supported.
 fn check_clone_version(rclone_version_output: &[u8]) -> RusticResult<()> {
     let rclone_version = std::str::from_utf8(rclone_version_output)
         .map_err(|err| {
@@ -146,7 +139,7 @@ impl RcloneBackend {
     ///
     /// # Panics
     ///
-    /// If the rclone command is not found.
+    /// * If the rclone command is not found.
     // TODO: This should be an error, not a panic.
     #[allow(clippy::too_many_lines)]
     pub fn new(url: impl AsRef<str>, options: HashMap<String, String>) -> RusticResult<Self> {
@@ -208,12 +201,12 @@ impl RcloneBackend {
             .stderr(Stdio::piped())
             .spawn()
             .map_err(|err|
-            RusticError::with_source(
-                ErrorKind::ExternalCommand,
-                "Experienced an error while running rclone. Please check if rclone is installed and working correctly.",
-                err
-            )
-            .attach_context("rclone command", rclone_command.to_string())
+                RusticError::with_source(
+                    ErrorKind::ExternalCommand,
+                    "Experienced an error while running rclone. Please check if rclone is installed and working correctly.",
+                    err
+                )
+                .attach_context("rclone command", rclone_command.to_string())
             )?;
 
         let mut stderr = BufReader::new(

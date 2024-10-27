@@ -143,9 +143,7 @@ impl LocalDestination {
     ///
     /// # Errors
     ///
-    /// * [`LocalDestinationErrorKind::DirectoryCreationFailed`] - If the directory could not be created.
-    ///
-    /// [`LocalDestinationErrorKind::DirectoryCreationFailed`]: crate::error::LocalDestinationErrorKind::DirectoryCreationFailed
+    /// * If the directory could not be created.
     // TODO: We should use `impl Into<Path/PathBuf>` here. we even use it in the body!
     pub fn new(path: &str, create: bool, expect_file: bool) -> RusticResult<Self> {
         let is_dir = path.ends_with('/');
@@ -210,13 +208,11 @@ impl LocalDestination {
     ///
     /// # Errors
     ///
-    /// * [`LocalDestinationErrorKind::DirectoryRemovalFailed`] - If the directory could not be removed.
+    /// * If the directory could not be removed.
     ///
     /// # Notes
     ///
     /// This will remove the directory recursively.
-    ///
-    /// [`LocalDestinationErrorKind::DirectoryRemovalFailed`]: crate::error::LocalDestinationErrorKind::DirectoryRemovalFailed
     #[allow(clippy::unused_self)]
     pub(crate) fn remove_dir(&self, dirname: impl AsRef<Path>) -> LocalDestinationResult<()> {
         fs::remove_dir_all(dirname).map_err(LocalDestinationErrorKind::DirectoryRemovalFailed)
@@ -230,7 +226,7 @@ impl LocalDestination {
     ///
     /// # Errors
     ///
-    /// * [`LocalDestinationErrorKind::FileRemovalFailed`] - If the file could not be removed.
+    /// * If the file could not be removed.
     ///
     /// # Notes
     ///
@@ -238,8 +234,6 @@ impl LocalDestination {
     ///
     /// * If the file is a symlink, the symlink will be removed, not the file it points to.
     /// * If the file is a directory or device, this will fail.
-    ///
-    /// [`LocalDestinationErrorKind::FileRemovalFailed`]: crate::error::LocalDestinationErrorKind::FileRemovalFailed
     #[allow(clippy::unused_self)]
     pub(crate) fn remove_file(&self, filename: impl AsRef<Path>) -> LocalDestinationResult<()> {
         fs::remove_file(filename).map_err(LocalDestinationErrorKind::FileRemovalFailed)
@@ -253,13 +247,11 @@ impl LocalDestination {
     ///
     /// # Errors
     ///
-    /// * [`LocalDestinationErrorKind::DirectoryCreationFailed`] - If the directory could not be created.
+    /// * If the directory could not be created.
     ///
     /// # Notes
     ///
     /// This will create the directory structure recursively.
-    ///
-    /// [`LocalDestinationErrorKind::DirectoryCreationFailed`]: crate::error::LocalDestinationErrorKind::DirectoryCreationFailed
     pub(crate) fn create_dir(&self, item: impl AsRef<Path>) -> LocalDestinationResult<()> {
         let dirname = self.path.join(item);
         fs::create_dir_all(dirname).map_err(LocalDestinationErrorKind::DirectoryCreationFailed)?;
@@ -275,9 +267,7 @@ impl LocalDestination {
     ///
     /// # Errors
     ///
-    /// * [`LocalDestinationErrorKind::SettingTimeMetadataFailed`] - If the times could not be set
-    ///
-    /// [`LocalDestinationErrorKind::SettingTimeMetadataFailed`]: crate::error::LocalDestinationErrorKind::SettingTimeMetadataFailed
+    /// * If the times could not be set
     pub(crate) fn set_times(
         &self,
         item: impl AsRef<Path>,
@@ -308,7 +298,8 @@ impl LocalDestination {
     ///
     /// # Errors
     ///
-    /// If the user/group could not be set.
+    /// * If the user/group could not be set.
+    #[allow(clippy::unused_self)]
     pub(crate) fn set_user_group(
         &self,
         _item: impl AsRef<Path>,
@@ -330,9 +321,7 @@ impl LocalDestination {
     ///
     /// # Errors
     ///
-    /// * [`LocalDestinationErrorKind::FromErrnoError`] - If the user/group could not be set.
-    ///
-    /// [`LocalDestinationErrorKind::FromErrnoError`]: crate::error::LocalDestinationErrorKind::FromErrnoError
+    /// * If the user/group could not be set.
     #[allow(clippy::similar_names)]
     pub(crate) fn set_user_group(
         &self,
@@ -365,7 +354,8 @@ impl LocalDestination {
     ///
     /// # Errors
     ///
-    /// If the uid/gid could not be set.
+    /// * If the uid/gid could not be set.
+    #[allow(clippy::unused_self)]
     pub(crate) fn set_uid_gid(
         &self,
         _item: impl AsRef<Path>,
@@ -384,9 +374,7 @@ impl LocalDestination {
     ///
     /// # Errors
     ///
-    /// * [`LocalDestinationErrorKind::FromErrnoError`] - If the uid/gid could not be set.
-    ///
-    /// [`LocalDestinationErrorKind::FromErrnoError`]: crate::error::LocalDestinationErrorKind::FromErrnoError
+    /// * If the uid/gid could not be set.
     #[allow(clippy::similar_names)]
     pub(crate) fn set_uid_gid(
         &self,
@@ -414,7 +402,8 @@ impl LocalDestination {
     ///
     /// # Errors        
     ///
-    /// If the permissions could not be set.
+    /// * If the permissions could not be set.
+    #[allow(clippy::unused_self)]
     pub(crate) fn set_permission(
         &self,
         _item: impl AsRef<Path>,
@@ -433,9 +422,7 @@ impl LocalDestination {
     ///
     /// # Errors        
     ///
-    /// * [`LocalDestinationErrorKind::SettingFilePermissionsFailed`] - If the permissions could not be set.
-    ///
-    /// [`LocalDestinationErrorKind::SettingFilePermissionsFailed`]: crate::error::LocalDestinationErrorKind::SettingFilePermissionsFailed
+    /// * If the permissions could not be set.
     #[allow(clippy::similar_names)]
     pub(crate) fn set_permission(
         &self,
@@ -468,7 +455,8 @@ impl LocalDestination {
     ///
     /// # Errors
     ///
-    /// If the extended attributes could not be set.
+    /// * If the extended attributes could not be set.
+    #[allow(clippy::unused_self)]
     pub(crate) fn set_extended_attributes(
         &self,
         _item: impl AsRef<Path>,
@@ -487,13 +475,9 @@ impl LocalDestination {
     ///
     /// # Errors
     ///
-    /// * [`LocalDestinationErrorKind::ListingXattrsFailed`] - If listing the extended attributes failed.
-    /// * [`LocalDestinationErrorKind::GettingXattrFailed`] - If getting an extended attribute failed.
-    /// * [`LocalDestinationErrorKind::SettingXattrFailed`] - If setting an extended attribute failed.
-    ///
-    /// [`LocalDestinationErrorKind::ListingXattrsFailed`]: crate::error::LocalDestinationErrorKind::ListingXattrsFailed
-    /// [`LocalDestinationErrorKind::GettingXattrFailed`]: crate::error::LocalDestinationErrorKind::GettingXattrFailed
-    /// [`LocalDestinationErrorKind::SettingXattrFailed`]: crate::error::LocalDestinationErrorKind::SettingXattrFailed
+    /// * If listing the extended attributes failed.
+    /// * If getting an extended attribute failed.
+    /// * If setting an extended attribute failed.
     ///
     /// # Returns
     ///
@@ -501,7 +485,7 @@ impl LocalDestination {
     ///
     /// # Panics
     ///
-    /// If the extended attributes could not be set.
+    /// * If the extended attributes could not be set.
     pub(crate) fn set_extended_attributes(
         &self,
         item: impl AsRef<Path>,
@@ -569,20 +553,15 @@ impl LocalDestination {
     ///
     /// # Errors
     ///
-    /// * [`LocalDestinationErrorKind::FileDoesNotHaveParent`] - If the file does not have a parent.
-    /// * [`LocalDestinationErrorKind::DirectoryCreationFailed`] - If the directory could not be created.
-    /// * [`LocalDestinationErrorKind::OpeningFileFailed`] - If the file could not be opened.
-    /// * [`LocalDestinationErrorKind::SettingFileLengthFailed`] - If the length of the file could not be set.
+    /// * If the file does not have a parent.
+    /// * If the directory could not be created.
+    /// * If the file could not be opened.
+    /// * If the length of the file could not be set.
     ///
     /// # Notes
     ///
     /// If the file exists, truncate it to the given length. (TODO: check if this is correct)
     /// If it doesn't exist, create a new (empty) one with given length.
-    ///
-    /// [`LocalDestinationErrorKind::FileDoesNotHaveParent`]: crate::error::LocalDestinationErrorKind::FileDoesNotHaveParent
-    /// [`LocalDestinationErrorKind::DirectoryCreationFailed`]: crate::error::LocalDestinationErrorKind::DirectoryCreationFailed
-    /// [`LocalDestinationErrorKind::OpeningFileFailed`]: crate::error::LocalDestinationErrorKind::OpeningFileFailed
-    /// [`LocalDestinationErrorKind::SettingFileLengthFailed`]: crate::error::LocalDestinationErrorKind::SettingFileLengthFailed
     pub(crate) fn set_length(
         &self,
         item: impl AsRef<Path>,
@@ -616,7 +595,7 @@ impl LocalDestination {
     ///
     /// # Errors
     ///
-    /// If the special file could not be created.
+    /// * If the special file could not be created.
     ///
     /// # Returns
     ///
@@ -639,13 +618,9 @@ impl LocalDestination {
     ///
     /// # Errors
     ///
-    /// * [`LocalDestinationErrorKind::SymlinkingFailed`] - If the symlink could not be created.
-    /// * [`LocalDestinationErrorKind::DeviceIdConversionFailed`] - If the device could not be converted to the correct type.
-    /// * [`LocalDestinationErrorKind::FromErrnoError`] - If the device could not be created.
-    ///
-    /// [`LocalDestinationErrorKind::SymlinkingFailed`]: LocalDestinationErrorKind::SymlinkingFailed
-    /// [`LocalDestinationErrorKind::DeviceIdConversionFailed`]: LocalDestinationErrorKind::DeviceIdConversionFailed
-    /// [`LocalDestinationErrorKind::FromErrnoError`]: LocalDestinationErrorKind::FromErrnoError
+    /// * If the symlink could not be created.
+    /// * If the device could not be converted to the correct type.
+    /// * If the device could not be created.
     pub(crate) fn create_special(
         &self,
         item: impl AsRef<Path>,
@@ -739,15 +714,10 @@ impl LocalDestination {
     ///
     /// # Errors
     ///
-    /// * [`LocalDestinationErrorKind::OpeningFileFailed`] - If the file could not be opened.
-    /// * [`LocalDestinationErrorKind::CouldNotSeekToPositionInFile`] - If the file could not be sought to the given position.
-    /// * [`LocalDestinationErrorKind::LengthConversionFailed`] - If the length of the file could not be converted to u32.
-    /// * [`LocalDestinationErrorKind::ReadingExactLengthOfFileFailed`] - If the length of the file could not be read.
-    ///
-    /// [`LocalDestinationErrorKind::OpeningFileFailed`]: LocalDestinationErrorKind::OpeningFileFailed
-    /// [`LocalDestinationErrorKind::CouldNotSeekToPositionInFile`]: LocalDestinationErrorKind::CouldNotSeekToPositionInFile
-    /// [`LocalDestinationErrorKind::LengthConversionFailed`]: LocalDestinationErrorKind::LengthConversionFailed
-    /// [`LocalDestinationErrorKind::ReadingExactLengthOfFileFailed`]: LocalDestinationErrorKind::ReadingExactLengthOfFileFailed
+    /// * If the file could not be opened.
+    /// * If the file could not be sought to the given position.
+    /// * If the length of the file could not be converted to u32.
+    /// * If the length of the file could not be read.
     pub(crate) fn read_at(
         &self,
         item: impl AsRef<Path>,
@@ -810,17 +780,13 @@ impl LocalDestination {
     ///
     /// # Errors
     ///
-    /// * [`LocalDestinationErrorKind::OpeningFileFailed`] - If the file could not be opened.
-    /// * [`LocalDestinationErrorKind::CouldNotSeekToPositionInFile`] - If the file could not be sought to the given position.
-    /// * [`LocalDestinationErrorKind::CouldNotWriteToBuffer`] - If the bytes could not be written to the file.
+    /// * If the file could not be opened.
+    /// * If the file could not be sought to the given position.
+    /// * If the bytes could not be written to the file.
     ///
     /// # Notes
     ///
     /// This will create the file if it doesn't exist.
-    ///
-    /// [`LocalDestinationErrorKind::OpeningFileFailed`]: crate::error::LocalDestinationErrorKind::OpeningFileFailed
-    /// [`LocalDestinationErrorKind::CouldNotSeekToPositionInFile`]: crate::error::LocalDestinationErrorKind::CouldNotSeekToPositionInFile
-    /// [`LocalDestinationErrorKind::CouldNotWriteToBuffer`]: crate::error::LocalDestinationErrorKind::CouldNotWriteToBuffer
     pub(crate) fn write_at(
         &self,
         item: impl AsRef<Path>,

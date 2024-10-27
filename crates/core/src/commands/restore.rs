@@ -51,7 +51,7 @@ pub struct RestoreOptions {
     ///
     /// # Warning
     ///
-    /// Use with care, maybe first try this with --dry-run?
+    /// * Use with care, maybe first try this with `--dry-run`?
     #[cfg_attr(feature = "clap", clap(long))]
     pub delete: bool,
 
@@ -111,7 +111,7 @@ pub struct RestoreStats {
 ///
 /// # Errors
 ///
-/// If the restore failed.
+/// * If the restore failed.
 pub(crate) fn restore_repository<P: ProgressBars, S: IndexedTree>(
     file_infos: RestorePlan,
     repo: &Repository<P, S>,
@@ -145,11 +145,8 @@ pub(crate) fn restore_repository<P: ProgressBars, S: IndexedTree>(
 ///
 /// # Errors
 ///
-/// * [`CommandErrorKind::ErrorCreating`] - If a directory could not be created.
-/// * [`CommandErrorKind::ErrorCollecting`] - If the restore information could not be collected.
-///
-/// [`CommandErrorKind::ErrorCreating`]: crate::error::CommandErrorKind::ErrorCreating
-/// [`CommandErrorKind::ErrorCollecting`]: crate::error::CommandErrorKind::ErrorCollecting
+/// * If a directory could not be created.
+/// * If the restore information could not be collected.
 #[allow(clippy::too_many_lines)]
 pub(crate) fn collect_and_prepare<P: ProgressBars, S: IndexedFull>(
     repo: &Repository<P, S>,
@@ -338,7 +335,7 @@ pub(crate) fn collect_and_prepare<P: ProgressBars, S: IndexedFull>(
 ///
 /// # Errors
 ///
-/// If the restore failed.
+/// * If the restore failed.
 fn restore_metadata(
     mut node_streamer: impl Iterator<Item = RusticResult<(PathBuf, Node)>>,
     opts: RestoreOptions,
@@ -426,11 +423,8 @@ pub(crate) fn set_metadata(
 ///
 /// # Errors
 ///
-/// * [`CommandErrorKind::ErrorSettingLength`] - If the length of a file could not be set.
-/// * [`CommandErrorKind::FromRayonError`] - If the restore failed.
-///
-/// [`CommandErrorKind::ErrorSettingLength`]: crate::error::CommandErrorKind::ErrorSettingLength
-/// [`CommandErrorKind::FromRayonError`]: crate::error::CommandErrorKind::FromRayonError
+/// * If the length of a file could not be set.
+/// * If the restore failed.
 #[allow(clippy::too_many_lines)]
 fn restore_contents<P: ProgressBars, S: Open>(
     repo: &Repository<P, S>,
@@ -659,7 +653,7 @@ impl RestorePlan {
     ///
     /// # Errors
     ///
-    /// If the file could not be added.
+    /// * If the file could not be added.
     fn add_file<P, S: IndexedFull>(
         &mut self,
         dest: &LocalDestination,

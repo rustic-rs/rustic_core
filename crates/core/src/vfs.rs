@@ -95,15 +95,12 @@ impl VfsTree {
     ///
     /// # Errors
     ///
-    /// * [`VfsErrorKind::OnlyNormalPathsAreAllowed`] if the path is not a normal path
-    /// * [`VfsErrorKind::DirectoryExistsAsNonVirtual`] if the path is a directory in the repository
+    /// * If the path is not a normal path
+    /// * If the path is a directory in the repository
     ///
     /// # Returns
     ///
     /// `Ok(())` if the tree was added successfully
-    ///
-    /// [`VfsErrorKind::DirectoryExistsAsNonVirtual`]: crate::error::VfsErrorKind::DirectoryExistsAsNonVirtual
-    /// [`VfsErrorKind::OnlyNormalPathsAreAllowed`]: crate::error::VfsErrorKind::OnlyNormalPathsAreAllowed
     fn add_tree(&mut self, path: &Path, new_tree: Self) -> VfsResult<()> {
         let mut tree = self;
         let mut components = path.components();
@@ -203,7 +200,7 @@ impl Vfs {
     ///
     /// # Panics
     ///
-    /// If the node is not a directory
+    /// * If the node is not a directory
     #[must_use]
     pub fn from_dir_node(node: &Node) -> Self {
         let tree = VfsTree::RusticTree(node.subtree.unwrap());
@@ -222,11 +219,8 @@ impl Vfs {
     ///
     /// # Errors
     ///
-    /// * [`VfsErrorKind::OnlyNormalPathsAreAllowed`] if the path is not a normal path
-    /// * [`VfsErrorKind::DirectoryExistsAsNonVirtual`] if the path is a directory in the repository
-    ///
-    /// [`VfsErrorKind::DirectoryExistsAsNonVirtual`]: crate::error::VfsErrorKind::DirectoryExistsAsNonVirtual
-    /// [`VfsErrorKind::OnlyNormalPathsAreAllowed`]: crate::error::VfsErrorKind::OnlyNormalPathsAreAllowed
+    /// * If the path is not a normal path
+    /// * If the path is a directory in the repository
     pub fn from_snapshots(
         mut snapshots: Vec<SnapshotFile>,
         path_template: &str,
@@ -353,13 +347,12 @@ impl Vfs {
     ///
     /// # Errors
     ///
-    /// * [`VfsErrorKind::NameDoesNotExist`] - if the component name doesn't exist
+    /// * If the component name doesn't exist
     ///
     /// # Returns
     ///
     /// The [`Node`] at the specified path
     ///
-    /// [`VfsErrorKind::NameDoesNotExist`]: crate::error::VfsErrorKind::NameDoesNotExist
     /// [`Tree`]: crate::repofile::Tree
     pub fn node_from_path<P, S: IndexedFull>(
         &self,
@@ -400,18 +393,17 @@ impl Vfs {
     ///
     /// # Errors
     ///
-    /// * [`VfsErrorKind::NameDoesNotExist`] - if the component name doesn't exist
+    /// * If the component name doesn't exist
     ///
     /// # Returns
     ///
     /// The list of [`Node`]s at the specified path
     ///
-    /// [`VfsErrorKind::NameDoesNotExist`]: crate::error::VfsErrorKind::NameDoesNotExist
     /// [`Tree`]: crate::repofile::Tree
     ///
     /// # Panics
     ///
-    /// Panics if the path is not a directory.
+    /// * Panics if the path is not a directory.
     pub fn dir_entries_from_path<P, S: IndexedFull>(
         &self,
         repo: &Repository<P, S>,
@@ -510,7 +502,7 @@ impl OpenFile {
     ///
     /// # Panics
     ///
-    /// Panics if the `Node` has no content
+    /// * Panics if the `Node` has no content
     pub fn from_node<P, S: IndexedFull>(repo: &Repository<P, S>, node: &Node) -> Self {
         let mut start = 0;
         let mut content: Vec<_> = node

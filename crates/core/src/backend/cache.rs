@@ -59,7 +59,7 @@ impl ReadBackend for CachedBackend {
     ///
     /// # Errors
     ///
-    /// If the backend does not support listing files.
+    /// * If the backend does not support listing files.
     ///
     /// # Returns
     ///
@@ -85,13 +85,11 @@ impl ReadBackend for CachedBackend {
     ///
     /// # Errors
     ///
-    /// * [`CacheBackendErrorKind::FromIoError`] - If the file could not be read.
+    /// * If the file could not be read.
     ///
     /// # Returns
     ///
     /// The data read.
-    ///
-    /// [`CacheBackendErrorKind::FromIoError`]: crate::error::CacheBackendErrorKind::FromIoError
     fn read_full(&self, tpe: FileType, id: &Id) -> RusticResult<Bytes> {
         if tpe.is_cacheable() {
             match self.cache.read_full(tpe, id) {
@@ -123,13 +121,11 @@ impl ReadBackend for CachedBackend {
     ///
     /// # Errors
     ///
-    /// * [`CacheBackendErrorKind::FromIoError`] - If the file could not be read.
+    /// * If the file could not be read.
     ///
     /// # Returns
     ///
     /// The data read.
-    ///
-    /// [`CacheBackendErrorKind::FromIoError`]: crate::error::CacheBackendErrorKind::FromIoError
     fn read_partial(
         &self,
         tpe: FileType,
@@ -230,11 +226,8 @@ impl Cache {
     ///
     /// # Errors
     ///
-    /// * [`CacheBackendErrorKind::NoCacheDirectory`] - If no path is given and the default cache directory could not be determined.
-    /// * [`CacheBackendErrorKind::FromIoError`] - If the cache directory could not be created.
-    ///
-    /// [`CacheBackendErrorKind::NoCacheDirectory`]: crate::error::CacheBackendErrorKind::NoCacheDirectory
-    /// [`CacheBackendErrorKind::FromIoError`]: crate::error::CacheBackendErrorKind::FromIoError
+    /// * If no path is given and the default cache directory could not be determined.
+    /// * If the cache directory could not be created.
     pub fn new(id: RepositoryId, path: Option<PathBuf>) -> RusticResult<Self> {
         let mut path = if let Some(p) = path {
             p
@@ -280,7 +273,7 @@ impl Cache {
     ///
     /// # Panics
     ///
-    /// Panics if the path is not valid unicode.
+    /// * Panics if the path is not valid unicode.
     // TODO: Does this need to panic? Result?
     #[must_use]
     pub fn location(&self) -> &str {
@@ -322,11 +315,8 @@ impl Cache {
     ///
     /// # Errors
     ///
-    /// * [`CacheBackendErrorKind::FromIoError`] - If the cache directory could not be read.
-    /// * [`IdErrorKind::HexError`] - If the string is not a valid hexadecimal string
-    ///
-    /// [`CacheBackendErrorKind::FromIoError`]: crate::error::CacheBackendErrorKind::FromIoError
-    /// [`IdErrorKind::HexError`]: crate::error::IdErrorKind::HexError
+    /// * If the cache directory could not be read.
+    /// * If the string is not a valid hexadecimal string
     #[allow(clippy::unnecessary_wraps)]
     pub fn list_with_size(&self, tpe: FileType) -> RusticResult<HashMap<Id, u32>> {
         let path = self.path.join(tpe.dirname());
@@ -364,9 +354,7 @@ impl Cache {
     ///
     /// # Errors
     ///
-    /// * [`CacheBackendErrorKind::FromIoError`] - If the cache directory could not be read.
-    ///
-    /// [`CacheBackendErrorKind::FromIoError`]: crate::error::CacheBackendErrorKind::FromIoError
+    /// * If the cache directory could not be read.
     pub fn remove_not_in_list(&self, tpe: FileType, list: &Vec<(Id, u32)>) -> RusticResult<()> {
         let mut list_cache = self.list_with_size(tpe)?;
         // remove present files from the cache list
@@ -394,9 +382,7 @@ impl Cache {
     ///
     /// # Errors
     ///
-    /// * [`CacheBackendErrorKind::FromIoError`] - If the file could not be read.
-    ///
-    /// [`CacheBackendErrorKind::FromIoError`]: crate::error::CacheBackendErrorKind::FromIoError
+    /// * If the file could not be read.
     pub fn read_full(&self, tpe: FileType, id: &Id) -> RusticResult<Option<Bytes>> {
         trace!("cache reading tpe: {:?}, id: {}", &tpe, &id);
 
@@ -430,9 +416,7 @@ impl Cache {
     ///
     /// # Errors
     ///
-    /// * [`CacheBackendErrorKind::FromIoError`] - If the file could not be read.
-    ///
-    /// [`CacheBackendErrorKind::FromIoError`]: crate::error::CacheBackendErrorKind::FromIoError
+    /// * If the file could not be read.
     pub fn read_partial(
         &self,
         tpe: FileType,
@@ -493,9 +477,7 @@ impl Cache {
     ///
     /// # Errors
     ///
-    /// * [`CacheBackendErrorKind::FromIoError`] - If the file could not be written.
-    ///
-    /// [`CacheBackendErrorKind::FromIoError`]: crate::error::CacheBackendErrorKind::FromIoError
+    /// * If the file could not be written.
     pub fn write_bytes(&self, tpe: FileType, id: &Id, buf: &Bytes) -> RusticResult<()> {
         trace!("cache writing tpe: {:?}, id: {}", &tpe, &id);
 
@@ -539,9 +521,7 @@ impl Cache {
     ///
     /// # Errors
     ///
-    /// * [`CacheBackendErrorKind::FromIoError`] - If the file could not be removed.
-    ///
-    /// [`CacheBackendErrorKind::FromIoError`]: crate::error::CacheBackendErrorKind::FromIoError
+    /// * If the file could not be removed.
     pub fn remove(&self, tpe: FileType, id: &Id) -> RusticResult<()> {
         trace!("cache writing tpe: {:?}, id: {}", &tpe, &id);
         let filename = self.path(tpe, id);

@@ -127,7 +127,7 @@ impl CommandInput {
     ///
     /// # Errors
     ///
-    /// `CommandInputErrorKind` if return status cannot be read
+    /// * If return status cannot be read
     pub fn run(&self, context: &str, what: &str) -> RusticResult<()> {
         if !self.is_set() {
             trace!("not calling command {context}:{what} - not set");

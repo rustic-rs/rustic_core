@@ -192,9 +192,7 @@ pub trait ReadIndex {
     ///
     /// # Errors
     ///
-    /// * [`IndexErrorKind::BlobInIndexNotFound`] - If the blob could not be found in the index
-    ///
-    /// [`IndexErrorKind::BlobInIndexNotFound`]: crate::error::IndexErrorKind::BlobInIndexNotFound
+    /// * If the blob could not be found in the index
     fn blob_from_backend(
         &self,
         be: &impl DecryptReadBackend,
@@ -290,7 +288,7 @@ impl GlobalIndex {
     ///
     /// # Errors
     ///
-    /// If the index could not be read
+    /// * If the index could not be read
     fn new_from_collector(
         be: &impl DecryptReadBackend,
         p: &impl Progress,
@@ -325,7 +323,7 @@ impl GlobalIndex {
     ///
     /// # Errors
     ///
-    /// If the index could not be read
+    /// * If the index could not be read
     pub fn only_full_trees(be: &impl DecryptReadBackend, p: &impl Progress) -> RusticResult<Self> {
         Self::new_from_collector(be, p, IndexCollector::new(IndexType::DataIds))
     }

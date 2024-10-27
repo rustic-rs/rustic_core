@@ -217,9 +217,7 @@ impl Parent {
     ///
     /// # Errors
     ///
-    /// * [`ArchiverErrorKind::TreeStackEmpty`] - If the tree stack is empty.
-    ///
-    /// [`ArchiverErrorKind::TreeStackEmpty`]: crate::error::ArchiverErrorKind::TreeStackEmpty
+    /// * If the tree stack is empty.
     fn finish_dir(&mut self) -> ArchiverResult<()> {
         let (tree, node_idx) = self.stack.pop().ok_or(ArchiverErrorKind::TreeStackEmpty)?;
 
@@ -248,9 +246,7 @@ impl Parent {
     ///
     /// # Errors
     ///
-    /// * [`ArchiverErrorKind::TreeStackEmpty`] - If the tree stack is empty.
-    ///
-    /// [`ArchiverErrorKind::TreeStackEmpty`]: crate::error::ArchiverErrorKind::TreeStackEmpty
+    /// * If the tree stack is empty.
     pub(crate) fn process<O>(
         &mut self,
         be: &impl DecryptReadBackend,

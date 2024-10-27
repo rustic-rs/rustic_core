@@ -132,15 +132,12 @@ impl Tree {
     ///
     /// # Errors
     ///
-    /// * [`TreeErrorKind::BlobIdNotFound`] - If the tree ID is not found in the backend.
-    /// * [`TreeErrorKind::DeserializingTreeFailed`] - If deserialization fails.
+    /// * If the tree ID is not found in the backend.
+    /// * If deserialization fails.
     ///
     /// # Returns
     ///
     /// The deserialized tree.
-    ///
-    /// [`TreeErrorKind::BlobIdNotFound`]: crate::error::TreeErrorKind::BlobIdNotFound
-    /// [`TreeErrorKind::DeserializingTreeFailed`]: crate::error::TreeErrorKind::DeserializingTreeFailed
     pub(crate) fn from_backend(
         be: &impl DecryptReadBackend,
         index: &impl ReadGlobalIndex,
@@ -175,13 +172,9 @@ impl Tree {
     ///
     /// # Errors
     ///
-    /// * [`TreeErrorKind::NotADirectory`] - If the path is not a directory.
-    /// * [`TreeErrorKind::PathNotFound`] - If the path is not found.
-    /// * [`TreeErrorKind::PathIsNotUtf8Conform`] - If the path is not UTF-8 conform.
-    ///
-    /// [`TreeErrorKind::NotADirectory`]: crate::error::TreeErrorKind::NotADirectory
-    /// [`TreeErrorKind::PathNotFound`]: crate::error::TreeErrorKind::PathNotFound
-    /// [`TreeErrorKind::PathIsNotUtf8Conform`]: crate::error::TreeErrorKind::PathIsNotUtf8Conform
+    /// * If the path is not a directory.
+    /// * If the path is not found.
+    /// * If the path is not UTF-8 conform.
     pub(crate) fn node_from_path(
         be: &impl DecryptReadBackend,
         index: &impl ReadGlobalIndex,
@@ -442,11 +435,8 @@ pub struct FindMatches {
 ///
 /// # Errors
 ///
-/// * [`TreeErrorKind::ContainsCurrentOrParentDirectory`] - If the component is a current or parent directory.
-/// * [`TreeErrorKind::PathIsNotUtf8Conform`] - If the component is not UTF-8 conform.
-///
-/// [`TreeErrorKind::ContainsCurrentOrParentDirectory`]: crate::error::TreeErrorKind::ContainsCurrentOrParentDirectory
-/// [`TreeErrorKind::PathIsNotUtf8Conform`]: crate::error::TreeErrorKind::PathIsNotUtf8Conform
+/// * If the component is a current or parent directory.
+/// * If the component is not UTF-8 conform.
 pub(crate) fn comp_to_osstr(p: Component<'_>) -> TreeResult<Option<OsString>> {
     let s = match p {
         Component::RootDir => None,
@@ -548,11 +538,8 @@ where
     ///
     /// # Errors
     ///
-    /// * [`TreeErrorKind::BlobIdNotFound`] - If the tree ID is not found in the backend.
-    /// * [`TreeErrorKind::DeserializingTreeFailed`] - If deserialization fails.
-    ///
-    /// [`TreeErrorKind::BlobIdNotFound`]: crate::error::TreeErrorKind::BlobIdNotFound
-    /// [`TreeErrorKind::DeserializingTreeFailed`]: crate::error::TreeErrorKind::DeserializingTreeFailed
+    /// * If the tree ID is not found in the backend.
+    /// * If deserialization fails.
     pub fn new(be: BE, index: &'a I, node: &Node) -> RusticResult<Self> {
         Self::new_streamer(be, index, node, None, true)
     }
@@ -568,11 +555,8 @@ where
     ///
     /// # Errors
     ///
-    /// * [`TreeErrorKind::BlobIdNotFound`] - If the tree ID is not found in the backend.
-    /// * [`TreeErrorKind::DeserializingTreeFailed`] - If deserialization fails.
-    ///
-    /// [`TreeErrorKind::BlobIdNotFound`]: crate::error::TreeErrorKind::BlobIdNotFound
-    /// [`TreeErrorKind::DeserializingTreeFailed`]: crate::error::TreeErrorKind::DeserializingTreeFailed
+    /// * If the tree ID is not found in the backend.
+    /// * If deserialization fails.
     fn new_streamer(
         be: BE,
         index: &'a I,
@@ -608,11 +592,8 @@ where
     ///
     /// # Errors
     ///
-    /// * [`TreeErrorKind::BuildingNodeStreamerFailed`] - If building the streamer fails.
-    /// * [`TreeErrorKind::ReadingFileStringFromGlobsFailed`] - If reading a glob file fails.
-    ///
-    /// [`TreeErrorKind::BuildingNodeStreamerFailed`]: crate::error::TreeErrorKind::BuildingNodeStreamerFailed
-    /// [`TreeErrorKind::ReadingFileStringFromGlobsFailed`]: crate::error::TreeErrorKind::ReadingFileStringFromGlobsFailed
+    /// * If building the streamer fails.
+    /// * If reading a glob file fails.
     pub fn new_with_glob(
         be: BE,
         index: &'a I,
@@ -805,9 +786,7 @@ impl<P: Progress> TreeStreamerOnce<P> {
     ///
     /// # Errors
     ///
-    /// * [`TreeErrorKind::SendingCrossbeamMessageFailed`] - If sending the message fails.
-    ///
-    /// [`TreeErrorKind::SendingCrossbeamMessageFailed`]: crate::error::TreeErrorKind::SendingCrossbeamMessageFailed
+    /// * If sending the message fails.
     pub fn new<BE: DecryptReadBackend, I: ReadGlobalIndex>(
         be: &BE,
         index: &I,
@@ -878,9 +857,7 @@ impl<P: Progress> TreeStreamerOnce<P> {
     ///
     /// # Errors
     ///
-    /// * [`TreeErrorKind::SendingCrossbeamMessageFailed`] - If sending the message fails.
-    ///
-    /// [`TreeErrorKind::SendingCrossbeamMessageFailed`]: crate::error::TreeErrorKind::SendingCrossbeamMessageFailed
+    /// * If sending the message fails.
     fn add_pending(&mut self, path: PathBuf, id: TreeId, count: usize) -> TreeResult<bool> {
         if self.visited.insert(id) {
             self.queue_in

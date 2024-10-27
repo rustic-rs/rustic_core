@@ -94,8 +94,8 @@ pub struct Node {
     ///
     /// # Warning
     ///
-    /// This contains an escaped variant of the name in order to handle non-unicode filenames.
-    /// Don't access this field directly, use the [`Node::name()`] method instead!
+    /// * This contains an escaped variant of the name in order to handle non-unicode filenames.
+    /// * Don't access this field directly, use the [`Node::name()`] method instead!
     pub name: String,
     #[serde(flatten)]
     /// Information about node type
@@ -137,8 +137,8 @@ pub enum NodeType {
         ///
         /// # Warning
         ///
-        /// This contains the target only if it is a valid unicode target.
-        /// Don't access this field directly, use the [`NodeType::to_link()`] method instead!
+        /// * This contains the target only if it is a valid unicode target.
+        /// * Don't access this field directly, use the [`NodeType::to_link()`] method instead!
         linktarget: String,
         #[serde_as(as = "DefaultOnNull<Option<Base64::<Standard,Padded>>>")]
         #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -206,7 +206,7 @@ impl NodeType {
     ///
     /// # Panics
     ///
-    /// If called on a non-symlink node
+    /// * If called on a non-symlink node
     #[cfg(not(windows))]
     #[must_use]
     pub fn to_link(&self) -> &Path {
@@ -226,7 +226,7 @@ impl NodeType {
     ///
     /// # Warning
     ///
-    /// Must be only called on `NodeType::Symlink`!
+    /// * Must be only called on `NodeType::Symlink`!
     ///
     /// # Panics
     ///
@@ -358,7 +358,7 @@ impl Node {
     ///
     /// # Panics
     ///
-    /// If the name is not valid unicode
+    /// * If the name is not valid unicode
     pub fn name(&self) -> OsString {
         unescape_filename(&self.name).unwrap_or_else(|_| OsString::from_str(&self.name).unwrap())
     }

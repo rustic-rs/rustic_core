@@ -101,7 +101,7 @@ impl BackendOptions {
     ///
     /// # Errors
     ///
-    /// If the backend cannot be loaded, an error is returned.
+    /// * If the backend cannot be loaded, an error is returned.
     ///
     /// # Returns
     ///
@@ -140,9 +140,7 @@ pub trait BackendChoice {
     ///
     /// # Errors
     ///
-    /// * [`BackendAccessErrorKind::BackendNotSupported`] - If the backend is not supported.
-    ///
-    /// [`BackendAccessErrorKind::BackendNotSupported`]: crate::error::BackendAccessErrorKind::BackendNotSupported
+    /// * If the backend is not supported.
     fn to_backend(
         &self,
         location: BackendLocation,

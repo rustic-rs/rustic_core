@@ -43,13 +43,11 @@ pub struct KeyOptions {
 ///
 /// # Errors
 ///
-/// * [`CommandErrorKind::FromJsonError`] - If the key could not be serialized
+/// * If the key could not be serialized
 ///
 /// # Returns
 ///
 /// The id of the key.
-///
-/// [`CommandErrorKind::FromJsonError`]: crate::error::CommandErrorKind::FromJsonError
 pub(crate) fn add_current_key_to_repo<P, S: Open>(
     repo: &Repository<P, S>,
     opts: &KeyOptions,
@@ -96,13 +94,11 @@ pub(crate) fn init_key<P, S>(
 ///
 /// # Errors
 ///
-/// * [`CommandErrorKind::FromJsonError`] - If the key could not be serialized.
+/// * If the key could not be serialized.
 ///
 /// # Returns
 ///
 /// The id of the key.
-///
-/// [`CommandErrorKind::FromJsonError`]: crate::error::CommandErrorKind::FromJsonError
 pub(crate) fn add_key_to_repo<P, S>(
     repo: &Repository<P, S>,
     opts: &KeyOptions,

@@ -32,13 +32,11 @@ use crate::{
 ///
 /// # Errors
 ///
-/// * [`PolynomialErrorKind::NoSuitablePolynomialFound`] - If no polynomial could be found in one million tries.
+/// * If no polynomial could be found in one million tries.
 ///
 /// # Returns
 ///
 /// A tuple of the key and the config file.
-///
-/// [`PolynomialErrorKind::NoSuitablePolynomialFound`]: crate::error::PolynomialErrorKind::NoSuitablePolynomialFound
 pub(crate) fn init<P, S>(
     repo: &Repository<P, S>,
     pass: &str,

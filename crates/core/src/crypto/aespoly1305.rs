@@ -84,7 +84,7 @@ impl CryptoKey for Key {
     ///
     /// # Errors
     ///
-    /// If the MAC couldn't be checked.
+    /// * If the MAC couldn't be checked.
     fn decrypt_data(&self, data: &[u8]) -> RusticResult<Vec<u8>> {
         if data.len() < 16 {
             return Err(RusticError::new(
@@ -115,7 +115,7 @@ impl CryptoKey for Key {
     ///
     /// # Errors
     ///
-    /// If the data could not be encrypted.
+    /// * If the data could not be encrypted.
     fn encrypt_data(&self, data: &[u8]) -> RusticResult<Vec<u8>> {
         let mut nonce = Nonce::default();
         thread_rng().fill_bytes(&mut nonce);

@@ -392,9 +392,7 @@ impl ReadBackend for RestBackend {
     ///
     /// # Errors
     ///
-    /// * [`RestErrorKind::BackoffError`] - If the backoff failed.
-    ///
-    /// [`RestErrorKind::BackoffError`]: RestErrorKind::BackoffError
+    /// * If the backoff failed.
     fn read_partial(
         &self,
         tpe: FileType,

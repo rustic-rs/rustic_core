@@ -325,7 +325,7 @@ pub struct CheckOptions {
 ///
 /// # Errors
 ///
-/// If the repository is corrupted
+/// * If the repository is corrupted
 ///
 /// # Panics
 ///
@@ -427,7 +427,7 @@ pub(crate) fn check_repository<P: ProgressBars, S: Open>(
 ///
 /// # Errors
 ///
-/// If a file is missing or has a different size
+/// * If a file is missing or has a different size
 fn check_hot_files(
     be: &impl ReadBackend,
     be_hot: &impl ReadBackend,
@@ -473,7 +473,7 @@ fn check_hot_files(
 ///
 /// # Errors
 ///
-/// If a file is missing or has a different size
+/// * If a file is missing or has a different size
 fn check_cache_files(
     _concurrency: usize,
     cache: &Cache,
@@ -530,7 +530,7 @@ fn check_cache_files(
 ///
 /// # Errors
 ///
-/// If a pack is missing or has a different size
+/// * If a pack is missing or has a different size
 ///
 /// # Returns
 ///
@@ -610,7 +610,7 @@ fn check_packs(
 ///
 /// # Errors
 ///
-/// If a pack is missing or has a different size
+/// * If a pack is missing or has a different size
 fn check_packs_list(be: &impl ReadBackend, mut packs: HashMap<PackId, u32>) -> RusticResult<()> {
     for (id, size) in be.list_with_size(FileType::Pack)? {
         match packs.remove(&PackId::from(id)) {
@@ -637,7 +637,7 @@ fn check_packs_list(be: &impl ReadBackend, mut packs: HashMap<PackId, u32>) -> R
 ///
 /// # Errors
 ///
-/// If a pack is missing or has a different size
+/// * If a pack is missing or has a different size
 fn check_packs_list_hot(
     be: &impl ReadBackend,
     mut treepacks: HashMap<PackId, u32>,
@@ -674,7 +674,7 @@ fn check_packs_list_hot(
 ///
 /// # Errors
 ///
-/// If a snapshot or tree is missing or has a different size
+/// * If a snapshot or tree is missing or has a different size
 fn check_trees(
     be: &impl DecryptReadBackend,
     index: &impl ReadGlobalIndex,
@@ -756,11 +756,11 @@ fn check_trees(
 ///
 /// # Errors
 ///
-/// If the pack is invalid
+/// * If the pack is invalid
 ///
 /// # Panics
 ///
-/// If zstd decompression fails.
+/// * If zstd decompression fails.
 fn check_pack(
     be: &impl DecryptReadBackend,
     index_pack: IndexPack,

@@ -90,7 +90,7 @@ pub struct PruneOptions {
     ///
     /// # Warning
     ///
-    /// Only use if you are sure the repository is not accessed by parallel processes!
+    /// * Only use if you are sure the repository is not accessed by parallel processes!
     #[cfg_attr(feature = "clap", clap(long))]
     pub instant_delete: bool,
 
@@ -98,7 +98,7 @@ pub struct PruneOptions {
     ///
     /// # Warning
     ///
-    /// If prune aborts, this can lead to a (partly) missing index which must be repaired!
+    /// * If prune aborts, this can lead to a (partly) missing index which must be repaired!
     #[cfg_attr(feature = "clap", clap(long))]
     pub early_delete_index: bool,
 
@@ -128,10 +128,9 @@ pub struct PruneOptions {
     ///
     /// # Warning
     ///
-    /// Use this option with care!
-    ///
-    /// If you specify snapshots which are not deleted, running the resulting `PrunePlan`
-    /// will remove data which is used within those snapshots!
+    /// * Use this option with care!
+    /// * If you specify snapshots which are not deleted, running the resulting `PrunePlan`
+    ///   will remove data which is used within those snapshots!
     pub ignore_snaps: Vec<SnapshotId>,
 }
 
@@ -168,11 +167,8 @@ impl PruneOptions {
     ///
     /// # Errors
     ///
-    /// * [`CommandErrorKind::RepackUncompressedRepoV1`] - If `repack_uncompressed` is set and the repository is a version 1 repository
-    /// * [`CommandErrorKind::FromOutOfRangeError`] - If `keep_pack` or `keep_delete` is out of range
-    ///
-    /// [`CommandErrorKind::RepackUncompressedRepoV1`]: crate::error::CommandErrorKind::RepackUncompressedRepoV1
-    /// [`CommandErrorKind::FromOutOfRangeError`]: crate::error::CommandErrorKind::FromOutOfRangeError
+    /// * If `repack_uncompressed` is set and the repository is a version 1 repository
+    /// * If `keep_pack` or `keep_delete` is out of range
     #[deprecated(
         since = "0.5.2",
         note = "Use `PrunePlan::from_prune_options()` instead"
@@ -691,9 +687,7 @@ impl PrunePlan {
     /// # Errors
     ///
     /// * If `repack_uncompressed` is set and the repository is a version 1 repository
-    /// * [`CommandErrorKind::FromOutOfRangeError`] - If `keep_pack` or `keep_delete` is out of range
-    ///
-    /// [`CommandErrorKind::FromOutOfRangeError`]: crate::error::CommandErrorKind::FromOutOfRangeError
+    /// * If `keep_pack` or `keep_delete` is out of range
     pub fn from_prune_options<P: ProgressBars, S: Open>(
         repo: &Repository<P, S>,
         opts: &PruneOptions,
@@ -810,9 +804,7 @@ impl PrunePlan {
     ///
     /// # Errors
     ///
-    /// * [`CommandErrorKind::BlobsMissing`] - If a blob is missing
-    ///
-    /// [`CommandErrorKind::BlobsMissing`]: crate::error::CommandErrorKind::BlobsMissing
+    /// * If a blob is missing
     fn check(&self) -> RusticResult<()> {
         for (id, count) in &self.used_ids {
             if *count == 0 {
@@ -1074,13 +1066,9 @@ impl PrunePlan {
     ///
     /// # Errors
     ///
-    /// * [`CommandErrorKind::NoDecision`] - If a pack is undecided
-    /// * [`CommandErrorKind::PackSizeNotMatching`] - If the size of a pack does not match
-    /// * [`CommandErrorKind::PackNotExisting`] - If a pack does not exist
-    ///
-    /// [`CommandErrorKind::NoDecision`]: crate::error::CommandErrorKind::NoDecision
-    /// [`CommandErrorKind::PackSizeNotMatching`]: crate::error::CommandErrorKind::PackSizeNotMatching
-    /// [`CommandErrorKind::PackNotExisting`]: crate::error::CommandErrorKind::PackNotExisting
+    /// * If a pack is undecided
+    /// * If the size of a pack does not match
+    /// * If a pack does not exist
     fn check_existing_packs(&mut self) -> RusticResult<()> {
         for pack in self.index_files.iter().flat_map(|index| &index.packs) {
             let existing_size = self.existing_packs.remove(&pack.id);
@@ -1191,8 +1179,8 @@ impl PrunePlan {
     ///
     /// # Errors
     ///
-    /// * [`CommandErrorKind::NotAllowedWithAppendOnly`] - If the repository is in append-only mode
-    /// * [`CommandErrorKind::NoDecision`] - If a pack has no decision
+    /// * If the repository is in append-only mode
+    /// * If a pack has no decision
     ///
     /// # Returns
     ///
@@ -1223,8 +1211,8 @@ impl PrunePlan {
 ///
 /// # Errors
 ///
-/// * [`CommandErrorKind::NotAllowedWithAppendOnly`] - If the repository is in append-only mode
-/// * [`CommandErrorKind::NoDecision`] - If a pack has no decision
+/// * If the repository is in append-only mode
+/// * If a pack has no decision
 ///
 /// # Returns
 ///

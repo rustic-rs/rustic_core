@@ -196,21 +196,15 @@ pub struct BackupOptions {
 ///
 /// # Errors
 ///
-/// * [`PackerErrorKind::SendingCrossbeamMessageFailed`] - If sending the message to the raw packer fails.
-/// * [`PackerErrorKind::IntConversionFailed`] - If converting the data length to u64 fails
-/// * [`PackerErrorKind::SendingCrossbeamMessageFailed`] - If sending the message to the raw packer fails.
-/// * [`CryptBackendErrorKind::SerializingToJsonByteVectorFailed`] - If the index file could not be serialized.
-/// * [`SnapshotFileErrorKind::OutOfRange`] - If the time is not in the range of `Local::now()`
+/// * If sending the message to the raw packer fails.
+/// * If converting the data length to u64 fails
+/// * If sending the message to the raw packer fails.
+/// * If the index file could not be serialized.
+/// * If the time is not in the range of `Local::now()`
 ///
 /// # Returns
 ///
 /// The snapshot pointing to the backup'ed data.
-///
-/// [`PackerErrorKind::SendingCrossbeamMessageFailed`]: crate::error::PackerErrorKind::SendingCrossbeamMessageFailed
-/// [`PackerErrorKind::IntConversionFailed`]: crate::error::PackerErrorKind::IntConversionFailed
-/// [`PackerErrorKind::SendingCrossbeamMessageFailed`]: crate::error::PackerErrorKind::SendingCrossbeamMessageFailed
-/// [`CryptBackendErrorKind::SerializingToJsonByteVectorFailed`]: crate::error::CryptBackendErrorKind::SerializingToJsonByteVectorFailed
-/// [`SnapshotFileErrorKind::OutOfRange`]: crate::error::SnapshotFileErrorKind::OutOfRange
 pub(crate) fn backup<P: ProgressBars, S: IndexedIds>(
     repo: &Repository<P, S>,
     opts: &BackupOptions,

@@ -72,7 +72,7 @@ impl ForgetGroups {
 ///
 /// # Errors
 ///
-/// If keep options are not valid
+/// * If keep options are not valid
 ///
 /// # Returns
 ///
@@ -511,7 +511,7 @@ impl KeepOptions {
     ///
     /// # Errors
     ///
-    /// If keep options are not valid
+    /// * If keep options are not valid
     ///
     /// # Returns
     ///

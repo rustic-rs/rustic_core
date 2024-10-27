@@ -27,10 +27,6 @@ use crate::{
     id::Id,
 };
 
-// #[derive(thiserror::Error, Debug, displaydoc::Display)]
-// /// Experienced an error in the backend: `{0}`
-// pub struct BackendDynError(pub Box<dyn std::error::Error + Send + Sync>);
-
 /// [`BackendErrorKind`] describes the errors that can be returned by the various Backends
 #[derive(thiserror::Error, Debug, displaydoc::Display)]
 #[non_exhaustive]
@@ -159,7 +155,7 @@ pub trait ReadBackend: Send + Sync + 'static {
     ///
     /// # Errors
     ///
-    /// If the files could not be listed.
+    /// * If the files could not be listed.
     fn list_with_size(&self, tpe: FileType) -> RusticResult<Vec<(Id, u32)>>;
 
     /// Lists all files of the given type.
@@ -170,7 +166,7 @@ pub trait ReadBackend: Send + Sync + 'static {
     ///
     /// # Errors
     ///
-    /// If the files could not be listed.
+    /// * If the files could not be listed.
     fn list(&self, tpe: FileType) -> RusticResult<Vec<Id>> {
         Ok(self
             .list_with_size(tpe)?
@@ -188,7 +184,7 @@ pub trait ReadBackend: Send + Sync + 'static {
     ///
     /// # Errors
     ///
-    /// If the file could not be read.
+    /// * If the file could not be read.
     fn read_full(&self, tpe: FileType, id: &Id) -> RusticResult<Bytes>;
 
     /// Reads partial data of the given file.
@@ -203,7 +199,7 @@ pub trait ReadBackend: Send + Sync + 'static {
     ///
     /// # Errors
     ///
-    /// If the file could not be read.
+    /// * If the file could not be read.
     fn read_partial(
         &self,
         tpe: FileType,
@@ -227,7 +223,7 @@ pub trait ReadBackend: Send + Sync + 'static {
     ///
     /// # Errors
     ///
-    /// If the file could not be read.
+    /// * If the file could not be read.
     fn warm_up(&self, _tpe: FileType, _id: &Id) -> RusticResult<()> {
         Ok(())
     }
@@ -254,15 +250,12 @@ pub trait FindInBackend: ReadBackend {
     ///
     /// # Errors
     ///
-    /// * [`BackendAccessErrorKind::NoSuitableIdFound`] - If no id could be found.
-    /// * [`BackendAccessErrorKind::IdNotUnique`] - If the id is not unique.
+    /// * If no id could be found.
+    /// * If the id is not unique.
     ///
     /// # Note
     ///
     /// This function is used to find the id of a snapshot.
-    ///
-    /// [`BackendAccessErrorKind::NoSuitableIdFound`]: crate::error::BackendAccessErrorKind::NoSuitableIdFound
-    /// [`BackendAccessErrorKind::IdNotUnique`]: crate::error::BackendAccessErrorKind::IdNotUnique
     fn find_starts_with<T: AsRef<str>>(&self, tpe: FileType, vec: &[T]) -> RusticResult<Vec<Id>> {
         #[derive(Clone, Copy, PartialEq, Eq)]
         enum MapResult<T> {
@@ -309,13 +302,9 @@ pub trait FindInBackend: ReadBackend {
     ///
     /// # Errors
     ///
-    /// * [`IdErrorKind::HexError`] - If the string is not a valid hexadecimal string
-    /// * [`BackendAccessErrorKind::NoSuitableIdFound`] - If no id could be found.
-    /// * [`BackendAccessErrorKind::IdNotUnique`] - If the id is not unique.
-    ///
-    /// [`IdErrorKind::HexError`]: crate::error::IdErrorKind::HexError
-    /// [`BackendAccessErrorKind::NoSuitableIdFound`]: crate::error::BackendAccessErrorKind::NoSuitableIdFound
-    /// [`BackendAccessErrorKind::IdNotUnique`]: crate::error::BackendAccessErrorKind::IdNotUnique
+    /// * If the string is not a valid hexadecimal string
+    /// * If no id could be found.
+    /// * If the id is not unique.
     fn find_id(&self, tpe: FileType, id: &str) -> RusticResult<Id> {
         Ok(self.find_ids(tpe, &[id.to_string()])?.remove(0))
     }
@@ -333,13 +322,9 @@ pub trait FindInBackend: ReadBackend {
     ///
     /// # Errors
     ///
-    /// * [`IdErrorKind::HexError`] - If the string is not a valid hexadecimal string
-    /// * [`BackendAccessErrorKind::NoSuitableIdFound`] - If no id could be found.
-    /// * [`BackendAccessErrorKind::IdNotUnique`] - If the id is not unique.
-    ///
-    /// [`IdErrorKind::HexError`]: crate::error::IdErrorKind::HexError
-    /// [`BackendAccessErrorKind::NoSuitableIdFound`]: crate::error::BackendAccessErrorKind::NoSuitableIdFound
-    /// [`BackendAccessErrorKind::IdNotUnique`]: crate::error::BackendAccessErrorKind::IdNotUnique
+    /// * If the string is not a valid hexadecimal string
+    /// * If no id could be found.
+    /// * If the id is not unique.
     fn find_ids<T: AsRef<str>>(&self, tpe: FileType, ids: &[T]) -> RusticResult<Vec<Id>> {
         ids.iter()
             .map(|id| id.as_ref().parse())
@@ -359,7 +344,7 @@ pub trait WriteBackend: ReadBackend {
     ///
     /// # Errors
     ///
-    /// If the backend could not be created.
+    /// * If the backend could not be created.
     ///
     /// # Returns
     ///
@@ -379,7 +364,7 @@ pub trait WriteBackend: ReadBackend {
     ///
     /// # Errors
     ///
-    /// If the data could not be written.
+    /// * If the data could not be written.
     ///
     /// # Returns
     ///
@@ -396,7 +381,7 @@ pub trait WriteBackend: ReadBackend {
     ///
     /// # Errors
     ///
-    /// If the file could not be removed.
+    /// * If the file could not be removed.
     ///
     /// # Returns
     ///
@@ -512,7 +497,7 @@ pub trait ReadSourceOpen {
     ///
     /// # Errors
     ///
-    /// If the source could not be opened.
+    /// * If the source could not be opened.
     ///
     /// # Result
     ///
@@ -541,7 +526,7 @@ pub trait ReadSource: Sync + Send {
     ///
     /// # Errors
     ///
-    /// If the size could not be determined.
+    /// * If the size could not be determined.
     ///
     /// # Returns
     ///

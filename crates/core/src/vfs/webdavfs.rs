@@ -84,7 +84,7 @@ impl<P, S: IndexedFull> WebDavFS<P, S> {
     ///
     /// # Errors
     ///
-    /// * [`FsError::GeneralFailure`] - If the [`Tree`] could not be found
+    /// * If the [`Tree`] could not be found
     ///
     /// # Returns
     ///
@@ -106,7 +106,7 @@ impl<P, S: IndexedFull> WebDavFS<P, S> {
     ///
     /// # Errors
     ///
-    /// * [`FsError::GeneralFailure`] - If the [`Tree`] could not be found
+    /// * If the [`Tree`] could not be found
     ///
     /// # Returns
     ///

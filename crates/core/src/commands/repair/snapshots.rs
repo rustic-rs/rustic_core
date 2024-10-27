@@ -31,7 +31,7 @@ pub struct RepairSnapshotsOptions {
     ///
     /// # Warning
     ///
-    /// This can result in data loss!
+    /// * This can result in data loss!
     #[cfg_attr(feature = "clap", clap(long))]
     pub delete: bool,
 

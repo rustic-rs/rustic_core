@@ -91,7 +91,7 @@ pub struct RepositoryOptions {
     ///
     /// # Warning
     ///
-    /// Using --password can reveal the password in the process list!
+    /// * Using --password can reveal the password in the process list!
     #[cfg_attr(
         feature = "clap",
         clap(long, global = true, env = "RUSTIC_PASSWORD", hide_env_values = true)
@@ -169,21 +169,15 @@ impl RepositoryOptions {
     ///
     /// # Errors
     ///
-    /// * [`RusticErrorKind::OpeningPasswordFileFailed`] - If opening the password file failed
-    /// * [`RusticErrorKind::ReadingPasswordFromReaderFailed`] - If reading the password failed
-    /// * [`RusticErrorKind::FromSplitError`] - If splitting the password command failed
-    /// * [`RusticErrorKind::PasswordCommandExecutionFailed`] - If executing the password command failed
-    /// * [`RusticErrorKind::ReadingPasswordFromCommandFailed`] - If reading the password from the command failed
+    /// * If opening the password file failed
+    /// * If reading the password failed
+    /// * If splitting the password command failed
+    /// * If executing the password command failed
+    /// * If reading the password from the command failed
     ///
     /// # Returns
     ///
     /// The password or `None` if no password is given
-    ///
-    /// [`RusticErrorKind::OpeningPasswordFileFailed`]: crate::error::RusticErrorKind::OpeningPasswordFileFailed
-    /// [`RusticErrorKind::ReadingPasswordFromReaderFailed`]: crate::error::RusticErrorKind::ReadingPasswordFromReaderFailed
-    /// [`RusticErrorKind::FromSplitError`]: crate::error::RusticErrorKind::FromSplitError
-    /// [`RusticErrorKind::PasswordCommandExecutionFailed`]: crate::error::RusticErrorKind::PasswordCommandExecutionFailed
-    /// [`RusticErrorKind::ReadingPasswordFromCommandFailed`]: crate::error::RusticErrorKind::ReadingPasswordFromCommandFailed
     pub fn evaluate_password(&self) -> RusticResult<Option<String>> {
         match (&self.password, &self.password_file, &self.password_command) {
             (Some(pwd), _, _) => Ok(Some(pwd.clone())),
@@ -262,6 +256,7 @@ impl RepositoryOptions {
 ///
 /// # Errors
 ///
+// TODO: Add errors
 pub fn read_password_from_reader(file: &mut impl BufRead) -> RusticResult<String> {
     let mut password = String::new();
     _ = file.read_line(&mut password).map_err(|err| {
@@ -327,11 +322,9 @@ impl Repository<NoProgressBars, ()> {
     ///
     /// # Errors
     ///
-    /// * [`RusticErrorKind::NoRepositoryGiven`] - If no repository is given
-    /// * [`RusticErrorKind::NoIDSpecified`] - If the warm-up command does not contain `%id`
-    /// * [`BackendAccessErrorKind::BackendLoadError`] - If the specified backend cannot be loaded, e.g. is not supported
-    ///
-    /// [`BackendAccessErrorKind::BackendLoadError`]: crate::error::BackendAccessErrorKind::BackendLoadError
+    /// * If no repository is given
+    /// * If the warm-up command does not contain `%id`
+    /// * If the specified backend cannot be loaded, e.g. is not supported
     pub fn new(opts: &RepositoryOptions, backends: &RepositoryBackends) -> RusticResult<Self> {
         Self::new_with_progress(opts, backends, NoProgressBars {})
     }
@@ -352,13 +345,9 @@ impl<P> Repository<P, ()> {
     ///
     /// # Errors
     ///
-    /// * [`RusticErrorKind::NoRepositoryGiven`] - If no repository is given
-    /// * [`RusticErrorKind::NoIDSpecified`] - If the warm-up command does not contain `%id`
-    /// * [`BackendAccessErrorKind::BackendLoadError`] - If the specified backend cannot be loaded, e.g. is not supported
-    ///
-    /// [`RusticErrorKind::NoRepositoryGiven`]: crate::error::RusticErrorKind::NoRepositoryGiven
-    /// [`RusticErrorKind::NoIDSpecified`]: crate::error::RusticErrorKind::NoIDSpecified
-    /// [`BackendAccessErrorKind::BackendLoadError`]: crate::error::BackendAccessErrorKind::BackendLoadError
+    /// * If no repository is given
+    /// * If the warm-up command does not contain `%id`
+    /// * If the specified backend cannot be loaded, e.g. is not supported
     pub fn new_with_progress(
         opts: &RepositoryOptions,
         backends: &RepositoryBackends,
@@ -405,21 +394,15 @@ impl<P, S> Repository<P, S> {
     ///
     /// # Errors
     ///
-    /// * [`RusticErrorKind::OpeningPasswordFileFailed`] - If opening the password file failed
-    /// * [`RusticErrorKind::ReadingPasswordFromReaderFailed`] - If reading the password failed
-    /// * [`RusticErrorKind::FromSplitError`] - If splitting the password command failed
-    /// * [`RusticErrorKind::PasswordCommandExecutionFailed`] - If parsing the password command failed
-    /// * [`RusticErrorKind::ReadingPasswordFromCommandFailed`] - If reading the password from the command failed
+    /// * If opening the password file failed
+    /// * If reading the password failed
+    /// * If splitting the password command failed
+    /// * If parsing the password command failed
+    /// * If reading the password from the command failed
     ///
     /// # Returns
     ///
     /// The password or `None` if no password is given
-    ///
-    /// [`RusticErrorKind::OpeningPasswordFileFailed`]: crate::error::RusticErrorKind::OpeningPasswordFileFailed
-    /// [`RusticErrorKind::ReadingPasswordFromReaderFailed`]: crate::error::RusticErrorKind::ReadingPasswordFromReaderFailed
-    /// [`RusticErrorKind::FromSplitError`]: crate::error::RusticErrorKind::FromSplitError
-    /// [`RusticErrorKind::PasswordCommandExecutionFailed`]: crate::error::RusticErrorKind::PasswordCommandExecutionFailed
-    /// [`RusticErrorKind::ReadingPasswordFromCommandFailed`]: crate::error::RusticErrorKind::ReadingPasswordFromCommandFailed
     pub fn password(&self) -> RusticResult<Option<String>> {
         self.opts.evaluate_password()
     }
@@ -428,15 +411,12 @@ impl<P, S> Repository<P, S> {
     ///
     /// # Errors
     ///
-    /// * [`RusticErrorKind::ListingRepositoryConfigFileFailed`] - If listing the repository config file failed
-    /// * [`RusticErrorKind::MoreThanOneRepositoryConfig`] - If there is more than one repository config file
+    /// * If listing the repository config file failed
+    /// * If there is more than one repository config file
     ///
     /// # Returns
     ///
     /// The id of the config file or `None` if no config file is found
-    ///
-    /// [`RusticErrorKind::ListingRepositoryConfigFileFailed`]: crate::error::RusticErrorKind::ListingRepositoryConfigFileFailed
-    /// [`RusticErrorKind::MoreThanOneRepositoryConfig`]: crate::error::RusticErrorKind::MoreThanOneRepositoryConfig
     pub fn config_id(&self) -> RusticResult<Option<ConfigId>> {
         let config_ids = self.be.list(FileType::Config)?;
 
@@ -457,35 +437,22 @@ impl<P, S> Repository<P, S> {
     ///
     /// # Errors
     ///
-    /// * [`RusticErrorKind::NoPasswordGiven`] - If no password is given
-    /// * [`RusticErrorKind::ReadingPasswordFromReaderFailed`] - If reading the password failed
-    /// * [`RusticErrorKind::OpeningPasswordFileFailed`] - If opening the password file failed
-    /// * [`RusticErrorKind::PasswordCommandExecutionFailed`] - If parsing the password command failed
-    /// * [`RusticErrorKind::ReadingPasswordFromCommandFailed`] - If reading the password from the command failed
-    /// * [`RusticErrorKind::FromSplitError`] - If splitting the password command failed
-    /// * [`RusticErrorKind::NoRepositoryConfigFound`] - If no repository config file is found
-    /// * [`RusticErrorKind::KeysDontMatchForRepositories`] - If the keys of the hot and cold backend don't match
-    /// * [`RusticErrorKind::IncorrectPassword`] - If the password is incorrect
-    /// * [`KeyFileErrorKind::NoSuitableKeyFound`] - If no suitable key is found
-    /// * [`RusticErrorKind::ListingRepositoryConfigFileFailed`] - If listing the repository config file failed
-    /// * [`RusticErrorKind::MoreThanOneRepositoryConfig`] - If there is more than one repository config file
+    /// * If no password is given
+    /// * If reading the password failed
+    /// * If opening the password file failed
+    /// * If parsing the password command failed
+    /// * If reading the password from the command failed
+    /// * If splitting the password command failed
+    /// * If no repository config file is found
+    /// * If the keys of the hot and cold backend don't match
+    /// * If the password is incorrect
+    /// * If no suitable key is found
+    /// * If listing the repository config file failed
+    /// * If there is more than one repository config file
     ///
     /// # Returns
     ///
     /// The open repository
-    ///
-    /// [`RusticErrorKind::NoPasswordGiven`]: crate::error::RusticErrorKind::NoPasswordGiven
-    /// [`RusticErrorKind::ReadingPasswordFromReaderFailed`]: crate::error::RusticErrorKind::ReadingPasswordFromReaderFailed
-    /// [`RusticErrorKind::OpeningPasswordFileFailed`]: crate::error::RusticErrorKind::OpeningPasswordFileFailed
-    /// [`RusticErrorKind::PasswordCommandExecutionFailed`]: crate::error::RusticErrorKind::PasswordCommandExecutionFailed
-    /// [`RusticErrorKind::ReadingPasswordFromCommandFailed`]: crate::error::RusticErrorKind::ReadingPasswordFromCommandFailed
-    /// [`RusticErrorKind::FromSplitError`]: crate::error::RusticErrorKind::FromSplitError
-    /// [`RusticErrorKind::NoRepositoryConfigFound`]: crate::error::RusticErrorKind::NoRepositoryConfigFound
-    /// [`RusticErrorKind::KeysDontMatchForRepositories`]: crate::error::RusticErrorKind::KeysDontMatchForRepositories
-    /// [`RusticErrorKind::IncorrectPassword`]: crate::error::RusticErrorKind::IncorrectPassword
-    /// [`KeyFileErrorKind::NoSuitableKeyFound`]: crate::error::KeyFileErrorKind::NoSuitableKeyFound
-    /// [`RusticErrorKind::ListingRepositoryConfigFileFailed`]: crate::error::RusticErrorKind::ListingRepositoryConfigFileFailed
-    /// [`RusticErrorKind::MoreThanOneRepositoryConfig`]: crate::error::RusticErrorKind::MoreThanOneRepositoryConfig
     pub fn open(self) -> RusticResult<Repository<P, OpenStatus>> {
         let password = self.password()?.ok_or_else(|| {
             RusticError::new(
@@ -507,19 +474,12 @@ impl<P, S> Repository<P, S> {
     ///
     /// # Errors
     ///
-    /// * [`RusticErrorKind::NoRepositoryConfigFound`] - If no repository config file is found
-    /// * [`RusticErrorKind::KeysDontMatchForRepositories`] - If the keys of the hot and cold backend don't match
-    /// * [`RusticErrorKind::IncorrectPassword`] - If the password is incorrect
-    /// * [`KeyFileErrorKind::NoSuitableKeyFound`] - If no suitable key is found
-    /// * [`RusticErrorKind::ListingRepositoryConfigFileFailed`] - If listing the repository config file failed
-    /// * [`RusticErrorKind::MoreThanOneRepositoryConfig`] - If there is more than one repository config file
-    ///
-    /// [`RusticErrorKind::NoRepositoryConfigFound`]: crate::error::RusticErrorKind::NoRepositoryConfigFound
-    /// [`RusticErrorKind::KeysDontMatchForRepositories`]: crate::error::RusticErrorKind::KeysDontMatchForRepositories
-    /// [`RusticErrorKind::IncorrectPassword`]: crate::error::RusticErrorKind::IncorrectPassword
-    /// [`KeyFileErrorKind::NoSuitableKeyFound`]: crate::error::KeyFileErrorKind::NoSuitableKeyFound
-    /// [`RusticErrorKind::ListingRepositoryConfigFileFailed`]: crate::error::RusticErrorKind::ListingRepositoryConfigFileFailed
-    /// [`RusticErrorKind::MoreThanOneRepositoryConfig`]: crate::error::RusticErrorKind::MoreThanOneRepositoryConfig
+    /// * If no repository config file is found
+    /// * If the keys of the hot and cold backend don't match
+    /// * If the password is incorrect
+    /// * If no suitable key is found
+    /// * If listing the repository config file failed
+    /// * If there is more than one repository config file
     pub fn open_with_password(self, password: &str) -> RusticResult<Repository<P, OpenStatus>> {
         let config_id = self.config_id()?.ok_or_else(|| {
             RusticError::new(
@@ -567,19 +527,12 @@ impl<P, S> Repository<P, S> {
     ///
     /// # Errors
     ///
-    /// * [`RusticErrorKind::NoPasswordGiven`] - If no password is given
-    /// * [`RusticErrorKind::ReadingPasswordFromReaderFailed`] - If reading the password failed
-    /// * [`RusticErrorKind::OpeningPasswordFileFailed`] - If opening the password file failed
-    /// * [`RusticErrorKind::PasswordCommandExecutionFailed`] - If parsing the password command failed
-    /// * [`RusticErrorKind::ReadingPasswordFromCommandFailed`] - If reading the password from the command failed
-    /// * [`RusticErrorKind::FromSplitError`] - If splitting the password command failed
-    ///
-    /// [`RusticErrorKind::NoPasswordGiven`]: crate::error::RusticErrorKind::NoPasswordGiven
-    /// [`RusticErrorKind::ReadingPasswordFromReaderFailed`]: crate::error::RusticErrorKind::ReadingPasswordFromReaderFailed
-    /// [`RusticErrorKind::OpeningPasswordFileFailed`]: crate::error::RusticErrorKind::OpeningPasswordFileFailed
-    /// [`RusticErrorKind::PasswordCommandExecutionFailed`]: crate::error::RusticErrorKind::PasswordCommandExecutionFailed
-    /// [`RusticErrorKind::ReadingPasswordFromCommandFailed`]: crate::error::RusticErrorKind::ReadingPasswordFromCommandFailed
-    /// [`RusticErrorKind::FromSplitError`]: crate::error::RusticErrorKind::FromSplitError
+    /// * If no password is given
+    /// * If reading the password failed
+    /// * If opening the password file failed
+    /// * If parsing the password command failed
+    /// * If reading the password from the command failed
+    /// * If splitting the password command failed
     pub fn init(
         self,
         key_opts: &KeyOptions,
@@ -612,13 +565,9 @@ impl<P, S> Repository<P, S> {
     ///
     /// # Errors
     ///
-    /// * [`RusticErrorKind::ConfigFileExists`] - If a config file already exists
-    /// * [`RusticErrorKind::ListingRepositoryConfigFileFailed`] - If listing the repository config file failed
-    /// * [`RusticErrorKind::MoreThanOneRepositoryConfig`] - If there is more than one repository config file
-    ///
-    /// [`RusticErrorKind::ConfigFileExists`]: crate::error::RusticErrorKind::ConfigFileExists
-    /// [`RusticErrorKind::ListingRepositoryConfigFileFailed`]: crate::error::RusticErrorKind::ListingRepositoryConfigFileFailed
-    /// [`RusticErrorKind::MoreThanOneRepositoryConfig`]: crate::error::RusticErrorKind::MoreThanOneRepositoryConfig
+    /// * If a config file already exists
+    /// * If listing the repository config file failed
+    /// * If there is more than one repository config file
     pub fn init_with_password(
         self,
         pass: &str,
@@ -744,7 +693,7 @@ impl<P: ProgressBars, S> Repository<P, S> {
     ///
     /// # Errors
     ///
-    /// If files could not be listed.
+    /// * If files could not be listed.
     pub fn infos_files(&self) -> RusticResult<RepoFileInfos> {
         commands::repoinfo::collect_file_infos(self)
     }
@@ -757,8 +706,8 @@ impl<P: ProgressBars, S> Repository<P, S> {
     ///
     /// # Errors
     ///
-    /// * [`RusticErrorKind::FromSplitError`] - If the command could not be parsed.
-    /// * [`RusticErrorKind::FromThreadPoolbilderError`] - If the thread pool could not be created.
+    /// * If the command could not be parsed.
+    /// * If the thread pool could not be created.
     ///
     /// # Returns
     ///
@@ -776,11 +725,8 @@ impl<P: ProgressBars, S> Repository<P, S> {
     ///
     /// # Errors
     ///
-    /// * [`RusticErrorKind::FromSplitError`] - If the command could not be parsed.
-    /// * [`RusticErrorKind::FromThreadPoolbilderError`] - If the thread pool could not be created.
-    ///
-    /// [`RusticErrorKind::FromSplitError`]: crate::error::RusticErrorKind::FromSplitError
-    /// [`RusticErrorKind::FromThreadPoolbilderError`]: crate::error::RusticErrorKind::FromThreadPoolbilderError
+    /// * If the command could not be parsed.
+    /// * If the thread pool could not be created.
     pub fn warm_up_wait(&self, packs: impl ExactSizeIterator<Item = PackId>) -> RusticResult<()> {
         warm_up_wait(self, packs).map_err(|err| {
             RusticError::with_source(ErrorKind::Command, "Warm-up with waiting time failed.", err)
@@ -855,13 +801,9 @@ impl<P, S: Open> Repository<P, S> {
     ///
     /// # Errors
     ///
-    /// * [`IdErrorKind::HexError`] - If the string is not a valid hexadecimal string
-    /// * [`BackendAccessErrorKind::NoSuitableIdFound`] - If no id could be found.
-    /// * [`BackendAccessErrorKind::IdNotUnique`] - If the id is not unique.
-    ///
-    /// [`IdErrorKind::HexError`]: crate::error::IdErrorKind::HexError
-    /// [`BackendAccessErrorKind::NoSuitableIdFound`]: crate::error::BackendAccessErrorKind::NoSuitableIdFound
-    /// [`BackendAccessErrorKind::IdNotUnique`]: crate::error::BackendAccessErrorKind::IdNotUnique
+    /// * If the string is not a valid hexadecimal string
+    /// * If no id could be found.
+    /// * If the id is not unique.
     pub fn cat_file(&self, tpe: FileType, id: &str) -> RusticResult<Bytes> {
         commands::cat::cat_file(self, tpe, id)
     }
@@ -875,9 +817,7 @@ impl<P, S: Open> Repository<P, S> {
     ///
     /// # Errors
     ///
-    /// * [`CommandErrorKind::FromJsonError`] - If the key could not be serialized.
-    ///
-    /// [`CommandErrorKind::FromJsonError`]: crate::error::CommandErrorKind::FromJsonError
+    /// * If the key could not be serialized.
     pub fn add_key(&self, pass: &str, opts: &KeyOptions) -> RusticResult<KeyId> {
         add_current_key_to_repo(self, opts, pass)
     }
@@ -890,23 +830,14 @@ impl<P, S: Open> Repository<P, S> {
     ///
     /// # Errors
     ///
-    /// * [`CommandErrorKind::VersionNotSupported`] - If the version is not supported
-    /// * [`CommandErrorKind::CannotDowngrade`] - If the version is lower than the current version
-    /// * [`CommandErrorKind::NoCompressionV1Repo`] - If compression is set for a v1 repo
-    /// * [`CommandErrorKind::CompressionLevelNotSupported`] - If the compression level is not supported
-    /// * [`CommandErrorKind::SizeTooLarge`] - If the size is too large
-    /// * [`CommandErrorKind::MinPackSizeTolerateWrong`] - If the min packsize tolerance percent is wrong
-    /// * [`CommandErrorKind::MaxPackSizeTolerateWrong`] - If the max packsize tolerance percent is wrong
-    /// * [`CryptBackendErrorKind::SerializingToJsonByteVectorFailed`] - If the file could not be serialized to json.
-    ///
-    /// [`CommandErrorKind::VersionNotSupported`]: crate::error::CommandErrorKind::VersionNotSupported
-    /// [`CommandErrorKind::CannotDowngrade`]: crate::error::CommandErrorKind::CannotDowngrade
-    /// [`CommandErrorKind::NoCompressionV1Repo`]: crate::error::CommandErrorKind::NoCompressionV1Repo
-    /// [`CommandErrorKind::CompressionLevelNotSupported`]: crate::error::CommandErrorKind::CompressionLevelNotSupported
-    /// [`CommandErrorKind::SizeTooLarge`]: crate::error::CommandErrorKind::SizeTooLarge
-    /// [`CommandErrorKind::MinPackSizeTolerateWrong`]: crate::error::CommandErrorKind::MinPackSizeTolerateWrong
-    /// [`CommandErrorKind::MaxPackSizeTolerateWrong`]: crate::error::CommandErrorKind::MaxPackSizeTolerateWrong
-    /// [`CryptBackendErrorKind::SerializingToJsonByteVectorFailed`]: crate::error::CryptBackendErrorKind::SerializingToJsonByteVectorFailed
+    /// * If the version is not supported
+    /// * If the version is lower than the current version
+    /// * If compression is set for a v1 repo
+    /// * If the compression level is not supported
+    /// * If the size is too large
+    /// * If the min pack size tolerance percent is wrong
+    /// * If the max pack size tolerance percent is wrong
+    /// * If the file could not be serialized to json.
     pub fn apply_config(&self, opts: &ConfigOptions) -> RusticResult<bool> {
         commands::config::apply_config(self, opts)
     }
@@ -957,18 +888,14 @@ impl<P: ProgressBars, S: Open> Repository<P, S> {
     ///
     /// # Errors
     ///
-    /// * [`IdErrorKind::HexError`] - If the string is not a valid hexadecimal string
-    /// * [`BackendAccessErrorKind::NoSuitableIdFound`] - If no id could be found.
-    /// * [`BackendAccessErrorKind::IdNotUnique`] - If the id is not unique.
+    /// * If the string is not a valid hexadecimal string
+    /// * If no id could be found.
+    /// * If the id is not unique.
     ///
     /// # Returns
     ///
     /// If `id` is (part of) an `Id`, return this snapshot.
     /// If `id` is "latest", return the latest snapshot respecting the giving filter.
-    ///
-    /// [`IdErrorKind::HexError`]: crate::error::IdErrorKind::HexError
-    /// [`BackendAccessErrorKind::NoSuitableIdFound`]: crate::error::BackendAccessErrorKind::NoSuitableIdFound
-    /// [`BackendAccessErrorKind::IdNotUnique`]: crate::error::BackendAccessErrorKind::IdNotUnique
     pub fn get_snapshot_from_str(
         &self,
         id: &str,
@@ -1057,10 +984,11 @@ impl<P: ProgressBars, S: Open> Repository<P, S> {
     ///
     /// # Errors
     ///
-    /// # Note
-    ///  The result is not sorted and may come in random order!
-    ///
     // TODO: Document errors
+    ///
+    /// # Note
+    ///
+    /// The result is not sorted and may come in random order!
     pub fn get_matching_snapshots(
         &self,
         filter: impl FnMut(&SnapshotFile) -> bool,
@@ -1077,10 +1005,11 @@ impl<P: ProgressBars, S: Open> Repository<P, S> {
     ///
     /// # Errors
     ///
-    /// # Note
-    ///  The result is not sorted and may come in random order!
-    ///
     // TODO: Document errors
+    ///
+    /// # Note
+    ///
+    /// The result is not sorted and may come in random order!
     pub fn update_matching_snapshots(
         &self,
         current: Vec<SnapshotFile>,
@@ -1102,7 +1031,7 @@ impl<P: ProgressBars, S: Open> Repository<P, S> {
     ///
     /// # Errors
     ///
-    /// If keep options are not valid
+    /// * If keep options are not valid
     ///
     /// # Returns
     ///
@@ -1152,7 +1081,7 @@ impl<P: ProgressBars, S: Open> Repository<P, S> {
     ///
     /// # Panics
     ///
-    /// If the files could not be deleted.
+    /// * If the files could not be deleted.
     pub fn delete_snapshots(&self, ids: &[SnapshotId]) -> RusticResult<()> {
         if self.config().append_only == Some(true) {
             return Err(
@@ -1175,9 +1104,7 @@ impl<P: ProgressBars, S: Open> Repository<P, S> {
     ///
     /// # Errors
     ///
-    /// * [`CryptBackendErrorKind::SerializingToJsonByteVectorFailed`] - If the file could not be serialized to json.
-    ///
-    /// [`CryptBackendErrorKind::SerializingToJsonByteVectorFailed`]: crate::error::CryptBackendErrorKind::SerializingToJsonByteVectorFailed
+    /// * If the file could not be serialized to json.
     pub fn save_snapshots(&self, mut snaps: Vec<SnapshotFile>) -> RusticResult<()> {
         for snap in &mut snaps {
             snap.id = SnapshotId::default();
@@ -1196,9 +1123,10 @@ impl<P: ProgressBars, S: Open> Repository<P, S> {
     /// # Errors
     ///
     // TODO: Document errors
+    ///
     /// # Panics
     ///
-    /// If the error handling thread panicked
+    // TODO: Document panics
     pub fn check(&self, opts: CheckOptions) -> RusticResult<()> {
         let trees = self
             .get_all_snapshots()?
@@ -1222,7 +1150,7 @@ impl<P: ProgressBars, S: Open> Repository<P, S> {
     // TODO: Document errors
     /// # Panics
     ///
-    /// If the error handling thread panicked
+    // TODO: Document panics
     pub fn check_with_trees(&self, opts: CheckOptions, trees: Vec<TreeId>) -> RusticResult<()> {
         check_repository(self, opts, trees)
     }
@@ -1253,8 +1181,8 @@ impl<P: ProgressBars, S: Open> Repository<P, S> {
     ///
     /// # Errors
     ///
-    /// * [`CommandErrorKind::NotAllowedWithAppendOnly`] - If the repository is in append-only mode
-    /// * [`CommandErrorKind::NoDecision`] - If a pack has no decision
+    /// * If the repository is in append-only mode
+    /// * If a pack has no decision
     ///
     /// # Returns
     ///
@@ -1262,6 +1190,7 @@ impl<P: ProgressBars, S: Open> Repository<P, S> {
     ///
     /// # Panics
     ///
+    // TODO: Document panics
     pub fn prune(&self, opts: &PruneOptions, prune_plan: PrunePlan) -> RusticResult<()> {
         prune_repository(self, opts, prune_plan)
     }
@@ -1392,7 +1321,7 @@ impl<P: ProgressBars, S: Open> Repository<P, S> {
     ///
     /// # Errors
     ///
-    /// If the index could not be read.
+    /// * If the index could not be read.
     ///
     /// # Returns
     ///
@@ -1409,10 +1338,11 @@ impl<P: ProgressBars, S: Open> Repository<P, S> {
     ///
     /// # Returns
     ///
-    /// # Note
-    ///  The result is not sorted and may come in random order!
-    ///
     /// An iterator over all files of the given type
+    ///
+    /// # Note
+    ///
+    /// The result is not sorted and may come in random order!
     pub fn stream_files<F: RepoFile>(
         &self,
     ) -> RusticResult<impl Iterator<Item = RusticResult<(F::Id, F)>>> {
@@ -1495,7 +1425,7 @@ pub trait IndexedFull: IndexedIds {
     ///
     /// # Errors
     ///
-    /// If the blob could not be fetched from the repository.
+    /// * If the blob could not be fetched from the repository.
     ///
     /// # Returns
     ///
@@ -1695,15 +1625,12 @@ impl<P, S: IndexedTree> Repository<P, S> {
     ///
     /// # Errors
     ///
-    /// * [`TreeErrorKind::BlobIdNotFound`] - If the tree ID is not found in the backend.
-    /// * [`TreeErrorKind::DeserializingTreeFailed`] - If deserialization fails.
+    /// * If the tree ID is not found in the backend.
+    /// * If deserialization fails.
     ///
     /// # Returns
     ///
     /// The tree with the given `Id`
-    ///
-    /// [`TreeErrorKind::BlobIdNotFound`]: crate::error::TreeErrorKind::BlobIdNotFound
-    /// [`TreeErrorKind::DeserializingTreeFailed`]: crate::error::TreeErrorKind::DeserializingTreeFailed
     pub fn get_tree(&self, id: &TreeId) -> RusticResult<Tree> {
         Tree::from_backend(self.dbe(), self.index(), *id)
     }
@@ -1714,19 +1641,14 @@ impl<P, S: IndexedTree> Repository<P, S> {
     ///
     /// # Arguments
     ///
-    /// * `root_tree` - The `Id` of the root tree
-    // TODO!: This ID should be a tree ID, we should refactor it to wrap it in a TreeId type
+    /// * `root_tree` - The `TreeId` of the root tree
     /// * `path` - The path
     ///
     /// # Errors
     ///
-    /// * [`TreeErrorKind::NotADirectory`] - If the path is not a directory.
-    /// * [`TreeErrorKind::PathNotFound`] - If the path is not found.
-    /// * [`TreeErrorKind::PathIsNotUtf8Conform`] - If the path is not UTF-8 conform.
-    ///
-    /// [`TreeErrorKind::NotADirectory`]: crate::error::TreeErrorKind::NotADirectory
-    /// [`TreeErrorKind::PathNotFound`]: crate::error::TreeErrorKind::PathNotFound
-    /// [`TreeErrorKind::PathIsNotUtf8Conform`]: crate::error::TreeErrorKind::PathIsNotUtf8Conform
+    /// * If the path is not a directory.
+    /// * If the path is not found.
+    /// * If the path is not UTF-8 conform.
     pub fn node_from_path(&self, root_tree: TreeId, path: &Path) -> RusticResult<Node> {
         Tree::node_from_path(self.dbe(), self.index(), root_tree, Path::new(path))
     }
@@ -1739,7 +1661,8 @@ impl<P, S: IndexedTree> Repository<P, S> {
     /// * `path` - The path
     ///
     /// # Errors
-    /// if loading trees from the backend fails
+    ///
+    /// * If loading trees from the backend fails
     pub fn find_nodes_from_path(
         &self,
         ids: impl IntoIterator<Item = TreeId>,
@@ -1756,7 +1679,8 @@ impl<P, S: IndexedTree> Repository<P, S> {
     /// * `matches` - The matching criterion
     ///
     /// # Errors
-    /// if loading trees from the backend fails
+    ///
+    /// * If loading trees from the backend fails
     pub fn find_matching_nodes(
         &self,
         ids: impl IntoIterator<Item = TreeId>,
@@ -1790,13 +1714,9 @@ impl<P: ProgressBars, S: IndexedTree> Repository<P, S> {
     ///
     /// # Errors
     ///
-    /// * [`IdErrorKind::HexError`] - If the string is not a valid hexadecimal string
-    /// * [`BackendAccessErrorKind::NoSuitableIdFound`] - If no id could be found.
-    /// * [`BackendAccessErrorKind::IdNotUnique`] - If the id is not unique.
-    ///
-    /// [`IdErrorKind::HexError`]: crate::error::IdErrorKind::HexError
-    /// [`BackendAccessErrorKind::NoSuitableIdFound`]: crate::error::BackendAccessErrorKind::NoSuitableIdFound
-    /// [`BackendAccessErrorKind::IdNotUnique`]: crate::error::BackendAccessErrorKind::IdNotUnique
+    /// * If the string is not a valid hexadecimal string
+    /// * If no id could be found.
+    /// * If the id is not unique.
     pub fn node_from_snapshot_path(
         &self,
         snap_path: &str,
@@ -1991,13 +1911,11 @@ impl<P, S: IndexedFull> Repository<P, S> {
     ///
     /// # Errors
     ///
-    /// * [`IndexErrorKind::BlobInIndexNotFound`] - If the blob is not found in the index
+    /// * If the blob is not found in the index
     ///
     /// # Returns
     ///
     /// The cached blob in bytes.
-    ///
-    /// [`IndexErrorKind::BlobInIndexNotFound`]: crate::error::IndexErrorKind::BlobInIndexNotFound
     pub fn get_blob_cached(&self, id: &BlobId, tpe: BlobType) -> RusticResult<Bytes> {
         self.get_blob_or_insert_with(id, || self.index().blob_from_backend(self.dbe(), tpe, id))
     }
@@ -2025,13 +1943,11 @@ impl<P: ProgressBars, S: IndexedFull> Repository<P, S> {
     ///
     /// # Errors
     ///
-    /// * [`IdErrorKind::HexError`] - If the string is not a valid hexadecimal string
+    /// * If the string is not a valid hexadecimal string
     ///
     /// # Returns
     ///
     /// The raw blob in bytes.
-    ///
-    /// [`IdErrorKind::HexError`]: crate::error::IdErrorKind::HexError
     pub fn cat_blob(&self, tpe: BlobType, id: &str) -> RusticResult<Bytes> {
         commands::cat::cat_blob(self, tpe, id)
     }
@@ -2042,16 +1958,14 @@ impl<P: ProgressBars, S: IndexedFull> Repository<P, S> {
     ///
     /// * `node` - The node to dump
     /// * `w` - The writer to use
+    ///
+    /// # Errors
+    ///
+    /// * If the node is not a file.
     ///  
     /// # Note
     ///
     /// Currently, only regular file nodes are supported.
-    ///
-    /// # Errors
-    ///
-    /// * [`CommandErrorKind::DumpNotSupported`] - If the node is not a file.
-    ///
-    /// [`CommandErrorKind::DumpNotSupported`]: crate::error::CommandErrorKind::DumpNotSupported
     pub fn dump(&self, node: &Node, w: &mut impl Write) -> RusticResult<()> {
         commands::dump::dump(self, node, w)
     }
@@ -2071,15 +1985,12 @@ impl<P: ProgressBars, S: IndexedFull> Repository<P, S> {
     ///
     /// # Errors
     ///
-    /// * [`CommandErrorKind::ErrorCreating`] - If a directory could not be created.
-    /// * [`CommandErrorKind::ErrorCollecting`] - If the restore information could not be collected.
+    /// * If a directory could not be created.
+    /// * If the restore information could not be collected.
     ///
     /// # Returns
     ///
     /// The restore plan.
-    ///
-    /// [`CommandErrorKind::ErrorCreating`]: crate::error::CommandErrorKind::ErrorCreating
-    /// [`CommandErrorKind::ErrorCollecting`]: crate::error::CommandErrorKind::ErrorCollecting
     pub fn prepare_restore(
         &self,
         opts: &RestoreOptions,
@@ -2132,7 +2043,7 @@ impl<P: ProgressBars, S: IndexedFull> Repository<P, S> {
     ///  
     /// # Warning
     ///
-    /// If you remove the original snapshots, you may loose data!
+    /// * If you remove the original snapshots, you may loose data!
     ///
     /// # Errors
     ///

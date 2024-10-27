@@ -41,7 +41,7 @@ pub trait DecryptReadBackend: ReadBackend + Clone + 'static {
     ///
     /// # Errors
     ///
-    /// If the data could not be decrypted.
+    /// * If the data could not be decrypted.
     fn decrypt(&self, data: &[u8]) -> RusticResult<Vec<u8>>;
 
     /// Reads the given file.
@@ -53,7 +53,7 @@ pub trait DecryptReadBackend: ReadBackend + Clone + 'static {
     ///
     /// # Errors
     ///
-    /// If the file could not be read.
+    /// * If the file could not be read.
     fn read_encrypted_full(&self, tpe: FileType, id: &Id) -> RusticResult<Bytes>;
 
     /// Reads the given file from partial data.
@@ -65,11 +65,8 @@ pub trait DecryptReadBackend: ReadBackend + Clone + 'static {
     ///
     /// # Errors
     ///
-    /// * [`CryptBackendErrorKind::DecodingZstdCompressedDataFailed`] - If the data could not be decoded.
-    /// * [`CryptBackendErrorKind::LengthOfUncompressedDataDoesNotMatch`] - If the length of the uncompressed data does not match the given length.
-    ///
-    /// [`CryptBackendErrorKind::DecodingZstdCompressedDataFailed`]: crate::error::CryptBackendErrorKind::DecodingZstdCompressedDataFailed
-    /// [`CryptBackendErrorKind::LengthOfUncompressedDataDoesNotMatch`]: crate::error::CryptBackendErrorKind::LengthOfUncompressedDataDoesNotMatch
+    /// * If the data could not be decoded.
+    /// * If the length of the uncompressed data does not match the given length.
     fn read_encrypted_from_partial(
         &self,
         data: &[u8],
@@ -109,7 +106,7 @@ pub trait DecryptReadBackend: ReadBackend + Clone + 'static {
     ///
     /// # Errors
     ///
-    /// If the file could not be read.
+    /// * If the file could not be read.
     fn read_encrypted_partial(
         &self,
         tpe: FileType,
@@ -133,7 +130,7 @@ pub trait DecryptReadBackend: ReadBackend + Clone + 'static {
     ///
     /// # Errors
     ///
-    /// If the file could not be read.
+    /// * If the file could not be read.
     fn get_file<F: RepoFile>(&self, id: &Id) -> RusticResult<F> {
         let data = self.read_encrypted_full(F::TYPE, id)?;
         let deserialized = serde_json::from_slice(&data).map_err(|err| {
@@ -205,7 +202,7 @@ pub trait DecryptWriteBackend: WriteBackend + Clone + 'static {
     ///
     /// # Errors
     ///
-    /// If the data could not be written.
+    /// * If the data could not be written.
     ///
     /// # Returns
     ///
@@ -229,7 +226,7 @@ pub trait DecryptWriteBackend: WriteBackend + Clone + 'static {
     ///
     /// # Errors
     ///
-    /// If the data could not be written.
+    /// * If the data could not be written.
     ///
     /// # Returns
     ///
@@ -248,13 +245,11 @@ pub trait DecryptWriteBackend: WriteBackend + Clone + 'static {
     ///
     /// # Errors
     ///
-    /// * [`CryptBackendErrorKind::SerializingToJsonByteVectorFailed`] - If the file could not be serialized to json.
+    /// * If the file could not be serialized to json.
     ///
     /// # Returns
     ///
     /// The id of the file.
-    ///
-    /// [`CryptBackendErrorKind::SerializingToJsonByteVectorFailed`]: crate::error::CryptBackendErrorKind::SerializingToJsonByteVectorFailed
     fn save_file<F: RepoFile>(&self, file: &F) -> RusticResult<Id> {
         let data = serde_json::to_vec(file).map_err(|err| {
             RusticError::with_source(
@@ -275,13 +270,11 @@ pub trait DecryptWriteBackend: WriteBackend + Clone + 'static {
     ///
     /// # Errors
     ///
-    /// * [`CryptBackendErrorKind::SerializingToJsonByteVectorFailed`] - If the file could not be serialized to json.
+    /// * If the file could not be serialized to json.
     ///
     /// # Returns
     ///
     /// The id of the file.
-    ///
-    /// [`CryptBackendErrorKind::SerializingToJsonByteVectorFailed`]: crate::error::CryptBackendErrorKind::SerializingToJsonByteVectorFailed
     fn save_file_uncompressed<F: RepoFile>(&self, file: &F) -> RusticResult<Id> {
         let data = serde_json::to_vec(file).map_err(|err| {
             RusticError::with_source(
@@ -303,7 +296,7 @@ pub trait DecryptWriteBackend: WriteBackend + Clone + 'static {
     ///
     /// # Errors
     ///
-    /// * [`CryptBackendErrorKind::SerializingToJsonByteVectorFailed`] - If the file could not be serialized to json.
+    /// * If the file could not be serialized to json.
     fn save_list<'a, F: RepoFile, I: ExactSizeIterator<Item = &'a F> + Send>(
         &self,
         list: I,
@@ -327,10 +320,6 @@ pub trait DecryptWriteBackend: WriteBackend + Clone + 'static {
     /// * `cacheable` - Whether the files should be cached.
     /// * `list` - The list of files to delete.
     /// * `p` - The progress bar.
-    ///
-    /// # Panics
-    ///
-    /// If the files could not be deleted.
     fn delete_list<'a, ID: RepoId, I: ExactSizeIterator<Item = &'a ID> + Send>(
         &self,
         cacheable: bool,
@@ -339,8 +328,7 @@ pub trait DecryptWriteBackend: WriteBackend + Clone + 'static {
     ) -> RusticResult<()> {
         p.set_length(list.len() as u64);
         list.par_bridge().try_for_each(|id| -> RusticResult<_> {
-            // TODO: Don't panic on file not being able to be deleted.
-            self.remove(ID::TYPE, id, cacheable).unwrap();
+            self.remove(ID::TYPE, id, cacheable)?;
             p.inc(1);
             Ok(())
         })?;
@@ -531,13 +519,11 @@ impl<C: CryptoKey> DecryptWriteBackend for DecryptBackend<C> {
     ///
     /// # Errors
     ///
-    /// * [`CryptBackendErrorKind::CopyEncodingDataFailed`] - If the data could not be encoded.
+    /// * If the data could not be encoded.
     ///
     /// # Returns
     ///
     /// The id of the data.
-    ///
-    /// [`CryptBackendErrorKind::CopyEncodingDataFailed`]: crate::error::CryptBackendErrorKind::CopyEncodingDataFailed
     fn hash_write_full(&self, tpe: FileType, data: &[u8]) -> RusticResult<Id> {
         let data_encrypted = self.encrypt_file(data)?;
 
@@ -599,11 +585,8 @@ impl<C: CryptoKey> DecryptReadBackend for DecryptBackend<C> {
     ///
     /// # Errors
     ///
-    /// * [`CryptBackendErrorKind::DecryptionNotSupportedForBackend`] - If the backend does not support decryption.
-    /// * [`CryptBackendErrorKind::DecodingZstdCompressedDataFailed`] - If the data could not be decoded.
-    ///
-    /// [`CryptBackendErrorKind::DecryptionNotSupportedForBackend`]: crate::error::CryptBackendErrorKind::DecryptionNotSupportedForBackend
-    /// [`CryptBackendErrorKind::DecodingZstdCompressedDataFailed`]: crate::error::CryptBackendErrorKind::DecodingZstdCompressedDataFailed
+    /// * If the backend does not support decryption.
+    /// * If the data could not be decoded.
     fn read_encrypted_full(&self, tpe: FileType, id: &Id) -> RusticResult<Bytes> {
         self.decrypt_file(&self.read_full(tpe, id)?).map(Into::into)
     }
