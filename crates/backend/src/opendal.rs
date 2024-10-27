@@ -3,7 +3,7 @@ use std::{collections::HashMap, str::FromStr, sync::OnceLock};
 
 use bytes::Bytes;
 use bytesize::ByteSize;
-use log::trace;
+use log::{trace, warn};
 use opendal::{
     layers::{BlockingLayer, ConcurrentLimitLayer, LoggingLayer, RetryLayer, ThrottleLayer},
     BlockingOperator, Metakey, Operator, Scheme,
@@ -316,6 +316,11 @@ impl ReadBackend for OpenDALBackend {
                             .attach_context("content length", e.metadata().content_length().to_string())
                         )?,
                 ))
+            })
+            .inspect(|r| {
+                if let Err(err) = r {
+                    warn!("Error while listing files: {:?}", err);
+                }
             })
             .filter_map(RusticResult::ok)
             .collect())

@@ -282,6 +282,11 @@ impl ReadBackend for LocalBackend {
                         )?,
                 ))
             })
+            .inspect(|r| {
+                if let Err(err) = r {
+                    warn!("Error while listing files: {:?}", err);
+                }
+            })
             .filter_map(RusticResult::ok);
 
         Ok(walker.collect())
