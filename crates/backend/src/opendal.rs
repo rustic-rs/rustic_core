@@ -409,15 +409,14 @@ impl WriteBackend for OpenDALBackend {
                         .to_string()
                         + "/";
 
-                self.operator.create_dir(&path)
-                .map_err(|err|
-                RusticError::with_source(
-                    ErrorKind::Backend,
-                    "Creating directory failed in the backend. Please check if the given path is correct.",
-                    err,
-                )
-                .attach_context("location", self.location())
-                .attach_context("path", path)
+                self.operator.create_dir(&path).map_err(|err|
+                    RusticError::with_source(
+                        ErrorKind::Backend,
+                        "Creating directory failed in the backend. Please check if the given path is correct.",
+                        err,
+                    )
+                    .attach_context("location", self.location())
+                    .attach_context("path", path)
                 )
             })?;
 
