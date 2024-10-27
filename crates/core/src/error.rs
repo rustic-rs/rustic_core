@@ -212,16 +212,9 @@ impl RusticError {
             .map_or(false, |c| c.as_str() == code)
     }
 
-    /// Expose the inner error kind.
-    ///
-    /// This is useful for matching on the error kind.
-    pub fn into_inner(self) -> ErrorKind {
-        self.kind
-    }
-
     /// Checks if the error is due to an incorrect password
     pub fn is_incorrect_password(&self) -> bool {
-        matches!(self.error_code.as_deref(), Some("C002"))
+        self.is_code("C002")
     }
 
     /// Creates a new error from a given error.
