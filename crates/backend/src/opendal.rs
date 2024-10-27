@@ -228,11 +228,11 @@ impl ReadBackend for OpenDALBackend {
             );
         }
 
-        let path = &(tpe.dirname().to_string() + "/");
+        let path = tpe.dirname().to_string() + "/";
 
         Ok(self
             .operator
-            .list_with(path)
+            .list_with(&path)
             .recursive(true)
             .call()
             .map_err(|err| {
