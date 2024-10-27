@@ -1,4 +1,6 @@
 #[cfg(not(windows))]
+use std::num::TryFromIntError;
+#[cfg(not(windows))]
 use std::os::unix::fs::{FileTypeExt, MetadataExt};
 
 use std::{
@@ -60,7 +62,7 @@ pub enum IgnoreErrorKind {
     CtimeConversionToTimestampFailed {
         ctime: i64,
         ctime_nsec: i64,
-        source: ignore::Error,
+        source: TryFromIntError,
     },
     /// Error acquiring metadata for `{name}`: `{source:?}`
     AcquiringMetadataFailed { name: String, source: ignore::Error },
@@ -649,13 +651,13 @@ fn map_entry(
     let ctime = Utc
         .timestamp_opt(
             m.ctime(),
-            m.ctime_nsec()
-                .try_into()
-                .map_err(|err| IgnoreErrorKind::CtimeConversionFailed {
+            m.ctime_nsec().try_into().map_err(|err| {
+                IgnoreErrorKind::CtimeConversionToTimestampFailed {
                     ctime: m.ctime(),
                     ctime_nsec: m.ctime_nsec(),
                     source: err,
-                })?,
+                }
+            })?,
         )
         .single()
         .map(|dt| dt.with_timezone(&Local));

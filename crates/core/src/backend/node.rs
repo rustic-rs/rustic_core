@@ -9,12 +9,12 @@ use std::{
 #[cfg(not(windows))]
 use std::fmt::Write;
 #[cfg(not(windows))]
+use std::num::ParseIntError;
+#[cfg(not(windows))]
 use std::os::unix::ffi::OsStrExt;
 
 use chrono::{DateTime, Local};
 use derive_more::Constructor;
-#[cfg(not(windows))]
-use displaydoc::Display;
 use serde_aux::prelude::*;
 use serde_derive::{Deserialize, Serialize};
 use serde_with::{
@@ -22,23 +22,21 @@ use serde_with::{
     formats::Padded,
     serde_as, skip_serializing_none, DefaultOnNull,
 };
-#[cfg(not(windows))]
-use thiserror::Error;
 
 use crate::blob::{tree::TreeId, DataId};
 
 #[cfg(not(windows))]
 /// [`NodeErrorKind`] describes the errors that can be returned by an action utilizing a node in Backends
-#[derive(thiserror::Error, Debug, Display)]
+#[derive(thiserror::Error, Debug, displaydoc::Display)]
 #[non_exhaustive]
-pub enum NodeErrorKind {
+pub enum NodeErrorKind<'a> {
     /// Unexpected EOF while parsing filename: `{file_name}`
     #[cfg(not(windows))]
     UnexpectedEOF {
         /// The filename
         file_name: String,
         /// The remaining chars
-        chars: std::str::Chars,
+        chars: std::str::Chars<'a>,
     },
     /// Invalid unicode
     #[cfg(not(windows))]
@@ -48,7 +46,7 @@ pub enum NodeErrorKind {
         /// The unicode codepoint
         unicode: u32,
         /// The remaining chars
-        chars: std::str::Chars,
+        chars: std::str::Chars<'a>,
     },
     /// Unrecognized Escape while parsing filename: `{file_name}`
     #[cfg(not(windows))]
@@ -56,7 +54,7 @@ pub enum NodeErrorKind {
         /// The filename
         file_name: String,
         /// The remaining chars
-        chars: std::str::Chars,
+        chars: std::str::Chars<'a>,
     },
     /// Parsing hex chars {chars:?} failed for `{hex}` in filename: `{file_name}` : `{source}`
     #[cfg(not(windows))]
@@ -66,7 +64,7 @@ pub enum NodeErrorKind {
         /// The hex string
         hex: String,
         /// The remaining chars
-        chars: std::str::Chars,
+        chars: std::str::Chars<'a>,
         /// The error that occurred
         source: ParseIntError,
     },
@@ -78,14 +76,14 @@ pub enum NodeErrorKind {
         /// The target type
         target: String,
         /// The remaining chars
-        chars: std::str::Chars,
+        chars: std::str::Chars<'a>,
         /// The error that occurred
         source: ParseIntError,
     },
 }
 
 #[cfg(not(windows))]
-pub(crate) type NodeResult<T> = Result<T, NodeErrorKind>;
+pub(crate) type NodeResult<'a, T> = Result<T, NodeErrorKind<'a>>;
 
 #[derive(
     Default, Serialize, Deserialize, Clone, Debug, PartialEq, Eq, Constructor, PartialOrd, Ord,
@@ -464,7 +462,7 @@ fn escape_filename(name: &OsStr) -> String {
 ///
 /// * `s` - The escaped filename
 // inspired by the enquote crate
-fn unescape_filename(s: &str) -> NodeResult<OsString> {
+fn unescape_filename(s: &str) -> NodeResult<'_, OsString> {
     let mut chars = s.chars();
     let mut u = Vec::new();
     loop {
@@ -498,7 +496,7 @@ fn unescape_filename(s: &str) -> NodeResult<OsString> {
                                     NodeErrorKind::ParsingHexFailed {
                                         file_name: s.to_string(),
                                         hex: hex.to_string(),
-                                        chars,
+                                        chars: chars.clone(),
                                         source: err,
                                     }
                                 })?);
@@ -509,7 +507,7 @@ fn unescape_filename(s: &str) -> NodeResult<OsString> {
                                     |err| NodeErrorKind::ParsingUnicodeFailed {
                                         file_name: s.to_string(),
                                         target: "u32".to_string(),
-                                        chars,
+                                        chars: chars.clone(),
                                         source: err,
                                     },
                                 )?;
@@ -517,7 +515,7 @@ fn unescape_filename(s: &str) -> NodeResult<OsString> {
                                     NodeErrorKind::InvalidUnicode {
                                         file_name: s.to_string(),
                                         unicode: n,
-                                        chars,
+                                        chars: chars.clone(),
                                     },
                                 )?;
                                 let mut bytes = vec![0u8; c.len_utf8()];
@@ -529,7 +527,7 @@ fn unescape_filename(s: &str) -> NodeResult<OsString> {
                                     |err| NodeErrorKind::ParsingUnicodeFailed {
                                         file_name: s.to_string(),
                                         target: "u32".to_string(),
-                                        chars,
+                                        chars: chars.clone(),
                                         source: err,
                                     },
                                 )?;
@@ -537,7 +535,7 @@ fn unescape_filename(s: &str) -> NodeResult<OsString> {
                                     NodeErrorKind::InvalidUnicode {
                                         file_name: s.to_string(),
                                         unicode: n,
-                                        chars,
+                                        chars: chars.clone(),
                                     },
                                 )?;
                                 let mut bytes = vec![0u8; c.len_utf8()];
@@ -547,7 +545,7 @@ fn unescape_filename(s: &str) -> NodeResult<OsString> {
                             _ => {
                                 return Err(NodeErrorKind::UnrecognizedEscape {
                                     file_name: s.to_string(),
-                                    chars,
+                                    chars: chars.clone(),
                                 })
                             }
                         },
