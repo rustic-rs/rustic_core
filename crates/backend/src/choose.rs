@@ -1,11 +1,9 @@
 //! This module contains [`BackendOptions`] and helpers to choose a backend from a given url.
 use derive_setters::Setters;
-use rustic_core::{ErrorKind, RusticError};
 use std::{collections::HashMap, sync::Arc};
 use strum_macros::{Display, EnumString};
 
-#[allow(unused_imports)]
-use rustic_core::{RepositoryBackends, RusticResult, WriteBackend};
+use rustic_core::{ErrorKind, RepositoryBackends, RusticError, RusticResult, WriteBackend};
 
 use crate::{
     local::LocalBackend,
