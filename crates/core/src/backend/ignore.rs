@@ -35,18 +35,7 @@ use crate::{
 /// [`IgnoreErrorKind`] describes the errors that can be returned by a Ignore action in Backends
 #[derive(thiserror::Error, Debug, displaydoc::Display)]
 pub enum IgnoreErrorKind {
-    /// generic Ignore error: `{0:?}`
-    GenericError(ignore::Error),
-    /// Error reading glob file `{file:?}`: `{source:?}`
-    ErrorGlob {
-        file: PathBuf,
-        source: std::io::Error,
-    },
-    /// Unable to open file `{file:?}`: `{source:?}`
-    UnableToOpenFile {
-        file: PathBuf,
-        source: std::io::Error,
-    },
+    #[cfg(all(not(windows), not(target_os = "openbsd")))]
     /// Error getting xattrs for `{path:?}`: `{source:?}`
     ErrorXattr {
         path: PathBuf,
@@ -64,6 +53,7 @@ pub enum IgnoreErrorKind {
         ctime_nsec: i64,
         source: TryFromIntError,
     },
+    #[cfg(not(windows))]
     /// Error acquiring metadata for `{name}`: `{source:?}`
     AcquiringMetadataFailed { name: String, source: ignore::Error },
 }
@@ -178,11 +168,8 @@ impl LocalSource {
     ///
     /// # Errors
     ///
-    /// * [`IgnoreErrorKind::GenericError`] - If the a glob pattern could not be added to the override builder.
-    /// * [`IgnoreErrorKind::FromIoError`] - If a glob file could not be read.
-    ///
-    /// [`IgnoreErrorKind::GenericError`]: crate::error::IgnoreErrorKind::GenericError
-    /// [`IgnoreErrorKind::FromIoError`]: crate::error::IgnoreErrorKind::FromIoError
+    /// * If the a glob pattern could not be added to the override builder.
+    /// * If a glob file could not be read.
     #[allow(clippy::too_many_lines)]
     pub fn new(
         save_opts: LocalSourceSaveOptions,
@@ -351,12 +338,14 @@ impl ReadSourceOpen for OpenFile {
     /// [`IgnoreErrorKind::UnableToOpenFile`]: crate::error::IgnoreErrorKind::UnableToOpenFile
     fn open(self) -> RusticResult<Self::Reader> {
         let path = self.0;
-        File::open(&path)
-            .map_err(|err| IgnoreErrorKind::UnableToOpenFile {
-                file: path,
-                source: err,
-            })
-            .map_err(|_err| todo!("Error transition"))
+        File::open(&path).map_err(|err| {
+            RusticError::with_source(
+                ErrorKind::Io,
+                "Failed to open file. Please make sure the file exists and is accessible.",
+                err,
+            )
+            .attach_context("file", path.display().to_string())
+        })
     }
 }
 
