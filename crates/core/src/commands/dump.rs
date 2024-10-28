@@ -30,7 +30,7 @@ pub(crate) fn dump<P, S: IndexedFull>(
 ) -> RusticResult<()> {
     if node.node_type != NodeType::File {
         return Err(RusticError::new(
-            ErrorKind::Command,
+            ErrorKind::Unsupported,
             "Dump is not supported for non-file node types. You could try to use `cat` instead.",
         )
         .attach_context("node type", node.node_type.to_string()));
