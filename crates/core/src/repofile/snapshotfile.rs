@@ -389,7 +389,7 @@ impl SnapshotFile {
                 .to_str()
                 .ok_or_else(|| {
                     RusticError::new(
-                        ErrorKind::Internal,
+                        ErrorKind::InvalidInput,
                         "Failed to convert hostname to string. The value must be a valid unicode string.",
                     )
                     .attach_context("hostname", hostname.to_string_lossy().to_string())
@@ -404,7 +404,7 @@ impl SnapshotFile {
             (_, Some(duration)) => DeleteOption::After(
                 time + Duration::from_std(*duration).map_err(|err| {
                     RusticError::with_source(
-                        ErrorKind::Internal,
+                        ErrorKind::InvalidInput,
                         "Failed to convert duration to std::time::Duration. Please make sure the value is a valid duration string.",
                         err,
                     )
@@ -441,7 +441,7 @@ impl SnapshotFile {
         if let Some(ref path) = opts.description_from {
             snap.description = Some(std::fs::read_to_string(path).map_err(|err| {
                 RusticError::with_source(
-                    ErrorKind::Io,
+                    ErrorKind::InvalidInput,
                     "Failed to read description file. Please make sure the file exists and is readable.",
                     err,
                 )
