@@ -2,7 +2,7 @@ use crate::SupportedBackend;
 use rustic_core::{ErrorKind, RusticError, RusticResult};
 
 /// A backend location. This is a string that represents the location of the backend.
-#[derive(PartialEq, Eq, Debug)]
+#[derive(PartialEq, Eq, Debug, Clone)]
 pub struct BackendLocation(String);
 
 impl std::ops::Deref for BackendLocation {

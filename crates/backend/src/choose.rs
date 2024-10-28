@@ -114,14 +114,17 @@ impl BackendOptions {
         repo_string
             .map(|string| {
                 let (be_type, location) = location_to_type_and_path(string)?;
-                be_type.to_backend(location, options.into()).map_err(|err| {
-                    RusticError::with_source(
+                be_type
+                    .to_backend(location.clone(), options.into())
+                    .map_err(|err| {
+                        RusticError::with_source(
                         ErrorKind::Backend,
                         "Could not load the backend. Please check the given backend and try again.",
                         err,
                     )
                     .attach_context("name", be_type.to_string())
-                })
+                    .attach_context("location", location.to_string())
+                    })
             })
             .transpose()
     }
