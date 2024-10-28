@@ -46,8 +46,8 @@ pub(crate) fn repair_index<P: ProgressBars, S: Open>(
     if repo.config().append_only == Some(true) {
         return Err(
             RusticError::new(
-                ErrorKind::Repository,
-                "index repair is not allowed in append-only repositories. Please disable append-only mode first, if you know what you are doing.",
+                ErrorKind::AppendOnly,
+                "Repairing the index is not allowed in append-only repositories. Please disable append-only mode first, if you know what you are doing. Aborting.",
             )
         );
     }

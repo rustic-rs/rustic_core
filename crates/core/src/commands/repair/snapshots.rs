@@ -100,8 +100,8 @@ pub(crate) fn repair_snapshots<P: ProgressBars, S: IndexedFull>(
     if opts.delete && config_file.append_only == Some(true) {
         return Err(
             RusticError::new(
-                ErrorKind::Repository,
-                "snapshot removal is not allowed in append-only repositories. Please disable append-only mode first, if you know what you are doing.",
+                ErrorKind::AppendOnly,
+                "Removing snapshots is not allowed in append-only repositories. Please disable append-only mode first, if you know what you are doing. Aborting.",
             )
         );
     }

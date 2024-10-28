@@ -413,6 +413,8 @@ pub enum Status {
 #[non_exhaustive]
 #[derive(thiserror::Error, Debug, displaydoc::Display)]
 pub enum ErrorKind {
+    /// Append-only mode is enabled
+    AppendOnly,
     /// Backend Error
     Backend,
     /// Command Error

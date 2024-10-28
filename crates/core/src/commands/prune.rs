@@ -1230,8 +1230,8 @@ pub(crate) fn prune_repository<P: ProgressBars, S: Open>(
 ) -> RusticResult<()> {
     if repo.config().append_only == Some(true) {
         return Err(RusticError::new(
-            ErrorKind::Repository,
-            "Repository is in append-only mode, pruning is not allowed. Aborting.",
+            ErrorKind::AppendOnly,
+            "Pruning is not allowed in append-only repositories. Please disable append-only mode first, if you know what you are doing. Aborting.",
         ));
     }
     repo.warm_up_wait(prune_plan.repack_packs().into_iter())?;
