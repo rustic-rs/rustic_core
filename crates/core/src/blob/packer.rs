@@ -32,8 +32,6 @@ use crate::{
 #[derive(thiserror::Error, Debug, displaydoc::Display)]
 #[non_exhaustive]
 pub enum PackerErrorKind {
-    /// getting total size failed
-    GettingTotalSize,
     /// Conversion from `{from}` to `{to}` failed: `{source}`
     Conversion {
         to: &'static str,
