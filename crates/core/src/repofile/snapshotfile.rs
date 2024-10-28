@@ -1,13 +1,14 @@
 use std::{
     cmp::Ordering,
     collections::{BTreeMap, BTreeSet},
-    ffi::OsString,
     fmt::{self, Display},
     path::{Path, PathBuf},
     str::FromStr,
 };
 
 use chrono::{DateTime, Duration, Local, OutOfRangeError};
+#[cfg(feature = "clap")]
+use clap::ValueHint;
 use derivative::Derivative;
 use derive_setters::Setters;
 use dunce::canonicalize;
@@ -27,9 +28,6 @@ use crate::{
     repofile::RepoFile,
     Id,
 };
-
-#[cfg(feature = "clap")]
-use clap::ValueHint;
 
 /// [`SnapshotFileErrorKind`] describes the errors that can be returned for `SnapshotFile`s
 #[derive(thiserror::Error, Debug, displaydoc::Display)]
