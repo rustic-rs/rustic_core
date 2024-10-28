@@ -428,10 +428,10 @@ pub enum ErrorKind {
     /// Blob, Pack, Index or Tree Error
     // These are deep errors that are not expected to be handled by the user.
     Internal,
-    /// IO Error
-    Io,
     /// Invalid Input Error
     InvalidInput,
+    /// IO Error
+    Io,
     /// Key Error
     Key,
     /// Multithreading Error
@@ -440,10 +440,6 @@ pub enum ErrorKind {
     Parsing,
     /// Password Error
     Password,
-    /// Permission Error
-    Permission,
-    /// Processing Error
-    Processing,
     /// Repository Error
     Repository,
     /// Something is not supported

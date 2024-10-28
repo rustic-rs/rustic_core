@@ -221,7 +221,7 @@ impl<'a, BE: DecryptFullBackend, I: ReadGlobalIndex> Archiver<'a, BE, I> {
 
         summary.finalize(self.snap.time).map_err(|err| {
             RusticError::with_source(
-                ErrorKind::Processing,
+                ErrorKind::Internal,
                 "Could not finalize summary, please check the logs for more information.",
                 err,
             )
