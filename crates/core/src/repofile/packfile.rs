@@ -20,14 +20,6 @@ pub enum PackFileErrorKind {
     ReadingBinaryRepresentationFailed(binrw::Error),
     /// Failed writing binary representation of the pack header: `{0:?}`
     WritingBinaryRepresentationFailed(binrw::Error),
-    /// Read header length is too large! Length: `{size_real}`, file size: `{pack_size}`
-    HeaderLengthTooLarge { size_real: u32, pack_size: u32 },
-    /// decrypting from binary failed
-    BinaryDecryptionFailed,
-    /// Partial read of `PackFile` failed
-    PartialReadOfPackfileFailed,
-    /// writing Bytes failed
-    WritingBytesFailed,
 }
 
 pub(crate) type PackFileResult<T> = Result<T, PackFileErrorKind>;
