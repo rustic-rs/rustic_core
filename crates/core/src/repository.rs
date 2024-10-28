@@ -256,7 +256,7 @@ impl RepositoryOptions {
 ///
 /// # Errors
 ///
-// TODO: Add errors
+/// * If reading the password failed
 pub fn read_password_from_reader(file: &mut impl BufRead) -> RusticResult<String> {
     let mut password = String::new();
     _ = file.read_line(&mut password).map_err(|err| {
