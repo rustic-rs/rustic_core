@@ -165,10 +165,10 @@ impl Display for RusticError {
 // Accessors for anything we do want to expose publicly.
 impl RusticError {
     /// Creates a new error with the given kind and guidance.
-    pub fn new(kind: ErrorKind, guidance: impl Into<String>) -> Box<Self> {
+    pub fn new(kind: ErrorKind, guidance: impl Into<SmolStr>) -> Box<Self> {
         Box::new(Self {
             kind,
-            guidance: guidance.into().into(),
+            guidance: guidance.into(),
             context: Cow::default(),
             source: None,
             error_code: None,
