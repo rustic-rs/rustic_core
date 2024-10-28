@@ -42,8 +42,8 @@ pub(crate) fn apply_config<P, S: Open>(
 ) -> RusticResult<bool> {
     if repo.config().append_only == Some(true) {
         return Err(RusticError::new(
-            ErrorKind::Permission,
-            "Not allowed to change config on an append-only repository.",
+            ErrorKind::AppendOnly,
+            "Changing config is not allowed in append-only repositories. Please disable append-only mode first, if you know what you are doing. Aborting.",
         ));
     }
 
