@@ -52,10 +52,7 @@ pub enum LocalDestinationErrorKind {
         length: u64,
         source: TryFromIntError,
     },
-    /// [`walkdir::Error`]
-    #[error(transparent)]
-    FromWalkdirError(walkdir::Error),
-    /// [`Errno`]
+    /// `{0}`
     #[error(transparent)]
     #[cfg(not(windows))]
     FromErrnoError(Errno),
