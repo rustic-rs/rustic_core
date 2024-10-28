@@ -7,7 +7,7 @@ use crate::{
     chunker::random_poly,
     commands::{
         config::{save_config, ConfigOptions},
-        key::KeyOptions,
+        key::{init_key, KeyOptions},
     },
     crypto::aespoly1305::Key,
     error::{RusticErrorKind, RusticResult},
@@ -86,7 +86,7 @@ pub(crate) fn init_with_config<P, S>(
     config: &ConfigFile,
 ) -> RusticResult<Key> {
     repo.be.create().map_err(RusticErrorKind::Backend)?;
-    let (key, id) = key_opts.init_key(repo, pass)?;
+    let (key, id) = init_key(repo, key_opts, pass)?;
     info!("key {id} successfully added.");
     save_config(repo, config.clone(), key)?;
 

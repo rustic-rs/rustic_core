@@ -17,10 +17,10 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
 
       - name: Install cargo-hack
-        uses: taiki-e/install-action@07b43ed508403fa32c11f04dd608931cdf6748e2 # v2
+        uses: taiki-e/install-action@278aeeb6e331c1bd610bffe45862e09452854b1a # v2
         with:
           tool: cargo-tarpaulin
 

@@ -27,86 +27,82 @@ pub struct RepairIndexOptions {
     pub read_all: bool,
 }
 
-impl RepairIndexOptions {
-    /// Runs the `repair index` command
-    ///
-    /// # Type Parameters
-    ///
-    /// * `P` - The progress bar type
-    /// * `S` - The state the repository is in
-    ///
-    /// # Arguments
-    ///
-    /// * `repo` - The repository to repair
-    /// * `dry_run` - Whether to actually modify the repository or just print what would be done
-    pub(crate) fn repair<P: ProgressBars, S: Open>(
-        self,
-        repo: &Repository<P, S>,
-        dry_run: bool,
-    ) -> RusticResult<()> {
-        if repo.config().append_only == Some(true) {
-            return Err(
-                CommandErrorKind::NotAllowedWithAppendOnly("index repair".to_string()).into(),
-            );
-        }
-
-        let be = repo.dbe();
-        let mut checker = PackChecker::new(repo)?;
-
-        let p = repo.pb.progress_counter("reading index...");
-        for index in be.stream_all::<IndexFile>(&p)? {
-            let (index_id, index) = index?;
-            let (new_index, changed) = checker.check_pack(index, self.read_all);
-            match (changed, dry_run) {
-                (true, true) => info!("would have modified index file {index_id}"),
-                (true, false) => {
-                    if !new_index.packs.is_empty() || !new_index.packs_to_delete.is_empty() {
-                        _ = be.save_file(&new_index)?;
-                    }
-                    be.remove(FileType::Index, &index_id, true)
-                        .map_err(RusticErrorKind::Backend)?;
-                }
-                (false, _) => {} // nothing to do
-            }
-        }
-        p.finish();
-
-        let pack_read_header = checker.into_pack_to_read();
-        repo.warm_up_wait(pack_read_header.iter().map(|(id, _, _)| *id))?;
-
-        let indexer = Indexer::new(be.clone()).into_shared();
-        let p = repo.pb.progress_counter("reading pack headers");
-        p.set_length(
-            pack_read_header
-                .len()
-                .try_into()
-                .map_err(CommandErrorKind::ConversionFromIntFailed)?,
-        );
-        for (id, size_hint, packsize) in pack_read_header {
-            debug!("reading pack {id}...");
-            match PackHeader::from_file(be, id, size_hint, packsize) {
-                Err(err) => {
-                    warn!("error reading pack {id} (-> removing from index): {err}");
-                }
-                Ok(header) => {
-                    let pack = IndexPack {
-                        blobs: header.into_blobs(),
-                        id,
-                        ..Default::default()
-                    };
-                    if !dry_run {
-                        // write pack file to index - without the delete mark
-                        indexer.write().unwrap().add_with(pack, false)?;
-                    }
-                }
-            }
-            p.inc(1);
-        }
-        indexer.write().unwrap().finalize()?;
-        p.finish();
-
-        Ok(())
+/// Runs the `repair index` command
+///
+/// # Type Parameters
+///
+/// * `P` - The progress bar type
+/// * `S` - The state the repository is in
+///
+/// # Arguments
+///
+/// * `repo` - The repository to repair
+/// * `dry_run` - Whether to actually modify the repository or just print what would be done
+pub(crate) fn repair_index<P: ProgressBars, S: Open>(
+    repo: &Repository<P, S>,
+    opts: RepairIndexOptions,
+    dry_run: bool,
+) -> RusticResult<()> {
+    if repo.config().append_only == Some(true) {
+        return Err(CommandErrorKind::NotAllowedWithAppendOnly("index repair".to_string()).into());
     }
+
+    let be = repo.dbe();
+    let mut checker = PackChecker::new(repo)?;
+
+    let p = repo.pb.progress_counter("reading index...");
+    for index in be.stream_all::<IndexFile>(&p)? {
+        let (index_id, index) = index?;
+        let (new_index, changed) = checker.check_pack(index, opts.read_all);
+        match (changed, dry_run) {
+            (true, true) => info!("would have modified index file {index_id}"),
+            (true, false) => {
+                if !new_index.packs.is_empty() || !new_index.packs_to_delete.is_empty() {
+                    _ = be.save_file(&new_index)?;
+                }
+                be.remove(FileType::Index, &index_id, true)
+                    .map_err(RusticErrorKind::Backend)?;
+            }
+            (false, _) => {} // nothing to do
+        }
+    }
+    p.finish();
+
+    let pack_read_header = checker.into_pack_to_read();
+    repo.warm_up_wait(pack_read_header.iter().map(|(id, _, _)| *id))?;
+
+    let indexer = Indexer::new(be.clone()).into_shared();
+    let p = repo.pb.progress_counter("reading pack headers");
+    p.set_length(
+        pack_read_header
+            .len()
+            .try_into()
+            .map_err(CommandErrorKind::ConversionFromIntFailed)?,
+    );
+    for (id, size_hint, packsize) in pack_read_header {
+        debug!("reading pack {id}...");
+        match PackHeader::from_file(be, id, size_hint, packsize) {
+            Err(err) => {
+                warn!("error reading pack {id} (-> removing from index): {err}");
+            }
+            Ok(header) => {
+                let pack = IndexPack {
+                    blobs: header.into_blobs(),
+                    id,
+                    ..Default::default()
+                };
+                if !dry_run {
+                    // write pack file to index - without the delete mark
+                    indexer.write().unwrap().add_with(pack, false)?;
+                }
+            }
+        }
+        p.inc(1);
+    }
+    indexer.write().unwrap().finalize()?;
+    p.finish();
+
+    Ok(())
 }
 
 struct PackChecker {

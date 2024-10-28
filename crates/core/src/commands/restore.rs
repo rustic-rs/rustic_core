@@ -94,312 +94,318 @@ pub struct RestoreStats {
     pub dirs: FileDirStats,
 }
 
-impl RestoreOptions {
-    /// Restore the repository to the given destination.
-    ///
-    /// # Type Parameters
-    ///
-    /// * `P` - The progress bar type.
-    /// * `S` - The type of the indexed tree.
-    ///
-    /// # Arguments
-    ///
-    /// * `file_infos` - The restore information.
-    /// * `repo` - The repository to restore.
-    /// * `node_streamer` - The node streamer to use.
-    /// * `dest` - The destination to restore to.
-    ///
-    /// # Errors
-    ///
-    /// If the restore failed.
-    pub(crate) fn restore<P: ProgressBars, S: IndexedTree>(
-        self,
-        file_infos: RestorePlan,
-        repo: &Repository<P, S>,
-        node_streamer: impl Iterator<Item = RusticResult<(PathBuf, Node)>>,
-        dest: &LocalDestination,
-    ) -> RusticResult<()> {
-        repo.warm_up_wait(file_infos.to_packs().into_iter())?;
-        restore_contents(repo, dest, file_infos)?;
+/// Restore the repository to the given destination.
+///
+/// # Type Parameters
+///
+/// * `P` - The progress bar type
+/// * `S` - The type of the indexed tree
+///
+/// # Arguments
+///
+/// * `file_infos` - The restore information
+/// * `repo` - The repository to restore
+/// * `opts` - The restore options
+/// * `node_streamer` - The node streamer to use
+/// * `dest` - The destination to restore to
+///
+/// # Errors
+///
+/// If the restore failed.
+pub(crate) fn restore_repository<P: ProgressBars, S: IndexedTree>(
+    file_infos: RestorePlan,
+    repo: &Repository<P, S>,
+    opts: RestoreOptions,
+    node_streamer: impl Iterator<Item = RusticResult<(PathBuf, Node)>>,
+    dest: &LocalDestination,
+) -> RusticResult<()> {
+    repo.warm_up_wait(file_infos.to_packs().into_iter())?;
+    restore_contents(repo, dest, file_infos)?;
 
-        let p = repo.pb.progress_spinner("setting metadata...");
-        self.restore_metadata(node_streamer, dest)?;
-        p.finish();
+    let p = repo.pb.progress_spinner("setting metadata...");
+    restore_metadata(node_streamer, opts, dest)?;
+    p.finish();
+
+    Ok(())
+}
+
+/// Collect restore information, scan existing files, create needed dirs and remove superfluous files
+///
+/// # Type Parameters
+///
+/// * `P` - The progress bar type.
+/// * `S` - The type of the indexed tree.
+///
+/// # Arguments
+///
+/// * `repo` - The repository to restore.
+/// * `node_streamer` - The node streamer to use.
+/// * `dest` - The destination to restore to.
+/// * `dry_run` - If true, don't actually restore anything, but only print out what would be done.
+///
+/// # Errors
+///
+/// * [`CommandErrorKind::ErrorCreating`] - If a directory could not be created.
+/// * [`CommandErrorKind::ErrorCollecting`] - If the restore information could not be collected.
+///
+/// [`CommandErrorKind::ErrorCreating`]: crate::error::CommandErrorKind::ErrorCreating
+/// [`CommandErrorKind::ErrorCollecting`]: crate::error::CommandErrorKind::ErrorCollecting
+#[allow(clippy::too_many_lines)]
+pub(crate) fn collect_and_prepare<P: ProgressBars, S: IndexedFull>(
+    repo: &Repository<P, S>,
+    opts: RestoreOptions,
+    mut node_streamer: impl Iterator<Item = RusticResult<(PathBuf, Node)>>,
+    dest: &LocalDestination,
+    dry_run: bool,
+) -> RusticResult<RestorePlan> {
+    let p = repo.pb.progress_spinner("collecting file information...");
+    let dest_path = dest.path("");
+
+    let mut stats = RestoreStats::default();
+    let mut restore_infos = RestorePlan::default();
+    let mut additional_existing = false;
+    let mut removed_dir = None;
+
+    let mut process_existing = |entry: &DirEntry| -> RusticResult<_> {
+        if entry.depth() == 0 {
+            // don't process the root dir which should be existing
+            return Ok(());
+        }
+
+        debug!("additional {:?}", entry.path());
+        if entry.file_type().unwrap().is_dir() {
+            stats.dirs.additional += 1;
+        } else {
+            stats.files.additional += 1;
+        }
+        match (opts.delete, dry_run, entry.file_type().unwrap().is_dir()) {
+            (true, true, true) => {
+                info!("would have removed the additional dir: {:?}", entry.path());
+            }
+            (true, true, false) => {
+                info!("would have removed the additional file: {:?}", entry.path());
+            }
+            (true, false, true) => {
+                let path = entry.path();
+                match &removed_dir {
+                    Some(dir) if path.starts_with(dir) => {}
+                    _ => match dest.remove_dir(path) {
+                        Ok(()) => {
+                            removed_dir = Some(path.to_path_buf());
+                        }
+                        Err(err) => {
+                            error!("error removing {path:?}: {err}");
+                        }
+                    },
+                }
+            }
+            (true, false, false) => {
+                if let Err(err) = dest.remove_file(entry.path()) {
+                    error!("error removing {:?}: {err}", entry.path());
+                }
+            }
+            (false, _, _) => {
+                additional_existing = true;
+            }
+        }
 
         Ok(())
-    }
+    };
 
-    /// Collect restore information, scan existing files, create needed dirs and remove superfluous files
-    ///
-    /// # Type Parameters
-    ///
-    /// * `P` - The progress bar type.
-    /// * `S` - The type of the indexed tree.
-    ///
-    /// # Arguments
-    ///
-    /// * `repo` - The repository to restore.
-    /// * `node_streamer` - The node streamer to use.
-    /// * `dest` - The destination to restore to.
-    /// * `dry_run` - If true, don't actually restore anything, but only print out what would be done.
-    ///
-    /// # Errors
-    ///
-    /// * [`CommandErrorKind::ErrorCreating`] - If a directory could not be created.
-    /// * [`CommandErrorKind::ErrorCollecting`] - If the restore information could not be collected.
-    ///
-    /// [`CommandErrorKind::ErrorCreating`]: crate::error::CommandErrorKind::ErrorCreating
-    /// [`CommandErrorKind::ErrorCollecting`]: crate::error::CommandErrorKind::ErrorCollecting
-    #[allow(clippy::too_many_lines)]
-    pub(crate) fn collect_and_prepare<P: ProgressBars, S: IndexedFull>(
-        self,
-        repo: &Repository<P, S>,
-        mut node_streamer: impl Iterator<Item = RusticResult<(PathBuf, Node)>>,
-        dest: &LocalDestination,
-        dry_run: bool,
-    ) -> RusticResult<RestorePlan> {
-        let p = repo.pb.progress_spinner("collecting file information...");
-        let dest_path = dest.path("");
-
-        let mut stats = RestoreStats::default();
-        let mut restore_infos = RestorePlan::default();
-        let mut additional_existing = false;
-        let mut removed_dir = None;
-
-        let mut process_existing = |entry: &DirEntry| -> RusticResult<_> {
-            if entry.depth() == 0 {
-                // don't process the root dir which should be existing
-                return Ok(());
-            }
-
-            debug!("additional {:?}", entry.path());
-            if entry.file_type().unwrap().is_dir() {
-                stats.dirs.additional += 1;
-            } else {
-                stats.files.additional += 1;
-            }
-            match (self.delete, dry_run, entry.file_type().unwrap().is_dir()) {
-                (true, true, true) => {
-                    info!("would have removed the additional dir: {:?}", entry.path());
-                }
-                (true, true, false) => {
-                    info!("would have removed the additional file: {:?}", entry.path());
-                }
-                (true, false, true) => {
-                    let path = entry.path();
-                    match &removed_dir {
-                        Some(dir) if path.starts_with(dir) => {}
-                        _ => match dest.remove_dir(path) {
-                            Ok(()) => {
-                                removed_dir = Some(path.to_path_buf());
-                            }
-                            Err(err) => {
-                                error!("error removing {path:?}: {err}");
-                            }
-                        },
+    let mut process_node = |path: &PathBuf, node: &Node, exists: bool| -> RusticResult<_> {
+        match node.node_type {
+            NodeType::Dir => {
+                if exists {
+                    stats.dirs.modify += 1;
+                    trace!("existing dir {path:?}");
+                } else {
+                    stats.dirs.restore += 1;
+                    debug!("to restore: {path:?}");
+                    if !dry_run {
+                        dest.create_dir(path).map_err(|err| {
+                            CommandErrorKind::ErrorCreating(path.clone(), Box::new(err))
+                        })?;
                     }
                 }
-                (true, false, false) => {
-                    if let Err(err) = dest.remove_file(entry.path()) {
-                        error!("error removing {:?}: {err}", entry.path());
-                    }
-                }
-                (false, _, _) => {
-                    additional_existing = true;
-                }
             }
-
-            Ok(())
-        };
-
-        let mut process_node = |path: &PathBuf, node: &Node, exists: bool| -> RusticResult<_> {
-            match node.node_type {
-                NodeType::Dir => {
-                    if exists {
-                        stats.dirs.modify += 1;
-                        trace!("existing dir {path:?}");
-                    } else {
-                        stats.dirs.restore += 1;
+            NodeType::File => {
+                // collect blobs needed for restoring
+                match (
+                    exists,
+                    restore_infos
+                        .add_file(dest, node, path.clone(), repo, opts.verify_existing)
+                        .map_err(|err| {
+                            CommandErrorKind::ErrorCollecting(path.clone(), Box::new(err))
+                        })?,
+                ) {
+                    // Note that exists = false and Existing or Verified can happen if the file is changed between scanning the dir
+                    // and calling add_file. So we don't care about exists but trust add_file here.
+                    (_, AddFileResult::Existing) => {
+                        stats.files.unchanged += 1;
+                        trace!("identical file: {path:?}");
+                    }
+                    (_, AddFileResult::Verified) => {
+                        stats.files.verified += 1;
+                        trace!("verified identical file: {path:?}");
+                    }
+                    // TODO: The differentiation between files to modify and files to create could be done only by add_file
+                    // Currently, add_file never returns Modify, but always New, so we differentiate based on exists
+                    (true, AddFileResult::Modify) => {
+                        stats.files.modify += 1;
+                        debug!("to modify: {path:?}");
+                    }
+                    (false, AddFileResult::Modify) => {
+                        stats.files.restore += 1;
                         debug!("to restore: {path:?}");
-                        if !dry_run {
-                            dest.create_dir(path).map_err(|err| {
-                                CommandErrorKind::ErrorCreating(path.clone(), Box::new(err))
-                            })?;
-                        }
                     }
-                }
-                NodeType::File => {
-                    // collect blobs needed for restoring
-                    match (
-                        exists,
-                        restore_infos
-                            .add_file(dest, node, path.clone(), repo, self.verify_existing)
-                            .map_err(|err| {
-                                CommandErrorKind::ErrorCollecting(path.clone(), Box::new(err))
-                            })?,
-                    ) {
-                        // Note that exists = false and Existing or Verified can happen if the file is changed between scanning the dir
-                        // and calling add_file. So we don't care about exists but trust add_file here.
-                        (_, AddFileResult::Existing) => {
-                            stats.files.unchanged += 1;
-                            trace!("identical file: {path:?}");
-                        }
-                        (_, AddFileResult::Verified) => {
-                            stats.files.verified += 1;
-                            trace!("verified identical file: {path:?}");
-                        }
-                        // TODO: The differentiation between files to modify and files to create could be done only by add_file
-                        // Currently, add_file never returns Modify, but always New, so we differentiate based on exists
-                        (true, AddFileResult::Modify) => {
-                            stats.files.modify += 1;
-                            debug!("to modify: {path:?}");
-                        }
-                        (false, AddFileResult::Modify) => {
-                            stats.files.restore += 1;
-                            debug!("to restore: {path:?}");
-                        }
-                    }
-                }
-                _ => {} // nothing to do for symlink, device, etc.
-            }
-            Ok(())
-        };
-
-        let mut dst_iter = WalkBuilder::new(dest_path)
-            .follow_links(false)
-            .hidden(false)
-            .ignore(false)
-            .sort_by_file_path(Path::cmp)
-            .build()
-            .filter_map(Result::ok); // TODO: print out the ignored error
-        let mut next_dst = dst_iter.next();
-
-        let mut next_node = node_streamer.next().transpose()?;
-
-        loop {
-            match (&next_dst, &next_node) {
-                (None, None) => break,
-
-                (Some(destination), None) => {
-                    process_existing(destination)?;
-                    next_dst = dst_iter.next();
-                }
-                (Some(destination), Some((path, node))) => {
-                    match destination.path().cmp(&dest.path(path)) {
-                        Ordering::Less => {
-                            process_existing(destination)?;
-                            next_dst = dst_iter.next();
-                        }
-                        Ordering::Equal => {
-                            // process existing node
-                            if (node.is_dir() && !destination.file_type().unwrap().is_dir())
-                                || (node.is_file() && !destination.metadata().unwrap().is_file())
-                                || node.is_special()
-                            {
-                                // if types do not match, first remove the existing file
-                                process_existing(destination)?;
-                            }
-                            process_node(path, node, true)?;
-                            next_dst = dst_iter.next();
-                            next_node = node_streamer.next().transpose()?;
-                        }
-                        Ordering::Greater => {
-                            process_node(path, node, false)?;
-                            next_node = node_streamer.next().transpose()?;
-                        }
-                    }
-                }
-                (None, Some((path, node))) => {
-                    process_node(path, node, false)?;
-                    next_node = node_streamer.next().transpose()?;
                 }
             }
+            _ => {} // nothing to do for symlink, device, etc.
         }
-
-        if additional_existing {
-            warn!("Note: additional entries exist in destination");
-        }
-
-        restore_infos.stats = stats;
-        p.finish();
-
-        Ok(restore_infos)
-    }
-
-    /// Restore the metadata of the files and directories.
-    ///
-    /// # Arguments
-    ///
-    /// * `node_streamer` - The node streamer to use.
-    /// * `dest` - The destination to restore to.
-    ///
-    /// # Errors
-    ///
-    /// If the restore failed.
-    fn restore_metadata(
-        self,
-        mut node_streamer: impl Iterator<Item = RusticResult<(PathBuf, Node)>>,
-        dest: &LocalDestination,
-    ) -> RusticResult<()> {
-        let mut dir_stack = Vec::new();
-        while let Some((path, node)) = node_streamer.next().transpose()? {
-            match node.node_type {
-                NodeType::Dir => {
-                    // set metadata for all non-parent paths in stack
-                    while let Some((stackpath, _)) = dir_stack.last() {
-                        if path.starts_with(stackpath) {
-                            break;
-                        }
-                        let (path, node) = dir_stack.pop().unwrap();
-                        self.set_metadata(dest, &path, &node);
-                    }
-                    // push current path to the stack
-                    dir_stack.push((path, node));
-                }
-                _ => self.set_metadata(dest, &path, &node),
-            }
-        }
-
-        // empty dir stack and set metadata
-        for (path, node) in dir_stack.into_iter().rev() {
-            self.set_metadata(dest, &path, &node);
-        }
-
         Ok(())
+    };
+
+    let mut dst_iter = WalkBuilder::new(dest_path)
+        .follow_links(false)
+        .hidden(false)
+        .ignore(false)
+        .sort_by_file_path(Path::cmp)
+        .build()
+        .filter_map(Result::ok); // TODO: print out the ignored error
+    let mut next_dst = dst_iter.next();
+
+    let mut next_node = node_streamer.next().transpose()?;
+
+    loop {
+        match (&next_dst, &next_node) {
+            (None, None) => break,
+
+            (Some(destination), None) => {
+                process_existing(destination)?;
+                next_dst = dst_iter.next();
+            }
+            (Some(destination), Some((path, node))) => {
+                match destination.path().cmp(&dest.path(path)) {
+                    Ordering::Less => {
+                        process_existing(destination)?;
+                        next_dst = dst_iter.next();
+                    }
+                    Ordering::Equal => {
+                        // process existing node
+                        if (node.is_dir() && !destination.file_type().unwrap().is_dir())
+                            || (node.is_file() && !destination.metadata().unwrap().is_file())
+                            || node.is_special()
+                        {
+                            // if types do not match, first remove the existing file
+                            process_existing(destination)?;
+                        }
+                        process_node(path, node, true)?;
+                        next_dst = dst_iter.next();
+                        next_node = node_streamer.next().transpose()?;
+                    }
+                    Ordering::Greater => {
+                        process_node(path, node, false)?;
+                        next_node = node_streamer.next().transpose()?;
+                    }
+                }
+            }
+            (None, Some((path, node))) => {
+                process_node(path, node, false)?;
+                next_node = node_streamer.next().transpose()?;
+            }
+        }
     }
 
-    /// Set the metadata of the given file or directory.
-    ///
-    /// # Arguments
-    ///
-    /// * `dest` - The destination to restore to.
-    /// * `path` - The path of the file or directory.
-    /// * `node` - The node information of the file or directory.
-    ///
-    /// # Errors
-    ///
-    /// If the metadata could not be set.
-    // TODO: Return a result here, introduce errors and get rid of logging.
-    fn set_metadata(self, dest: &LocalDestination, path: &PathBuf, node: &Node) {
-        debug!("setting metadata for {:?}", path);
-        dest.create_special(path, node)
-            .unwrap_or_else(|_| warn!("restore {:?}: creating special file failed.", path));
-        match (self.no_ownership, self.numeric_id) {
-            (true, _) => {}
-            (false, true) => dest
-                .set_uid_gid(path, &node.meta)
-                .unwrap_or_else(|_| warn!("restore {:?}: setting UID/GID failed.", path)),
-            (false, false) => dest
-                .set_user_group(path, &node.meta)
-                .unwrap_or_else(|_| warn!("restore {:?}: setting User/Group failed.", path)),
-        }
-        dest.set_permission(path, node)
-            .unwrap_or_else(|_| warn!("restore {:?}: chmod failed.", path));
-        dest.set_extended_attributes(path, &node.meta.extended_attributes)
-            .unwrap_or_else(|_| warn!("restore {:?}: setting extended attributes failed.", path));
-        dest.set_times(path, &node.meta)
-            .unwrap_or_else(|_| warn!("restore {:?}: setting file times failed.", path));
+    if additional_existing {
+        warn!("Note: additional entries exist in destination");
     }
+
+    restore_infos.stats = stats;
+    p.finish();
+
+    Ok(restore_infos)
+}
+
+/// Restore the metadata of the files and directories.
+///
+/// # Arguments
+///
+/// * `node_streamer` - The node streamer to use
+/// * `opts` - The restore options to use
+/// * `dest` - The destination to restore to
+///
+/// # Errors
+///
+/// If the restore failed.
+fn restore_metadata(
+    mut node_streamer: impl Iterator<Item = RusticResult<(PathBuf, Node)>>,
+    opts: RestoreOptions,
+    dest: &LocalDestination,
+) -> RusticResult<()> {
+    let mut dir_stack = Vec::new();
+    while let Some((path, node)) = node_streamer.next().transpose()? {
+        match node.node_type {
+            NodeType::Dir => {
+                // set metadata for all non-parent paths in stack
+                while let Some((stackpath, _)) = dir_stack.last() {
+                    if path.starts_with(stackpath) {
+                        break;
+                    }
+                    let (path, node) = dir_stack.pop().unwrap();
+                    set_metadata(dest, opts, &path, &node);
+                }
+                // push current path to the stack
+                dir_stack.push((path, node));
+            }
+            _ => set_metadata(dest, opts, &path, &node),
+        }
+    }
+
+    // empty dir stack and set metadata
+    for (path, node) in dir_stack.into_iter().rev() {
+        set_metadata(dest, opts, &path, &node);
+    }
+
+    Ok(())
+}
+
+/// Set the metadata of the given file or directory.
+///
+/// # Arguments
+///
+/// * `dest` - The destination to restore to
+/// * `opts` - The restore options to use
+/// * `path` - The path of the file or directory
+/// * `node` - The node information of the file or directory
+///
+/// # Errors
+///
+/// If the metadata could not be set.
+// TODO: Return a result here, introduce errors and get rid of logging.
+pub(crate) fn set_metadata(
+    dest: &LocalDestination,
+    opts: RestoreOptions,
+    path: &PathBuf,
+    node: &Node,
+) {
+    debug!("setting metadata for {:?}", path);
+    dest.create_special(path, node)
+        .unwrap_or_else(|_| warn!("restore {:?}: creating special file failed.", path));
+    match (opts.no_ownership, opts.numeric_id) {
+        (true, _) => {}
+        (false, true) => dest
+            .set_uid_gid(path, &node.meta)
+            .unwrap_or_else(|_| warn!("restore {:?}: setting UID/GID failed.", path)),
+        (false, false) => dest
+            .set_user_group(path, &node.meta)
+            .unwrap_or_else(|_| warn!("restore {:?}: setting User/Group failed.", path)),
+    }
+    dest.set_permission(path, node)
+        .unwrap_or_else(|_| warn!("restore {:?}: chmod failed.", path));
+    dest.set_extended_attributes(path, &node.meta.extended_attributes)
+        .unwrap_or_else(|_| warn!("restore {:?}: setting extended attributes failed.", path));
+    dest.set_times(path, &node.meta)
+        .unwrap_or_else(|_| warn!("restore {:?}: setting file times failed.", path));
 }
 
 /// [`restore_contents`] restores all files contents as described by `file_infos`

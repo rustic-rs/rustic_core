@@ -173,77 +173,15 @@ impl PruneOptions {
     ///
     /// [`CommandErrorKind::RepackUncompressedRepoV1`]: crate::error::CommandErrorKind::RepackUncompressedRepoV1
     /// [`CommandErrorKind::FromOutOfRangeError`]: crate::error::CommandErrorKind::FromOutOfRangeError
+    #[deprecated(
+        since = "0.5.2",
+        note = "Use `PrunePlan::from_prune_options()` instead"
+    )]
     pub fn get_plan<P: ProgressBars, S: Open>(
         &self,
         repo: &Repository<P, S>,
     ) -> RusticResult<PrunePlan> {
-        let pb = &repo.pb;
-        let be = repo.dbe();
-
-        if repo.config().version < 2 && self.repack_uncompressed {
-            return Err(CommandErrorKind::RepackUncompressedRepoV1.into());
-        }
-
-        let mut index_files = Vec::new();
-
-        let p = pb.progress_counter("reading index...");
-        let mut index_collector = IndexCollector::new(IndexType::OnlyTrees);
-
-        for index in be.stream_all::<IndexFile>(&p)? {
-            let (id, index) = index?;
-            index_collector.extend(index.packs.clone());
-            // we add the trees from packs_to_delete to the index such that searching for
-            // used blobs doesn't abort if they are already marked for deletion
-            index_collector.extend(index.packs_to_delete.clone());
-
-            index_files.push((id, index));
-        }
-        p.finish();
-
-        let (used_ids, total_size) = {
-            let index = GlobalIndex::new_from_index(index_collector.into_index());
-            let total_size = BlobTypeMap::init(|blob_type| index.total_size(blob_type));
-            let used_ids = find_used_blobs(be, &index, &self.ignore_snaps, pb)?;
-            (used_ids, total_size)
-        };
-
-        // list existing pack files
-        let p = pb.progress_spinner("getting packs from repository...");
-        let existing_packs: BTreeMap<_, _> = be
-            .list_with_size(FileType::Pack)
-            .map_err(RusticErrorKind::Backend)?
-            .into_iter()
-            .map(|(id, size)| (PackId::from(id), size))
-            .collect();
-        p.finish();
-
-        let mut pruner = PrunePlan::new(used_ids, existing_packs, index_files);
-        pruner.count_used_blobs();
-        pruner.check()?;
-        let repack_cacheable_only = self
-            .repack_cacheable_only
-            .unwrap_or_else(|| repo.config().is_hot == Some(true));
-        let pack_sizer =
-            total_size.map(|tpe, size| PackSizer::from_config(repo.config(), tpe, size));
-        pruner.decide_packs(
-            Duration::from_std(*self.keep_pack).map_err(CommandErrorKind::FromOutOfRangeError)?,
-            Duration::from_std(*self.keep_delete).map_err(CommandErrorKind::FromOutOfRangeError)?,
-            repack_cacheable_only,
-            self.repack_uncompressed,
-            self.repack_all,
-            &pack_sizer,
-        )?;
-        pruner.decide_repack(
-            &self.max_repack,
-            &self.max_unused,
-            self.repack_uncompressed || self.repack_all,
-            self.no_resize,
-            &pack_sizer,
-        );
-        pruner.check_existing_packs()?;
-        pruner.filter_index_files(self.instant_delete);
-
-        Ok(pruner)
+        PrunePlan::from_prune_options(repo, self)
     }
 }
 
@@ -724,6 +662,98 @@ impl PrunePlan {
         }
     }
 
+    /// Get a `PrunePlan` from the given `PruneOptions`.
+    ///
+    /// # Type Parameters
+    ///
+    /// * `P` - The progress bar type
+    /// * `S` - The state the repository is in
+    ///
+    /// # Arguments
+    ///
+    /// * `repo` - The repository to get the `PrunePlan` for
+    /// * `opts` - The `PruneOptions` to use
+    ///
+    /// # Errors
+    ///
+    /// * [`CommandErrorKind::RepackUncompressedRepoV1`] - If `repack_uncompressed` is set and the repository is a version 1 repository
+    /// * [`CommandErrorKind::FromOutOfRangeError`] - If `keep_pack` or `keep_delete` is out of range
+    ///
+    /// [`CommandErrorKind::RepackUncompressedRepoV1`]: crate::error::CommandErrorKind::RepackUncompressedRepoV1
+    /// [`CommandErrorKind::FromOutOfRangeError`]: crate::error::CommandErrorKind::FromOutOfRangeError
+    pub fn from_prune_options<P: ProgressBars, S: Open>(
+        repo: &Repository<P, S>,
+        opts: &PruneOptions,
+    ) -> RusticResult<Self> {
+        let pb = &repo.pb;
+        let be = repo.dbe();
+
+        if repo.config().version < 2 && opts.repack_uncompressed {
+            return Err(CommandErrorKind::RepackUncompressedRepoV1.into());
+        }
+
+        let mut index_files = Vec::new();
+
+        let p = pb.progress_counter("reading index...");
+        let mut index_collector = IndexCollector::new(IndexType::OnlyTrees);
+
+        for index in be.stream_all::<IndexFile>(&p)? {
+            let (id, index) = index?;
+            index_collector.extend(index.packs.clone());
+            // we add the trees from packs_to_delete to the index such that searching for
+            // used blobs doesn't abort if they are already marked for deletion
+            index_collector.extend(index.packs_to_delete.clone());
+
+            index_files.push((id, index));
+        }
+        p.finish();
+
+        let (used_ids, total_size) = {
+            let index = GlobalIndex::new_from_index(index_collector.into_index());
+            let total_size = BlobTypeMap::init(|blob_type| index.total_size(blob_type));
+            let used_ids = find_used_blobs(be, &index, &opts.ignore_snaps, pb)?;
+            (used_ids, total_size)
+        };
+
+        // list existing pack files
+        let p = pb.progress_spinner("getting packs from repository...");
+        let existing_packs: BTreeMap<_, _> = be
+            .list_with_size(FileType::Pack)
+            .map_err(RusticErrorKind::Backend)?
+            .into_iter()
+            .map(|(id, size)| (PackId::from(id), size))
+            .collect();
+        p.finish();
+
+        let mut pruner = Self::new(used_ids, existing_packs, index_files);
+        pruner.count_used_blobs();
+        pruner.check()?;
+        let repack_cacheable_only = opts
+            .repack_cacheable_only
+            .unwrap_or_else(|| repo.config().is_hot == Some(true));
+        let pack_sizer =
+            total_size.map(|tpe, size| PackSizer::from_config(repo.config(), tpe, size));
+        pruner.decide_packs(
+            Duration::from_std(*opts.keep_pack).map_err(CommandErrorKind::FromOutOfRangeError)?,
+            Duration::from_std(*opts.keep_delete).map_err(CommandErrorKind::FromOutOfRangeError)?,
+            repack_cacheable_only,
+            opts.repack_uncompressed,
+            opts.repack_all,
+            &pack_sizer,
+        )?;
+        pruner.decide_repack(
+            &opts.max_repack,
+            &opts.max_unused,
+            opts.repack_uncompressed || opts.repack_all,
+            opts.no_resize,
+            &pack_sizer,
+        );
+        pruner.check_existing_packs()?;
+        pruner.filter_index_files(opts.instant_delete);
+
+        Ok(pruner)
+    }
+
     /// This function counts the number of times a blob is used in the index files.
     fn count_used_blobs(&mut self) {
         for blob in self
@@ -1120,212 +1150,245 @@ impl PrunePlan {
     /// TODO! In weird circumstances, should be fixed.
     #[allow(clippy::significant_drop_tightening)]
     #[allow(clippy::too_many_lines)]
+    #[deprecated(since = "0.5.2", note = "Use `Repository::prune()` instead.")]
     pub fn do_prune<P: ProgressBars, S: Open>(
         self,
         repo: &Repository<P, S>,
         opts: &PruneOptions,
     ) -> RusticResult<()> {
-        if repo.config().append_only == Some(true) {
-            return Err(CommandErrorKind::NotAllowedWithAppendOnly("prune".to_string()).into());
-        }
-        repo.warm_up_wait(self.repack_packs().into_iter())?;
-        let be = repo.dbe();
-        let pb = &repo.pb;
-
-        let indexer = Indexer::new_unindexed(be.clone()).into_shared();
-
-        // Calculate an approximation of sizes after pruning.
-        // The size actually is:
-        // total_size_of_all_blobs + total_size_of_pack_headers + #packs * pack_overhead
-        // This is hard/impossible to compute because:
-        // - the size of blobs can change during repacking if compression is changed
-        // - the size of pack headers depends on whether blobs are compressed or not
-        // - we don't know the number of packs generated by repacking
-        // So, we simply use the current size of the blobs and an estimation of the pack
-        // header size.
-
-        let size_after_prune = BlobTypeMap::init(|blob_type| {
-            self.stats.size[blob_type].total_after_prune()
-                + self.stats.blobs[blob_type].total_after_prune()
-                    * u64::from(HeaderEntry::ENTRY_LEN_COMPRESSED)
-        });
-
-        let tree_repacker = Repacker::new(
-            be.clone(),
-            BlobType::Tree,
-            indexer.clone(),
-            repo.config(),
-            size_after_prune[BlobType::Tree],
-        )?;
-
-        let data_repacker = Repacker::new(
-            be.clone(),
-            BlobType::Data,
-            indexer.clone(),
-            repo.config(),
-            size_after_prune[BlobType::Data],
-        )?;
-
-        // mark unreferenced packs for deletion
-        if !self.existing_packs.is_empty() {
-            if opts.instant_delete {
-                let p = pb.progress_counter("removing unindexed packs...");
-                let existing_packs: Vec<_> = self.existing_packs.into_keys().collect();
-                be.delete_list(true, existing_packs.iter(), p)?;
-            } else {
-                let p =
-                    pb.progress_counter("marking unneeded unindexed pack files for deletion...");
-                p.set_length(self.existing_packs.len().try_into().unwrap());
-                for (id, size) in self.existing_packs {
-                    let pack = IndexPack {
-                        id,
-                        size: Some(size),
-                        time: Some(Local::now()),
-                        blobs: Vec::new(),
-                    };
-                    indexer.write().unwrap().add_remove(pack)?;
-                    p.inc(1);
-                }
-                p.finish();
-            }
-        }
-
-        // process packs by index_file
-        let p = match (self.index_files.is_empty(), self.stats.packs.repack > 0) {
-            (true, _) => {
-                info!("nothing to do!");
-                pb.progress_hidden()
-            }
-            // TODO: Use a MultiProgressBar here
-            (false, true) => pb.progress_bytes("repacking // rebuilding index..."),
-            (false, false) => pb.progress_spinner("rebuilding index..."),
-        };
-
-        p.set_length(self.stats.size_sum().repack - self.stats.size_sum().repackrm);
-
-        let mut indexes_remove = Vec::new();
-        let tree_packs_remove = Arc::new(Mutex::new(Vec::new()));
-        let data_packs_remove = Arc::new(Mutex::new(Vec::new()));
-
-        let delete_pack = |pack: PrunePack| {
-            // delete pack
-            match pack.blob_type {
-                BlobType::Data => data_packs_remove.lock().unwrap().push(pack.id),
-                BlobType::Tree => tree_packs_remove.lock().unwrap().push(pack.id),
-            }
-        };
-
-        let used_ids = Arc::new(Mutex::new(self.used_ids));
-
-        let packs: Vec<_> = self
-            .index_files
-            .into_iter()
-            .inspect(|index| {
-                indexes_remove.push(index.id);
-            })
-            .flat_map(|index| index.packs)
-            .collect();
-
-        // remove old index files early if requested
-        if !indexes_remove.is_empty() && opts.early_delete_index {
-            let p = pb.progress_counter("removing old index files...");
-            be.delete_list(true, indexes_remove.iter(), p)?;
-        }
-
-        // write new pack files and index files
-        packs
-            .into_par_iter()
-            .try_for_each(|pack| -> RusticResult<_> {
-                match pack.to_do {
-                    PackToDo::Undecided => return Err(CommandErrorKind::NoDecision(pack.id).into()),
-                    PackToDo::Keep => {
-                        // keep pack: add to new index
-                        let pack = pack.into_index_pack();
-                        indexer.write().unwrap().add(pack)?;
-                    }
-                    PackToDo::Repack => {
-                        // TODO: repack in parallel
-                        for blob in &pack.blobs {
-                            if used_ids.lock().unwrap().remove(&blob.id).is_none() {
-                                // don't save duplicate blobs
-                                continue;
-                            }
-
-                            let repacker = match blob.tpe {
-                                BlobType::Data => &data_repacker,
-                                BlobType::Tree => &tree_repacker,
-                            };
-                            if opts.fast_repack {
-                                repacker.add_fast(&pack.id, blob)?;
-                            } else {
-                                repacker.add(&pack.id, blob)?;
-                            }
-                            p.inc(u64::from(blob.length));
-                        }
-                        if opts.instant_delete {
-                            delete_pack(pack);
-                        } else {
-                            // mark pack for removal
-                            let pack = pack.into_index_pack_with_time(self.time);
-                            indexer.write().unwrap().add_remove(pack)?;
-                        }
-                    }
-                    PackToDo::MarkDelete => {
-                        if opts.instant_delete {
-                            delete_pack(pack);
-                        } else {
-                            // mark pack for removal
-                            let pack = pack.into_index_pack_with_time(self.time);
-                            indexer.write().unwrap().add_remove(pack)?;
-                        }
-                    }
-                    PackToDo::KeepMarked | PackToDo::KeepMarkedAndCorrect => {
-                        if opts.instant_delete {
-                            delete_pack(pack);
-                        } else {
-                            // keep pack: add to new index; keep the timestamp.
-                            // Note the timestap shouldn't be None here, however if it is not not set, use the current time to heal the entry!
-                            let time = pack.time.unwrap_or(self.time);
-                            let pack = pack.into_index_pack_with_time(time);
-                            indexer.write().unwrap().add_remove(pack)?;
-                        }
-                    }
-                    PackToDo::Recover => {
-                        // recover pack: add to new index in section packs
-                        let pack = pack.into_index_pack_with_time(self.time);
-                        indexer.write().unwrap().add(pack)?;
-                    }
-                    PackToDo::Delete => delete_pack(pack),
-                }
-                Ok(())
-            })?;
-        _ = tree_repacker.finalize()?;
-        _ = data_repacker.finalize()?;
-        indexer.write().unwrap().finalize()?;
-        p.finish();
-
-        // remove old index files first as they may reference pack files which are removed soon.
-        if !indexes_remove.is_empty() && !opts.early_delete_index {
-            let p = pb.progress_counter("removing old index files...");
-            be.delete_list(true, indexes_remove.iter(), p)?;
-        }
-
-        // get variable out of Arc<Mutex<_>>
-        let data_packs_remove = data_packs_remove.lock().unwrap();
-        if !data_packs_remove.is_empty() {
-            let p = pb.progress_counter("removing old data packs...");
-            be.delete_list(false, data_packs_remove.iter(), p)?;
-        }
-
-        // get variable out of Arc<Mutex<_>>
-        let tree_packs_remove = tree_packs_remove.lock().unwrap();
-        if !tree_packs_remove.is_empty() {
-            let p = pb.progress_counter("removing old tree packs...");
-            be.delete_list(true, tree_packs_remove.iter(), p)?;
-        }
-
-        Ok(())
+        repo.prune(opts, self)
     }
+}
+
+/// Perform the pruning on the given repository.
+///
+/// # Arguments
+///
+/// * `repo` - The repository to prune
+/// * `opts` - The options for the pruning
+/// * `prune_plan` - The plan for the pruning
+///
+/// # Errors
+///
+/// * [`CommandErrorKind::NotAllowedWithAppendOnly`] - If the repository is in append-only mode
+/// * [`CommandErrorKind::NoDecision`] - If a pack has no decision
+///
+/// # Returns
+///
+/// * `Ok(())` - If the pruning was successful
+///
+/// # Panics
+///
+/// TODO! In weird circumstances, should be fixed.
+#[allow(clippy::significant_drop_tightening)]
+#[allow(clippy::too_many_lines)]
+pub(crate) fn prune_repository<P: ProgressBars, S: Open>(
+    repo: &Repository<P, S>,
+    opts: &PruneOptions,
+    prune_plan: PrunePlan,
+) -> RusticResult<()> {
+    if repo.config().append_only == Some(true) {
+        return Err(CommandErrorKind::NotAllowedWithAppendOnly("prune".to_string()).into());
+    }
+    repo.warm_up_wait(prune_plan.repack_packs().into_iter())?;
+    let be = repo.dbe();
+    let pb = &repo.pb;
+
+    let indexer = Indexer::new_unindexed(be.clone()).into_shared();
+
+    // Calculate an approximation of sizes after pruning.
+    // The size actually is:
+    // total_size_of_all_blobs + total_size_of_pack_headers + #packs * pack_overhead
+    // This is hard/impossible to compute because:
+    // - the size of blobs can change during repacking if compression is changed
+    // - the size of pack headers depends on whether blobs are compressed or not
+    // - we don't know the number of packs generated by repacking
+    // So, we simply use the current size of the blobs and an estimation of the pack
+    // header size.
+
+    let size_after_prune = BlobTypeMap::init(|blob_type| {
+        prune_plan.stats.size[blob_type].total_after_prune()
+            + prune_plan.stats.blobs[blob_type].total_after_prune()
+                * u64::from(HeaderEntry::ENTRY_LEN_COMPRESSED)
+    });
+
+    let tree_repacker = Repacker::new(
+        be.clone(),
+        BlobType::Tree,
+        indexer.clone(),
+        repo.config(),
+        size_after_prune[BlobType::Tree],
+    )?;
+
+    let data_repacker = Repacker::new(
+        be.clone(),
+        BlobType::Data,
+        indexer.clone(),
+        repo.config(),
+        size_after_prune[BlobType::Data],
+    )?;
+
+    // mark unreferenced packs for deletion
+    if !prune_plan.existing_packs.is_empty() {
+        if opts.instant_delete {
+            let p = pb.progress_counter("removing unindexed packs...");
+            let existing_packs: Vec<_> = prune_plan.existing_packs.into_keys().collect();
+            be.delete_list(true, existing_packs.iter(), p)?;
+        } else {
+            let p = pb.progress_counter("marking unneeded unindexed pack files for deletion...");
+            p.set_length(prune_plan.existing_packs.len().try_into().unwrap());
+            for (id, size) in prune_plan.existing_packs {
+                let pack = IndexPack {
+                    id,
+                    size: Some(size),
+                    time: Some(Local::now()),
+                    blobs: Vec::new(),
+                };
+                indexer.write().unwrap().add_remove(pack)?;
+                p.inc(1);
+            }
+            p.finish();
+        }
+    }
+
+    // process packs by index_file
+    let p = match (
+        prune_plan.index_files.is_empty(),
+        prune_plan.stats.packs.repack > 0,
+    ) {
+        (true, _) => {
+            info!("nothing to do!");
+            pb.progress_hidden()
+        }
+        // TODO: Use a MultiProgressBar here
+        (false, true) => pb.progress_bytes("repacking // rebuilding index..."),
+        (false, false) => pb.progress_spinner("rebuilding index..."),
+    };
+
+    p.set_length(prune_plan.stats.size_sum().repack - prune_plan.stats.size_sum().repackrm);
+
+    let mut indexes_remove = Vec::new();
+    let tree_packs_remove = Arc::new(Mutex::new(Vec::new()));
+    let data_packs_remove = Arc::new(Mutex::new(Vec::new()));
+
+    let delete_pack = |pack: PrunePack| {
+        // delete pack
+        match pack.blob_type {
+            BlobType::Data => data_packs_remove.lock().unwrap().push(pack.id),
+            BlobType::Tree => tree_packs_remove.lock().unwrap().push(pack.id),
+        }
+    };
+
+    let used_ids = Arc::new(Mutex::new(prune_plan.used_ids));
+
+    let packs: Vec<_> = prune_plan
+        .index_files
+        .into_iter()
+        .inspect(|index| {
+            indexes_remove.push(index.id);
+        })
+        .flat_map(|index| index.packs)
+        .collect();
+
+    // remove old index files early if requested
+    if !indexes_remove.is_empty() && opts.early_delete_index {
+        let p = pb.progress_counter("removing old index files...");
+        be.delete_list(true, indexes_remove.iter(), p)?;
+    }
+
+    // write new pack files and index files
+    packs
+        .into_par_iter()
+        .try_for_each(|pack| -> RusticResult<_> {
+            match pack.to_do {
+                PackToDo::Undecided => return Err(CommandErrorKind::NoDecision(pack.id).into()),
+                PackToDo::Keep => {
+                    // keep pack: add to new index
+                    let pack = pack.into_index_pack();
+                    indexer.write().unwrap().add(pack)?;
+                }
+                PackToDo::Repack => {
+                    // TODO: repack in parallel
+                    for blob in &pack.blobs {
+                        if used_ids.lock().unwrap().remove(&blob.id).is_none() {
+                            // don't save duplicate blobs
+                            continue;
+                        }
+
+                        let repacker = match blob.tpe {
+                            BlobType::Data => &data_repacker,
+                            BlobType::Tree => &tree_repacker,
+                        };
+                        if opts.fast_repack {
+                            repacker.add_fast(&pack.id, blob)?;
+                        } else {
+                            repacker.add(&pack.id, blob)?;
+                        }
+                        p.inc(u64::from(blob.length));
+                    }
+                    if opts.instant_delete {
+                        delete_pack(pack);
+                    } else {
+                        // mark pack for removal
+                        let pack = pack.into_index_pack_with_time(prune_plan.time);
+                        indexer.write().unwrap().add_remove(pack)?;
+                    }
+                }
+                PackToDo::MarkDelete => {
+                    if opts.instant_delete {
+                        delete_pack(pack);
+                    } else {
+                        // mark pack for removal
+                        let pack = pack.into_index_pack_with_time(prune_plan.time);
+                        indexer.write().unwrap().add_remove(pack)?;
+                    }
+                }
+                PackToDo::KeepMarked | PackToDo::KeepMarkedAndCorrect => {
+                    if opts.instant_delete {
+                        delete_pack(pack);
+                    } else {
+                        // keep pack: add to new index; keep the timestamp.
+                        // Note the timestamp shouldn't be None here, however if it is not not set, use the current time to heal the entry!
+                        let time = pack.time.unwrap_or(prune_plan.time);
+                        let pack = pack.into_index_pack_with_time(time);
+                        indexer.write().unwrap().add_remove(pack)?;
+                    }
+                }
+                PackToDo::Recover => {
+                    // recover pack: add to new index in section packs
+                    let pack = pack.into_index_pack_with_time(prune_plan.time);
+                    indexer.write().unwrap().add(pack)?;
+                }
+                PackToDo::Delete => delete_pack(pack),
+            }
+            Ok(())
+        })?;
+    _ = tree_repacker.finalize()?;
+    _ = data_repacker.finalize()?;
+    indexer.write().unwrap().finalize()?;
+    p.finish();
+
+    // remove old index files first as they may reference pack files which are removed soon.
+    if !indexes_remove.is_empty() && !opts.early_delete_index {
+        let p = pb.progress_counter("removing old index files...");
+        be.delete_list(true, indexes_remove.iter(), p)?;
+    }
+
+    // get variable out of Arc<Mutex<_>>
+    let data_packs_remove = data_packs_remove.lock().unwrap();
+    if !data_packs_remove.is_empty() {
+        let p = pb.progress_counter("removing old data packs...");
+        be.delete_list(false, data_packs_remove.iter(), p)?;
+    }
+
+    // get variable out of Arc<Mutex<_>>
+    let tree_packs_remove = tree_packs_remove.lock().unwrap();
+    if !tree_packs_remove.is_empty() {
+        let p = pb.progress_counter("removing old tree packs...");
+        be.delete_list(true, tree_packs_remove.iter(), p)?;
+    }
+
+    Ok(())
 }
 
 /// `PackInfo` contains information about a pack which is needed to decide what to do with the pack.
