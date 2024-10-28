@@ -198,6 +198,10 @@ pub(crate) fn index_checked_from_collector<P: ProgressBars, S: Open>(
             "Failed to convert pack_read_header length to u64.",
             err,
         )
+        .attach_context(
+            "pack read header length",
+            pack_read_header.len().to_string(),
+        )
     })?);
 
     let index_packs: Vec<_> = pack_read_header
