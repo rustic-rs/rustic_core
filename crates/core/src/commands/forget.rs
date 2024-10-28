@@ -524,8 +524,8 @@ impl KeepOptions {
     ) -> RusticResult<Vec<ForgetSnapshot>> {
         if !self.is_valid() {
             return Err(RusticError::new(
-                ErrorKind::Io,
-                "No valid keep options specified, please make sure to specify at least one keep-* option.",
+                ErrorKind::InvalidInput,
+                "Invalid keep options specified, please make sure to specify at least one keep-* option.",
             ));
         }
 

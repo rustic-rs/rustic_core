@@ -64,6 +64,80 @@ pub(crate) mod constants {
 /// Result type that is being returned from methods that can fail and thus have [`RusticError`]s.
 pub type RusticResult<T, E = Box<RusticError>> = Result<T, E>;
 
+/// Severity of an error, ranging from informational to fatal.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Severity {
+    /// Informational
+    Info,
+
+    /// Warning
+    Warning,
+
+    /// Error
+    Error,
+
+    /// Fatal
+    Fatal,
+}
+
+/// Status of an error, indicating whether it is permanent, temporary, or persistent.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Status {
+    /// Permanent, may not be retried
+    Permanent,
+
+    /// Temporary, may be retried
+    Temporary,
+
+    /// Persistent, may be retried, but may not succeed
+    Persistent,
+}
+
+/// [`ErrorKind`] describes the errors that can happen while executing a high-level command.
+///
+/// This is a non-exhaustive enum, so additional variants may be added in future. It is
+/// recommended to match against the wildcard `_` instead of listing all possible variants,
+/// to avoid problems when new variants are added.
+#[non_exhaustive]
+#[derive(thiserror::Error, Debug, displaydoc::Display)]
+pub enum ErrorKind {
+    /// Append-only Error
+    AppendOnly,
+    /// Backend Error
+    Backend,
+    /// Command Error
+    Command,
+    /// Config Error
+    Config,
+    /// Cryptography Error
+    Cryptography,
+    /// External Command Error
+    ExternalCommand,
+    /// Internal Error
+    // Blob, Pack, Index, Tree Errors
+    // Compression, Parsing, Multithreading etc.
+    // These are deep errors that are not expected to be handled by the user.
+    Internal,
+    /// Invalid Input Error
+    InvalidInput,
+    /// Input/Output Error
+    Io,
+    /// Key Error
+    Key,
+    /// Missing Input Error
+    MissingInput,
+    /// Password Error
+    Password,
+    /// Repository Error
+    Repository,
+    /// Unsupported Feature Error
+    Unsupported,
+    /// Verification Error
+    Verification,
+    /// Virtual File System Error
+    Vfs,
+}
+
 #[derive(thiserror::Error, Debug)]
 #[non_exhaustive]
 /// Errors that can result from rustic.
@@ -374,76 +448,4 @@ impl RusticError {
             ..self
         })
     }
-}
-
-/// Severity of an error, ranging from informational to fatal.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Severity {
-    /// Informational
-    Info,
-
-    /// Warning
-    Warning,
-
-    /// Error
-    Error,
-
-    /// Fatal
-    Fatal,
-}
-
-/// Status of an error, indicating whether it is permanent, temporary, or persistent.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Status {
-    /// Permanent, may not be retried
-    Permanent,
-
-    /// Temporary, may be retried
-    Temporary,
-
-    /// Persistent, may be retried, but may not succeed
-    Persistent,
-}
-
-/// [`ErrorKind`] describes the errors that can happen while executing a high-level command.
-///
-/// This is a non-exhaustive enum, so additional variants may be added in future. It is
-/// recommended to match against the wildcard `_` instead of listing all possible variants,
-/// to avoid problems when new variants are added.
-#[non_exhaustive]
-#[derive(thiserror::Error, Debug, displaydoc::Display)]
-pub enum ErrorKind {
-    /// Append-only mode is enabled
-    AppendOnly,
-    /// Backend Error
-    Backend,
-    /// Command Error
-    Command,
-    /// Config Error
-    Config,
-    /// Crypto Error
-    Cryptography,
-    /// External Command Error
-    ExternalCommand,
-    /// Blob, Pack, Index or Tree Error
-    // These are deep errors that are not expected to be handled by the user.
-    Internal,
-    /// Invalid Input Error
-    InvalidInput,
-    /// Input/Output Error
-    Io,
-    /// Key Error
-    Key,
-    /// Missing Input Error
-    MissingInput,
-    /// Password Error
-    Password,
-    /// Repository Error
-    Repository,
-    /// Something is not supported
-    Unsupported,
-    /// Verification Error
-    Verification,
-    /// Virtual File System Error
-    Vfs,
 }
