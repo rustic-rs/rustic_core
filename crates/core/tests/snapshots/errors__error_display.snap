@@ -1,8 +1,8 @@
 ---
 source: crates/core/tests/errors.rs
-expression: TEST_ERROR.to_string()
+expression: error
 ---
-IO Error occurred in `rustic_core`
+Input/Output Error occurred in `rustic_core`
 
 Message:
 A file could not be read, make sure the file is existing and readable by the system.
