@@ -119,7 +119,7 @@ pub(crate) fn merge_trees<P: ProgressBars, S: IndexedTree>(
                 "Failed to convert chunk length to u64.",
                 err,
             )
-            .attach_context("chunk", chunk.len().to_string())
+            .attach_context("chunk length", chunk.len().to_string())
         })?;
 
         if !index.has_tree(&new_id) {
