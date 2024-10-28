@@ -68,8 +68,8 @@ fn check_clone_version(rclone_version_output: &[u8]) -> RusticResult<()> {
     let rclone_version = std::str::from_utf8(rclone_version_output)
         .map_err(|err| {
             RusticError::with_source(
-                ErrorKind::Parsing,
-                "Expected rclone version to be valid utf8, but it was not.",
+                ErrorKind::Internal,
+                "Expected rclone version to be valid utf8, but it was not. Please check the `rclone version` output manually.",
                 err
             )
         })?
@@ -77,14 +77,16 @@ fn check_clone_version(rclone_version_output: &[u8]) -> RusticResult<()> {
         .next()
         .ok_or_else(|| {
             RusticError::new(
-                ErrorKind::Parsing,
-                "Expected rclone version to have at least one line, but it did not. Please check the rclone version output manually.",
+                ErrorKind::Internal,
+                "Expected rclone version to have at least one line, but it did not. Please check the `rclone version` output manually.",
             )
         })?
         .trim_start_matches(|c: char| !c.is_numeric());
 
     let mut parsed_version = Version::parse(rclone_version).map_err(|err| {
-        RusticError::with_source(ErrorKind::Parsing, "Error parsing rclone version.", err)
+        RusticError::with_source(ErrorKind::Internal,
+            "Error parsing rclone version. This should not happen. Please check the `rclone version` output manually.",
+            err)
             .attach_context("version", rclone_version)
     })?;
 
@@ -102,7 +104,7 @@ fn check_clone_version(rclone_version_output: &[u8]) -> RusticResult<()> {
     if VersionReq::parse("<1.52.2")
         .map_err(|err| {
             RusticError::with_source(
-                ErrorKind::Parsing,
+                ErrorKind::Internal,
                 "Error parsing version requirement. This should not happen.",
                 err,
             )
@@ -148,7 +150,7 @@ impl RcloneBackend {
             .get("use-password")
             .map(|v| v.parse().map_err(|err|
                 RusticError::with_source(
-                    ErrorKind::Parsing,
+                    ErrorKind::InvalidInput,
                     "Expected 'use-password' to be a boolean, but it was not. Please check the configuration file.",
                     err
                 )
@@ -162,7 +164,7 @@ impl RcloneBackend {
                 .output()
                 .map_err(|err| RusticError::with_source(
                     ErrorKind::ExternalCommand,
-                    "Experienced an error while running `rclone version` command. Please check if rclone is installed and in your PATH.",
+                    "Experienced an error while running `rclone version` command. Please check if rclone is installed correctly and is in your PATH.",
                     err
                 ))?
                 .stdout;
@@ -181,7 +183,7 @@ impl RcloneBackend {
         rclone_command.push_str(url.as_ref());
         let rclone_command: CommandInput = rclone_command.parse().map_err(
             |err| RusticError::with_source(
-                ErrorKind::Parsing,
+                ErrorKind::InvalidInput,
                 "Expected rclone command to be valid, but it was not. Please check the configuration file.",
                 err
             )

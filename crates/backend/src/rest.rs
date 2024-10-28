@@ -155,7 +155,7 @@ impl RestBackend {
         };
 
         let url = Url::parse(&url).map_err(|err| {
-            RusticError::with_source(ErrorKind::Parsing, "URL parsing failed", err)
+            RusticError::with_source(ErrorKind::InvalidInput, "URL parsing failed", err)
                 .attach_context("url", url)
         })?;
 
@@ -179,8 +179,8 @@ impl RestBackend {
                     "default" => constants::DEFAULT_RETRY,
                     _ => usize::from_str(&value).map_err(|err| {
                         RusticError::with_source(
-                            ErrorKind::Parsing,
-                            "Cannot parse value, value not supported for option retry.",
+                            ErrorKind::InvalidInput,
+                            "Cannot parse value, invalid value for option retry.",
                             err,
                         )
                         .attach_context("value", value)
@@ -191,7 +191,7 @@ impl RestBackend {
             } else if option == "timeout" {
                 let timeout = humantime::Duration::from_str(&value).map_err(|err| {
                     RusticError::with_source(
-                        ErrorKind::Parsing,
+                        ErrorKind::InvalidInput,
                         "Could not parse value as `humantime` duration.",
                         err,
                     )
@@ -293,7 +293,7 @@ impl ReadBackend for RestBackend {
         };
 
         let url = self.url.join(&path).map_err(|err| {
-            RusticError::with_source(ErrorKind::Parsing, "Joining URL failed", err)
+            RusticError::with_source(ErrorKind::Internal, "Joining URL failed", err)
                 .attach_context("url", self.url.as_str())
                 .attach_context("tpe", tpe.to_string())
                 .attach_context("tpe dir", tpe.dirname().to_string())
@@ -391,7 +391,7 @@ impl ReadBackend for RestBackend {
         let offset2 = offset + length - 1;
         let header_value = format!("bytes={offset}-{offset2}");
         let url = self.url(tpe, id).map_err(|err| {
-            RusticError::with_source(ErrorKind::Parsing, "Joining URL failed", err)
+            RusticError::with_source(ErrorKind::Internal, "Joining URL failed", err)
                 .attach_context("url", self.url.as_str())
                 .attach_context("tpe", tpe.to_string())
                 .attach_context("tpe dir", tpe.dirname().to_string())
@@ -429,7 +429,7 @@ fn construct_join_url_error(
     id: &Id,
     self_url: &Url,
 ) -> Box<RusticError> {
-    RusticError::with_source(ErrorKind::Parsing, "Joining URL failed", err)
+    RusticError::with_source(ErrorKind::Internal, "Joining URL failed", err)
         .attach_context("url", self_url.as_str())
         .attach_context("tpe", tpe.to_string())
         .attach_context("tpe dir", tpe.dirname().to_string())
@@ -444,7 +444,7 @@ impl WriteBackend for RestBackend {
     /// * If the backoff failed.
     fn create(&self) -> RusticResult<()> {
         let url = self.url.join("?create=true").map_err(|err| {
-            RusticError::with_source(ErrorKind::Parsing, "Joining URL failed", err)
+            RusticError::with_source(ErrorKind::Internal, "Joining URL failed", err)
                 .attach_context("url", self.url.as_str())
                 .attach_context("join input", "?create=true")
         })?;

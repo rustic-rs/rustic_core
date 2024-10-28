@@ -139,7 +139,7 @@ impl LocalBackend {
 
         let command: CommandInput = actual_command.parse().map_err(|err| {
             RusticError::with_source(
-                ErrorKind::Parsing,
+                ErrorKind::Internal,
                 "Failed to parse command input. This is a bug. Please report it.",
                 err,
             )

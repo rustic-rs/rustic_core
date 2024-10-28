@@ -202,7 +202,7 @@ impl FromStr for LimitOption {
                 _ = copy.pop();
                 copy.parse().map_err(|err| {
                     RusticError::with_source(
-                        ErrorKind::Parsing,
+                        ErrorKind::InvalidInput,
                         "Failed to parse percentage limit.",
                         err,
                     )
@@ -212,8 +212,12 @@ impl FromStr for LimitOption {
             'd' if s == "unlimited" => Self::Unlimited,
             _ => {
                 let byte_size = ByteSize::from_str(s).map_err(|err| {
-                    RusticError::with_source(ErrorKind::Parsing, "Failed to parse size limit.", err)
-                        .attach_context("limit", s)
+                    RusticError::with_source(
+                        ErrorKind::InvalidInput,
+                        "Failed to parse size limit.",
+                        err,
+                    )
+                    .attach_context("limit", s)
                 })?;
 
                 Self::Size(byte_size)

@@ -135,7 +135,7 @@ impl SnapshotOptions {
     pub fn add_tags(mut self, tag: &str) -> RusticResult<Self> {
         self.tags.push(StringList::from_str(tag).map_err(|err| {
             RusticError::with_source(
-                ErrorKind::Parsing,
+                ErrorKind::InvalidInput,
                 "Failed to create string list from tag. The value must be a valid unicode string.",
                 err,
             )

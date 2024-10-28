@@ -148,7 +148,7 @@ impl FromStr for ReadSubsetOption {
             // try to read percentage
             let percentage = p.parse().map_err(|err| {
                 RusticError::with_source(
-                    ErrorKind::Parsing,
+                    ErrorKind::InvalidInput,
                     "Error parsing percentage for ReadSubset option. Did you forget the '%'?",
                     err,
                 )
@@ -161,7 +161,7 @@ impl FromStr for ReadSubsetOption {
             let subset = parse_n_m(now, n, m).map_err(
                 |err|
                     RusticError::with_source(
-                        ErrorKind::Parsing,
+                        ErrorKind::InvalidInput,
                         "Error parsing n/m for ReadSubset option. Allowed values: 'all', 'x%', 'n/m' or a size.",
                         err
                     )
@@ -175,7 +175,7 @@ impl FromStr for ReadSubsetOption {
             let byte_size = ByteSize::from_str(s)
                     .map_err(|err| {
                         RusticError::with_source(
-                            ErrorKind::Parsing,
+                            ErrorKind::InvalidInput,
                             "Error parsing size for ReadSubset option. Allowed values: 'all', 'x%', 'n/m' or a size.",
                             err
                         )

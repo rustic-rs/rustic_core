@@ -87,7 +87,7 @@ impl FromStr for Id {
         let mut id = Self::default();
         hex::decode_to_slice(s, &mut id.0).map_err(|err| {
             RusticError::with_source(
-                ErrorKind::Parsing,
+                ErrorKind::InvalidInput,
                 "Failed to decode hex string into Id. The value must be a valid hexadecimal string.",
                 err
             )

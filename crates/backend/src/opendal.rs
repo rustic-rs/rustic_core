@@ -54,7 +54,7 @@ impl FromStr for Throttle {
             .map(|s| {
                 ByteSize::from_str(s.trim()).map_err(|err| {
                     RusticError::with_source(
-                        ErrorKind::Parsing,
+                        ErrorKind::InvalidInput,
                         "Parsing ByteSize from throttle string failed",
                         err,
                     )
@@ -64,7 +64,7 @@ impl FromStr for Throttle {
             .map(|b| -> RusticResult<u32> {
                 b?.as_u64().try_into().map_err(|err| {
                     RusticError::with_source(
-                        ErrorKind::Parsing,
+                        ErrorKind::Internal,
                         "Converting ByteSize to u32 failed",
                         err,
                     )
@@ -73,12 +73,12 @@ impl FromStr for Throttle {
         let bandwidth = values
             .next()
             .transpose()?
-            .ok_or_else(|| RusticError::new(ErrorKind::Parsing, "No bandwidth given."))?;
+            .ok_or_else(|| RusticError::new(ErrorKind::MissingInput, "No bandwidth given."))?;
 
         let burst = values
             .next()
             .transpose()?
-            .ok_or_else(|| RusticError::new(ErrorKind::Parsing, "No burst given."))?;
+            .ok_or_else(|| RusticError::new(ErrorKind::MissingInput, "No burst given."))?;
 
         Ok(Self { bandwidth, burst })
     }
@@ -104,8 +104,12 @@ impl OpenDALBackend {
             Some("false" | "off") => 0,
             None | Some("default") => constants::DEFAULT_RETRY,
             Some(value) => usize::from_str(value).map_err(|err| {
-                RusticError::with_source(ErrorKind::Parsing, "Parsing retry value failed", err)
-                    .attach_context("value", value.to_string())
+                RusticError::with_source(
+                    ErrorKind::InvalidInput,
+                    "Parsing retry value failed, the value must be a valid integer.",
+                    err,
+                )
+                .attach_context("value", value.to_string())
             })?,
         };
         let connections = options
@@ -113,8 +117,8 @@ impl OpenDALBackend {
             .map(|c| {
                 usize::from_str(c).map_err(|err| {
                     RusticError::with_source(
-                        ErrorKind::Parsing,
-                        "Parsing connections value failed",
+                        ErrorKind::InvalidInput,
+                        "Parsing connections value failed, the value must be a valid integer.",
                         err,
                     )
                     .attach_context("value", c.to_string())
@@ -128,8 +132,12 @@ impl OpenDALBackend {
             .transpose()?;
 
         let schema = Scheme::from_str(path.as_ref()).map_err(|err| {
-            RusticError::with_source(ErrorKind::Parsing, "Parsing scheme from path failed", err)
-                .attach_context("path", path.as_ref().to_string())
+            RusticError::with_source(
+                ErrorKind::InvalidInput,
+                "Parsing scheme from path failed, the path must contain a valid scheme.",
+                err,
+            )
+            .attach_context("path", path.as_ref().to_string())
         })?;
         let mut operator = Operator::via_iter(schema, options)
             .map_err(|err| {
@@ -264,7 +272,7 @@ impl ReadBackend for OpenDALBackend {
                     Id::default(),
                     entry.content_length().try_into().map_err(|err| {
                         RusticError::with_source(
-                            ErrorKind::Parsing,
+                            ErrorKind::Internal,
                             "Parsing content length failed",
                             err,
                         )
@@ -309,7 +317,7 @@ impl ReadBackend for OpenDALBackend {
                         .try_into()
                         .map_err(|err|
                             RusticError::with_source(
-                                ErrorKind::Parsing,
+                                ErrorKind::Internal,
                                 "Parsing content length failed",
                                 err,
                             )

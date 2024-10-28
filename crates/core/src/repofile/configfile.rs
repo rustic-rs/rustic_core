@@ -139,7 +139,7 @@ impl ConfigFile {
     pub fn poly(&self) -> RusticResult<u64> {
         let chunker_poly = u64::from_str_radix(&self.chunker_polynomial, 16)
             .map_err(|err| RusticError::with_source(
-                ErrorKind::Parsing,
+                ErrorKind::InvalidInput,
                 "Parsing u64 from hex failed for polynomial, the value must be a valid hexadecimal string.",
                 err)
             .attach_context("polynomial",self.chunker_polynomial.to_string()))

@@ -227,7 +227,7 @@ pub(crate) fn backup<P: ProgressBars, S: IndexedIds>(
             Ok(p.parse_dot()
                 .map_err(|err| {
                     RusticError::with_source(
-                        ErrorKind::Parsing,
+                        ErrorKind::InvalidInput,
                         "Failed to parse dotted path.",
                         err,
                     )

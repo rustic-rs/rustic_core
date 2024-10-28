@@ -430,12 +430,12 @@ pub enum ErrorKind {
     Internal,
     /// Invalid Input Error
     InvalidInput,
-    /// IO Error
+    /// Input/Output Error
     Io,
     /// Key Error
     Key,
-    /// Parsing Error
-    Parsing,
+    /// Missing Input Error
+    MissingInput,
     /// Password Error
     Password,
     /// Repository Error
