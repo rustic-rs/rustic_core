@@ -35,24 +35,12 @@ use clap::ValueHint;
 #[derive(thiserror::Error, Debug, displaydoc::Display)]
 #[non_exhaustive]
 pub enum SnapshotFileErrorKind {
-    /// non-unicode hostname `{0:?}`
-    NonUnicodeHostname(OsString),
     /// non-unicode path `{0:?}`
     NonUnicodePath(PathBuf),
-    /// no snapshots found
-    NoSnapshotsFound,
     /// value `{0:?}` not allowed
     ValueNotAllowed(String),
     /// datetime out of range: `{0:?}`
     OutOfRange(OutOfRangeError),
-    /// getting the `SnapshotFile` from the backend failed
-    GettingSnapshotFileFailed,
-    /// getting the `SnapshotFile` by ID failed
-    GettingSnapshotFileByIdFailed,
-    /// unpacking `SnapshotFile` result failed
-    UnpackingSnapshotFileResultFailed,
-    /// collecting IDs failed: `{0:?}`
-    FindingIdsFailed(Vec<String>),
     /// removing dots from paths failed: `{0:?}`
     RemovingDotsFromPathFailed(std::io::Error),
     /// canonicalizing path failed: `{0:?}`
