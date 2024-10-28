@@ -52,6 +52,7 @@ use ::std::convert::Into;
 use smol_str::SmolStr;
 use std::{
     backtrace::Backtrace,
+    borrow::Cow,
     fmt::{self, Display},
 };
 
@@ -77,7 +78,7 @@ pub struct RusticError {
     guidance: SmolStr,
 
     /// The context of the error.
-    context: Box<[(&'static str, SmolStr)]>,
+    context: Cow<'static, [(&'static str, SmolStr)]>,
 
     /// The URL of the documentation for the error.
     docs_url: Option<SmolStr>,
@@ -168,7 +169,7 @@ impl RusticError {
         Box::new(Self {
             kind,
             guidance: guidance.into().into(),
-            context: Box::default(),
+            context: Cow::default(),
             source: None,
             error_code: None,
             docs_url: None,
@@ -191,7 +192,7 @@ impl RusticError {
         Box::new(Self {
             kind,
             guidance: guidance.into().into(),
-            context: Box::default(),
+            context: Cow::default(),
             source: Some(source.into()),
             error_code: None,
             docs_url: None,
@@ -225,7 +226,7 @@ impl RusticError {
         Box::new(Self {
             kind,
             guidance: error.to_string().into(),
-            context: Box::default(),
+            context: Cow::default(),
             source: Some(Box::new(error)),
             error_code: None,
             docs_url: None,
@@ -297,9 +298,9 @@ impl RusticError {
     // IMPORTANT: This is manually implemented to allow for multiple contexts to be added.
     /// Attach context to the error.
     pub fn attach_context(mut self, key: &'static str, value: impl Into<SmolStr>) -> Box<Self> {
-        let mut context = self.context.to_vec();
+        let mut context = self.context.into_owned();
         context.push((key, value.into()));
-        self.context = context.into_boxed_slice();
+        self.context = Cow::from(context);
         Box::new(self)
     }
 
@@ -309,9 +310,9 @@ impl RusticError {
     ///
     /// This should not be used in most cases, as it will overwrite any existing contexts.
     /// Rather use `attach_context` for multiple contexts.
-    pub fn overwrite_context(self, value: impl Into<Box<[(&'static str, SmolStr)]>>) -> Box<Self> {
+    pub fn overwrite_context(self, value: impl Into<Vec<(&'static str, SmolStr)>>) -> Box<Self> {
         Box::new(Self {
-            context: value.into(),
+            context: Cow::from(value.into()),
             ..self
         })
     }
