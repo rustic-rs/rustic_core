@@ -1,5 +1,3 @@
-use std::num::ParseIntError;
-
 use serde_derive::{Deserialize, Serialize};
 use serde_with::skip_serializing_none;
 
@@ -11,26 +9,6 @@ use crate::{
     impl_repofile,
     repofile::RepoFile,
 };
-
-/// [`ConfigFileErrorKind`] describes the errors that can be returned for `ConfigFile`s
-#[derive(thiserror::Error, Debug, displaydoc::Display)]
-#[non_exhaustive]
-pub enum ConfigFileErrorKind {
-    /// config version not supported: {version}, compression: {compression:?}
-    ConfigVersionNotSupported {
-        /// The version of the config
-        version: u32,
-        /// The compression level
-        compression: Option<i32>,
-    },
-    /// Parsing failed for polynomial: {polynomial} : {source}
-    ParsingFailedForPolynomial {
-        polynomial: String,
-        source: ParseIntError,
-    },
-}
-
-pub(crate) type ConfigFileResult<T> = Result<T, ConfigFileErrorKind>;
 
 pub(super) mod constants {
 
