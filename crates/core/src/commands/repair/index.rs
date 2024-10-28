@@ -84,6 +84,10 @@ pub(crate) fn repair_index<P: ProgressBars, S: Open>(
             "Failed to convert pack_read_header length to u64.",
             err,
         )
+        .attach_context(
+            "pack read header length",
+            pack_read_header.len().to_string(),
+        )
     })?);
     for (id, size_hint, packsize) in pack_read_header {
         debug!("reading pack {id}...");
