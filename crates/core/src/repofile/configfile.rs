@@ -159,7 +159,7 @@ impl ConfigFile {
             (2, None) => Ok(Some(0)), // use default (=0) zstd compression
             (2, Some(c)) => Ok(Some(c)),
             _ => Err(RusticError::new(
-                ErrorKind::Config,
+                ErrorKind::Unsupported,
                 "Config version not supported. Please make sure, that you use the correct version.",
             )
             .attach_context("version", self.version.to_string())),

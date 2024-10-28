@@ -699,8 +699,8 @@ impl PrunePlan {
 
         if version < 2 && opts.repack_uncompressed {
             return Err(RusticError::new(
-                ErrorKind::Config,
-                "Repository is version 1, cannot repack uncompressed packs. ",
+                ErrorKind::Unsupported,
+                "Repacking uncompressed pack is unsupported in Repository version 1.",
             )
             .attach_context("config version", version.to_string()));
         }

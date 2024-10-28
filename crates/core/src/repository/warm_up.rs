@@ -134,8 +134,8 @@ fn warm_up_repo<P: ProgressBars, S>(
         .build()
         .map_err(|err| {
             RusticError::with_source(
-                ErrorKind::Multithreading,
-                "Failed to create thread pool for warm-up",
+                ErrorKind::Internal,
+                "Failed to create thread pool for warm-up. Please try again.",
                 err,
             )
         })?;

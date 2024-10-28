@@ -500,7 +500,7 @@ fn restore_contents<P: ProgressBars, S: Open>(
         .build()
         .map_err(|err| {
             RusticError::with_source(
-                ErrorKind::Multithreading,
+                ErrorKind::Internal,
                 "Failed to create the thread pool. Please try again.",
                 err,
             )

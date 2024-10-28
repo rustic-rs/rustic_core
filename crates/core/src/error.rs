@@ -434,8 +434,6 @@ pub enum ErrorKind {
     Io,
     /// Key Error
     Key,
-    /// Multithreading Error
-    Multithreading,
     /// Parsing Error
     Parsing,
     /// Password Error
