@@ -270,7 +270,13 @@ pub(crate) fn collect_and_prepare<P: ProgressBars, S: IndexedFull>(
         .ignore(false)
         .sort_by_file_path(Path::cmp)
         .build()
-        .filter_map(Result::ok); // TODO: print out the ignored error
+        .inspect(|r| {
+            if let Err(err) = r {
+                error!("Error during collection of files: {err:?}");
+            }
+        })
+        .filter_map(Result::ok);
+
     let mut next_dst = dst_iter.next();
 
     let mut next_node = node_streamer.next().transpose()?;

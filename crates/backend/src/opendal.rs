@@ -3,7 +3,7 @@ use std::{collections::HashMap, str::FromStr, sync::OnceLock};
 
 use bytes::Bytes;
 use bytesize::ByteSize;
-use log::{trace, warn};
+use log::{error, trace};
 use opendal::{
     layers::{BlockingLayer, ConcurrentLimitLayer, LoggingLayer, RetryLayer, ThrottleLayer},
     BlockingOperator, Metakey, Operator, Scheme,
@@ -327,7 +327,7 @@ impl ReadBackend for OpenDALBackend {
             })
             .inspect(|r| {
                 if let Err(err) = r {
-                    warn!("Error while listing files: {:?}", err);
+                    error!("Error while listing files: {err:?}");
                 }
             })
             .filter_map(RusticResult::ok)

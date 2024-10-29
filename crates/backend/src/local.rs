@@ -7,7 +7,7 @@ use std::{
 
 use aho_corasick::AhoCorasick;
 use bytes::Bytes;
-use log::{debug, trace, warn};
+use log::{debug, error, trace, warn};
 use walkdir::WalkDir;
 
 use rustic_core::{
@@ -203,6 +203,11 @@ impl ReadBackend for LocalBackend {
 
         let walker = WalkDir::new(self.path.join(tpe.dirname()))
             .into_iter()
+            .inspect(|r| {
+                if let Err(err) = r {
+                    error!("Error while listing files: {err:?}");
+                }
+            })
             .filter_map(walkdir::Result::ok)
             .filter(|e| e.file_type().is_file())
             .filter_map(|e| e.file_name().to_string_lossy().parse::<Id>().ok());
@@ -255,6 +260,11 @@ impl ReadBackend for LocalBackend {
 
         let walker = WalkDir::new(path)
             .into_iter()
+            .inspect(|r| {
+                if let Err(err) = r {
+                    error!("Error while listing files: {err:?}");
+                }
+            })
             .filter_map(walkdir::Result::ok)
             .filter(|e| e.file_type().is_file())
             .map(|e| -> RusticResult<_> {
@@ -284,7 +294,7 @@ impl ReadBackend for LocalBackend {
             })
             .inspect(|r| {
                 if let Err(err) = r {
-                    warn!("Error while listing files: {:?}", err);
+                    error!("Error while listing files: {err:?}");
                 }
             })
             .filter_map(RusticResult::ok);

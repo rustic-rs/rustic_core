@@ -8,7 +8,7 @@ use std::{
 
 use bytes::Bytes;
 use dirs::cache_dir;
-use log::{trace, warn};
+use log::{error, trace, warn};
 use walkdir::WalkDir;
 
 use crate::{
@@ -323,6 +323,11 @@ impl Cache {
 
         let walker = WalkDir::new(path)
             .into_iter()
+            .inspect(|r| {
+                if let Err(err) = r {
+                    error!("Error while listing files: {err:?}");
+                }
+            })
             .filter_map(walkdir::Result::ok)
             .filter(|e| {
                 // only use files with length of 64 which are valid hex
