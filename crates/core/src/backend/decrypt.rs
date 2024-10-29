@@ -161,6 +161,7 @@ pub trait DecryptReadBackend: ReadBackend + Clone + 'static {
     /// # Errors
     ///
     /// If the files could not be read.
+    #[tracing::instrument(skip(self, p))]
     fn stream_list<F: RepoFile>(&self, list: &[Id], p: &impl Progress) -> StreamResult<F::Id, F> {
         p.set_length(list.len() as u64);
         let (tx, rx) = unbounded();
@@ -279,6 +280,7 @@ pub trait DecryptWriteBackend: WriteBackend + Clone + 'static {
     /// # Errors
     ///
     /// * [`CryptBackendErrorKind::SerializingToJsonByteVectorFailed`] - If the file could not be serialized to json.
+    #[tracing::instrument(skip(self, list, p))]
     fn save_list<'a, F: RepoFile, I: ExactSizeIterator<Item = &'a F> + Send>(
         &self,
         list: I,
@@ -306,6 +308,7 @@ pub trait DecryptWriteBackend: WriteBackend + Clone + 'static {
     /// # Panics
     ///
     /// If the files could not be deleted.
+    #[tracing::instrument(skip(self, list, p))]
     fn delete_list<'a, ID: RepoId, I: ExactSizeIterator<Item = &'a ID> + Send>(
         &self,
         cacheable: bool,

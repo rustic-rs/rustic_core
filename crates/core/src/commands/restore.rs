@@ -430,6 +430,7 @@ pub(crate) fn set_metadata(
 /// [`CommandErrorKind::ErrorSettingLength`]: crate::error::CommandErrorKind::ErrorSettingLength
 /// [`CommandErrorKind::FromRayonError`]: crate::error::CommandErrorKind::FromRayonError
 #[allow(clippy::too_many_lines)]
+#[tracing::instrument(skip(repo))]
 fn restore_contents<P: ProgressBars, S: Open>(
     repo: &Repository<P, S>,
     dest: &LocalDestination,

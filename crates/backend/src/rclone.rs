@@ -127,6 +127,7 @@ impl RcloneBackend {
     ///
     /// If the rclone command is not found.
     // TODO: This should be an error, not a panic.
+    #[tracing::instrument(skip(url))]
     pub fn new(url: impl AsRef<str>, options: HashMap<String, String>) -> Result<Self> {
         let rclone_command = options.get("rclone-command");
         let use_password = options

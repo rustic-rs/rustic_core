@@ -245,6 +245,7 @@ impl ReadBackend for RestBackend {
     /// A vector of tuples containing the id and size of the files.
     ///
     /// [`RestErrorKind::JoiningUrlFailed`]: RestErrorKind::JoiningUrlFailed
+    #[tracing::instrument(skip(self))]
     fn list_with_size(&self, tpe: FileType) -> Result<Vec<(Id, u32)>> {
         // format which is delivered by the REST-service
         #[derive(Deserialize)]
@@ -313,6 +314,7 @@ impl ReadBackend for RestBackend {
     /// * [`RestErrorKind::BackoffError`] - If the backoff failed.
     ///
     /// [`RestErrorKind::BackoffError`]: RestErrorKind::BackoffError
+    #[tracing::instrument(skip(self))]
     fn read_full(&self, tpe: FileType, id: &Id) -> Result<Bytes> {
         trace!("reading tpe: {tpe:?}, id: {id}");
         let url = self.url(tpe, id)?;
@@ -346,6 +348,7 @@ impl ReadBackend for RestBackend {
     /// * [`RestErrorKind::BackoffError`] - If the backoff failed.
     ///
     /// [`RestErrorKind::BackoffError`]: RestErrorKind::BackoffError
+    #[tracing::instrument(skip(self, _cacheable))]
     fn read_partial(
         &self,
         tpe: FileType,
@@ -383,6 +386,7 @@ impl WriteBackend for RestBackend {
     /// * [`RestErrorKind::BackoffError`] - If the backoff failed.
     ///
     /// [`RestErrorKind::BackoffError`]: RestErrorKind::BackoffError
+    #[tracing::instrument(skip(self))]
     fn create(&self) -> Result<()> {
         let url = self
             .url
@@ -413,6 +417,7 @@ impl WriteBackend for RestBackend {
     /// * [`RestErrorKind::BackoffError`] - If the backoff failed.
     ///
     /// [`RestErrorKind::BackoffError`]: RestErrorKind::BackoffError
+    #[tracing::instrument(skip(self, _cacheable))]
     fn write_bytes(&self, tpe: FileType, id: &Id, _cacheable: bool, buf: Bytes) -> Result<()> {
         trace!("writing tpe: {:?}, id: {}", &tpe, &id);
         let req_builder = self.client.post(self.url(tpe, id)?).body(buf);
@@ -441,6 +446,7 @@ impl WriteBackend for RestBackend {
     /// * [`RestErrorKind::BackoffError`] - If the backoff failed.
     ///
     /// [`RestErrorKind::BackoffError`]: RestErrorKind::BackoffError
+    #[tracing::instrument(skip(self, _cacheable))]
     fn remove(&self, tpe: FileType, id: &Id, _cacheable: bool) -> Result<()> {
         trace!("removing tpe: {:?}, id: {}", &tpe, &id);
         let url = self.url(tpe, id)?;

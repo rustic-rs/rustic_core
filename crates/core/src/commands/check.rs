@@ -202,6 +202,7 @@ pub struct CheckOptions {
 /// # Panics
 ///
 // TODO: Add panics
+#[tracing::instrument(skip(repo))]
 pub(crate) fn check_repository<P: ProgressBars, S: Open>(
     repo: &Repository<P, S>,
     opts: CheckOptions,
@@ -350,6 +351,7 @@ fn check_hot_files(
 /// # Errors
 ///
 /// If a file is missing or has a different size
+#[tracing::instrument(skip(be, p, _concurrency))]
 fn check_cache_files(
     _concurrency: usize,
     cache: &Cache,

@@ -119,6 +119,7 @@ fn warm_up_command<P: ProgressBars>(
 /// * [`RepositoryErrorKind::FromThreadPoolbilderError`] - If the thread pool could not be created.
 ///
 /// [`RepositoryErrorKind::FromThreadPoolbilderError`]: crate::error::RepositoryErrorKind::FromThreadPoolbilderError
+#[tracing::instrument(skip(repo, packs))]
 fn warm_up_repo<P: ProgressBars, S>(
     repo: &Repository<P, S>,
     packs: impl ExactSizeIterator<Item = PackId>,

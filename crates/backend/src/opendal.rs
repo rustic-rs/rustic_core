@@ -235,6 +235,7 @@ impl ReadBackend for OpenDALBackend {
 
 impl WriteBackend for OpenDALBackend {
     /// Create a repository on the backend.
+    #[tracing::instrument(skip(self))]
     fn create(&self) -> Result<()> {
         trace!("creating repo at {:?}", self.location());
 
