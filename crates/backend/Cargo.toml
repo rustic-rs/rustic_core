@@ -31,7 +31,7 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [features]
-default = ["opendal", "rest", "rclone", "log"]
+default = ["opendal", "rest", "rclone"]
 cli = ["merge", "clap"]
 merge = ["dep:conflate"]
 clap = ["dep:clap"]
@@ -44,9 +44,6 @@ opendal = [
 ]
 rest = ["dep:reqwest", "dep:backoff"]
 rclone = ["rest", "dep:rand", "dep:semver"]
-# When the “log” feature is enabled, if no tracing Subscriber is active, invoking an event
-# macro or creating a span with fields will emit a log record.
-log = ["tracing/log"]
 
 [dependencies]
 # core

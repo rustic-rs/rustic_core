@@ -23,7 +23,7 @@ rustic_core = { path = "crates/core", version = "0" }
 rustic_testing = { path = "crates/testing", version = "0" }
 simplelog = "0.12.2"
 thiserror = "1.0.64"
-tracing = "0.1.40"
+tracing = { version = "0.1.40", features = ["log"] }
 
 # dev-dependencies
 rstest = "0.23.0"

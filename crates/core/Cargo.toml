@@ -29,14 +29,11 @@ harness = true
 edition = "2021"
 
 [features]
-default = ["log"]
+default = []
 cli = ["merge", "clap"]
 merge = ["dep:conflate"]
 clap = ["dep:clap"]
 webdav = ["dep:dav-server", "dep:futures"]
-# When the “log” feature is enabled, if no tracing Subscriber is active, invoking an event
-# macro or creating a span with fields will emit a log record.
-log = ["tracing/log"]
 
 [package.metadata.docs.rs]
 all-features = true
