@@ -754,7 +754,7 @@ impl LocalDestination {
     ///
     /// If a file exists and size matches, this returns a `File` open for reading.
     /// In all other cases, returns `None`
-    pub(crate) fn get_matching_file(&self, item: impl AsRef<Path>, size: u64) -> Option<File> {
+    pub fn get_matching_file(&self, item: impl AsRef<Path>, size: u64) -> Option<File> {
         let filename = self.path(item);
         fs::symlink_metadata(&filename).map_or_else(
             |_| None,
