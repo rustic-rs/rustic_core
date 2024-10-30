@@ -221,6 +221,7 @@ impl Vfs {
     ///
     /// * If the path is not a normal path
     /// * If the path is a directory in the repository
+    #[allow(clippy::too_many_lines)]
     pub fn from_snapshots(
         mut snapshots: Vec<SnapshotFile>,
         path_template: &str,
