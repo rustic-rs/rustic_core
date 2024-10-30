@@ -277,25 +277,10 @@ impl RusticError {
     /// Creates a new error with the given kind and guidance.
     pub fn with_source(
         kind: ErrorKind,
-        guidance: impl Into<String>,
+        guidance: impl Into<SmolStr>,
         source: impl Into<Box<(dyn std::error::Error + Send + Sync)>>,
     ) -> Box<Self> {
-        Box::new(Self {
-            kind,
-            guidance: guidance.into().into(),
-            context: Cow::default(),
-            source: Some(source.into()),
-            error_code: None,
-            docs_url: None,
-            new_issue_url: None,
-            existing_issue_url: None,
-            severity: None,
-            status: None,
-            ask_report: false,
-            // `Backtrace::capture()` will check if backtrace has been enabled
-            // internally. It's zero cost if backtrace is disabled.
-            backtrace: Some(Backtrace::capture()),
-        })
+        Self::new(kind, guidance).attach_source(source)
     }
 
     /// Checks if the error has a specific error code.
@@ -312,25 +297,10 @@ impl RusticError {
 
     /// Creates a new error from a given error.
     pub fn from<T: std::error::Error + Display + Send + Sync + 'static>(
-        error: T,
         kind: ErrorKind,
+        error: T,
     ) -> Box<Self> {
-        Box::new(Self {
-            kind,
-            guidance: error.to_string().into(),
-            context: Cow::default(),
-            source: Some(Box::new(error)),
-            error_code: None,
-            docs_url: None,
-            new_issue_url: None,
-            existing_issue_url: None,
-            severity: None,
-            status: None,
-            ask_report: false,
-            // `Backtrace::capture()` will check if backtrace has been enabled
-            // internally. It's zero cost if backtrace is disabled.
-            backtrace: Some(Backtrace::capture()),
-        })
+        Self::with_source(kind, error.to_string(), error)
     }
 }
 
