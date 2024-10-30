@@ -11,13 +11,18 @@
 //! `pub(crate) fn` visibility should use a local error and thus a Result and error type limited in visibility, e.g.
 //! `pub(crate) type ArchiverResult<T> = Result<T, ArchiverErrorKind>`.
 //!
-//! ### Downgrading
+//! ### Downgrading and Forwarding
 //!
 //! `RusticError`s should **not** be downgraded, instead we **upgrade** the function signature to contain a `RusticResult`.
 //! For instance, if a function returns `Result<T, ArchiverErrorKind>` and we discover an error path that contains a `RusticError`,
 //! we don't need to convert that into an `ArchiverErrorKind`, we should change the function signature, so it returns either a
 //! `Result<T, RusticError> (==RusticResult<T>)` or nested results like `RusticResult<Result<T, ArchiverErrorKind>>`.
 //! So even if the visibility of that function is `fn` or `pub(crate) fn` it should return a `RusticResult` containing a `RusticError`.
+//!
+//! If we `map_err` or `and_then` a `RusticError`, we don't want to create a new RusticError from it, but just attach some context
+//! to it, e.g. `map_err(|e| e.attach_context("key", "value"))`, so we don't lose the original error. We can also change the error
+//! kind with `map_err(|e| e.overwrite_kind(ErrorKind::NewKind))`. If we want to pre- or append to the guidance, we can use
+//! `map_err(|e| e.append_guidance_line("new line"))` or `map_err(|e| e.prepend_guidance_line("new line"))`.
 //!
 //! ### Conversion and Nested Results
 //!
