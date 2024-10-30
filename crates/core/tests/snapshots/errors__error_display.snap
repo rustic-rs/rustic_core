@@ -5,7 +5,9 @@ expression: error
 Input/Output Error occurred in `rustic_core`
 
 Message:
+Prepended guidance line
 A file could not be read, make sure the file is existing and readable by the system.
+Appended guidance line
 
 Context:
 path: /path/to/file,
@@ -19,7 +21,10 @@ Status: Permanent
 
 For more information, see: https://rustic.cli.rs/docs/errors/C001
 
-If you think this is an undiscovered bug, please open an issue at: https://github.com/rustic-rs/rustic_core/issues/new
+We believe this is a bug, please report it by opening an issue at: https://github.com/rustic-rs/rustic_core/issues/new
+If you can, please attach an anonymized debug log to the issue.
+
+Thank you for helping us improve rustic!
 
 Backtrace:
 <disabled>
