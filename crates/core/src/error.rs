@@ -145,14 +145,20 @@ pub struct RusticError {
     /// The kind of the error.
     kind: ErrorKind,
 
-    /// Chain to the cause of the error.
-    source: Option<Box<(dyn std::error::Error + Send + Sync)>>,
-
     /// The error message with guidance.
     guidance: SmolStr,
 
     /// The context of the error.
     context: Cow<'static, [(&'static str, SmolStr)]>,
+
+    /// Chain to the cause of the error.
+    source: Option<Box<(dyn std::error::Error + Send + Sync)>>,
+
+    /// Severity of the error.
+    severity: Option<Severity>,
+
+    /// The status of the error.
+    status: Option<Status>,
 
     /// The URL of the documentation for the error.
     docs_url: Option<SmolStr>,
@@ -160,20 +166,14 @@ pub struct RusticError {
     /// Error code.
     error_code: Option<SmolStr>,
 
-    /// Whether to ask the user to report the error.
-    ask_report: bool,
-
     /// The URL of the issue tracker for opening a new issue.
     new_issue_url: Option<SmolStr>,
 
     /// The URL of an already existing issue that is related to this error.
     existing_issue_url: Option<SmolStr>,
 
-    /// Severity of the error.
-    severity: Option<Severity>,
-
-    /// The status of the error.
-    status: Option<Status>,
+    /// Whether to ask the user to report the error.
+    ask_report: bool,
 
     /// Backtrace of the error.
     ///
