@@ -49,6 +49,7 @@
 // use std::fmt;
 
 use ::std::convert::Into;
+use derive_more::derive::Display;
 use smol_str::SmolStr;
 use std::{
     backtrace::Backtrace,
@@ -65,7 +66,7 @@ pub(crate) mod constants {
 pub type RusticResult<T, E = Box<RusticError>> = Result<T, E>;
 
 /// Severity of an error, ranging from informational to fatal.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Display)]
 pub enum Severity {
     /// Informational
     Info,
@@ -81,7 +82,7 @@ pub enum Severity {
 }
 
 /// Status of an error, indicating whether it is permanent, temporary, or persistent.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Display)]
 pub enum Status {
     /// Permanent, may not be retried
     Permanent,
@@ -170,7 +171,7 @@ pub struct RusticError {
     new_issue_url: Option<SmolStr>,
 
     /// The URL of an already existing issue that is related to this error.
-    existing_issue_url: Option<SmolStr>,
+    existing_issue_urls: Cow<'static, [SmolStr]>,
 
     /// Whether to ask the user to report the error.
     ask_report: bool,
@@ -183,33 +184,31 @@ pub struct RusticError {
 
 impl Display for RusticError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{} occurred in `rustic_core`", self.kind)?;
+        writeln!(f, "{} occurred in `rustic_core`", self.kind)?;
 
-        write!(f, "\n\nMessage:\n{}", self.guidance)?;
+        writeln!(f, "\nMessage:")?;
+        writeln!(f, "{}", self.guidance)?;
 
         if !self.context.is_empty() {
-            write!(f, "\n\nContext:\n")?;
-            write!(
-                f,
-                "{}",
-                self.context
-                    .iter()
-                    .map(|(k, v)| format!("{k}: {v}"))
-                    .collect::<Vec<_>>()
-                    .join(",\n")
-            )?;
+            writeln!(f, "\nContext:")?;
+            self.context
+                .iter()
+                .try_for_each(|(key, value)| writeln!(f, "- {key}: {value}"))?;
         }
 
         if let Some(cause) = &self.source {
-            write!(f, "\n\nCaused by: {cause}")?;
+            writeln!(f, "\nCaused by:")?;
+            writeln!(f, "{cause}")?;
         }
 
         if let Some(severity) = &self.severity {
-            write!(f, "\n\nSeverity: {severity:?}")?;
+            writeln!(f, "\nSeverity:")?;
+            writeln!(f, "{severity}")?;
         }
 
         if let Some(status) = &self.status {
-            write!(f, "\n\nStatus: {status:?}")?;
+            writeln!(f, "\nStatus:")?;
+            writeln!(f, "\n{status}")?;
         }
 
         if let Some(code) = &self.error_code {
@@ -227,25 +226,35 @@ impl Display for RusticError {
                 docs_url + "/"
             };
 
-            write!(f, "\n\nFor more information, see: {docs_url}{code}")?;
+            writeln!(f, "\nFor more information, see: {docs_url}{code}")?;
         }
 
-        if let Some(existing_issue_url) = &self.existing_issue_url {
-            write!(f, "\n\nThis might be a related issue, please check it for a possible workaround and/or further guidance: {existing_issue_url}")?;
+        if !self.existing_issue_urls.is_empty() {
+            writeln!(f, "\nRelated issues:")?;
+            self.existing_issue_urls
+                .iter()
+                .try_for_each(|url| writeln!(f, "- {url}"))?;
         }
 
         let default_issue_url = SmolStr::from(constants::DEFAULT_ISSUE_URL);
         let new_issue_url = self.new_issue_url.as_ref().unwrap_or(&default_issue_url);
 
         if self.ask_report {
-            write!(
+            writeln!(
                 f,
-                "\n\nWe believe this is a bug, please report it by opening an issue at: {new_issue_url}\nIf you can, please attach an anonymized debug log to the issue.\n\nThank you for helping us improve rustic!"
+                "\nWe believe this is a bug, please report it by opening an issue at: {new_issue_url}"
             )?;
+            writeln!(
+                f,
+                "If you can, please attach an anonymized debug log to the issue.
+                Thank you for helping us improve rustic!"
+            )?;
+            writeln!(f, "Thank you for helping us improve rustic!")?;
         }
 
         if let Some(backtrace) = &self.backtrace {
-            write!(f, "\n\nBacktrace:\n{backtrace:?}")?;
+            writeln!(f, "\nBacktrace:")?;
+            writeln!(f, "{backtrace}")?;
         }
 
         Ok(())
@@ -264,7 +273,7 @@ impl RusticError {
             error_code: None,
             docs_url: None,
             new_issue_url: None,
-            existing_issue_url: None,
+            existing_issue_urls: Cow::default(),
             severity: None,
             status: None,
             ask_report: false,
@@ -413,11 +422,11 @@ impl RusticError {
     }
 
     /// Attach the URL of an already existing issue that is related to this error.
-    pub fn attach_existing_issue_url(self, value: impl Into<SmolStr>) -> Box<Self> {
-        Box::new(Self {
-            existing_issue_url: Some(value.into()),
-            ..self
-        })
+    pub fn attach_existing_issue_url(mut self, value: impl Into<SmolStr>) -> Box<Self> {
+        let mut issue_urls = self.existing_issue_urls.into_owned();
+        issue_urls.push(value.into());
+        self.existing_issue_urls = Cow::from(issue_urls);
+        Box::new(self)
     }
 
     /// Attach the severity of the error.
