@@ -125,11 +125,9 @@ impl<'a, BE: DecryptWriteBackend, I: ReadGlobalIndex> FileArchiver<'a, BE, I> {
                         )?
                         .open()
                         .map_err(|err| {
-                            RusticError::with_source(
-                                ErrorKind::InputOutput,
-                                "Failed to open ReadSourceOpen at `{path}`",
-                                err,
-                            )
+                            err
+                            .overwrite_kind(ErrorKind::InputOutput)
+                            .prepend_guidance_line("Failed to open ReadSourceOpen at `{path}`")
                             .attach_context("path", path.display().to_string())
                         })?;
 

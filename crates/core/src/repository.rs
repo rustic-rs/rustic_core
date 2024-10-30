@@ -714,7 +714,6 @@ impl<P: ProgressBars, S> Repository<P, S> {
     /// The result of the warm up
     pub fn warm_up(&self, packs: impl ExactSizeIterator<Item = PackId>) -> RusticResult<()> {
         warm_up(self, packs)
-            .map_err(|err| RusticError::with_source(ErrorKind::Command, "Warm-up failed.", err))
     }
 
     /// Warm up the given pack files and wait the configured waiting time.
@@ -728,9 +727,7 @@ impl<P: ProgressBars, S> Repository<P, S> {
     /// * If the command could not be parsed.
     /// * If the thread pool could not be created.
     pub fn warm_up_wait(&self, packs: impl ExactSizeIterator<Item = PackId>) -> RusticResult<()> {
-        warm_up_wait(self, packs).map_err(|err| {
-            RusticError::with_source(ErrorKind::Command, "Warm-up with waiting time failed.", err)
-        })
+        warm_up_wait(self, packs)
     }
 }
 

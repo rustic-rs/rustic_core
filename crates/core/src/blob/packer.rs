@@ -513,12 +513,9 @@ impl<BE: DecryptWriteBackend> RawPacker<BE> {
     /// * If the packfile could not be saved
     fn finalize(&mut self) -> RusticResult<PackerStats> {
         self.save().map_err(|err| {
-            RusticError::with_source(
-                ErrorKind::Internal,
-                "Failed to save packfile. Data may be lost.",
-                err,
-            )
-            .ask_report()
+            err.overwrite_kind(ErrorKind::Internal)
+                .prepend_guidance_line("Failed to save packfile. Data may be lost.")
+                .ask_report()
         })?;
 
         self.file_writer.take().unwrap().finalize()?;
@@ -920,6 +917,7 @@ impl<BE: DecryptFullBackend> Repacker<BE> {
             blob.offset,
             blob.length,
         )?;
+
         self.packer
             .add_raw(
                 &data,
@@ -929,12 +927,13 @@ impl<BE: DecryptFullBackend> Repacker<BE> {
                 Some(self.size_limit),
             )
             .map_err(|err| {
-                RusticError::with_source(
-                    ErrorKind::Internal,
-                    "Failed to fast-add (unchecked) blob to packfile.",
-                    err,
-                )
+                err.overwrite_kind(ErrorKind::Internal)
+                    .prepend_guidance_line(
+                        "Failed to fast-add (unchecked) blob `{blob_id}` to packfile.",
+                    )
+                    .attach_context("blob_id", blob.id.to_string())
             })?;
+
         Ok(())
     }
 
