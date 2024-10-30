@@ -405,7 +405,7 @@ impl WriteBackend for LocalBackend {
         trace!("creating repo at {:?}", self.path);
         fs::create_dir_all(&self.path).map_err(|err| {
             RusticError::with_source(
-                ErrorKind::Io,
+                ErrorKind::InputOutput,
                 "Failed to create the directory. Please check the path and try again.",
                 err,
             )
@@ -416,7 +416,7 @@ impl WriteBackend for LocalBackend {
             let path = self.path.join(tpe.dirname());
             fs::create_dir_all(path.clone()).map_err(|err| {
                 RusticError::with_source(
-                    ErrorKind::Io,
+                    ErrorKind::InputOutput,
                     "Failed to create the directory. Please check the path and try again.",
                     err,
                 )
@@ -428,7 +428,7 @@ impl WriteBackend for LocalBackend {
             let path = self.path.join("data").join(hex::encode([i]));
             fs::create_dir_all(path.clone()).map_err(|err| {
                 RusticError::with_source(
-                    ErrorKind::Io,
+                    ErrorKind::InputOutput,
                     "Failed to create the directory. Please check the path and try again.",
                     err,
                 )
@@ -471,7 +471,7 @@ impl WriteBackend for LocalBackend {
             .open(&filename)
             .map_err(|err| {
                 RusticError::with_source(
-                    ErrorKind::Io,
+                    ErrorKind::InputOutput,
                     "Failed to open the file. Please check the file and try again.",
                     err,
                 )
@@ -485,7 +485,7 @@ impl WriteBackend for LocalBackend {
         })?)
         .map_err(|err| {
             RusticError::with_source(
-                ErrorKind::Io,
+                ErrorKind::InputOutput,
                 "Failed to set the length of the file. Please check the file and try again.",
                 err,
             )
@@ -494,7 +494,7 @@ impl WriteBackend for LocalBackend {
 
         file.write_all(&buf).map_err(|err| {
             RusticError::with_source(
-                ErrorKind::Io,
+                ErrorKind::InputOutput,
                 "Failed to write to the buffer. Please check the file and try again.",
                 err,
             )
@@ -503,7 +503,7 @@ impl WriteBackend for LocalBackend {
 
         file.sync_all().map_err(|err| {
             RusticError::with_source(
-                ErrorKind::Io,
+                ErrorKind::InputOutput,
                 "Failed to sync OS Metadata to disk. Please check the file and try again.",
                 err,
             )

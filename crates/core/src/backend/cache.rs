@@ -243,22 +243,30 @@ impl Cache {
         };
 
         fs::create_dir_all(&path).map_err(|err| {
-            RusticError::with_source(ErrorKind::Io, "Failed to create cache directory", err)
-                .attach_context("path", path.display().to_string())
-                .attach_context("id", id.to_string())
+            RusticError::with_source(
+                ErrorKind::InputOutput,
+                "Failed to create cache directory",
+                err,
+            )
+            .attach_context("path", path.display().to_string())
+            .attach_context("id", id.to_string())
         })?;
 
         cachedir::ensure_tag(&path).map_err(|err| {
-            RusticError::with_source(ErrorKind::Io, "Failed to ensure cache directory tag", err)
-                .attach_context("path", path.display().to_string())
-                .attach_context("id", id.to_string())
+            RusticError::with_source(
+                ErrorKind::InputOutput,
+                "Failed to ensure cache directory tag",
+                err,
+            )
+            .attach_context("path", path.display().to_string())
+            .attach_context("id", id.to_string())
         })?;
 
         path.push(id.to_hex());
 
         fs::create_dir_all(&path).map_err(|err| {
             RusticError::with_source(
-                ErrorKind::Io,
+                ErrorKind::InputOutput,
                 "Failed to create cache directory with id",
                 err,
             )
@@ -400,7 +408,7 @@ impl Cache {
             }
             Err(err) if err.kind() == io::ErrorKind::NotFound => Ok(None),
             Err(err) => Err(RusticError::with_source(
-                ErrorKind::Io,
+                ErrorKind::InputOutput,
                 "Failed to read full data of file",
                 err,
             )
@@ -440,18 +448,20 @@ impl Cache {
             Ok(file) => file,
             Err(err) if err.kind() == io::ErrorKind::NotFound => return Ok(None),
             Err(err) => {
-                return Err(
-                    RusticError::with_source(ErrorKind::Io, "Failed to open file", err)
-                        .attach_context("tpe", tpe.to_string())
-                        .attach_context("id", id.to_string()),
+                return Err(RusticError::with_source(
+                    ErrorKind::InputOutput,
+                    "Failed to open file",
+                    err,
                 )
+                .attach_context("tpe", tpe.to_string())
+                .attach_context("id", id.to_string()))
             }
         };
 
         _ = file
             .seek(SeekFrom::Start(u64::from(offset)))
             .map_err(|err| {
-                RusticError::with_source(ErrorKind::Io, "Failed to seek in file", err)
+                RusticError::with_source(ErrorKind::InputOutput, "Failed to seek in file", err)
                     .attach_context("tpe", tpe.to_string())
                     .attach_context("id", id.to_string())
                     .attach_context("offset", offset.to_string())
@@ -460,7 +470,7 @@ impl Cache {
         let mut vec = vec![0; length as usize];
 
         file.read_exact(&mut vec).map_err(|err| {
-            RusticError::with_source(ErrorKind::Io, "Failed to read from file", err)
+            RusticError::with_source(ErrorKind::InputOutput, "Failed to read from file", err)
                 .attach_context("tpe", tpe.to_string())
                 .attach_context("id", id.to_string())
                 .attach_context("offset", offset.to_string())
@@ -489,7 +499,7 @@ impl Cache {
         let dir = self.dir(tpe, id);
 
         fs::create_dir_all(&dir).map_err(|err| {
-            RusticError::with_source(ErrorKind::Io, "Failed to create directories", err)
+            RusticError::with_source(ErrorKind::InputOutput, "Failed to create directories", err)
                 .attach_context("path", dir.display().to_string())
                 .attach_context("tpe", tpe.to_string())
                 .attach_context("id", id.to_string())
@@ -503,12 +513,12 @@ impl Cache {
             .write(true)
             .open(&filename)
             .map_err(|err| {
-                RusticError::with_source(ErrorKind::Io, "Failed to open file", err)
+                RusticError::with_source(ErrorKind::InputOutput, "Failed to open file", err)
                     .attach_context("path", filename.display().to_string())
             })?;
 
         file.write_all(buf).map_err(|err| {
-            RusticError::with_source(ErrorKind::Io, "Failed to write to buffer", err)
+            RusticError::with_source(ErrorKind::InputOutput, "Failed to write to buffer", err)
                 .attach_context("path", filename.display().to_string())
                 .attach_context("tpe", tpe.to_string())
                 .attach_context("id", id.to_string())
@@ -531,7 +541,7 @@ impl Cache {
         trace!("cache writing tpe: {:?}, id: {}", &tpe, &id);
         let filename = self.path(tpe, id);
         fs::remove_file(&filename).map_err(|err| {
-            RusticError::with_source(ErrorKind::Io, "Failed to remove file", err)
+            RusticError::with_source(ErrorKind::InputOutput, "Failed to remove file", err)
                 .attach_context("path", filename.display().to_string())
                 .attach_context("tpe", tpe.to_string())
                 .attach_context("id", id.to_string())

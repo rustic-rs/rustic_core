@@ -48,12 +48,12 @@
 // use std::error::Error as StdError;
 // use std::fmt;
 
-use ::std::convert::Into;
 use derive_more::derive::Display;
 use smol_str::SmolStr;
 use std::{
     backtrace::Backtrace,
     borrow::Cow,
+    convert::Into,
     fmt::{self, Display},
 };
 
@@ -94,48 +94,56 @@ pub enum Status {
     Persistent,
 }
 
+// NOTE:
+//
+// we use `an error related to {kind}` in the Display impl, so the variant display comments
+// should be able to be used in a sentence.
+//
 /// [`ErrorKind`] describes the errors that can happen while executing a high-level command.
 ///
 /// This is a non-exhaustive enum, so additional variants may be added in future. It is
 /// recommended to match against the wildcard `_` instead of listing all possible variants,
 /// to avoid problems when new variants are added.
 #[non_exhaustive]
-#[derive(thiserror::Error, Debug, displaydoc::Display)]
+#[derive(thiserror::Error, Debug, displaydoc::Display, Default, Clone, Copy, PartialEq, Eq)]
 pub enum ErrorKind {
-    /// Append-only Error
+    /// append-only mode
     AppendOnly,
-    /// Backend Error
+    /// the backend
     Backend,
-    /// Command Error
+    /// the a command
     Command,
-    /// Config Error
-    Config,
-    /// Cryptography Error
+    /// the configuration
+    Configuration,
+    /// cryptographic operations
     Cryptography,
-    /// External Command Error
+    /// running an external command
     ExternalCommand,
-    /// Internal Error
+    /// internal operations
     // Blob, Pack, Index, Tree Errors
     // Compression, Parsing, Multithreading etc.
     // These are deep errors that are not expected to be handled by the user.
     Internal,
-    /// Invalid Input Error
+    /// invalid user input
     InvalidInput,
-    /// Input/Output Error
-    Io,
-    /// Key Error
+    /// input/output operations
+    InputOutput,
+    /// a key
     Key,
-    /// Missing Input Error
+    /// missing user input
     MissingInput,
-    /// Password Error
+    /// general operations
+    #[default]
+    Other,
+    /// password handling
     Password,
-    /// Repository Error
+    /// the repository
     Repository,
-    /// Unsupported Feature Error
+    /// unsupported operations
     Unsupported,
-    /// Verification Error
+    /// verification
     Verification,
-    /// Virtual File System Error
+    /// the virtual filesystem
     Vfs,
 }
 
@@ -149,6 +157,21 @@ pub struct RusticError {
     /// The error message with guidance.
     guidance: SmolStr,
 
+    /// The URL of the documentation for the error.
+    docs_url: Option<SmolStr>,
+
+    /// Error code.
+    error_code: Option<SmolStr>,
+
+    /// Whether to ask the user to report the error.
+    ask_report: bool,
+
+    /// The URL of an already existing issue that is related to this error.
+    existing_issue_urls: Cow<'static, [SmolStr]>,
+
+    /// The URL of the issue tracker for opening a new issue.
+    new_issue_url: Option<SmolStr>,
+
     /// The context of the error.
     context: Cow<'static, [(&'static str, SmolStr)]>,
 
@@ -161,21 +184,6 @@ pub struct RusticError {
     /// The status of the error.
     status: Option<Status>,
 
-    /// The URL of the documentation for the error.
-    docs_url: Option<SmolStr>,
-
-    /// Error code.
-    error_code: Option<SmolStr>,
-
-    /// The URL of the issue tracker for opening a new issue.
-    new_issue_url: Option<SmolStr>,
-
-    /// The URL of an already existing issue that is related to this error.
-    existing_issue_urls: Cow<'static, [SmolStr]>,
-
-    /// Whether to ask the user to report the error.
-    ask_report: bool,
-
     /// Backtrace of the error.
     ///
     // Need to use option, otherwise thiserror will not be able to derive the Error trait.
@@ -184,32 +192,15 @@ pub struct RusticError {
 
 impl Display for RusticError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        writeln!(f, "{} occurred in `rustic_core`", self.kind)?;
+        writeln!(f, "Well, this is embarrassing.")?;
+        writeln!(
+            f,
+            "\n`rustic_core` experienced an error related to `{}`.",
+            self.kind
+        )?;
 
         writeln!(f, "\nMessage:")?;
         writeln!(f, "{}", self.guidance)?;
-
-        if !self.context.is_empty() {
-            writeln!(f, "\nContext:")?;
-            self.context
-                .iter()
-                .try_for_each(|(key, value)| writeln!(f, "- {key}: {value}"))?;
-        }
-
-        if let Some(cause) = &self.source {
-            writeln!(f, "\nCaused by:")?;
-            writeln!(f, "{cause}")?;
-        }
-
-        if let Some(severity) = &self.severity {
-            writeln!(f, "\nSeverity:")?;
-            writeln!(f, "{severity}")?;
-        }
-
-        if let Some(status) = &self.status {
-            writeln!(f, "\nStatus:")?;
-            writeln!(f, "\n{status}")?;
-        }
 
         if let Some(code) = &self.error_code {
             let default_docs_url = SmolStr::from(constants::DEFAULT_DOCS_URL);
@@ -236,20 +227,42 @@ impl Display for RusticError {
                 .try_for_each(|url| writeln!(f, "- {url}"))?;
         }
 
-        let default_issue_url = SmolStr::from(constants::DEFAULT_ISSUE_URL);
-        let new_issue_url = self.new_issue_url.as_ref().unwrap_or(&default_issue_url);
-
         if self.ask_report {
+            let default_issue_url = SmolStr::from(constants::DEFAULT_ISSUE_URL);
+            let new_issue_url = self.new_issue_url.as_ref().unwrap_or(&default_issue_url);
+
             writeln!(
                 f,
-                "\nWe believe this is a bug, please report it by opening an issue at: {new_issue_url}"
+                "\nWe believe this is a bug, please report it by opening an issue at:"
             )?;
+            writeln!(f, "{new_issue_url}")?;
             writeln!(
                 f,
-                "If you can, please attach an anonymized debug log to the issue.
-                Thank you for helping us improve rustic!"
+                "\nIf you can, please attach an anonymized debug log to the issue."
             )?;
-            writeln!(f, "Thank you for helping us improve rustic!")?;
+            writeln!(f, "\nThank you for helping us improve rustic!")?;
+        }
+
+        writeln!(f, "\n\nSome additional details ...")?;
+
+        if !self.context.is_empty() {
+            writeln!(f, "\nContext:")?;
+            self.context
+                .iter()
+                .try_for_each(|(key, value)| writeln!(f, "- {key}:\t{value}"))?;
+        }
+
+        if let Some(cause) = &self.source {
+            writeln!(f, "\nCaused by:")?;
+            writeln!(f, "{cause} : (source: {:?})", cause.source())?;
+        }
+
+        if let Some(severity) = &self.severity {
+            writeln!(f, "\nSeverity: {severity}")?;
+        }
+
+        if let Some(status) = &self.status {
+            writeln!(f, "\nStatus: {status}")?;
         }
 
         if let Some(backtrace) = &self.backtrace {

@@ -109,7 +109,11 @@ pub(crate) fn add_key_to_repo<P, S>(
     let keyfile = KeyFile::generate(key, &pass, ko.hostname, ko.username, ko.with_created)?;
 
     let data = serde_json::to_vec(&keyfile).map_err(|err| {
-        RusticError::with_source(ErrorKind::Io, "Failed to serialize keyfile to JSON.", err)
+        RusticError::with_source(
+            ErrorKind::InputOutput,
+            "Failed to serialize keyfile to JSON.",
+            err,
+        )
     })?;
 
     let id = KeyId::from(hash(&data));

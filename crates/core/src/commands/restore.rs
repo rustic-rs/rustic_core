@@ -222,7 +222,7 @@ pub(crate) fn collect_and_prepare<P: ProgressBars, S: IndexedFull>(
                         dest.create_dir(path)
                             .map_err(|err| {
                                 RusticError::with_source(
-                                    ErrorKind::Io,
+                                    ErrorKind::InputOutput,
                                     "Failed to create the directory. Please check the path and try again.",
                                     err
                                 )
@@ -453,7 +453,7 @@ fn restore_contents<P: ProgressBars, S: Open>(
             let path = &filenames[i];
             dest.set_length(path, *size).map_err(|err| {
                 RusticError::with_source(
-                    ErrorKind::Io,
+                    ErrorKind::InputOutput,
                     "Failed to set the length of the file. Please check the path and try again.",
                     err,
                 )
@@ -678,7 +678,7 @@ impl RestorePlan {
                 .transpose()
                 .map_err(|err|
                     RusticError::with_source(
-                        ErrorKind::Io,
+                        ErrorKind::InputOutput,
                         "Failed to get the metadata of the file. Please check the path and try again.",
                         err
                     )
@@ -699,7 +699,7 @@ impl RestorePlan {
                 .transpose()
                 .map_err(|err|
                     RusticError::with_source(
-                        ErrorKind::Io,
+                        ErrorKind::InputOutput,
                         "Failed to get the metadata of the file. Please check the path and try again.",
                         err
                     )

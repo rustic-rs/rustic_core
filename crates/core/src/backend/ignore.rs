@@ -333,7 +333,7 @@ impl ReadSourceOpen for OpenFile {
         let path = self.0;
         File::open(&path).map_err(|err| {
             RusticError::with_source(
-                ErrorKind::Io,
+                ErrorKind::InputOutput,
                 "Failed to open file. Please make sure the file exists and is accessible.",
                 err,
             )

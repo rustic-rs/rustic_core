@@ -39,7 +39,11 @@ pub(crate) fn dump<P, S: IndexedFull>(
     for id in node.content.as_ref().unwrap() {
         let data = repo.get_blob_cached(&BlobId::from(**id), BlobType::Data)?;
         w.write_all(&data).map_err(|err| {
-            RusticError::with_source(ErrorKind::Io, "Failed to write data to writer.", err)
+            RusticError::with_source(
+                ErrorKind::InputOutput,
+                "Failed to write data to writer.",
+                err,
+            )
         })?;
     }
     Ok(())

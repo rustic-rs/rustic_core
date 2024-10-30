@@ -113,7 +113,7 @@ impl<R: Read + Send> Iterator for ChunkIter<R> {
             Ok(size) => size,
             Err(err) => {
                 return Some(Err(RusticError::with_source(
-                    ErrorKind::Io,
+                    ErrorKind::InputOutput,
                     "Failed to read from reader in iterator",
                     err,
                 )));
@@ -157,7 +157,7 @@ impl<R: Read + Send> Iterator for ChunkIter<R> {
                     Err(ref e) if e.kind() == io::ErrorKind::Interrupted => continue,
                     Err(err) => {
                         return Some(Err(RusticError::with_source(
-                            ErrorKind::Io,
+                            ErrorKind::InputOutput,
                             "Failed to read from reader in iterator",
                             err,
                         )));

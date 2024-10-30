@@ -3,8 +3,17 @@ source: crates/core/tests/errors.rs
 expression: error
 ---
 RusticError {
-    kind: Io,
+    kind: InputOutput,
     guidance: "Prepended guidance line\nA file could not be read, make sure the file is existing and readable by the system.\nAppended guidance line",
+    docs_url: None,
+    error_code: Some(
+        "C001",
+    ),
+    ask_report: true,
+    existing_issue_urls: [
+        "https://github.com/rustic-rs/rustic_core/issues/209",
+    ],
+    new_issue_url: None,
     context: [
         (
             "path",
@@ -17,8 +26,8 @@ RusticError {
     ],
     source: Some(
         Custom {
-            kind: Other,
-            error: "networking error",
+            kind: ConnectionReset,
+            error: "Networking Error",
         },
     ),
     severity: Some(
@@ -27,13 +36,6 @@ RusticError {
     status: Some(
         Permanent,
     ),
-    docs_url: None,
-    error_code: Some(
-        "C001",
-    ),
-    new_issue_url: None,
-    existing_issue_url: None,
-    ask_report: true,
     backtrace: Some(
         <disabled>,
     ),

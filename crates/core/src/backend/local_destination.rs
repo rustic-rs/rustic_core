@@ -153,7 +153,7 @@ impl LocalDestination {
                 if let Some(path) = path.parent() {
                     fs::create_dir_all(path).map_err(|err| {
                         RusticError::with_source(
-                            ErrorKind::Io,
+                            ErrorKind::InputOutput,
                             "The directory could not be created.",
                             err,
                         )
@@ -163,7 +163,7 @@ impl LocalDestination {
             } else {
                 fs::create_dir_all(&path).map_err(|err| {
                     RusticError::with_source(
-                        ErrorKind::Io,
+                        ErrorKind::InputOutput,
                         "The directory could not be created.",
                         err,
                     )

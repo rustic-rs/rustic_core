@@ -424,7 +424,7 @@ impl<P, S> Repository<P, S> {
             1 => Ok(Some(ConfigId::from(config_ids[0]))),
             0 => Ok(None),
             _ => Err(RusticError::new(
-                ErrorKind::Config,
+                ErrorKind::Configuration,
                 "More than one repository found. Please check the config file.",
             )
             .attach_context("name", self.name.clone())),
@@ -483,7 +483,7 @@ impl<P, S> Repository<P, S> {
     pub fn open_with_password(self, password: &str) -> RusticResult<Repository<P, OpenStatus>> {
         let config_id = self.config_id()?.ok_or_else(|| {
             RusticError::new(
-                ErrorKind::Config,
+                ErrorKind::Configuration,
                 "No repository config file found. Please check the repository.",
             )
             .attach_context("name", self.name.clone())
@@ -576,7 +576,7 @@ impl<P, S> Repository<P, S> {
     ) -> RusticResult<Repository<P, OpenStatus>> {
         if self.config_id()?.is_some() {
             return Err(RusticError::new(
-                ErrorKind::Config,
+                ErrorKind::Configuration,
                 "Config file already exists. Please check the repository.",
             )
             .attach_context("name", self.name));

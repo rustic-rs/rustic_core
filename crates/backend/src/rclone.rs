@@ -244,7 +244,7 @@ impl RcloneBackend {
                         .read_line(&mut line)
                         .map_err(|err|
                             RusticError::with_source(
-                                ErrorKind::Io,
+                                ErrorKind::InputOutput,
                                 "Experienced an error while reading rclone output. Please check if rclone is installed and working correctly.",
                                 err
                             )
@@ -269,7 +269,7 @@ impl RcloneBackend {
         if use_password {
             if !rest_url.starts_with("http://") {
                 return Err(RusticError::new(
-                    ErrorKind::Io,
+                    ErrorKind::InputOutput,
                     "Please make sure, the URL starts with 'http://'!",
                 )
                 .attach_context("url", rest_url));

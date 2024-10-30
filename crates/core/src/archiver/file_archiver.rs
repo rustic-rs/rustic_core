@@ -126,7 +126,7 @@ impl<'a, BE: DecryptWriteBackend, I: ReadGlobalIndex> FileArchiver<'a, BE, I> {
                         .open()
                         .map_err(|err| {
                             RusticError::with_source(
-                                ErrorKind::Io,
+                                ErrorKind::InputOutput,
                                 "Failed to open ReadSourceOpen",
                                 err,
                             )

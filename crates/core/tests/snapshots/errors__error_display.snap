@@ -2,29 +2,40 @@
 source: crates/core/tests/errors.rs
 expression: error
 ---
-Input/Output Error occurred in `rustic_core`
+Well, this is embarrassing.
+
+`rustic_core` experienced an error related to `input/output operations`.
 
 Message:
 Prepended guidance line
 A file could not be read, make sure the file is existing and readable by the system.
 Appended guidance line
 
-Context:
-path: /path/to/file,
-called: used s3 backend
+For more information, see: https://rustic.cli.rs/docs/errors/C001
 
-Caused by: networking error
+Related issues:
+- https://github.com/rustic-rs/rustic_core/issues/209
+
+We believe this is a bug, please report it by opening an issue at:
+https://github.com/rustic-rs/rustic_core/issues/new
+
+If you can, please attach an anonymized debug log to the issue.
+
+Thank you for helping us improve rustic!
+
+
+Some additional details ...
+
+Context:
+- path:	/path/to/file
+- called:	used s3 backend
+
+Caused by:
+Networking Error : (source: None)
 
 Severity: Error
 
 Status: Permanent
 
-For more information, see: https://rustic.cli.rs/docs/errors/C001
-
-We believe this is a bug, please report it by opening an issue at: https://github.com/rustic-rs/rustic_core/issues/new
-If you can, please attach an anonymized debug log to the issue.
-
-Thank you for helping us improve rustic!
-
 Backtrace:
-<disabled>
+disabled backtrace
