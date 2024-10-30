@@ -36,15 +36,9 @@ impl LocalBackend {
     ///
     /// # Errors
     ///
-    // TODO: Add error types
+    /// * If the directory could not be created.
     ///
-    /// # Returns
-    ///
-    /// A new [`LocalBackend`] instance
-    ///
-    /// # Notes
-    ///
-    /// The following options are supported:
+    /// # Options
     ///
     /// * `post-create-command` - The command to call after a file was created.
     /// * `post-delete-command` - The command to call after a file was deleted.
@@ -162,6 +156,7 @@ impl LocalBackend {
         if !status.success() {
             return Err(
                 RusticError::new(ErrorKind::Command, "Command was not successful.")
+                    .attach_context("command", command.to_string())
                     .attach_context("file_name", replace_with[0])
                     .attach_context("file_type", replace_with[1])
                     .attach_context("id", replace_with[2])
@@ -203,6 +198,7 @@ impl ReadBackend for LocalBackend {
 
         let walker = WalkDir::new(self.path.join(tpe.dirname()))
             .into_iter()
+            // TODO: What to do with errors?
             .inspect(|r| {
                 if let Err(err) = r {
                     error!("Error while listing files: {err:?}");
