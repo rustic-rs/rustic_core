@@ -4,7 +4,7 @@ expression: error
 ---
 RusticError {
     kind: InputOutput,
-    guidance: "Prepended guidance line\nA file could not be read, make sure the file is existing and readable by the system.\nAppended guidance line",
+    guidance: "Prepended guidance line\nA file could not be read, make sure the file at `{path}` is existing and readable by the system.\nAppended guidance line",
     docs_url: None,
     error_code: Some(
         "C001",

@@ -200,7 +200,18 @@ impl Display for RusticError {
         )?;
 
         writeln!(f, "\nMessage:")?;
-        writeln!(f, "{}", self.guidance)?;
+        if self.context.is_empty() {
+            writeln!(f, "{}", self.guidance)?;
+        } else {
+            // If there is context, we want to iterate over it
+            // use the key to replace the placeholder in the guidance.
+            let mut guidance = self.guidance.to_string();
+            self.context.iter().for_each(|(key, value)| {
+                let pattern = "{".to_owned() + key + "}";
+                guidance = guidance.replace(&pattern, value);
+            });
+            writeln!(f, "{guidance}")?;
+        }
 
         if let Some(code) = &self.error_code {
             let default_docs_url = SmolStr::from(constants::DEFAULT_DOCS_URL);

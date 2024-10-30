@@ -6,7 +6,7 @@ use rustic_core::{ErrorKind, RusticError, Severity, Status};
 fn error() -> Box<RusticError> {
     RusticError::with_source(
         ErrorKind::InputOutput,
-        "A file could not be read, make sure the file is existing and readable by the system.",
+        "A file could not be read, make sure the file at `{path}` is existing and readable by the system.",
         std::io::Error::new(std::io::ErrorKind::ConnectionReset, "Networking Error"),
     )
     .attach_context("path", "/path/to/file")

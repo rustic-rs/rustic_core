@@ -8,7 +8,7 @@ Well, this is embarrassing.
 
 Message:
 Prepended guidance line
-A file could not be read, make sure the file is existing and readable by the system.
+A file could not be read, make sure the file at `/path/to/file` is existing and readable by the system.
 Appended guidance line
 
 For more information, see: https://rustic.cli.rs/docs/errors/C001
