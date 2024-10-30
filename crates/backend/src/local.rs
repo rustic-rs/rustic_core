@@ -226,29 +226,26 @@ impl ReadBackend for LocalBackend {
 
         if tpe == FileType::Config {
             return Ok(if path.exists() {
-                vec![(
-                    Id::default(),
-                    path.metadata()
-                        .map_err(|err|
+                vec![(Id::default(), {
+                    let metadata = path.metadata().map_err(|err|
                             RusticError::with_source(
                                 ErrorKind::Backend,
                                 "Failed to query metadata of the file. Please check the file and try again.",
                                 err
                             )
                             .attach_context("path", path.to_string_lossy())
-                        )?
-                        .len()
-                        .try_into()
-                        .map_err(|err|
-                            RusticError::with_source(
-                                ErrorKind::Backend,
-                                "Failed to convert file length to u32.",
-                                err
-                            )
-                            .attach_context("length", path.metadata().unwrap().len().to_string())
-                            .ask_report()
-                        )?,
-                )]
+                        )?;
+
+                    metadata.len().try_into().map_err(|err| {
+                        RusticError::with_source(
+                            ErrorKind::Backend,
+                            "Failed to convert file length to u32.",
+                            err,
+                        )
+                        .attach_context("length", metadata.len().to_string())
+                        .ask_report()
+                    })?
+                })]
             } else {
                 Vec::new()
             });
@@ -266,7 +263,8 @@ impl ReadBackend for LocalBackend {
             .map(|e| -> RusticResult<_> {
                 Ok((
                     e.file_name().to_string_lossy().parse()?,
-                    e.metadata()
+                    {
+                        let metadata = e.metadata()
                         .map_err(|err|
                             RusticError::with_source(
                                 ErrorKind::Backend,
@@ -275,7 +273,9 @@ impl ReadBackend for LocalBackend {
                             )
                             .attach_context("path", e.path().to_string_lossy())
                         )
-                        ?
+                        ?;
+
+                        metadata
                         .len()
                         .try_into()
                         .map_err(|err|
@@ -284,9 +284,10 @@ impl ReadBackend for LocalBackend {
                                 "Failed to convert file length to u32.",
                                 err
                             )
-                            .attach_context("length", e.metadata().unwrap().len().to_string())
+                            .attach_context("length", metadata.len().to_string())
                             .ask_report()
-                        )?,
+                        )?
+                    },
                 ))
             })
             .inspect(|r| {
