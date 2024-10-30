@@ -231,11 +231,14 @@ pub trait FindInBackend: ReadBackend {
                 MapResult::Some(id) => Ok(id),
                 MapResult::None => Err(RusticError::new(
                     ErrorKind::Backend,
-                    "No suitable id found.",
+                    "No suitable id found for `{id}`.",
                 )
-                .attach_context("item", vec[i].as_ref().to_string())),
-                MapResult::NonUnique => Err(RusticError::new(ErrorKind::Backend, "Id not unique.")
-                    .attach_context("item", vec[i].as_ref().to_string())),
+                .attach_context("id", vec[i].as_ref().to_string())),
+                MapResult::NonUnique => Err(RusticError::new(
+                    ErrorKind::Backend,
+                    "Id not unique: `{id}`.",
+                )
+                .attach_context("id", vec[i].as_ref().to_string())),
             })
             .collect()
     }

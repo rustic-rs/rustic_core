@@ -256,10 +256,10 @@ impl KeyFile {
         serde_json::from_slice(&data).map_err(|err| {
             RusticError::with_source(
                 ErrorKind::Key,
-                "Couldn't deserialize the data for key.",
+                "Couldn't deserialize the data for key `{key_id}`.",
                 err,
             )
-            .attach_context("key id", id.to_string())
+            .attach_context("key_id", id.to_string())
         })
     }
 }

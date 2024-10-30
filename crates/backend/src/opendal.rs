@@ -55,21 +55,24 @@ impl FromStr for Throttle {
                 ByteSize::from_str(s.trim()).map_err(|err| {
                     RusticError::with_source(
                         ErrorKind::InvalidInput,
-                        "Parsing ByteSize from throttle string failed",
+                        "Parsing ByteSize from throttle string `{string}` failed",
                         err,
                     )
                     .attach_context("string", s)
                 })
             })
             .map(|b| -> RusticResult<u32> {
-                b?.as_u64().try_into().map_err(|err| {
+                let bytesize = b?.as_u64();
+                bytesize.try_into().map_err(|err| {
                     RusticError::with_source(
                         ErrorKind::Internal,
-                        "Converting ByteSize to u32 failed",
+                        "Converting ByteSize `{bytesize}` to u32 failed",
                         err,
                     )
+                    .attach_context("bytesize", bytesize.to_string())
                 })
             });
+
         let bandwidth = values
             .next()
             .transpose()?
@@ -106,7 +109,7 @@ impl OpenDALBackend {
             Some(value) => usize::from_str(value).map_err(|err| {
                 RusticError::with_source(
                     ErrorKind::InvalidInput,
-                    "Parsing retry value failed, the value must be a valid integer.",
+                    "Parsing retry value `{value}` failed, the value must be a valid integer.",
                     err,
                 )
                 .attach_context("value", value.to_string())
@@ -118,7 +121,7 @@ impl OpenDALBackend {
                 usize::from_str(c).map_err(|err| {
                     RusticError::with_source(
                         ErrorKind::InvalidInput,
-                        "Parsing connections value failed, the value must be a valid integer.",
+                        "Parsing connections value `{value}` failed, the value must be a valid integer.",
                         err,
                     )
                     .attach_context("value", c.to_string())
@@ -134,7 +137,7 @@ impl OpenDALBackend {
         let schema = Scheme::from_str(path.as_ref()).map_err(|err| {
             RusticError::with_source(
                 ErrorKind::InvalidInput,
-                "Parsing scheme from path failed, the path must contain a valid scheme.",
+                "Parsing scheme from path `{path}` failed, the path must contain a valid scheme.",
                 err,
             )
             .attach_context("path", path.as_ref().to_string())
@@ -143,7 +146,7 @@ impl OpenDALBackend {
             .map_err(|err| {
                 RusticError::with_source(
                     ErrorKind::Backend,
-                    "Creating Operator failed. Please check the given schema and options.",
+                    "Creating Operator from path `{path}` failed. Please check the given schema and options.",
                     err,
                 )
                 .attach_context("path", path.as_ref().to_string())
@@ -244,7 +247,7 @@ impl ReadBackend for OpenDALBackend {
             .map_err(|err| {
                 RusticError::with_source(
                     ErrorKind::Backend,
-                    "Listing all files failed in the backend. Please check if the given path is correct.",
+                    "Listing all files of `{path}` failed in the backend. Please check if the given path is correct.",
                     err,
                 )
                 .attach_context("path", path)
@@ -271,17 +274,17 @@ impl ReadBackend for OpenDALBackend {
                     entry.content_length().try_into().map_err(|err| {
                         RusticError::with_source(
                             ErrorKind::Internal,
-                            "Parsing content length failed",
+                            "Parsing content length `{length}` failed",
                             err,
                         )
-                        .attach_context("content length", entry.content_length().to_string())
+                        .attach_context("length", entry.content_length().to_string())
                     })?,
                 )]),
                 Err(err) if err.kind() == opendal::ErrorKind::NotFound => Ok(Vec::new()),
                 Err(err) => Err(err).map_err(|err|
                     RusticError::with_source(
                         ErrorKind::Backend,
-                        "Getting Metadata of `config` failed in the backend. Please check if the `config` exists.",
+                        "Getting Metadata of type `{type}` failed in the backend. Please check if `{type}` exists.",
                         err,
                     )
                     .attach_context("type", tpe.to_string())
@@ -299,7 +302,7 @@ impl ReadBackend for OpenDALBackend {
             .map_err(|err|
                 RusticError::with_source(
                     ErrorKind::Backend,
-                    "Listing all files in directory and their sizes failed in the backend. Please check if the given path is correct.",
+                    "Listing all files of `{type}` in directory `{path}` and their sizes failed in the backend. Please check if the given path is correct.",
                     err,
                 )
                 .attach_context("path", path)
@@ -316,10 +319,10 @@ impl ReadBackend for OpenDALBackend {
                         .map_err(|err|
                             RusticError::with_source(
                                 ErrorKind::Internal,
-                                "Parsing content length failed",
+                                "Parsing content length `{length}` failed",
                                 err,
                             )
-                            .attach_context("content length", e.metadata().content_length().to_string())
+                            .attach_context("length", e.metadata().content_length().to_string())
                         )?,
                 ))
             })
@@ -342,7 +345,7 @@ impl ReadBackend for OpenDALBackend {
             .map_err(|err|
                 RusticError::with_source(
                     ErrorKind::Backend,
-                    "Reading file failed in the backend. Please check if the given path is correct.",
+                    "Reading file `{path}` failed in the backend. Please check if the given path is correct.",
                     err,
                 )
                 .attach_context("path", path)
@@ -372,7 +375,7 @@ impl ReadBackend for OpenDALBackend {
             .map_err(|err|
                 RusticError::with_source(
                     ErrorKind::Backend,
-                    "Partially reading file failed in the backend. Please check if the given path is correct.",
+                    "Partially reading file `{path}` failed in the backend. Please check if the given path is correct.",
                     err,
                 )
                 .attach_context("path", path)
@@ -397,11 +400,11 @@ impl WriteBackend for OpenDALBackend {
                 .map_err(|err|
                     RusticError::with_source(
                         ErrorKind::Backend,
-                        "Creating directory failed in the backend. Please check if the given path is correct.",
+                        "Creating directory `{path}` failed in the backend `{location}`. Please check if the given path is correct.",
                         err,
                     )
-                    .attach_context("location", self.location())
                     .attach_context("path", path)
+                    .attach_context("location", self.location())
                     .attach_context("type", tpe.to_string())
                 )?;
         }
@@ -418,11 +421,11 @@ impl WriteBackend for OpenDALBackend {
                 self.operator.create_dir(&path).map_err(|err|
                     RusticError::with_source(
                         ErrorKind::Backend,
-                        "Creating directory failed in the backend. Please check if the given path is correct.",
+                        "Creating directory `{path}` failed in the backend `{location}`. Please check if the given path is correct.",
                         err,
                     )
-                    .attach_context("location", self.location())
                     .attach_context("path", path)
+                    .attach_context("location", self.location())
                 )
             })?;
 
@@ -449,7 +452,7 @@ impl WriteBackend for OpenDALBackend {
         self.operator.write(&filename, buf).map_err(|err| {
             RusticError::with_source(
                 ErrorKind::Backend,
-                "Writing file failed in the backend. Please check if the given path is correct.",
+                "Writing file `{path}` failed in the backend. Please check if the given path is correct.",
                 err,
             )
             .attach_context("path", filename)
@@ -473,7 +476,7 @@ impl WriteBackend for OpenDALBackend {
         self.operator.delete(&filename).map_err(|err| {
             RusticError::with_source(
                 ErrorKind::Backend,
-                "Deleting file failed in the backend. Please check if the given path is correct.",
+                "Deleting file `{path}` failed in the backend. Please check if the given path is correct.",
                 err,
             )
             .attach_context("path", filename)

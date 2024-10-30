@@ -61,7 +61,7 @@ pub fn location_to_type_and_path(
             SupportedBackend::try_from(scheme).map_err(|err| {
                 RusticError::with_source(
                 ErrorKind::Unsupported,
-                "The backend type is not supported. Please check the given backend and try again.",
+                "The backend type `{name}` is not supported. Please check the given backend and try again.",
                 err
             )
             .attach_context("name", scheme)

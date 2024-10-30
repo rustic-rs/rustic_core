@@ -301,9 +301,13 @@ impl<BE: DecryptWriteBackend> Packer<BE> {
     pub fn add(&self, data: Bytes, id: BlobId) -> RusticResult<()> {
         // compute size limit based on total size and size bounds
         self.add_with_sizelimit(data, id, None).map_err(|err| {
-            RusticError::with_source(ErrorKind::Internal, "Failed to add blob to packfile.", err)
-                .attach_context("blob id", id.to_string())
-                .ask_report()
+            RusticError::with_source(
+                ErrorKind::Internal,
+                "Failed to add blob `{id}` to packfile.",
+                err,
+            )
+            .attach_context("id", id.to_string())
+            .ask_report()
         })
     }
 
@@ -576,10 +580,10 @@ impl<BE: DecryptWriteBackend> RawPacker<BE> {
         let data_len_packed: u64 = data.len().try_into().map_err(|err| {
             RusticError::with_source(
                 ErrorKind::Internal,
-                "Failed to convert data length to u64.",
+                "Failed to convert data length `{length}` to u64.",
                 err,
             )
-            .attach_context("data length", data.len().to_string())
+            .attach_context("length", data.len().to_string())
         })?;
 
         self.stats.data_packed += data_len_packed;
@@ -591,12 +595,12 @@ impl<BE: DecryptWriteBackend> RawPacker<BE> {
         let len = self.write_data(data).map_err(|err| {
             RusticError::with_source(
                 ErrorKind::Internal,
-                "Failed to write data to packfile.",
+                "Failed to write data to packfile for blob `{id}`.",
                 err,
             )
-            .attach_context("blob id", id.to_string())
-            .attach_context("size limit", size_limit.to_string())
-            .attach_context("data length packed", data_len_packed.to_string())
+            .attach_context("id", id.to_string())
+            .attach_context("size_limit", size_limit.to_string())
+            .attach_context("data_length_packed", data_len_packed.to_string())
         })?;
 
         self.index
@@ -636,10 +640,10 @@ impl<BE: DecryptWriteBackend> RawPacker<BE> {
             .map_err(|err| -> Box<RusticError> {
                 RusticError::with_source(
                     ErrorKind::Internal,
-                    "Failed to convert pack header to binary representation.",
+                    "Failed to convert pack header `{index_pack_id}` to binary representation.",
                     err,
                 )
-                .attach_context("index pack id", self.index.id.to_string())
+                .attach_context("index_pack_id", self.index.id.to_string())
             })?;
 
         // encrypt and write to pack file
@@ -648,20 +652,20 @@ impl<BE: DecryptWriteBackend> RawPacker<BE> {
         let headerlen: u32 = data.len().try_into().map_err(|err| {
             RusticError::with_source(
                 ErrorKind::Internal,
-                "Failed to convert header length to u32.",
+                "Failed to convert header length `{length}` to u32.",
                 err,
             )
-            .attach_context("header length", data.len().to_string())
+            .attach_context("length", data.len().to_string())
         })?;
 
         // write header to pack file
         _ = self.write_data(&data).map_err(|err| {
             RusticError::with_source(
                 ErrorKind::Internal,
-                "Failed to write header to packfile.",
+                "Failed to write header with length `{length}` to packfile.",
                 err,
             )
-            .attach_context("header length", headerlen.to_string())
+            .attach_context("length", headerlen.to_string())
         })?;
 
         // convert header length to binary representation
@@ -670,20 +674,20 @@ impl<BE: DecryptWriteBackend> RawPacker<BE> {
             .map_err(|err| {
                 RusticError::with_source(
                     ErrorKind::Internal,
-                    "Failed to convert header length to binary representation.",
+                    "Failed to convert header length `{length}` to binary representation.",
                     err,
                 )
-                .attach_context("header length", headerlen.to_string())
+                .attach_context("length", headerlen.to_string())
             })?;
 
         // finally write length of header unencrypted to pack file
         _ = self.write_data(&binary_repr).map_err(|err| {
             RusticError::with_source(
                 ErrorKind::Internal,
-                "Failed to write header length to packfile.",
+                "Failed to write header length `{length}` to packfile.",
                 err,
             )
-            .attach_context("header length", headerlen.to_string())
+            .attach_context("length", headerlen.to_string())
         })?;
 
         Ok(())

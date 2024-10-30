@@ -185,7 +185,7 @@ impl RepositoryOptions {
                 let mut file = BufReader::new(File::open(file).map_err(|err| {
                     RusticError::with_source(
                         ErrorKind::Password,
-                        "Opening password file failed. Is the path correct?",
+                        "Opening password file failed. Is the path `{path}` correct?",
                         err,
                     )
                     .attach_context("path", file.display().to_string())
@@ -205,7 +205,7 @@ impl RepositoryOptions {
                         error!("password-command could not be executed: {}", err);
                         return Err(RusticError::with_source(
                             ErrorKind::Password,
-                            "Password command could not be executed.",
+                            "Password command `{command}` could not be executed",
                             err,
                         )
                         .attach_context("command", command.to_string()));
@@ -215,10 +215,10 @@ impl RepositoryOptions {
                 let output = match process.wait_with_output() {
                     Ok(output) => output,
                     Err(err) => {
-                        error!("error reading output from password-command: {}", err);
+                        error!("error reading output from password-command: {err}");
                         return Err(RusticError::with_source(
                             ErrorKind::Password,
-                            "Error reading output from password command.",
+                            "Error reading output from password command `{command}`",
                             err,
                         )
                         .attach_context("command", command.to_string()));
@@ -234,7 +234,7 @@ impl RepositoryOptions {
                     error!("password-command {s}");
                     return Err(RusticError::new(
                         ErrorKind::Password,
-                        "Password command did not exit successfully.",
+                        "Password command `{command}` did not exit successfully: `{status}`",
                     )
                     .attach_context("command", command.to_string())
                     .attach_context("status", s));
@@ -360,7 +360,7 @@ impl<P> Repository<P, ()> {
             if warm_up.args().iter().all(|c| !c.contains("%id")) {
                 return Err(RusticError::new(
                     ErrorKind::Command,
-                    "No `%id` specified in warm-up command. Please specify `%id` in the command.",
+                    "No `%id` specified in warm-up command `{command}`. Please specify `%id` in the command.",
                 )
                 .attach_context("command", warm_up.to_string()));
             }
@@ -425,7 +425,7 @@ impl<P, S> Repository<P, S> {
             0 => Ok(None),
             _ => Err(RusticError::new(
                 ErrorKind::Configuration,
-                "More than one repository found. Please check the config file.",
+                "More than one repository found for `{name}`. Please check the config file.",
             )
             .attach_context("name", self.name.clone())),
         }
@@ -484,7 +484,7 @@ impl<P, S> Repository<P, S> {
         let config_id = self.config_id()?.ok_or_else(|| {
             RusticError::new(
                 ErrorKind::Configuration,
-                "No repository config file found. Please check the repository.",
+                "No repository config file found for `{name}`. Please check the repository.",
             )
             .attach_context("name", self.name.clone())
         })?;
@@ -497,7 +497,7 @@ impl<P, S> Repository<P, S> {
             if keys != hot_keys {
                 return Err(RusticError::new(
                     ErrorKind::Key,
-                    "Keys of hot and cold repositories don't match. Please check the keys.",
+                    "Keys of hot and cold repositories don't match for `{name}`. Please check the keys.",
                 )
                 .attach_context("name", self.name.clone()));
             }
@@ -541,7 +541,7 @@ impl<P, S> Repository<P, S> {
         let password = self.password()?.ok_or_else(|| {
             RusticError::new(
                 ErrorKind::Password,
-                "No password given, or Password was empty. Please specify a valid password.",
+                "No password given, or Password was empty. Please specify a valid password for `{name}`.",
             )
             .attach_context("name", self.name.clone())
         })?;
@@ -577,7 +577,7 @@ impl<P, S> Repository<P, S> {
         if self.config_id()?.is_some() {
             return Err(RusticError::new(
                 ErrorKind::Configuration,
-                "Config file already exists. Please check the repository.",
+                "Config file already exists for `{name}`. Please check the repository.",
             )
             .attach_context("name", self.name));
         }
@@ -1567,9 +1567,9 @@ impl<P, S: IndexedFull> Repository<P, S> {
         let ie = self.index().get_id(T::TYPE, &blob_id).ok_or_else(|| {
             RusticError::new(
                 ErrorKind::Internal,
-                "BlobID not found in index, but should be there.",
+                "Blob ID `{id}` not found in index, but should be there.",
             )
-            .attach_context("blob id", blob_id.to_string())
+            .attach_context("id", blob_id.to_string())
             .ask_report()
         })?;
 

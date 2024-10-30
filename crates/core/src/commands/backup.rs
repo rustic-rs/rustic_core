@@ -205,6 +205,7 @@ pub struct BackupOptions {
 /// # Returns
 ///
 /// The snapshot pointing to the backup'ed data.
+#[allow(clippy::too_many_lines)]
 pub(crate) fn backup<P: ProgressBars, S: IndexedIds>(
     repo: &Repository<P, S>,
     opts: &BackupOptions,
@@ -228,7 +229,7 @@ pub(crate) fn backup<P: ProgressBars, S: IndexedIds>(
                 .map_err(|err| {
                     RusticError::with_source(
                         ErrorKind::InvalidInput,
-                        "Failed to parse dotted path.",
+                        "Failed to parse dotted path `{path}`",
                         err,
                     )
                     .attach_context("path", p.display().to_string())
@@ -239,19 +240,27 @@ pub(crate) fn backup<P: ProgressBars, S: IndexedIds>(
 
     match &as_path {
         Some(p) => snap.paths.set_paths(&[p.clone()]).map_err(|err| {
-            RusticError::with_source(ErrorKind::Internal, "Failed to set paths in snapshot.", err)
-                .attach_context("paths", p.display().to_string())
+            RusticError::with_source(
+                ErrorKind::Internal,
+                "Failed to set paths `{paths}` in snapshot.",
+                err,
+            )
+            .attach_context("paths", p.display().to_string())
         })?,
         None => snap.paths.set_paths(&backup_path).map_err(|err| {
-            RusticError::with_source(ErrorKind::Internal, "Failed to set paths in snapshot.", err)
-                .attach_context(
-                    "paths",
-                    backup_path
-                        .iter()
-                        .map(|p| p.display().to_string())
-                        .collect::<Vec<_>>()
-                        .join(","),
-                )
+            RusticError::with_source(
+                ErrorKind::Internal,
+                "Failed to set paths `{paths}` in snapshot.",
+                err,
+            )
+            .attach_context(
+                "paths",
+                backup_path
+                    .iter()
+                    .map(|p| p.display().to_string())
+                    .collect::<Vec<_>>()
+                    .join(","),
+            )
         })?,
     };
 

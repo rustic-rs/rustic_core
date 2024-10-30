@@ -154,7 +154,7 @@ impl LocalDestination {
                     fs::create_dir_all(path).map_err(|err| {
                         RusticError::with_source(
                             ErrorKind::InputOutput,
-                            "The directory could not be created.",
+                            "The directory `{path}` could not be created.",
                             err,
                         )
                         .attach_context("path", path.display().to_string())
@@ -164,7 +164,7 @@ impl LocalDestination {
                 fs::create_dir_all(&path).map_err(|err| {
                     RusticError::with_source(
                         ErrorKind::InputOutput,
-                        "The directory could not be created.",
+                        "The directory `{path}` could not be created.",
                         err,
                     )
                     .attach_context("path", path.display().to_string())

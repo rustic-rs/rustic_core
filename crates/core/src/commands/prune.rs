@@ -203,7 +203,7 @@ impl FromStr for LimitOption {
                 copy.parse().map_err(|err| {
                     RusticError::with_source(
                         ErrorKind::InvalidInput,
-                        "Failed to parse percentage limit.",
+                        "Failed to parse percentage limit `{limit}`",
                         err,
                     )
                     .attach_context("limit", s)
@@ -214,7 +214,7 @@ impl FromStr for LimitOption {
                 let byte_size = ByteSize::from_str(s).map_err(|err| {
                     RusticError::with_source(
                         ErrorKind::InvalidInput,
-                        "Failed to parse size limit.",
+                        "Failed to parse size limit `{limit}`",
                         err,
                     )
                     .attach_context("limit", s)
@@ -704,9 +704,9 @@ impl PrunePlan {
         if version < 2 && opts.repack_uncompressed {
             return Err(RusticError::new(
                 ErrorKind::Unsupported,
-                "Repacking uncompressed pack is unsupported in Repository version 1.",
+                "Repacking uncompressed pack is unsupported in Repository version `{config_version}`.",
             )
-            .attach_context("config version", version.to_string()));
+            .attach_context("config_version", version.to_string()));
         }
 
         let mut index_files = Vec::new();
@@ -754,7 +754,7 @@ impl PrunePlan {
             Duration::from_std(*opts.keep_pack).map_err(|err| {
                 RusticError::with_source(
                     ErrorKind::Internal,
-                    "Failed to convert keep_pack duration to std::time::Duration.",
+                    "Failed to convert keep_pack duration `{keep_pack}` to std::time::Duration.",
                     err,
                 )
                 .attach_context("keep_pack", opts.keep_pack.to_string())
@@ -762,7 +762,7 @@ impl PrunePlan {
             Duration::from_std(*opts.keep_delete).map_err(|err| {
                 RusticError::with_source(
                     ErrorKind::Internal,
-                    "Failed to convert keep_delete duration to std::time::Duration.",
+                    "Failed to convert keep_delete duration `{keep_delete}` to std::time::Duration.",
                     err,
                 )
                 .attach_context("keep_delete", opts.keep_delete.to_string())
@@ -814,9 +814,9 @@ impl PrunePlan {
             if *count == 0 {
                 return Err(RusticError::new(
                     ErrorKind::Command,
-                    "Blob is missing in index files.",
+                    "Blob ID `{blob_id}` is missing in index files.",
                 )
-                .attach_context("blob id", id.to_string())
+                .attach_context("blob_id", id.to_string())
                 .ask_report());
             }
         }
@@ -1085,14 +1085,14 @@ impl PrunePlan {
                     Some(size) if size == pack.size => Ok(()), // size is ok => continue
                     Some(size) => Err(RusticError::new(
                         ErrorKind::Command,
-                        "Pack size does not match the size in the index file.",
+                        "Pack size `{size_in_pack_real}` of id `{pack_id}` does not match the expected size `{size_in_index_expected}` in the index file. ",
                     )
-                    .attach_context("pack id", pack.id.to_string())
-                    .attach_context("size in index (expected)", pack.size.to_string())
-                    .attach_context("size in pack (real)", size.to_string())
+                    .attach_context("pack_id", pack.id.to_string())
+                    .attach_context("size_in_index_expected", pack.size.to_string())
+                    .attach_context("size_in_pack_real", size.to_string())
                     .ask_report()),
-                    None => Err(RusticError::new(ErrorKind::Command, "Pack does not exist.")
-                        .attach_context("pack id", pack.id.to_string())
+                    None => Err(RusticError::new(ErrorKind::Command, "Pack `{pack_id}` does not exist.")
+                        .attach_context("pack_id", pack.id.to_string())
                         .ask_report()),
                 }
             };
@@ -1101,9 +1101,9 @@ impl PrunePlan {
                 PackToDo::Undecided => {
                     return Err(RusticError::new(
                         ErrorKind::Command,
-                        "Pack got no decision what to do with it!",
+                        "Pack `{pack_id}` got no decision what to do with it!",
                     )
-                    .attach_context("pack id", pack.id.to_string())
+                    .attach_context("pack_id", pack.id.to_string())
                     .ask_report());
                 }
                 PackToDo::Keep | PackToDo::Recover => {
@@ -1354,9 +1354,9 @@ pub(crate) fn prune_repository<P: ProgressBars, S: Open>(
                 PackToDo::Undecided => {
                     return Err(RusticError::new(
                         ErrorKind::Command,
-                        "Pack got no decision what to do with it!",
+                        "Pack `{pack_id}` got no decision what to do with it!",
                     )
-                    .attach_context("pack id", pack.id.to_string())
+                    .attach_context("pack_id", pack.id.to_string())
                     .ask_report());
                 }
                 PackToDo::Keep => {

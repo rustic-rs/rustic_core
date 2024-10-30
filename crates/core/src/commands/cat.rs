@@ -107,7 +107,7 @@ pub(crate) fn cat_tree<P: ProgressBars, S: IndexedTree>(
     let id = node.subtree.ok_or_else(|| {
         RusticError::new(
             ErrorKind::Command,
-            "Path in Node subtree is not a directory. Please provide a directory path.",
+            "Path `{path}` in Node subtree is not a directory. Please provide a directory path.",
         )
         .attach_context("path", path.to_string())
     })?;

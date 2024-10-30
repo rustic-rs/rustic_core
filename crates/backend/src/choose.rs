@@ -119,7 +119,7 @@ impl BackendOptions {
                     .map_err(|err| {
                         RusticError::with_source(
                         ErrorKind::Backend,
-                        "Could not load the backend. Please check the given backend and try again.",
+                        "Could not load the backend `{name}` at `{location}`. Please check the given backend and try again.",
                         err,
                     )
                     .attach_context("name", be_type.to_string())

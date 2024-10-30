@@ -140,7 +140,7 @@ impl ConfigFile {
         let chunker_poly = u64::from_str_radix(&self.chunker_polynomial, 16)
             .map_err(|err| RusticError::with_source(
                 ErrorKind::InvalidInput,
-                "Parsing u64 from hex failed for polynomial, the value must be a valid hexadecimal string.",
+                "Parsing u64 from hex failed for polynomial `{polynomial}`, the value must be a valid hexadecimal string.",
                 err)
             .attach_context("polynomial",self.chunker_polynomial.to_string()))
             ?;
@@ -160,7 +160,7 @@ impl ConfigFile {
             (2, Some(c)) => Ok(Some(c)),
             _ => Err(RusticError::new(
                 ErrorKind::Unsupported,
-                "Config version not supported. Please make sure, that you use the correct version.",
+                "Config version `{version}` not supported. Please make sure, that you use the correct version.",
             )
             .attach_context("version", self.version.to_string())),
         }

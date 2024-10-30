@@ -85,7 +85,7 @@ fn check_clone_version(rclone_version_output: &[u8]) -> RusticResult<()> {
 
     let mut parsed_version = Version::parse(rclone_version).map_err(|err| {
         RusticError::with_source(ErrorKind::Internal,
-            "Error parsing rclone version. This should not happen. Please check the `rclone version` output manually.",
+            "Error parsing rclone version `{version}`. This should not happen. Please check the `rclone version` output manually.",
             err)
             .attach_context("version", rclone_version)
     })?;
@@ -113,9 +113,9 @@ fn check_clone_version(rclone_version_output: &[u8]) -> RusticResult<()> {
     {
         return Err(RusticError::new(
             ErrorKind::Unsupported,
-            "Unsupported rclone version. We must not use rclone without authentication! Please upgrade to rclone >= 1.52.2!",
+            "Unsupported rclone version `{version}`. We must not use rclone without authentication! Please upgrade to rclone >= 1.52.2!",
         )
-        .attach_context("current version", rclone_version.to_string()));
+        .attach_context("version", rclone_version.to_string()));
     }
 
     Ok(())
@@ -205,10 +205,10 @@ impl RcloneBackend {
             .map_err(|err|
                 RusticError::with_source(
                     ErrorKind::ExternalCommand,
-                    "Experienced an error while running rclone. Please check if rclone is installed and working correctly.",
+                    "Experienced an error while running rclone: `{rclone_command}`. Please check if rclone is installed and working correctly.",
                     err
                 )
-                .attach_context("rclone command", rclone_command.to_string())
+                .attach_context("rclone_command", rclone_command.to_string())
             )?;
 
         let mut stderr = BufReader::new(
@@ -234,8 +234,8 @@ impl RcloneBackend {
                         return Err(
                             RusticError::new(
                                 ErrorKind::ExternalCommand,
-                                "rclone exited before it could start the REST server. Please check the exit status for more information.",
-                            ).attach_context("exit status", status.to_string())
+                                "rclone exited before it could start the REST server: `{exit_status}`. Please check the exit status for more information.",
+                            ).attach_context("exit_status", status.to_string())
                         );
                     }
                     let mut line = String::new();
@@ -270,7 +270,7 @@ impl RcloneBackend {
             if !rest_url.starts_with("http://") {
                 return Err(RusticError::new(
                     ErrorKind::InputOutput,
-                    "Please make sure, the URL starts with 'http://'!",
+                    "Please make sure, the URL `{url}` starts with 'http://'!",
                 )
                 .attach_context("url", rest_url));
             }

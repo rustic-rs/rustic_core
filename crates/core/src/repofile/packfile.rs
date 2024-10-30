@@ -285,12 +285,13 @@ impl PackHeader {
         trace!("header size: {size_real}");
 
         if size_real + constants::LENGTH_LEN > pack_size {
-            return Err(
-                RusticError::new(ErrorKind::Internal, "Read header length is too large!")
-                    .attach_context("size real", size_real.to_string())
-                    .attach_context("pack size", pack_size.to_string())
-                    .attach_context("length field value", constants::LENGTH_LEN.to_string()),
-            );
+            return Err(RusticError::new(
+                ErrorKind::Internal,
+                "Read header length `{size_real}` + `{length}` is larger than `{pack_size}`!",
+            )
+            .attach_context("size_real", size_real.to_string())
+            .attach_context("pack_size", pack_size.to_string())
+            .attach_context("length", constants::LENGTH_LEN.to_string()));
         }
 
         // now read the header
@@ -312,17 +313,17 @@ impl PackHeader {
                 ErrorKind::Internal,
                 "Read header length doesn't match header contents!",
             )
-            .attach_context("size real", size_real.to_string())
-            .attach_context("size computed", header.size().to_string()));
+            .attach_context("size_real", size_real.to_string())
+            .attach_context("size_computed", header.size().to_string()));
         }
 
         if header.pack_size() != pack_size {
             return Err(RusticError::new(
                 ErrorKind::Internal,
-                "pack size computed from header doesn't match real pack file size!",
+                "pack size `{size_computed}` computed from header doesn't match real pack file size `{size_real}`!",
             )
-            .attach_context("size real", pack_size.to_string())
-            .attach_context("size computed", header.pack_size().to_string()));
+            .attach_context("size_real", pack_size.to_string())
+            .attach_context("size_computed", header.pack_size().to_string()));
         }
 
         Ok(header)

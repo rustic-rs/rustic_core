@@ -98,7 +98,7 @@ fn warm_up_command<P: ProgressBars>(
             .map_err(|err| {
                 RusticError::with_source(
                     ErrorKind::ExternalCommand,
-                    "Error in executing warm-up command.",
+                    "Error in executing warm-up command `{command}`.",
                     err,
                 )
                 .attach_context("command", command.to_string())

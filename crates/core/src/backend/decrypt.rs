@@ -81,10 +81,11 @@ pub trait DecryptReadBackend: ReadBackend + Clone + 'static {
                     err,
                 )
             })?;
+
             if data.len() != length.get() as usize {
                 return Err(RusticError::new(
                     ErrorKind::Internal,
-                    "Length of uncompressed data does not match the given length.",
+                    "Length of uncompressed data `{actual_length}` does not match the given length `{expected_length}`.",
                 )
                 .attach_context("expected_length", length.get().to_string())
                 .attach_context("actual_length", data.len().to_string())
@@ -423,7 +424,7 @@ impl<C: CryptoKey> DecryptBackend<C> {
                         "Compressing and appending data failed. The data may be corrupted.",
                         err,
                     )
-                    .attach_context("compression level", level.to_string())
+                    .attach_context("compression_level", level.to_string())
                 })?;
 
                 self.key().encrypt_data(&out)?
@@ -453,7 +454,7 @@ impl<C: CryptoKey> DecryptBackend<C> {
         let data_len: u32 = data.len().try_into().map_err(|err| {
             RusticError::with_source(
                 ErrorKind::Internal,
-                "Failed to convert data length to u32.",
+                "Failed to convert data length `{length}` to u32.",
                 err,
             )
             .attach_context("length", data.len().to_string())
@@ -471,7 +472,7 @@ impl<C: CryptoKey> DecryptBackend<C> {
                             "Failed to encode zstd compressed data. The data may be corrupted.",
                             err,
                         )
-                        .attach_context("compression level", level.to_string())
+                        .attach_context("compression_level", level.to_string())
                     })?)?,
                 NonZeroU32::new(data_len),
             ),

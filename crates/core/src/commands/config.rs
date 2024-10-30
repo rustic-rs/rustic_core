@@ -192,17 +192,17 @@ impl ConfigOptions {
             if !range.contains(&version) {
                 return Err(RusticError::new(
                     ErrorKind::Unsupported,
-                    "Config version not supported.",
+                    "Config version unsupported. Allowed versions are `{allowed_versions}`. You provided `{current_version}`. Please use a supported version. ",
                 )
-                .attach_context("current version", version.to_string())
-                .attach_context("allowed versions", format!("{range:?}")));
+                .attach_context("current_version", version.to_string())
+                .attach_context("allowed_versions", format!("{range:?}")));
             } else if version < config.version {
                 return Err(RusticError::new(
                     ErrorKind::Unsupported,
-                    "Downgrading config version is not supported. Please use a higher version.",
+                    "Downgrading config version is unsupported. You provided `{new_version}` which is smaller than `{current_version}`. Please use a version that is greater or equal to the current one.",
                 )
-                .attach_context("current version", config.version.to_string())
-                .attach_context("new version", version.to_string()));
+                .attach_context("current_version", config.version.to_string())
+                .attach_context("new_version", version.to_string()));
             }
 
             config.version = version;
@@ -212,7 +212,7 @@ impl ConfigOptions {
             if config.version == 1 && compression != 0 {
                 return Err(RusticError::new(
                     ErrorKind::Unsupported,
-                    "Compression not supported for v1 repos.",
+                    "Compression `{compression}` unsupported for v1 repos.",
                 )
                 .attach_context("compression", compression.to_string()));
             }
@@ -221,10 +221,10 @@ impl ConfigOptions {
             if !range.contains(&compression) {
                 return Err(RusticError::new(
                     ErrorKind::Unsupported,
-                    "Compression level not supported.",
+                    "Compression level `{compression}` is unsupported. Allowed levels are `{allowed_levels}`. Please use a supported level.",
                 )
                 .attach_context("compression", compression.to_string())
-                .attach_context("allowed levels", format!("{range:?}")));
+                .attach_context("allowed_levels", format!("{range:?}")));
             }
             config.compression = Some(compression);
         }
@@ -273,7 +273,7 @@ impl ConfigOptions {
             if percent > 100 {
                 return Err(RusticError::new(
                     ErrorKind::InvalidInput,
-                    "`min_packsize_tolerate_percent` must be <= 100.",
+                    "`min_packsize_tolerate_percent` must be <= 100. You provided `{percent}`.",
                 )
                 .attach_context("percent", percent.to_string()));
             }
@@ -285,7 +285,7 @@ impl ConfigOptions {
             if percent < 100 && percent > 0 {
                 return Err(RusticError::new(
                     ErrorKind::InvalidInput,
-                    "`max_packsize_tolerate_percent` must be >= 100 or 0.",
+                    "`max_packsize_tolerate_percent` must be >= 100 or 0. You provided `{percent}`.",
                 )
                 .attach_context("percent", percent.to_string()));
             }
@@ -304,7 +304,7 @@ fn construct_size_too_large_error(
 ) -> Box<RusticError> {
     RusticError::with_source(
         ErrorKind::Internal,
-        "Failed to convert ByteSize to u64. Size is too large.",
+        "Failed to convert ByteSize `{size}` to u64. Size is too large.",
         err,
     )
     .attach_context("size", size.to_string())

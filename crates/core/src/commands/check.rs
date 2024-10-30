@@ -149,7 +149,7 @@ impl FromStr for ReadSubsetOption {
             let percentage = p.parse().map_err(|err| {
                 RusticError::with_source(
                     ErrorKind::InvalidInput,
-                    "Error parsing percentage for ReadSubset option. Did you forget the '%'?",
+                    "Error parsing percentage from value `{value}` for ReadSubset option. Did you forget the '%'?",
                     err,
                 )
                 .attach_context("value", p.to_string())
@@ -162,7 +162,7 @@ impl FromStr for ReadSubsetOption {
                 |err|
                     RusticError::with_source(
                         ErrorKind::InvalidInput,
-                        "Error parsing n/m for ReadSubset option. Allowed values: 'all', 'x%', 'n/m' or a size.",
+                        "Error parsing 'n/m' from value `{value}` for ReadSubset option. Allowed values: 'all', 'x%', 'n/m' or a size.",
                         err
                     )
                     .attach_context("value", s)
@@ -176,7 +176,7 @@ impl FromStr for ReadSubsetOption {
                     .map_err(|err| {
                         RusticError::with_source(
                             ErrorKind::InvalidInput,
-                            "Error parsing size for ReadSubset option. Allowed values: 'all', 'x%', 'n/m' or a size.",
+                            "Error parsing size from value `{value}` for ReadSubset option. Allowed values: 'all', 'x%', 'n/m' or a size.",
                             err
                         )
                         .attach_context("value", s)
@@ -689,10 +689,14 @@ fn check_pack(
     let header_len = PackHeaderRef::from_index_pack(&index_pack).size();
     let pack_header_len = PackHeaderLength::from_binary(&data.split_off(data.len() - 4))
         .map_err(|err| {
-            RusticError::with_source(ErrorKind::Command, "Error reading pack header length.", err)
-                .attach_context("pack id", id.to_string())
-                .attach_context("header length", header_len.to_string())
-                .ask_report()
+            RusticError::with_source(
+                ErrorKind::Command,
+                "Error reading pack header length `{length}` for `{pack_id}`",
+                err,
+            )
+            .attach_context("pack_id", id.to_string())
+            .attach_context("length", header_len.to_string())
+            .ask_report()
         })?
         .to_u32();
     if pack_header_len != header_len {
@@ -705,9 +709,13 @@ fn check_pack(
 
     let pack_blobs = PackHeader::from_binary(&header)
         .map_err(|err| {
-            RusticError::with_source(ErrorKind::Command, "Error reading pack header.", err)
-                .attach_context("pack id", id.to_string())
-                .ask_report()
+            RusticError::with_source(
+                ErrorKind::Command,
+                "Error reading pack header for id `{pack_id}`",
+                err,
+            )
+            .attach_context("pack_id", id.to_string())
+            .ask_report()
         })?
         .into_blobs();
     let mut blobs = index_pack.blobs;

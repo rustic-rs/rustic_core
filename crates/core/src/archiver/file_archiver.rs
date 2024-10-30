@@ -118,7 +118,7 @@ impl<'a, BE: DecryptWriteBackend, I: ReadGlobalIndex> FileArchiver<'a, BE, I> {
                         .ok_or_else(
                             || RusticError::new(
                                 ErrorKind::Internal,
-                                "Failed to unpack tree type optional. Option should contain a value, but contained `None`.",
+                                "Failed to unpack tree type optional at `{path}`. Option should contain a value, but contained `None`.",
                             )
                             .attach_context("path", path.display().to_string())
                             .ask_report(),
@@ -127,7 +127,7 @@ impl<'a, BE: DecryptWriteBackend, I: ReadGlobalIndex> FileArchiver<'a, BE, I> {
                         .map_err(|err| {
                             RusticError::with_source(
                                 ErrorKind::InputOutput,
-                                "Failed to open ReadSourceOpen",
+                                "Failed to open ReadSourceOpen at `{path}`",
                                 err,
                             )
                             .attach_context("path", path.display().to_string())
@@ -154,7 +154,7 @@ impl<'a, BE: DecryptWriteBackend, I: ReadGlobalIndex> FileArchiver<'a, BE, I> {
             usize::try_from(node.meta.size).map_err(|err| {
                 RusticError::with_source(
                     ErrorKind::Internal,
-                    "Failed to convert node size to usize",
+                    "Failed to convert node size `{size}` to usize",
                     err,
                 )
                 .attach_context("size", node.meta.size.to_string())

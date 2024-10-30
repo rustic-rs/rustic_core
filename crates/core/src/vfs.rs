@@ -273,7 +273,7 @@ impl Vfs {
                             .map_err(|err| {
                                 RusticError::with_source(
                                     ErrorKind::Vfs,
-                                    "Failed to add a link to root tree.",
+                                    "Failed to add a link `{name}` to root tree at `{path}`",
                                     err,
                                 )
                                 .attach_context("path", path.display().to_string())
@@ -286,11 +286,11 @@ impl Vfs {
                         .map_err(|err| {
                             RusticError::with_source(
                                 ErrorKind::Vfs,
-                                "Failed to add repository tree to root tree.",
+                                "Failed to add repository tree `{tree_id}` to root tree at `{path}`",
                                 err,
                             )
                             .attach_context("path", path.display().to_string())
-                            .attach_context("tree id", snap.tree.to_string())
+                            .attach_context("tree_id", snap.tree.to_string())
                             .ask_report()
                         })?;
                 }
@@ -311,12 +311,12 @@ impl Vfs {
                             .map_err(|err| {
                                 RusticError::with_source(
                                     ErrorKind::Vfs,
-                                    "Failed to link latest entries to root tree.",
+                                    "Failed to link latest `{target}` entry to root tree at `{path}`",
                                     err,
                                 )
-                                .attach_context("latest", "link")
                                 .attach_context("path", path.display().to_string())
                                 .attach_context("target", target.to_string_lossy())
+                                .attach_context("latest", "link")
                                 .ask_report()
                             })?;
                     }
@@ -330,12 +330,12 @@ impl Vfs {
                             .map_err(|err| {
                                 RusticError::with_source(
                                     ErrorKind::Vfs,
-                                    "Failed to add latest subtree to root tree.",
+                                    "Failed to add latest subtree id `{id}` to root tree at `{path}`",
                                     err,
                                 )
-                                .attach_context("latest", "dir")
                                 .attach_context("path", path.display().to_string())
-                                .attach_context("tree id", subtree.to_string())
+                                .attach_context("tree_id", subtree.to_string())
+                                .attach_context("latest", "dir")
                                 .ask_report()
                             })?;
                     }
@@ -368,9 +368,13 @@ impl Vfs {
     ) -> RusticResult<Node> {
         let meta = Metadata::default();
         match self.tree.get_path(path).map_err(|err| {
-            RusticError::with_source(ErrorKind::Vfs, "Failed to get tree at given path.", err)
-                .attach_context("path", path.display().to_string())
-                .ask_report()
+            RusticError::with_source(
+                ErrorKind::Vfs,
+                "Failed to get tree at given path `{path}`",
+                err,
+            )
+            .attach_context("path", path.display().to_string())
+            .ask_report()
         })? {
             VfsPath::RusticPath(tree_id, path) => Ok(repo.node_from_path(*tree_id, &path)?),
             VfsPath::VirtualTree(_) => {
@@ -414,9 +418,13 @@ impl Vfs {
         path: &Path,
     ) -> RusticResult<Vec<Node>> {
         let result = match self.tree.get_path(path).map_err(|err| {
-            RusticError::with_source(ErrorKind::Vfs, "Failed to get tree at given path.", err)
-                .attach_context("path", path.display().to_string())
-                .ask_report()
+            RusticError::with_source(
+                ErrorKind::Vfs,
+                "Failed to get tree at given path `{path}`",
+                err,
+            )
+            .attach_context("path", path.display().to_string())
+            .ask_report()
         })? {
             VfsPath::RusticPath(tree_id, path) => {
                 let node = repo.node_from_path(*tree_id, &path)?;
@@ -440,7 +448,7 @@ impl Vfs {
             VfsPath::Link(str) => {
                 return Err(RusticError::new(
                     ErrorKind::Vfs,
-                    "No directory entries for symlink found. Is the path valid unicode?",
+                    "No directory entries for symlink `{symlink}` found. Is the path valid unicode?",
                 )
                 .attach_context("symlink", str.to_string_lossy().to_string()));
             }

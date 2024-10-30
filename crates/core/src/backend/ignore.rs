@@ -192,7 +192,7 @@ impl LocalSource {
             _ = override_builder.add(g).map_err(|err| {
                 RusticError::with_source(
                     ErrorKind::Internal,
-                    "Failed to add glob pattern to override builder.",
+                    "Failed to add glob pattern `{glob}` to override builder.",
                     err,
                 )
                 .attach_context("glob", g.to_string())
@@ -205,10 +205,10 @@ impl LocalSource {
                 .map_err(|err| {
                     RusticError::with_source(
                         ErrorKind::Internal,
-                        "Failed to read string from glob file.",
+                        "Failed to read string from glob file at `{glob_file}`",
                         err,
                     )
-                    .attach_context("glob file", file.to_string())
+                    .attach_context("glob_file", file.to_string())
                     .ask_report()
                 })?
                 .lines()
@@ -216,10 +216,10 @@ impl LocalSource {
                 _ = override_builder.add(line).map_err(|err| {
                     RusticError::with_source(
                         ErrorKind::Internal,
-                        "Failed to add glob pattern line to override builder.",
+                        "Failed to add glob pattern line `{glob_pattern_line}` to override builder.",
                         err,
                     )
-                    .attach_context("glob pattern line", line.to_string())
+                    .attach_context("glob_pattern_line", line.to_string())
                     .ask_report()
                 })?;
             }
@@ -237,7 +237,7 @@ impl LocalSource {
             _ = override_builder.add(g).map_err(|err| {
                 RusticError::with_source(
                     ErrorKind::Internal,
-                    "Failed to add iglob pattern to override builder.",
+                    "Failed to add iglob pattern `{iglob}` to override builder.",
                     err,
                 )
                 .attach_context("iglob", g.to_string())
@@ -250,10 +250,10 @@ impl LocalSource {
                 .map_err(|err| {
                     RusticError::with_source(
                         ErrorKind::Internal,
-                        "Failed to read string from iglob file.",
+                        "Failed to read string from iglob file at `{iglob_file}`",
                         err,
                     )
-                    .attach_context("iglob file", file.to_string())
+                    .attach_context("iglob_file", file.to_string())
                     .ask_report()
                 })?
                 .lines()
@@ -261,10 +261,10 @@ impl LocalSource {
                 _ = override_builder.add(line).map_err(|err| {
                     RusticError::with_source(
                         ErrorKind::Internal,
-                        "Failed to add iglob pattern line to override builder.",
+                        "Failed to add iglob pattern line `{iglob_pattern_line}` to override builder.",
                         err,
                     )
-                    .attach_context("iglob pattern line", line.to_string())
+                    .attach_context("iglob_pattern_line", line.to_string())
                     .ask_report()
                 })?;
             }
@@ -334,10 +334,10 @@ impl ReadSourceOpen for OpenFile {
         File::open(&path).map_err(|err| {
             RusticError::with_source(
                 ErrorKind::InputOutput,
-                "Failed to open file. Please make sure the file exists and is accessible.",
+                "Failed to open file at `{path}`. Please make sure the file exists and is accessible.",
                 err,
             )
-            .attach_context("file", path.display().to_string())
+            .attach_context("path", path.display().to_string())
         })
     }
 }

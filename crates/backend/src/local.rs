@@ -134,10 +134,14 @@ impl LocalBackend {
         debug!("calling {actual_command}...");
 
         let command: CommandInput = actual_command.parse().map_err(|err| {
-            RusticError::with_source(ErrorKind::Internal, "Failed to parse command input.", err)
-                .attach_context("command", actual_command)
-                .attach_context("replacement", replace_with.join(", "))
-                .ask_report()
+            RusticError::with_source(
+                ErrorKind::Internal,
+                "Failed to parse command input: `{command}` is not a valid command.",
+                err,
+            )
+            .attach_context("command", actual_command)
+            .attach_context("replacement", replace_with.join(", "))
+            .ask_report()
         })?;
 
         let status = Command::new(command.command())
@@ -146,21 +150,22 @@ impl LocalBackend {
             .map_err(|err| {
                 RusticError::with_source(
                     ErrorKind::Command,
-                    "Failed to execute command. Please check the command and try again.",
+                    "Failed to execute `{command}`. Please check the command and try again.",
                     err,
                 )
                 .attach_context("command", command.to_string())
             })?;
 
         if !status.success() {
-            return Err(
-                RusticError::new(ErrorKind::Command, "Command was not successful.")
-                    .attach_context("command", command.to_string())
-                    .attach_context("file_name", replace_with[0])
-                    .attach_context("file_type", replace_with[1])
-                    .attach_context("id", replace_with[2])
-                    .attach_context("status", status.to_string()),
-            );
+            return Err(RusticError::new(
+                ErrorKind::Command,
+                "Command was not successful: `{command}` failed with status `{status}`.",
+            )
+            .attach_context("command", command.to_string())
+            .attach_context("file_name", replace_with[0])
+            .attach_context("file_type", replace_with[1])
+            .attach_context("id", replace_with[2])
+            .attach_context("status", status.to_string()));
         }
         Ok(())
     }
@@ -230,7 +235,7 @@ impl ReadBackend for LocalBackend {
                     let metadata = path.metadata().map_err(|err|
                             RusticError::with_source(
                                 ErrorKind::Backend,
-                                "Failed to query metadata of the file. Please check the file and try again.",
+                                "Failed to query metadata of the file `{path}`. Please check the file and try again.",
                                 err
                             )
                             .attach_context("path", path.to_string_lossy())
@@ -239,7 +244,7 @@ impl ReadBackend for LocalBackend {
                     metadata.len().try_into().map_err(|err| {
                         RusticError::with_source(
                             ErrorKind::Backend,
-                            "Failed to convert file length to u32.",
+                            "Failed to convert file length `{length}` to u32.",
                             err,
                         )
                         .attach_context("length", metadata.len().to_string())
@@ -268,7 +273,7 @@ impl ReadBackend for LocalBackend {
                         .map_err(|err|
                             RusticError::with_source(
                                 ErrorKind::Backend,
-                                "Failed to query metadata of the file. Please check the file and try again.",
+                                "Failed to query metadata of the file `{path}`. Please check the file and try again.",
                                 err
                             )
                             .attach_context("path", e.path().to_string_lossy())
@@ -281,7 +286,7 @@ impl ReadBackend for LocalBackend {
                         .map_err(|err|
                             RusticError::with_source(
                                 ErrorKind::Backend,
-                                "Failed to convert file length to u32.",
+                                "Failed to convert file length `{length}` to u32.",
                                 err
                             )
                             .attach_context("length", metadata.len().to_string())
@@ -353,7 +358,7 @@ impl ReadBackend for LocalBackend {
         let mut file = File::open(self.path(tpe, id)).map_err(|err| {
             RusticError::with_source(
                 ErrorKind::Backend,
-                "Failed to open the file. Please check the file and try again.",
+                "Failed to open the file `{path}`. Please check the file and try again.",
                 err,
             )
             .attach_context("path", self.path(tpe, id).to_string_lossy())
@@ -361,7 +366,7 @@ impl ReadBackend for LocalBackend {
         _ = file.seek(SeekFrom::Start(offset.into())).map_err(|err| {
             RusticError::with_source(
                 ErrorKind::Backend,
-                "Failed to seek to the position in the file. Please check the file and try again.",
+                "Failed to seek to the position `{offset}` in the file `{path}`. Please check the file and try again.",
                 err,
             )
             .attach_context("path", self.path(tpe, id).to_string_lossy())
@@ -373,7 +378,7 @@ impl ReadBackend for LocalBackend {
             length.try_into().map_err(|err| {
                 RusticError::with_source(
                     ErrorKind::Backend,
-                    "Failed to convert length to u64.",
+                    "Failed to convert length `{length}` to u64.",
                     err,
                 )
                 .attach_context("length", length.to_string())
@@ -384,7 +389,7 @@ impl ReadBackend for LocalBackend {
         file.read_exact(&mut vec).map_err(|err| {
             RusticError::with_source(
                 ErrorKind::Backend,
-                "Failed to read the exact length of the file. Please check the file and try again.",
+                "Failed to read the exact length `{length}` of the file `{path}`. Please check the file and try again.",
                 err,
             )
             .attach_context("path", self.path(tpe, id).to_string_lossy())
@@ -406,7 +411,7 @@ impl WriteBackend for LocalBackend {
         fs::create_dir_all(&self.path).map_err(|err| {
             RusticError::with_source(
                 ErrorKind::InputOutput,
-                "Failed to create the directory. Please check the path and try again.",
+                "Failed to create the directory `{path}`. Please check the path and try again.",
                 err,
             )
             .attach_context("path", self.path.display().to_string())
@@ -417,7 +422,7 @@ impl WriteBackend for LocalBackend {
             fs::create_dir_all(path.clone()).map_err(|err| {
                 RusticError::with_source(
                     ErrorKind::InputOutput,
-                    "Failed to create the directory. Please check the path and try again.",
+                    "Failed to create the directory `{path}`. Please check the path and try again.",
                     err,
                 )
                 .attach_context("path", path.display().to_string())
@@ -429,7 +434,7 @@ impl WriteBackend for LocalBackend {
             fs::create_dir_all(path.clone()).map_err(|err| {
                 RusticError::with_source(
                     ErrorKind::InputOutput,
-                    "Failed to create the directory. Please check the path and try again.",
+                    "Failed to create the directory `{path}`. Please check the path and try again.",
                     err,
                 )
                 .attach_context("path", path.display().to_string())
@@ -472,21 +477,25 @@ impl WriteBackend for LocalBackend {
             .map_err(|err| {
                 RusticError::with_source(
                     ErrorKind::InputOutput,
-                    "Failed to open the file. Please check the file and try again.",
+                    "Failed to open the file `{path}`. Please check the file and try again.",
                     err,
                 )
                 .attach_context("path", filename.to_string_lossy())
             })?;
 
         file.set_len(buf.len().try_into().map_err(|err| {
-            RusticError::with_source(ErrorKind::Internal, "Failed to convert length to u64.", err)
-                .attach_context("length", buf.len().to_string())
-                .ask_report()
+            RusticError::with_source(
+                ErrorKind::Internal,
+                "Failed to convert length `{length}` to u64.",
+                err,
+            )
+            .attach_context("length", buf.len().to_string())
+            .ask_report()
         })?)
         .map_err(|err| {
             RusticError::with_source(
                 ErrorKind::InputOutput,
-                "Failed to set the length of the file. Please check the file and try again.",
+                "Failed to set the length of the file `{path}`. Please check the file and try again.",
                 err,
             )
             .attach_context("path", filename.to_string_lossy())
@@ -495,7 +504,7 @@ impl WriteBackend for LocalBackend {
         file.write_all(&buf).map_err(|err| {
             RusticError::with_source(
                 ErrorKind::InputOutput,
-                "Failed to write to the buffer. Please check the file and try again.",
+                "Failed to write to the buffer: `{path}`. Please check the file and try again.",
                 err,
             )
             .attach_context("path", filename.to_string_lossy())
@@ -504,7 +513,7 @@ impl WriteBackend for LocalBackend {
         file.sync_all().map_err(|err| {
             RusticError::with_source(
                 ErrorKind::InputOutput,
-                "Failed to sync OS Metadata to disk. Please check the file and try again.",
+                "Failed to sync OS Metadata to disk: `{path}`. Please check the file and try again.",
                 err,
             )
             .attach_context("path", filename.to_string_lossy())
@@ -535,7 +544,7 @@ impl WriteBackend for LocalBackend {
         fs::remove_file(&filename).map_err(|err|
             RusticError::with_source(
                 ErrorKind::Backend,
-                "Failed to remove the file. Was the file already removed or is it in use? Please check the file and remove it manually.",
+                "Failed to remove the file `{path}`. Was the file already removed or is it in use? Please check the file and remove it manually.",
                 err
             )
             .attach_context("path", filename.to_string_lossy())

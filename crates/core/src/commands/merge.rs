@@ -45,8 +45,12 @@ pub(crate) fn merge_snapshots<P: ProgressBars, S: IndexedTree>(
         .merge();
 
     snap.paths.set_paths(&paths.paths()).map_err(|err| {
-        RusticError::with_source(ErrorKind::Internal, "Failed to set paths in snapshot.", err)
-            .attach_context("paths", paths.to_string())
+        RusticError::with_source(
+            ErrorKind::Internal,
+            "Failed to set paths `{paths}` in snapshot.",
+            err,
+        )
+        .attach_context("paths", paths.to_string())
     })?;
 
     // set snapshot time to time of latest snapshot to be merged
@@ -116,10 +120,10 @@ pub(crate) fn merge_trees<P: ProgressBars, S: IndexedTree>(
         let size = u64::try_from(chunk.len()).map_err(|err| {
             RusticError::with_source(
                 ErrorKind::Internal,
-                "Failed to convert chunk length to u64.",
+                "Failed to convert chunk length `{length}` to u64.",
                 err,
             )
-            .attach_context("chunk length", chunk.len().to_string())
+            .attach_context("length", chunk.len().to_string())
         })?;
 
         if !index.has_tree(&new_id) {

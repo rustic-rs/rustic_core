@@ -223,7 +223,7 @@ pub(crate) fn collect_and_prepare<P: ProgressBars, S: IndexedFull>(
                             .map_err(|err| {
                                 RusticError::with_source(
                                     ErrorKind::InputOutput,
-                                    "Failed to create the directory. Please check the path and try again.",
+                                    "Failed to create the directory `{path}`. Please check the path and try again.",
                                     err
                                 )
                                 .attach_context("path", path.display().to_string())
@@ -454,7 +454,7 @@ fn restore_contents<P: ProgressBars, S: Open>(
             dest.set_length(path, *size).map_err(|err| {
                 RusticError::with_source(
                     ErrorKind::InputOutput,
-                    "Failed to set the length of the file. Please check the path and try again.",
+                    "Failed to set the length of the file `{path}`. Please check the path and try again.",
                     err,
                 )
                 .attach_context("path", path.display().to_string())
@@ -507,10 +507,10 @@ fn restore_contents<P: ProgressBars, S: Open>(
         .map_err(|err| {
             RusticError::with_source(
                 ErrorKind::Internal,
-                "Failed to create the thread pool. Please try again.",
+                "Failed to create the thread pool with `{num_threads}` threads. Please try again.",
                 err,
             )
-            .attach_context("num threads", threads.to_string())
+            .attach_context("num_threads", threads.to_string())
         })?;
 
     pool.in_place_scope(|s| {
@@ -679,7 +679,7 @@ impl RestorePlan {
                 .map_err(|err|
                     RusticError::with_source(
                         ErrorKind::InputOutput,
-                        "Failed to get the metadata of the file. Please check the path and try again.",
+                        "Failed to get the metadata of the file `{path}`. Please check the path and try again.",
                         err
                     )
                     .attach_context("path", name.display().to_string())
@@ -700,7 +700,7 @@ impl RestorePlan {
                 .map_err(|err|
                     RusticError::with_source(
                         ErrorKind::InputOutput,
-                        "Failed to get the metadata of the file. Please check the path and try again.",
+                        "Failed to get the metadata of the file `{path}`. Please check the path and try again.",
                         err
                     )
                     .attach_context("path", name.display().to_string())
@@ -736,7 +736,7 @@ impl RestorePlan {
             let usize_length = usize::try_from(length).map_err(|err| {
                 RusticError::with_source(
                     ErrorKind::Internal,
-                    "Failed to convert the length to usize. Please try again.",
+                    "Failed to convert the length `{length}`  to usize. Please try again.",
                     err,
                 )
                 .attach_context("length", length.to_string())

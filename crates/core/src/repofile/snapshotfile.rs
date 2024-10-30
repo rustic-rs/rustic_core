@@ -136,7 +136,7 @@ impl SnapshotOptions {
         self.tags.push(StringList::from_str(tag).map_err(|err| {
             RusticError::with_source(
                 ErrorKind::InvalidInput,
-                "Failed to create string list from tag. The value must be a valid unicode string.",
+                "Failed to create string list from tag `{tag}`. The value must be a valid unicode string.",
                 err,
             )
             .attach_context("tag", tag)
@@ -390,7 +390,7 @@ impl SnapshotFile {
                 .ok_or_else(|| {
                     RusticError::new(
                         ErrorKind::InvalidInput,
-                        "Failed to convert hostname to string. The value must be a valid unicode string.",
+                        "Failed to convert hostname `{hostname}` to string. The value must be a valid unicode string.",
                     )
                     .attach_context("hostname", hostname.to_string_lossy().to_string())
                 })?
@@ -405,7 +405,7 @@ impl SnapshotFile {
                 time + Duration::from_std(*duration).map_err(|err| {
                     RusticError::with_source(
                         ErrorKind::InvalidInput,
-                        "Failed to convert duration to std::time::Duration. Please make sure the value is a valid duration string.",
+                        "Failed to convert duration `{duration}` to std::time::Duration. Please make sure the value is a valid duration string.",
                         err,
                     )
                     .attach_context("duration", duration.to_string())
@@ -442,7 +442,7 @@ impl SnapshotFile {
             snap.description = Some(std::fs::read_to_string(path).map_err(|err| {
                 RusticError::with_source(
                     ErrorKind::InvalidInput,
-                    "Failed to read description file. Please make sure the file exists and is readable.",
+                    "Failed to read description file `{path}`. Please make sure the file exists and is readable.",
                     err,
                 )
                 .attach_context("path", path.to_string_lossy().to_string())

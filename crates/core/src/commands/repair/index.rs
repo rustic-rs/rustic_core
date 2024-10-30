@@ -81,13 +81,10 @@ pub(crate) fn repair_index<P: ProgressBars, S: Open>(
     p.set_length(pack_read_header.len().try_into().map_err(|err| {
         RusticError::with_source(
             ErrorKind::Internal,
-            "Failed to convert pack_read_header length to u64.",
+            "Failed to convert `pack_read_header` length `{length}` to u64.",
             err,
         )
-        .attach_context(
-            "pack read header length",
-            pack_read_header.len().to_string(),
-        )
+        .attach_context("length", pack_read_header.len().to_string())
     })?);
     for (id, size_hint, packsize) in pack_read_header {
         debug!("reading pack {id}...");
@@ -199,13 +196,10 @@ pub(crate) fn index_checked_from_collector<P: ProgressBars, S: Open>(
     p.set_length(pack_read_header.len().try_into().map_err(|err| {
         RusticError::with_source(
             ErrorKind::Internal,
-            "Failed to convert pack_read_header length to u64.",
+            "Failed to convert `pack_read_header` length `{length}`  to u64.",
             err,
         )
-        .attach_context(
-            "pack read header length",
-            pack_read_header.len().to_string(),
-        )
+        .attach_context("length", pack_read_header.len().to_string())
     })?);
 
     let index_packs: Vec<_> = pack_read_header
