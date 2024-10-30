@@ -268,25 +268,29 @@ impl Vfs {
                     && last_tree == snap.tree
                 {
                     if let Some(name) = last_name {
-                        tree.add_tree(path, VfsTree::Link(name.clone())).map_err(|err| {
-                            RusticError::with_source(
-                                ErrorKind::Vfs,
-                                "Failed to add a link to root tree. This should not happen, please report this bug.",
-                                err
-                            )
-                            .attach_context("path", path.display().to_string())
-                            .attach_context("name", name.to_string_lossy())
-                        })?;
+                        tree.add_tree(path, VfsTree::Link(name.clone()))
+                            .map_err(|err| {
+                                RusticError::with_source(
+                                    ErrorKind::Vfs,
+                                    "Failed to add a link to root tree.",
+                                    err,
+                                )
+                                .attach_context("path", path.display().to_string())
+                                .attach_context("name", name.to_string_lossy())
+                                .ask_report()
+                            })?;
                     }
                 } else {
-                    tree.add_tree(path, VfsTree::RusticTree(snap.tree)).map_err(|err| {
+                    tree.add_tree(path, VfsTree::RusticTree(snap.tree))
+                        .map_err(|err| {
                             RusticError::with_source(
                                 ErrorKind::Vfs,
-                                "Failed to add repository tree to root tree. This should not happen, please report this bug.",
-                                err
+                                "Failed to add repository tree to root tree.",
+                                err,
                             )
                             .attach_context("path", path.display().to_string())
                             .attach_context("tree id", snap.tree.to_string())
+                            .ask_report()
                         })?;
                 }
             }
@@ -304,15 +308,16 @@ impl Vfs {
                         path.push("latest");
                         tree.add_tree(&path, VfsTree::Link(target.clone()))
                             .map_err(|err| {
-                            RusticError::with_source(
-                                ErrorKind::Vfs,
-                                "Failed to link latest entries to root tree. This should not happen, please report this bug.",
-                                err
-                            )
-                            .attach_context("latest", "link")
-                            .attach_context("path", path.display().to_string())
-                            .attach_context("target", target.to_string_lossy())
-                        })?;
+                                RusticError::with_source(
+                                    ErrorKind::Vfs,
+                                    "Failed to link latest entries to root tree.",
+                                    err,
+                                )
+                                .attach_context("latest", "link")
+                                .attach_context("path", path.display().to_string())
+                                .attach_context("target", target.to_string_lossy())
+                                .ask_report()
+                            })?;
                     }
                 }
             }
@@ -322,15 +327,16 @@ impl Vfs {
                         path.push("latest");
                         tree.add_tree(&path, VfsTree::RusticTree(subtree))
                             .map_err(|err| {
-                            RusticError::with_source(
-                                ErrorKind::Vfs,
-                                "Failed to add latest subtree to root tree. This should not happen, please report this bug.",
-                                err
-                            )
-                            .attach_context("latest", "dir")
-                            .attach_context("path", path.display().to_string())
-                            .attach_context("tree id", subtree.to_string())
-                        })?;
+                                RusticError::with_source(
+                                    ErrorKind::Vfs,
+                                    "Failed to add latest subtree to root tree.",
+                                    err,
+                                )
+                                .attach_context("latest", "dir")
+                                .attach_context("path", path.display().to_string())
+                                .attach_context("tree id", subtree.to_string())
+                                .ask_report()
+                            })?;
                     }
                 }
             }
@@ -361,12 +367,9 @@ impl Vfs {
     ) -> RusticResult<Node> {
         let meta = Metadata::default();
         match self.tree.get_path(path).map_err(|err| {
-            RusticError::with_source(
-                ErrorKind::Vfs,
-                "Failed to get tree at given path. This should not happen, please report this bug.",
-                err,
-            )
-            .attach_context("path", path.display().to_string())
+            RusticError::with_source(ErrorKind::Vfs, "Failed to get tree at given path.", err)
+                .attach_context("path", path.display().to_string())
+                .ask_report()
         })? {
             VfsPath::RusticPath(tree_id, path) => Ok(repo.node_from_path(*tree_id, &path)?),
             VfsPath::VirtualTree(_) => {
@@ -410,12 +413,9 @@ impl Vfs {
         path: &Path,
     ) -> RusticResult<Vec<Node>> {
         let result = match self.tree.get_path(path).map_err(|err| {
-            RusticError::with_source(
-                ErrorKind::Vfs,
-                "Failed to get tree at given path. This should not happen, please report this bug.",
-                err,
-            )
-            .attach_context("path", path.display().to_string())
+            RusticError::with_source(ErrorKind::Vfs, "Failed to get tree at given path.", err)
+                .attach_context("path", path.display().to_string())
+                .ask_report()
         })? {
             VfsPath::RusticPath(tree_id, path) => {
                 let node = repo.node_from_path(*tree_id, &path)?;

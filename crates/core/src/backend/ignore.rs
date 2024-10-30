@@ -189,16 +189,15 @@ impl LocalSource {
         // FIXME: Refactor this to a function to be reused
         // This is the same of `tree::NodeStreamer::new_with_glob()`
         for g in &filter_opts.globs {
-            _ = override_builder
-                .add(g)
-                .map_err(|err|
-                    RusticError::with_source(
-                        ErrorKind::Internal,
-                        "Failed to add glob pattern to override builder. This is a bug. Please report it.",
-                        err,
-                    )
-                    .attach_context("glob", g.to_string())
-                )?;
+            _ = override_builder.add(g).map_err(|err| {
+                RusticError::with_source(
+                    ErrorKind::Internal,
+                    "Failed to add glob pattern to override builder.",
+                    err,
+                )
+                .attach_context("glob", g.to_string())
+                .ask_report()
+            })?;
         }
 
         for file in &filter_opts.glob_files {
@@ -206,46 +205,44 @@ impl LocalSource {
                 .map_err(|err| {
                     RusticError::with_source(
                         ErrorKind::Internal,
-                        "Failed to read string from glob file. This is a bug. Please report it.",
+                        "Failed to read string from glob file.",
                         err,
                     )
                     .attach_context("glob file", file.to_string())
+                    .ask_report()
                 })?
                 .lines()
             {
-                _ = override_builder
-                    .add(line)
-                    .map_err(|err|
-                        RusticError::with_source(
-                            ErrorKind::Internal,
-                            "Failed to add glob pattern line to override builder. This is a bug. Please report it.",
-                            err,
-                        )
-                        .attach_context("glob pattern line", line.to_string())
-                    )?;
+                _ = override_builder.add(line).map_err(|err| {
+                    RusticError::with_source(
+                        ErrorKind::Internal,
+                        "Failed to add glob pattern line to override builder.",
+                        err,
+                    )
+                    .attach_context("glob pattern line", line.to_string())
+                    .ask_report()
+                })?;
             }
         }
 
-        _ = override_builder
-            .case_insensitive(true)
-            .map_err(|err|
+        _ = override_builder.case_insensitive(true).map_err(|err| {
+            RusticError::with_source(
+                ErrorKind::Internal,
+                "Failed to set case insensitivity in override builder.",
+                err,
+            )
+            .ask_report()
+        })?;
+        for g in &filter_opts.iglobs {
+            _ = override_builder.add(g).map_err(|err| {
                 RusticError::with_source(
                     ErrorKind::Internal,
-                    "Failed to set case insensitivity in override builder. This is a bug. Please report it.",
+                    "Failed to add iglob pattern to override builder.",
                     err,
                 )
-            )?;
-        for g in &filter_opts.iglobs {
-            _ = override_builder
-                .add(g)
-                .map_err(|err|
-                    RusticError::with_source(
-                        ErrorKind::Internal,
-                        "Failed to add iglob pattern to override builder. This is a bug. Please report it.",
-                        err,
-                    )
-                    .attach_context("iglob", g.to_string())
-                )?;
+                .attach_context("iglob", g.to_string())
+                .ask_report()
+            })?;
         }
 
         for file in &filter_opts.iglob_files {
@@ -253,23 +250,23 @@ impl LocalSource {
                 .map_err(|err| {
                     RusticError::with_source(
                         ErrorKind::Internal,
-                        "Failed to read string from iglob file. This is a bug. Please report it.",
+                        "Failed to read string from iglob file.",
                         err,
                     )
                     .attach_context("iglob file", file.to_string())
+                    .ask_report()
                 })?
                 .lines()
             {
-                _ = override_builder
-                    .add(line)
-                    .map_err(|err|
-                        RusticError::with_source(
-                            ErrorKind::Internal,
-                            "Failed to add iglob pattern line to override builder. This is a bug. Please report it.",
-                            err,
-                        )
-                        .attach_context("iglob pattern line", line.to_string())
-                    )?;
+                _ = override_builder.add(line).map_err(|err| {
+                    RusticError::with_source(
+                        ErrorKind::Internal,
+                        "Failed to add iglob pattern line to override builder.",
+                        err,
+                    )
+                    .attach_context("iglob pattern line", line.to_string())
+                    .ask_report()
+                })?;
             }
         }
 
@@ -286,17 +283,14 @@ impl LocalSource {
             .sort_by_file_path(Path::cmp)
             .same_file_system(filter_opts.one_file_system)
             .max_filesize(filter_opts.exclude_larger_than.map(|s| s.as_u64()))
-            .overrides(
-                override_builder
-                    .build()
-                    .map_err(|err|
+            .overrides(override_builder.build().map_err(|err| {
                 RusticError::with_source(
                     ErrorKind::Internal,
-                    "Failed to build matcher for a set of glob overrides. This is a bug. Please report it.",
+                    "Failed to build matcher for a set of glob overrides.",
                     err,
                 )
-            )?,
-            );
+                .ask_report()
+            })?);
 
         let exclude_if_present = filter_opts.exclude_if_present.clone();
         if !filter_opts.exclude_if_present.is_empty() {
@@ -408,23 +402,25 @@ impl Iterator for LocalSourceWalker {
         }
         .map(|e| {
             map_entry(
-                e.map_err(|err|
+                e.map_err(|err| {
                     RusticError::with_source(
                         ErrorKind::Internal,
-                        "Failed to get next entry from walk iterator. This is a bug. Please report it.",
+                        "Failed to get next entry from walk iterator.",
                         err,
-                )
-                )?,
+                    )
+                    .ask_report()
+                })?,
                 self.save_opts.with_atime,
                 self.save_opts.ignore_devid,
             )
-            .map_err(|err|
+            .map_err(|err| {
                 RusticError::with_source(
                     ErrorKind::Internal,
-                    "Failed to map Directory entry to ReadSourceEntry. This is a bug. Please report it.",
+                    "Failed to map Directory entry to ReadSourceEntry.",
                     err,
                 )
-            )
+                .ask_report()
+            })
         })
     }
 }

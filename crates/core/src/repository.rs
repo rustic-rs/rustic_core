@@ -1567,9 +1567,10 @@ impl<P, S: IndexedFull> Repository<P, S> {
         let ie = self.index().get_id(T::TYPE, &blob_id).ok_or_else(|| {
             RusticError::new(
                 ErrorKind::Internal,
-                "BlobID not found in index, but should be there. This is a bug. Please report it.",
+                "BlobID not found in index, but should be there.",
             )
             .attach_context("blob id", blob_id.to_string())
+            .ask_report()
         })?;
 
         Ok(ie)

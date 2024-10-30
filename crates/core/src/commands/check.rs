@@ -689,13 +689,10 @@ fn check_pack(
     let header_len = PackHeaderRef::from_index_pack(&index_pack).size();
     let pack_header_len = PackHeaderLength::from_binary(&data.split_off(data.len() - 4))
         .map_err(|err| {
-            RusticError::with_source(
-                ErrorKind::Command,
-                "Error reading pack header length. This is a bug. Please report this error.",
-                err,
-            )
-            .attach_context("pack id", id.to_string())
-            .attach_context("header length", header_len.to_string())
+            RusticError::with_source(ErrorKind::Command, "Error reading pack header length.", err)
+                .attach_context("pack id", id.to_string())
+                .attach_context("header length", header_len.to_string())
+                .ask_report()
         })?
         .to_u32();
     if pack_header_len != header_len {
@@ -708,12 +705,9 @@ fn check_pack(
 
     let pack_blobs = PackHeader::from_binary(&header)
         .map_err(|err| {
-            RusticError::with_source(
-                ErrorKind::Command,
-                "Error reading pack header. This is a bug. Please report this error.",
-                err,
-            )
-            .attach_context("pack id", id.to_string())
+            RusticError::with_source(ErrorKind::Command, "Error reading pack header.", err)
+                .attach_context("pack id", id.to_string())
+                .ask_report()
         })?
         .into_blobs();
     let mut blobs = index_pack.blobs;

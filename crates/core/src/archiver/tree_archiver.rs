@@ -103,10 +103,7 @@ impl<'a, BE: DecryptWriteBackend, I: ReadGlobalIndex> TreeArchiver<'a, BE, I> {
             }
             TreeType::EndTree => {
                 let (path, mut node, parent, tree) = self.stack.pop().ok_or_else(|| {
-                    RusticError::new(
-                        ErrorKind::Internal,
-                        "Tree stack is empty. This is a bug. Please report it.",
-                    )
+                    RusticError::new(ErrorKind::Internal, "Tree stack is empty.").ask_report()
                 })?;
 
                 // save tree
@@ -169,12 +166,9 @@ impl<'a, BE: DecryptWriteBackend, I: ReadGlobalIndex> TreeArchiver<'a, BE, I> {
     /// The id of the tree.
     fn backup_tree(&mut self, path: &Path, parent: &ParentResult<TreeId>) -> RusticResult<TreeId> {
         let (chunk, id) = self.tree.serialize().map_err(|err| {
-            RusticError::with_source(
-                ErrorKind::Internal,
-                "Failed to serialize tree. This is a bug. Please report it.",
-                err,
-            )
-            .attach_context("path", path.to_string_lossy())
+            RusticError::with_source(ErrorKind::Internal, "Failed to serialize tree.", err)
+                .attach_context("path", path.to_string_lossy())
+                .ask_report()
         })?;
         let dirsize = chunk.len() as u64;
         let dirsize_bytes = ByteSize(dirsize).to_string_as(true);

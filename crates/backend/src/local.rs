@@ -121,8 +121,10 @@ impl LocalBackend {
         let ac = AhoCorasick::new(patterns).map_err(|err| {
             RusticError::with_source(
                 ErrorKind::Internal,
-            "Experienced an error building AhoCorasick automaton for command replacement. This is a bug. Please report it.",
-        err)
+                "Experienced an error building AhoCorasick automaton for command replacement.",
+                err,
+            )
+            .ask_report()
         })?;
 
         let replace_with = &[filename.to_str().unwrap(), tpe.dirname(), id.as_str()];
@@ -132,13 +134,10 @@ impl LocalBackend {
         debug!("calling {actual_command}...");
 
         let command: CommandInput = actual_command.parse().map_err(|err| {
-            RusticError::with_source(
-                ErrorKind::Internal,
-                "Failed to parse command input. This is a bug. Please report it.",
-                err,
-            )
-            .attach_context("command", actual_command)
-            .attach_context("replacement", replace_with.join(", "))
+            RusticError::with_source(ErrorKind::Internal, "Failed to parse command input.", err)
+                .attach_context("command", actual_command)
+                .attach_context("replacement", replace_with.join(", "))
+                .ask_report()
         })?;
 
         let status = Command::new(command.command())
@@ -243,10 +242,11 @@ impl ReadBackend for LocalBackend {
                         .map_err(|err|
                             RusticError::with_source(
                                 ErrorKind::Backend,
-                                "Failed to convert file length to u32. This is a bug. Please report it.",
+                                "Failed to convert file length to u32.",
                                 err
                             )
                             .attach_context("length", path.metadata().unwrap().len().to_string())
+                            .ask_report()
                         )?,
                 )]
             } else {
@@ -281,10 +281,11 @@ impl ReadBackend for LocalBackend {
                         .map_err(|err|
                             RusticError::with_source(
                                 ErrorKind::Backend,
-                                "Failed to convert file length to u32. This is a bug. Please report it.",
+                                "Failed to convert file length to u32.",
                                 err
                             )
                             .attach_context("length", e.metadata().unwrap().len().to_string())
+                            .ask_report()
                         )?,
                 ))
             })
@@ -371,10 +372,11 @@ impl ReadBackend for LocalBackend {
             length.try_into().map_err(|err| {
                 RusticError::with_source(
                     ErrorKind::Backend,
-                    "Failed to convert length to u64. This is a bug. Please report it.",
+                    "Failed to convert length to u64.",
                     err,
                 )
                 .attach_context("length", length.to_string())
+                .ask_report()
             })?
         ];
 
@@ -476,12 +478,9 @@ impl WriteBackend for LocalBackend {
             })?;
 
         file.set_len(buf.len().try_into().map_err(|err| {
-            RusticError::with_source(
-                ErrorKind::Internal,
-                "Failed to convert length to u64. This is a bug. Please report it.",
-                err,
-            )
-            .attach_context("length", buf.len().to_string())
+            RusticError::with_source(ErrorKind::Internal, "Failed to convert length to u64.", err)
+                .attach_context("length", buf.len().to_string())
+                .ask_report()
         })?)
         .map_err(|err| {
             RusticError::with_source(

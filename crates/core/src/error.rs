@@ -160,6 +160,9 @@ pub struct RusticError {
     /// Error code.
     error_code: Option<SmolStr>,
 
+    /// Whether to ask the user to report the error.
+    ask_report: bool,
+
     /// The URL of the issue tracker for opening a new issue.
     new_issue_url: Option<SmolStr>,
 
@@ -211,7 +214,18 @@ impl Display for RusticError {
 
         if let Some(code) = &self.error_code {
             let default_docs_url = SmolStr::from(constants::DEFAULT_DOCS_URL);
-            let docs_url = self.docs_url.as_ref().unwrap_or(&default_docs_url);
+            let docs_url = self
+                .docs_url
+                .as_ref()
+                .unwrap_or(&default_docs_url)
+                .to_string();
+
+            // If the docs_url doesn't end with a slash, add one.
+            let docs_url = if docs_url.ends_with('/') {
+                docs_url
+            } else {
+                docs_url + "/"
+            };
 
             write!(f, "\n\nFor more information, see: {docs_url}{code}")?;
         }
@@ -223,10 +237,12 @@ impl Display for RusticError {
         let default_issue_url = SmolStr::from(constants::DEFAULT_ISSUE_URL);
         let new_issue_url = self.new_issue_url.as_ref().unwrap_or(&default_issue_url);
 
-        write!(
-            f,
-            "\n\nIf you think this is an undiscovered bug, please open an issue at: {new_issue_url}"
-        )?;
+        if self.ask_report {
+            write!(
+                f,
+                "\n\nWe believe this is a bug, please report it by opening an issue at: {new_issue_url}\nIf you can, please attach an anonymized debug log to the issue.\n\nThank you for helping us improve rustic!"
+            )?;
+        }
 
         if let Some(backtrace) = &self.backtrace {
             write!(f, "\n\nBacktrace:\n{backtrace:?}")?;
@@ -251,6 +267,7 @@ impl RusticError {
             existing_issue_url: None,
             severity: None,
             status: None,
+            ask_report: false,
             // `Backtrace::capture()` will check if backtrace has been enabled
             // internally. It's zero cost if backtrace is disabled.
             backtrace: Some(Backtrace::capture()),
@@ -274,6 +291,7 @@ impl RusticError {
             existing_issue_url: None,
             severity: None,
             status: None,
+            ask_report: false,
             // `Backtrace::capture()` will check if backtrace has been enabled
             // internally. It's zero cost if backtrace is disabled.
             backtrace: Some(Backtrace::capture()),
@@ -308,6 +326,7 @@ impl RusticError {
             existing_issue_url: None,
             severity: None,
             status: None,
+            ask_report: false,
             // `Backtrace::capture()` will check if backtrace has been enabled
             // internally. It's zero cost if backtrace is disabled.
             backtrace: Some(Backtrace::capture()),
@@ -328,6 +347,14 @@ impl RusticError {
     pub fn overwrite_kind(self, value: impl Into<ErrorKind>) -> Box<Self> {
         Box::new(Self {
             kind: value.into(),
+            ..self
+        })
+    }
+
+    /// Ask the user to report the error.
+    pub fn ask_report(self) -> Box<Self> {
+        Box::new(Self {
+            ask_report: true,
             ..self
         })
     }

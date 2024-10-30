@@ -84,10 +84,11 @@ pub trait DecryptReadBackend: ReadBackend + Clone + 'static {
             if data.len() != length.get() as usize {
                 return Err(RusticError::new(
                     ErrorKind::Internal,
-                    "Length of uncompressed data does not match the given length. This is likely a bug. Please report this issue.",
+                    "Length of uncompressed data does not match the given length.",
                 )
                 .attach_context("expected_length", length.get().to_string())
-                .attach_context("actual_length", data.len().to_string()));
+                .attach_context("actual_length", data.len().to_string())
+                .ask_report());
             }
         }
         Ok(data.into())
@@ -254,9 +255,10 @@ pub trait DecryptWriteBackend: WriteBackend + Clone + 'static {
         let data = serde_json::to_vec(file).map_err(|err| {
             RusticError::with_source(
                 ErrorKind::Internal,
-                "Failed to serialize file to JSON. This is likely a bug. Please report this issue.",
+                "Failed to serialize file to JSON.",
                 err,
             )
+            .ask_report()
         })?;
 
         self.hash_write_full(F::TYPE, &data)
@@ -279,9 +281,10 @@ pub trait DecryptWriteBackend: WriteBackend + Clone + 'static {
         let data = serde_json::to_vec(file).map_err(|err| {
             RusticError::with_source(
                 ErrorKind::Internal,
-                "Failed to serialize file to JSON. This is likely a bug. Please report this issue.",
+                "Failed to serialize file to JSON.",
                 err,
             )
+            .ask_report()
         })?;
 
         self.hash_write_full_uncompressed(F::TYPE, &data)
@@ -447,16 +450,15 @@ impl<C: CryptoKey> DecryptBackend<C> {
 
     /// encrypt and potentially compress some data
     fn encrypt_data(&self, data: &[u8]) -> RusticResult<(Vec<u8>, u32, Option<NonZeroU32>)> {
-        let data_len: u32 = data
-            .len()
-            .try_into()
-            .map_err(|err|
-                RusticError::with_source(
-                    ErrorKind::Internal,
-                    "Failed to convert data length to u32. This is likely a bug. Please report this issue.",
-                    err,
-                ).attach_context("length", data.len().to_string())
-            )?;
+        let data_len: u32 = data.len().try_into().map_err(|err| {
+            RusticError::with_source(
+                ErrorKind::Internal,
+                "Failed to convert data length to u32.",
+                err,
+            )
+            .attach_context("length", data.len().to_string())
+            .ask_report()
+        })?;
 
         let (data_encrypted, uncompressed_length) = match self.zstd {
             None => (self.key.encrypt_data(data)?, None),

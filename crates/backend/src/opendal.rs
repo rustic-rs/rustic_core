@@ -163,11 +163,8 @@ impl OpenDALBackend {
         let operator = operator
             .layer(LoggingLayer::default())
             .layer(BlockingLayer::create().map_err(|err| {
-                RusticError::with_source(
-                    ErrorKind::Backend,
-                    "Creating BlockingLayer failed. This is a bug. Please report it.",
-                    err,
-                )
+                RusticError::with_source(ErrorKind::Backend, "Creating BlockingLayer failed.", err)
+                    .ask_report()
             })?)
             .blocking();
 
@@ -225,9 +222,10 @@ impl ReadBackend for OpenDALBackend {
                 if self.operator.is_exist("config").map_err(|err| {
                     RusticError::with_source(
                         ErrorKind::Backend,
-                        "Path `config` does not exist. This is a bug. Please report it.",
+                        "Path `config` does not exist.",
                         err,
                     )
+                    .ask_report()
                 })? {
                     vec![Id::default()]
                 } else {

@@ -118,9 +118,10 @@ impl<'a, BE: DecryptWriteBackend, I: ReadGlobalIndex> FileArchiver<'a, BE, I> {
                         .ok_or_else(
                             || RusticError::new(
                                 ErrorKind::Internal,
-                                "Failed to unpack tree type optional. Option should contain a value, but contained `None`. This is a bug. Please report it.",
+                                "Failed to unpack tree type optional. Option should contain a value, but contained `None`.",
                             )
-                            .attach_context("path", path.display().to_string()),
+                            .attach_context("path", path.display().to_string())
+                            .ask_report(),
                         )?
                         .open()
                         .map_err(|err| {

@@ -284,11 +284,8 @@ pub(crate) fn repair_tree<BE: DecryptWriteBackend>(
         (_, c) => {
             // the tree has been changed => save it
             let (chunk, new_id) = tree.serialize().map_err(|err| {
-                RusticError::with_source(
-                    ErrorKind::Internal,
-                    "Failed to serialize tree. This is likely a bug, please report it.",
-                    err,
-                )
+                RusticError::with_source(ErrorKind::Internal, "Failed to serialize tree.", err)
+                    .ask_report()
             })?;
 
             if !index.has_tree(&new_id) && !dry_run {

@@ -812,10 +812,12 @@ impl PrunePlan {
     fn check(&self) -> RusticResult<()> {
         for (id, count) in &self.used_ids {
             if *count == 0 {
-                return Err(
-                    RusticError::new(ErrorKind::Command, "Blob is missing in index files, this should not happen. Please report this issue.")
-                        .attach_context("blob id", id.to_string()),
-                );
+                return Err(RusticError::new(
+                    ErrorKind::Command,
+                    "Blob is missing in index files.",
+                )
+                .attach_context("blob id", id.to_string())
+                .ask_report());
             }
         }
 
@@ -1083,16 +1085,15 @@ impl PrunePlan {
                     Some(size) if size == pack.size => Ok(()), // size is ok => continue
                     Some(size) => Err(RusticError::new(
                         ErrorKind::Command,
-                        "Pack size does not match the size in the index file. This should not happen. Please report this issue.",
+                        "Pack size does not match the size in the index file.",
                     )
                     .attach_context("pack id", pack.id.to_string())
                     .attach_context("size in index (expected)", pack.size.to_string())
                     .attach_context("size in pack (real)", size.to_string())
-                ),
-                    None => Err(RusticError::new(
-                        ErrorKind::Command,
-                        "Pack does not exist. This should not happen. Please report this issue.",
-                    ).attach_context("pack id", pack.id.to_string())),
+                    .ask_report()),
+                    None => Err(RusticError::new(ErrorKind::Command, "Pack does not exist.")
+                        .attach_context("pack id", pack.id.to_string())
+                        .ask_report()),
                 }
             };
 
@@ -1100,9 +1101,10 @@ impl PrunePlan {
                 PackToDo::Undecided => {
                     return Err(RusticError::new(
                         ErrorKind::Command,
-                        "Pack got no decision what to do with it, please report this!",
+                        "Pack got no decision what to do with it!",
                     )
-                    .attach_context("pack id", pack.id.to_string()));
+                    .attach_context("pack id", pack.id.to_string())
+                    .ask_report());
                 }
                 PackToDo::Keep | PackToDo::Recover => {
                     for blob in &pack.blobs {
@@ -1352,9 +1354,10 @@ pub(crate) fn prune_repository<P: ProgressBars, S: Open>(
                 PackToDo::Undecided => {
                     return Err(RusticError::new(
                         ErrorKind::Command,
-                        "Pack got no decision what to do with it, please report this!",
+                        "Pack got no decision what to do with it!",
                     )
-                    .attach_context("pack id", pack.id.to_string()));
+                    .attach_context("pack id", pack.id.to_string())
+                    .ask_report());
                 }
                 PackToDo::Keep => {
                     // keep pack: add to new index

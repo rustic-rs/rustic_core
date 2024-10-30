@@ -215,9 +215,10 @@ impl KeyFile {
         let json_byte_vec = serde_json::to_vec(&masterkey).map_err(|err| {
             RusticError::with_source(
                 ErrorKind::Key,
-                "Could not serialize as JSON byte vector. This is a bug, please report it.",
+                "Could not serialize as JSON byte vector.",
                 err,
             )
+            .ask_report()
         })?;
 
         let data = key.encrypt_data(&json_byte_vec)?;

@@ -301,12 +301,9 @@ impl<BE: DecryptWriteBackend> Packer<BE> {
     pub fn add(&self, data: Bytes, id: BlobId) -> RusticResult<()> {
         // compute size limit based on total size and size bounds
         self.add_with_sizelimit(data, id, None).map_err(|err| {
-            RusticError::with_source(
-                ErrorKind::Internal,
-                "Failed to add blob to packfile. This is a bug. Please report this issue and upload the log file.",
-                err
-            )
-            .attach_context("blob id", id.to_string())
+            RusticError::with_source(ErrorKind::Internal, "Failed to add blob to packfile.", err)
+                .attach_context("blob id", id.to_string())
+                .ask_report()
         })
     }
 
@@ -514,9 +511,10 @@ impl<BE: DecryptWriteBackend> RawPacker<BE> {
         self.save().map_err(|err| {
             RusticError::with_source(
                 ErrorKind::Internal,
-                "Failed to save packfile. Data may be lost. Please report this issue and upload the log file.",
+                "Failed to save packfile. Data may be lost.",
                 err,
             )
+            .ask_report()
         })?;
 
         self.file_writer.take().unwrap().finalize()?;

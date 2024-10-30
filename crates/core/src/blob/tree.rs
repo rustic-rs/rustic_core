@@ -142,9 +142,10 @@ impl Tree {
         let tree = serde_json::from_slice(&data).map_err(|err| {
             RusticError::with_source(
                 ErrorKind::Internal,
-                "Failed to deserialize tree from JSON. This is a bug. Please report it.",
+                "Failed to deserialize tree from JSON.",
                 err,
             )
+            .ask_report()
         })?;
 
         Ok(tree)
@@ -176,32 +177,27 @@ impl Tree {
             if let Some(p) = comp_to_osstr(p).map_err(|err| {
                 RusticError::with_source(
                     ErrorKind::Internal,
-                    "Failed to convert Path component to OsString. This is a bug. Please report it.",
+                    "Failed to convert Path component to OsString.",
                     err,
                 )
                 .attach_context("path", path.display().to_string())
+                .ask_report()
             })? {
-                let id = node
-                    .subtree
-                    .ok_or_else(||
-                        RusticError::new(
-                            ErrorKind::Internal,
-                            "Node is not a directory. This is a bug. Please report it.",
-                        ).attach_context("node", p.to_string_lossy().to_string())
-                    )
-                    ?;
+                let id = node.subtree.ok_or_else(|| {
+                    RusticError::new(ErrorKind::Internal, "Node is not a directory.")
+                        .attach_context("node", p.to_string_lossy())
+                        .ask_report()
+                })?;
                 let tree = Self::from_backend(be, index, id)?;
                 node = tree
                     .nodes
                     .into_iter()
                     .find(|node| node.name() == p)
-                    .ok_or_else(||
-                        RusticError::new(
-                            ErrorKind::Internal,
-                            "Node not found in tree. This is a bug. Please report it.",
-                        ).attach_context("node", p.to_string_lossy().to_string())
-                    )
-                    ?;
+                    .ok_or_else(|| {
+                        RusticError::new(ErrorKind::Internal, "Node not found in tree.")
+                            .attach_context("node", p.to_string_lossy())
+                            .ask_report()
+                    })?;
             }
         }
 
@@ -240,11 +236,9 @@ impl Tree {
                     Some(*node_idx)
                 } else {
                     let id = node.subtree.ok_or_else(|| {
-                        RusticError::new(
-                            ErrorKind::Internal,
-                            "Subtree ID not found. This is a bug. Please report it.",
-                        )
-                        .attach_context("node", path_comp[idx].to_string_lossy().to_string())
+                        RusticError::new(ErrorKind::Internal, "Subtree ID not found.")
+                            .attach_context("node", path_comp[idx].to_string_lossy())
+                            .ask_report()
                     })?;
 
                     find_node_from_component(
@@ -268,13 +262,15 @@ impl Tree {
             .components()
             .filter_map(|p| comp_to_osstr(p).transpose())
             .collect::<TreeResult<_>>()
-            .map_err(|err|
+            .map_err(|err| {
                 RusticError::with_source(
                     ErrorKind::Internal,
-                    "Failed to convert Path component to OsString. This is a bug. Please report it.",
+                    "Failed to convert Path component to OsString.",
                     err,
-                ).attach_context("path", path.display().to_string())
-            )?;
+                )
+                .attach_context("path", path.display().to_string())
+                .ask_report()
+            })?;
 
         // caching all results
         let mut results_cache = vec![BTreeMap::new(); path_comp.len()];
@@ -347,11 +343,9 @@ impl Tree {
                 let node_path = path.join(node.name());
                 if node.is_dir() {
                     let id = node.subtree.ok_or_else(|| {
-                        RusticError::new(
-                            ErrorKind::Internal,
-                            "Subtree ID not found. This is a bug. Please report it.",
-                        )
-                        .attach_context("node", node.name().to_string_lossy().to_string())
+                        RusticError::new(ErrorKind::Internal, "Subtree ID not found.")
+                            .attach_context("node", node.name().to_string_lossy())
+                            .ask_report()
                     })?;
 
                     result.append(&mut find_matching_nodes_recursive(
@@ -594,16 +588,15 @@ where
         // FIXME: Refactor this to a function to be reused
         // This is the same of `backend::ignore::Localsource::new`
         for g in &opts.glob {
-            _ = override_builder
-                .add(g)
-                .map_err(|err|
-                    RusticError::with_source(
-                        ErrorKind::Internal,
-                        "Failed to add glob pattern to override builder. This is a bug. Please report it.",
-                        err,
-                    )
-                    .attach_context("glob", g.to_string())
-                )?;
+            _ = override_builder.add(g).map_err(|err| {
+                RusticError::with_source(
+                    ErrorKind::Internal,
+                    "Failed to add glob pattern to override builder.",
+                    err,
+                )
+                .attach_context("glob", g.to_string())
+                .ask_report()
+            })?;
         }
 
         for file in &opts.glob_file {
@@ -611,46 +604,44 @@ where
                 .map_err(|err| {
                     RusticError::with_source(
                         ErrorKind::Internal,
-                        "Failed to read string from glob file. This is a bug. Please report it.",
+                        "Failed to read string from glob file.",
                         err,
                     )
                     .attach_context("glob file", file.to_string())
+                    .ask_report()
                 })?
                 .lines()
             {
-                _ = override_builder
-                    .add(line)
-                    .map_err(|err|
-                        RusticError::with_source(
-                            ErrorKind::Internal,
-                            "Failed to add glob pattern line to override builder. This is a bug. Please report it.",
-                            err,
-                        )
-                        .attach_context("glob pattern line", line.to_string())
-                    )?;
+                _ = override_builder.add(line).map_err(|err| {
+                    RusticError::with_source(
+                        ErrorKind::Internal,
+                        "Failed to add glob pattern line to override builder.",
+                        err,
+                    )
+                    .attach_context("glob pattern line", line.to_string())
+                    .ask_report()
+                })?;
             }
         }
 
-        _ = override_builder
-            .case_insensitive(true)
-            .map_err(|err|
+        _ = override_builder.case_insensitive(true).map_err(|err| {
+            RusticError::with_source(
+                ErrorKind::Internal,
+                "Failed to set case insensitivity in override builder.",
+                err,
+            )
+            .ask_report()
+        })?;
+        for g in &opts.iglob {
+            _ = override_builder.add(g).map_err(|err| {
                 RusticError::with_source(
                     ErrorKind::Internal,
-                    "Failed to set case insensitivity in override builder. This is a bug. Please report it.",
+                    "Failed to add iglob pattern to override builder.",
                     err,
                 )
-            )?;
-        for g in &opts.iglob {
-            _ = override_builder
-                .add(g)
-                .map_err(|err|
-                    RusticError::with_source(
-                        ErrorKind::Internal,
-                        "Failed to add iglob pattern to override builder. This is a bug. Please report it.",
-                        err,
-                    )
-                    .attach_context("iglob", g.to_string())
-                )?;
+                .attach_context("iglob", g.to_string())
+                .ask_report()
+            })?;
         }
 
         for file in &opts.iglob_file {
@@ -658,34 +649,33 @@ where
                 .map_err(|err| {
                     RusticError::with_source(
                         ErrorKind::Internal,
-                        "Failed to read string from iglob file. This is a bug. Please report it.",
+                        "Failed to read string from iglob file.",
                         err,
                     )
                     .attach_context("iglob file", file.to_string())
+                    .ask_report()
                 })?
                 .lines()
             {
-                _ = override_builder
-                    .add(line)
-                    .map_err(|err|
-                        RusticError::with_source(
-                            ErrorKind::Internal,
-                            "Failed to add iglob pattern line to override builder. This is a bug. Please report it.",
-                            err,
-                        )
-                        .attach_context("iglob pattern line", line.to_string())
-                    )?;
+                _ = override_builder.add(line).map_err(|err| {
+                    RusticError::with_source(
+                        ErrorKind::Internal,
+                        "Failed to add iglob pattern line to override builder.",
+                        err,
+                    )
+                    .attach_context("iglob pattern line", line.to_string())
+                    .ask_report()
+                })?;
             }
         }
-        let overrides = override_builder
-            .build()
-            .map_err(|err|
-                RusticError::with_source(
-                    ErrorKind::Internal,
-                    "Failed to build matcher for a set of glob overrides. This is a bug. Please report it.",
-                    err,
-                )
-            )?;
+        let overrides = override_builder.build().map_err(|err| {
+            RusticError::with_source(
+                ErrorKind::Internal,
+                "Failed to build matcher for a set of glob overrides.",
+                err,
+            )
+            .ask_report()
+        })?;
 
         Self::new_streamer(be, index, node, Some(overrides), opts.recursive)
     }
@@ -816,11 +806,12 @@ impl<P: Progress> TreeStreamerOnce<P> {
                 .map_err(|err| {
                     RusticError::with_source(
                         ErrorKind::Internal,
-                        "Failed to add tree ID to pending queue. This is a bug. Please report it.",
+                        "Failed to add tree ID to pending queue.",
                         err,
                     )
                     .attach_context("tree id", id.to_string())
                     .attach_context("count", count.to_string())
+                    .ask_report()
                 })?
             {
                 streamer.p.inc(1);
@@ -878,14 +869,13 @@ impl<P: Progress> Iterator for TreeStreamerOnce<P> {
         let (path, tree, count) = match self.queue_out.recv() {
             Ok(Ok(res)) => res,
             Err(err) => {
-                return Some(Err(
-                    RusticError::with_source(
-                        ErrorKind::Internal,
-                        "Failed to receive tree from crossbeam channel. This is a bug. Please report it.",
-                        err,
-                    )
-                    .attach_context("finished ids", self.finished_ids.to_string())
-                ));
+                return Some(Err(RusticError::with_source(
+                    ErrorKind::Internal,
+                    "Failed to receive tree from crossbeam channel.",
+                    err,
+                )
+                .attach_context("finished ids", self.finished_ids.to_string())
+                .ask_report()));
             }
             Ok(Err(err)) => return Some(Err(err)),
         };
@@ -896,16 +886,19 @@ impl<P: Progress> Iterator for TreeStreamerOnce<P> {
                 path.push(node.name());
                 match self.add_pending(path.clone(), id, count) {
                     Ok(_) => {}
-                    Err(err) => return Some(Err(err).map_err(|err|
-                        RusticError::with_source(
-                            ErrorKind::Internal,
-                            "Failed to add tree ID to pending queue. This is a bug. Please report it.",
-                            err,
-                        )
-                        .attach_context("path", path.display().to_string())
-                        .attach_context("tree id", id.to_string())
-                        .attach_context("count", count.to_string())
-                    )),
+                    Err(err) => {
+                        return Some(Err(err).map_err(|err| {
+                            RusticError::with_source(
+                                ErrorKind::Internal,
+                                "Failed to add tree ID to pending queue.",
+                                err,
+                            )
+                            .attach_context("path", path.display().to_string())
+                            .attach_context("tree id", id.to_string())
+                            .attach_context("count", count.to_string())
+                            .ask_report()
+                        }))
+                    }
                 }
             }
         }
