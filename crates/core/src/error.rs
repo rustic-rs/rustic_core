@@ -56,7 +56,7 @@
 use derive_more::derive::Display;
 use smol_str::SmolStr;
 use std::{
-    backtrace::Backtrace,
+    backtrace::{Backtrace, BacktraceStatus},
     borrow::Cow,
     convert::Into,
     fmt::{self, Display},
@@ -265,7 +265,7 @@ impl Display for RusticError {
             writeln!(f, "\nContext:")?;
             self.context
                 .iter()
-                .try_for_each(|(key, value)| writeln!(f, "- {key}:\t{value}"))?;
+                .try_for_each(|(key, value)| writeln!(f, "- {key}: {value}"))?;
         }
 
         if let Some(cause) = &self.source {
@@ -284,6 +284,13 @@ impl Display for RusticError {
         if let Some(backtrace) = &self.backtrace {
             writeln!(f, "\nBacktrace:")?;
             writeln!(f, "{backtrace}")?;
+
+            if backtrace.status() == BacktraceStatus::Disabled {
+                writeln!(
+                    f,
+                    "\nTo enable backtraces, set the RUST_BACKTRACE=\"1\" environment variable."
+                )?;
+            }
         }
 
         Ok(())
