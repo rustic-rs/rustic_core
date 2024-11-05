@@ -359,7 +359,7 @@ impl<P> Repository<P, ()> {
         if let Some(warm_up) = &opts.warm_up_command {
             if warm_up.args().iter().all(|c| !c.contains("%id")) {
                 return Err(RusticError::new(
-                    ErrorKind::Command,
+                    ErrorKind::MissingInput,
                     "No `%id` specified in warm-up command `{command}`. Please specify `%id` in the command.",
                 )
                 .attach_context("command", warm_up.to_string()));

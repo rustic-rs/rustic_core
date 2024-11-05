@@ -813,7 +813,7 @@ impl PrunePlan {
         for (id, count) in &self.used_ids {
             if *count == 0 {
                 return Err(RusticError::new(
-                    ErrorKind::Command,
+                    ErrorKind::Internal,
                     "Blob ID `{blob_id}` is missing in index files.",
                 )
                 .attach_context("blob_id", id.to_string())
@@ -1084,14 +1084,14 @@ impl PrunePlan {
                 match existing_size {
                     Some(size) if size == pack.size => Ok(()), // size is ok => continue
                     Some(size) => Err(RusticError::new(
-                        ErrorKind::Command,
+                        ErrorKind::Internal,
                         "Pack size `{size_in_pack_real}` of id `{pack_id}` does not match the expected size `{size_in_index_expected}` in the index file. ",
                     )
                     .attach_context("pack_id", pack.id.to_string())
                     .attach_context("size_in_index_expected", pack.size.to_string())
                     .attach_context("size_in_pack_real", size.to_string())
                     .ask_report()),
-                    None => Err(RusticError::new(ErrorKind::Command, "Pack `{pack_id}` does not exist.")
+                    None => Err(RusticError::new(ErrorKind::Internal, "Pack `{pack_id}` does not exist.")
                         .attach_context("pack_id", pack.id.to_string())
                         .ask_report()),
                 }
@@ -1100,7 +1100,7 @@ impl PrunePlan {
             match pack.to_do {
                 PackToDo::Undecided => {
                     return Err(RusticError::new(
-                        ErrorKind::Command,
+                        ErrorKind::Internal,
                         "Pack `{pack_id}` got no decision what to do with it!",
                     )
                     .attach_context("pack_id", pack.id.to_string())
@@ -1353,7 +1353,7 @@ pub(crate) fn prune_repository<P: ProgressBars, S: Open>(
             match pack.to_do {
                 PackToDo::Undecided => {
                     return Err(RusticError::new(
-                        ErrorKind::Command,
+                        ErrorKind::Internal,
                         "Pack `{pack_id}` got no decision what to do with it!",
                     )
                     .attach_context("pack_id", pack.id.to_string())

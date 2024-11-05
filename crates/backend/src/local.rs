@@ -149,7 +149,7 @@ impl LocalBackend {
             .status()
             .map_err(|err| {
                 RusticError::with_source(
-                    ErrorKind::Command,
+                    ErrorKind::ExternalCommand,
                     "Failed to execute `{command}`. Please check the command and try again.",
                     err,
                 )
@@ -158,7 +158,7 @@ impl LocalBackend {
 
         if !status.success() {
             return Err(RusticError::new(
-                ErrorKind::Command,
+                ErrorKind::ExternalCommand,
                 "Command was not successful: `{command}` failed with status `{status}`.",
             )
             .attach_context("command", command.to_string())

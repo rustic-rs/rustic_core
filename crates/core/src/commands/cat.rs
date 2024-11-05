@@ -106,7 +106,7 @@ pub(crate) fn cat_tree<P: ProgressBars, S: IndexedTree>(
     let node = Tree::node_from_path(repo.dbe(), repo.index(), snap.tree, Path::new(path))?;
     let id = node.subtree.ok_or_else(|| {
         RusticError::new(
-            ErrorKind::Command,
+            ErrorKind::InvalidInput,
             "Path `{path}` in Node subtree is not a directory. Please provide a directory path.",
         )
         .attach_context("path", path.to_string())

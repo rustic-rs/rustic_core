@@ -690,7 +690,7 @@ fn check_pack(
     let pack_header_len = PackHeaderLength::from_binary(&data.split_off(data.len() - 4))
         .map_err(|err| {
             RusticError::with_source(
-                ErrorKind::Command,
+                ErrorKind::Internal,
                 "Error reading pack header length `{length}` for `{pack_id}`",
                 err,
             )
@@ -710,7 +710,7 @@ fn check_pack(
     let pack_blobs = PackHeader::from_binary(&header)
         .map_err(|err| {
             RusticError::with_source(
-                ErrorKind::Command,
+                ErrorKind::Internal,
                 "Error reading pack header for id `{pack_id}`",
                 err,
             )

@@ -115,8 +115,6 @@ pub enum ErrorKind {
     AppendOnly,
     /// the backend
     Backend,
-    /// the a command
-    Command,
     /// the configuration
     Configuration,
     /// cryptographic operations
