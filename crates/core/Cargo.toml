@@ -66,7 +66,7 @@ scrypt = { version = "0.11.0", default-features = false }
 binrw = "0.14.0"
 hex = { version = "0.4.3", features = ["serde"] }
 integer-sqrt = "0.1.5"
-rustic_cdc = "0.3.0"
+rustic_cdc = "0.3.1"
 serde = { version = "1.0.210" }
 serde-aux = "4.5.0"
 serde_derive = "1.0.210"
