@@ -380,15 +380,13 @@ impl Vfs {
             VfsPath::VirtualTree(_) => {
                 Ok(Node::new(String::new(), NodeType::Dir, meta, None, None))
             }
-            VfsPath::Link(target) => {
-                return Ok(Node::new(
-                    String::new(),
-                    NodeType::from_link(Path::new(target)),
-                    meta,
-                    None,
-                    None,
-                ));
-            }
+            VfsPath::Link(target) => Ok(Node::new(
+                String::new(),
+                NodeType::from_link(Path::new(target)),
+                meta,
+                None,
+                None,
+            )),
         }
     }
 

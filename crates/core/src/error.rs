@@ -427,7 +427,7 @@ impl RusticError {
     /// Rather use `attach_context` for multiple contexts.
     pub fn overwrite_context(self, value: impl Into<EcoVec<(EcoString, EcoString)>>) -> Box<Self> {
         Box::new(Self {
-            context: EcoVec::from(value.into()),
+            context: value.into(),
             ..self
         })
     }
