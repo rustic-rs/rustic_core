@@ -54,10 +54,9 @@
 // use std::fmt;
 
 use derive_more::derive::Display;
-use smol_str::SmolStr;
+use ecow::{EcoString, EcoVec};
 use std::{
     backtrace::{Backtrace, BacktraceStatus},
-    borrow::Cow,
     convert::Into,
     fmt::{self, Display},
 };
@@ -160,25 +159,25 @@ pub struct RusticError {
     kind: ErrorKind,
 
     /// The error message with guidance.
-    guidance: SmolStr,
+    guidance: EcoString,
 
     /// The URL of the documentation for the error.
-    docs_url: Option<SmolStr>,
+    docs_url: Option<EcoString>,
 
     /// Error code.
-    error_code: Option<SmolStr>,
+    error_code: Option<EcoString>,
 
     /// Whether to ask the user to report the error.
     ask_report: bool,
 
     /// The URL of an already existing issue that is related to this error.
-    existing_issue_urls: Cow<'static, [SmolStr]>,
+    existing_issue_urls: EcoVec<EcoString>,
 
     /// The URL of the issue tracker for opening a new issue.
-    new_issue_url: Option<SmolStr>,
+    new_issue_url: Option<EcoString>,
 
     /// The context of the error.
-    context: Cow<'static, [(&'static str, SmolStr)]>,
+    context: EcoVec<(EcoString, EcoString)>,
 
     /// Chain to the cause of the error.
     source: Option<Box<(dyn std::error::Error + Send + Sync)>>,
@@ -219,7 +218,7 @@ impl Display for RusticError {
         }
 
         if let Some(code) = &self.error_code {
-            let default_docs_url = SmolStr::from(constants::DEFAULT_DOCS_URL);
+            let default_docs_url = EcoString::from(constants::DEFAULT_DOCS_URL);
             let docs_url = self
                 .docs_url
                 .as_ref()
@@ -244,7 +243,7 @@ impl Display for RusticError {
         }
 
         if self.ask_report {
-            let default_issue_url = SmolStr::from(constants::DEFAULT_ISSUE_URL);
+            let default_issue_url = EcoString::from(constants::DEFAULT_ISSUE_URL);
             let new_issue_url = self.new_issue_url.as_ref().unwrap_or(&default_issue_url);
 
             writeln!(
@@ -300,16 +299,16 @@ impl Display for RusticError {
 // Accessors for anything we do want to expose publicly.
 impl RusticError {
     /// Creates a new error with the given kind and guidance.
-    pub fn new(kind: ErrorKind, guidance: impl Into<SmolStr>) -> Box<Self> {
+    pub fn new(kind: ErrorKind, guidance: impl Into<EcoString>) -> Box<Self> {
         Box::new(Self {
             kind,
             guidance: guidance.into(),
-            context: Cow::default(),
+            context: EcoVec::default(),
             source: None,
             error_code: None,
             docs_url: None,
             new_issue_url: None,
-            existing_issue_urls: Cow::default(),
+            existing_issue_urls: EcoVec::default(),
             severity: None,
             status: None,
             ask_report: false,
@@ -322,7 +321,7 @@ impl RusticError {
     /// Creates a new error with the given kind and guidance.
     pub fn with_source(
         kind: ErrorKind,
-        guidance: impl Into<SmolStr>,
+        guidance: impl Into<EcoString>,
         source: impl Into<Box<(dyn std::error::Error + Send + Sync)>>,
     ) -> Box<Self> {
         Self::new(kind, guidance).attach_source(source)
@@ -386,7 +385,7 @@ impl RusticError {
     }
 
     /// Attach the error message with guidance.
-    pub fn overwrite_guidance(self, value: impl Into<SmolStr>) -> Box<Self> {
+    pub fn overwrite_guidance(self, value: impl Into<EcoString>) -> Box<Self> {
         Box::new(Self {
             guidance: value.into(),
             ..self
@@ -395,7 +394,7 @@ impl RusticError {
 
     /// Append a newline to the guidance message.
     /// This is useful for adding additional information to the guidance.
-    pub fn append_guidance_line(self, value: impl Into<SmolStr>) -> Box<Self> {
+    pub fn append_guidance_line(self, value: impl Into<EcoString>) -> Box<Self> {
         Box::new(Self {
             guidance: format!("{}\n{}", self.guidance, value.into()).into(),
             ..self
@@ -404,7 +403,7 @@ impl RusticError {
 
     /// Prepend a newline to the guidance message.
     /// This is useful for adding additional information to the guidance.
-    pub fn prepend_guidance_line(self, value: impl Into<SmolStr>) -> Box<Self> {
+    pub fn prepend_guidance_line(self, value: impl Into<EcoString>) -> Box<Self> {
         Box::new(Self {
             guidance: format!("{}\n{}", value.into(), self.guidance).into(),
             ..self
@@ -413,10 +412,12 @@ impl RusticError {
 
     // IMPORTANT: This is manually implemented to allow for multiple contexts to be added.
     /// Attach context to the error.
-    pub fn attach_context(mut self, key: &'static str, value: impl Into<SmolStr>) -> Box<Self> {
-        let mut context = self.context.into_owned();
-        context.push((key, value.into()));
-        self.context = Cow::from(context);
+    pub fn attach_context(
+        mut self,
+        key: impl Into<EcoString>,
+        value: impl Into<EcoString>,
+    ) -> Box<Self> {
+        self.context.push((key.into(), value.into()));
         Box::new(self)
     }
 
@@ -426,15 +427,15 @@ impl RusticError {
     ///
     /// This should not be used in most cases, as it will overwrite any existing contexts.
     /// Rather use `attach_context` for multiple contexts.
-    pub fn overwrite_context(self, value: impl Into<Vec<(&'static str, SmolStr)>>) -> Box<Self> {
+    pub fn overwrite_context(self, value: impl Into<EcoVec<(EcoString, EcoString)>>) -> Box<Self> {
         Box::new(Self {
-            context: Cow::from(value.into()),
+            context: EcoVec::from(value.into()),
             ..self
         })
     }
 
     /// Attach the URL of the documentation for the error.
-    pub fn attach_docs_url(self, value: impl Into<SmolStr>) -> Box<Self> {
+    pub fn attach_docs_url(self, value: impl Into<EcoString>) -> Box<Self> {
         Box::new(Self {
             docs_url: Some(value.into()),
             ..self
@@ -442,7 +443,7 @@ impl RusticError {
     }
 
     /// Attach an error code.
-    pub fn attach_error_code(self, value: impl Into<SmolStr>) -> Box<Self> {
+    pub fn attach_error_code(self, value: impl Into<EcoString>) -> Box<Self> {
         Box::new(Self {
             error_code: Some(value.into()),
             ..self
@@ -450,7 +451,7 @@ impl RusticError {
     }
 
     /// Attach the URL of the issue tracker for opening a new issue.
-    pub fn attach_new_issue_url(self, value: impl Into<SmolStr>) -> Box<Self> {
+    pub fn attach_new_issue_url(self, value: impl Into<EcoString>) -> Box<Self> {
         Box::new(Self {
             new_issue_url: Some(value.into()),
             ..self
@@ -458,10 +459,8 @@ impl RusticError {
     }
 
     /// Attach the URL of an already existing issue that is related to this error.
-    pub fn attach_existing_issue_url(mut self, value: impl Into<SmolStr>) -> Box<Self> {
-        let mut issue_urls = self.existing_issue_urls.into_owned();
-        issue_urls.push(value.into());
-        self.existing_issue_urls = Cow::from(issue_urls);
+    pub fn attach_existing_issue_url(mut self, value: impl Into<EcoString>) -> Box<Self> {
+        self.existing_issue_urls.push(value.into());
         Box::new(self)
     }
 
