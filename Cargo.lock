@@ -3301,6 +3301,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "rustic_cdc"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "32e0c1a26e7525064e1b95af1518b6bd4ffa73d084d9e98f9009d16d81c57693"
+
+[[package]]
 name = "rustic_config"
 version = "0.2.2"
 
@@ -3356,6 +3362,7 @@ dependencies = [
  "runtime-format",
  "rustdoc-json",
  "rustic_backend",
+ "rustic_cdc",
  "rustic_testing",
  "rustup-toolchain",
  "scrypt",

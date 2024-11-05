@@ -105,7 +105,6 @@ This crate exposes a few features for controlling dependency usage.
 pub(crate) mod archiver;
 pub(crate) mod backend;
 pub(crate) mod blob;
-pub(crate) mod cdc;
 pub(crate) mod chunker;
 pub(crate) mod commands;
 pub(crate) mod crypto;
