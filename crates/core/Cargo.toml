@@ -41,8 +41,8 @@ rustdoc-args = ["--document-private-items", "--generate-link-to-definition"]
 
 [dependencies]
 # errors
-displaydoc = "0.2.5"
-thiserror = "1.0.64"
+displaydoc = { workspace = true }
+thiserror = { workspace = true }
 
 # macros
 derivative = "2.2.0"
@@ -50,7 +50,7 @@ derive_more = { version = "1.0.0", features = ["add", "constructor", "display", 
 derive_setters = "0.1.6"
 
 # logging
-log = "0.4.22"
+log = { workspace = true }
 
 # parallelize
 crossbeam-channel = "0.5.13"

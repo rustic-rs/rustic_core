@@ -50,14 +50,14 @@ rclone = ["rest", "dep:rand", "dep:semver"]
 rustic_core = { workspace = true }
 
 # errors
-displaydoc = "0.2.5"
-thiserror = "1.0.64"
+displaydoc = { workspace = true }
+thiserror = { workspace = true }
 
 # logging
-log = "0.4.22"
+log = { workspace = true }
 
 # other dependencies
-bytes = "1.7.2"
+bytes = { workspace = true }
 derive_setters = "0.1.6"
 humantime = "2.1.0"
 itertools = "0.13.0"
