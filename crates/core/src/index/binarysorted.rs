@@ -120,6 +120,7 @@ impl IndexCollector {
     }
 
     // Turns Collector into an index by sorting the entries by ID.
+    #[tracing::instrument(skip(self))]
     #[must_use]
     pub fn into_index(self) -> Index {
         Index(self.0.map(|_, mut tc| {
@@ -223,6 +224,7 @@ impl IntoIterator for Index {
     type IntoIter = PackIndexes;
 
     // Turns Collector into an iterator yielding PackIndex by sorting the entries by pack.
+    #[tracing::instrument(skip(self))]
     fn into_iter(mut self) -> Self::IntoIter {
         for tc in self.0.values_mut() {
             if let EntriesVariants::FullEntries(entries) = &mut tc.entries {

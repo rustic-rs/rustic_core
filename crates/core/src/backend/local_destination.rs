@@ -12,14 +12,14 @@ use bytes::Bytes;
 use cached::proc_macro::cached;
 use filetime::{set_symlink_file_times, FileTime};
 #[cfg(not(windows))]
-use log::warn;
-#[cfg(not(windows))]
 use nix::sys::stat::{mknod, Mode, SFlag};
 #[cfg(not(windows))]
 use nix::{
     fcntl::AtFlags,
     unistd::{fchownat, Gid, Group, Uid, User},
 };
+#[cfg(not(windows))]
+use tracing::warn;
 
 #[cfg(not(windows))]
 use crate::backend::ignore::mapper::map_mode_from_go;

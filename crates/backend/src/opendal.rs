@@ -4,13 +4,13 @@ use std::{collections::HashMap, str::FromStr, sync::OnceLock};
 use anyhow::{anyhow, Error, Result};
 use bytes::Bytes;
 use bytesize::ByteSize;
-use log::trace;
 use opendal::{
     layers::{BlockingLayer, ConcurrentLimitLayer, LoggingLayer, RetryLayer, ThrottleLayer},
     BlockingOperator, ErrorKind, Metakey, Operator, Scheme,
 };
 use rayon::prelude::{IntoParallelIterator, ParallelIterator};
 use tokio::runtime::Runtime;
+use tracing::trace;
 use typed_path::UnixPathBuf;
 
 use rustic_core::{FileType, Id, ReadBackend, WriteBackend, ALL_FILE_TYPES};
@@ -235,6 +235,7 @@ impl ReadBackend for OpenDALBackend {
 
 impl WriteBackend for OpenDALBackend {
     /// Create a repository on the backend.
+    #[tracing::instrument(skip(self))]
     fn create(&self) -> Result<()> {
         trace!("creating repo at {:?}", self.location());
 

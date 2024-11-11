@@ -6,8 +6,8 @@ pub(crate) mod tree_archiver;
 use std::path::{Path, PathBuf};
 
 use chrono::Local;
-use log::warn;
 use pariter::{scope, IteratorExt};
+use tracing::warn;
 
 use crate::{
     archiver::{
@@ -121,6 +121,7 @@ impl<'a, BE: DecryptFullBackend, I: ReadGlobalIndex> Archiver<'a, BE, I> {
     /// [`PackerErrorKind::SendingCrossbeamMessageFailed`]: crate::error::PackerErrorKind::SendingCrossbeamMessageFailed
     /// [`CryptBackendErrorKind::SerializingToJsonByteVectorFailed`]: crate::error::CryptBackendErrorKind::SerializingToJsonByteVectorFailed
     /// [`SnapshotFileErrorKind::OutOfRange`]: crate::error::SnapshotFileErrorKind::OutOfRange
+    #[tracing::instrument(skip(self, src, p))]
     pub fn archive<R>(
         mut self,
         src: &R,

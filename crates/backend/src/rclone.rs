@@ -8,12 +8,12 @@ use std::{
 use anyhow::Result;
 use bytes::Bytes;
 use constants::DEFAULT_COMMAND;
-use log::{debug, info};
 use rand::{
     distributions::{Alphanumeric, DistString},
     thread_rng,
 };
 use semver::{BuildMetadata, Prerelease, Version, VersionReq};
+use tracing::{debug, info};
 
 use crate::{error::RcloneErrorKind, rest::RestBackend};
 
@@ -127,6 +127,7 @@ impl RcloneBackend {
     ///
     /// If the rclone command is not found.
     // TODO: This should be an error, not a panic.
+    #[tracing::instrument(skip(url))]
     pub fn new(url: impl AsRef<str>, options: HashMap<String, String>) -> Result<Self> {
         let rclone_command = options.get("rclone-command");
         let use_password = options

@@ -1,6 +1,6 @@
 //! `repair snapshots` subcommand
 use derive_setters::Setters;
-use log::{info, warn};
+use tracing::{info, warn};
 
 use std::collections::{BTreeMap, BTreeSet};
 

@@ -1,6 +1,6 @@
 //! `repair` index subcommand
 use derive_setters::Setters;
-use log::{debug, info, warn};
+use tracing::{debug, info, warn};
 
 use std::collections::HashMap;
 

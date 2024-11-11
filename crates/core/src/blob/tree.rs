@@ -671,6 +671,7 @@ impl<P: Progress> TreeStreamerOnce<P> {
     /// * [`TreeErrorKind::SendingCrossbeamMessageFailed`] - If sending the message fails.
     ///
     /// [`TreeErrorKind::SendingCrossbeamMessageFailed`]: crate::error::TreeErrorKind::SendingCrossbeamMessageFailed
+    #[tracing::instrument(skip(be, index, p))]
     pub fn new<BE: DecryptReadBackend, I: ReadGlobalIndex>(
         be: &BE,
         index: &I,
@@ -733,6 +734,7 @@ impl<P: Progress> TreeStreamerOnce<P> {
     /// * [`TreeErrorKind::SendingCrossbeamMessageFailed`] - If sending the message fails.
     ///
     /// [`TreeErrorKind::SendingCrossbeamMessageFailed`]: crate::error::TreeErrorKind::SendingCrossbeamMessageFailed
+    #[tracing::instrument(skip(self))]
     fn add_pending(&mut self, path: PathBuf, id: TreeId, count: usize) -> RusticResult<bool> {
         if self.visited.insert(id) {
             self.queue_in

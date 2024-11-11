@@ -3,7 +3,7 @@ use std::{
     ffi::{OsStr, OsString},
 };
 
-use log::warn;
+use tracing::warn;
 
 use crate::{
     archiver::tree::TreeType,

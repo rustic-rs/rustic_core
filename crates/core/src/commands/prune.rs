@@ -15,9 +15,9 @@ use derive_more::Add;
 use derive_setters::Setters;
 use enumset::{EnumSet, EnumSetType};
 use itertools::Itertools;
-use log::{info, warn};
 use rayon::prelude::{IntoParallelIterator, ParallelIterator};
 use serde::{Deserialize, Serialize};
+use tracing::{info, warn};
 
 use crate::{
     backend::{
@@ -1182,6 +1182,7 @@ impl PrunePlan {
 /// TODO! In weird circumstances, should be fixed.
 #[allow(clippy::significant_drop_tightening)]
 #[allow(clippy::too_many_lines)]
+#[tracing::instrument(skip(repo))]
 pub(crate) fn prune_repository<P: ProgressBars, S: Open>(
     repo: &Repository<P, S>,
     opts: &PruneOptions,

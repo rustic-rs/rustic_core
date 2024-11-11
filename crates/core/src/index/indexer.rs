@@ -4,7 +4,7 @@ use std::{
     time::{Duration, SystemTime},
 };
 
-use log::warn;
+use tracing::warn;
 
 use crate::{
     backend::decrypt::DecryptWriteBackend,

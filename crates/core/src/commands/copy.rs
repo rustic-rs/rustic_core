@@ -1,7 +1,7 @@
 use std::collections::BTreeSet;
 
-use log::trace;
 use rayon::prelude::{IntoParallelRefIterator, ParallelBridge, ParallelIterator};
+use tracing::trace;
 
 use crate::{
     backend::{decrypt::DecryptWriteBackend, node::NodeType},
@@ -41,6 +41,7 @@ pub struct CopySnapshot {
 /// # Errors
 ///
 // TODO: Document errors
+#[tracing::instrument(skip(repo, repo_dest, snapshots))]
 pub(crate) fn copy<'a, Q, R: IndexedFull, P: ProgressBars, S: IndexedIds>(
     repo: &Repository<Q, R>,
     repo_dest: &Repository<P, S>,

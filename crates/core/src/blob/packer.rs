@@ -1,5 +1,5 @@
 use integer_sqrt::IntegerSquareRoot;
-use log::warn;
+use tracing::warn;
 
 use std::{
     num::NonZeroU32,
@@ -194,6 +194,7 @@ impl<BE: DecryptWriteBackend> Packer<BE> {
     /// [`PackerErrorKind::SendingCrossbeamMessageFailed`]: crate::error::PackerErrorKind::SendingCrossbeamMessageFailed
     /// [`PackerErrorKind::IntConversionFailed`]: crate::error::PackerErrorKind::IntConversionFailed
     #[allow(clippy::unnecessary_wraps)]
+    #[tracing::instrument(skip(be, indexer))]
     pub fn new(
         be: BE,
         blob_type: BlobType,
@@ -295,6 +296,7 @@ impl<BE: DecryptWriteBackend> Packer<BE> {
     /// * [`PackerErrorKind::SendingCrossbeamMessageFailed`] - If sending the message to the raw packer fails.
     ///
     /// [`PackerErrorKind::SendingCrossbeamMessageFailed`]: crate::error::PackerErrorKind::SendingCrossbeamMessageFailed
+    #[tracing::instrument(skip(self))]
     fn add_with_sizelimit(
         &self,
         data: Bytes,
@@ -602,6 +604,7 @@ impl<BE: DecryptWriteBackend> RawPacker<BE> {
     ///
     /// [`PackerErrorKind::IntConversionFailed`]: crate::error::PackerErrorKind::IntConversionFailed
     /// [`PackFileErrorKind::WritingBinaryRepresentationFailed`]: crate::error::PackFileErrorKind::WritingBinaryRepresentationFailed
+    #[tracing::instrument(skip(self))]
     fn save(&mut self) -> RusticResult<()> {
         if self.size == 0 {
             return Ok(());
@@ -677,6 +680,7 @@ impl Actor {
     /// * `fwh` - The file writer handle.
     /// * `queue_len` - The length of the queue.
     /// * `par` - The number of parallel threads.
+    #[tracing::instrument(skip(fwh, _par))]
     fn new<BE: DecryptWriteBackend>(
         fwh: FileWriterHandle<BE>,
         queue_len: usize,
@@ -718,6 +722,7 @@ impl Actor {
     /// # Errors
     ///
     /// If sending the message to the actor fails.
+    #[tracing::instrument(skip(self))]
     fn send(&self, load: (Bytes, IndexPack)) -> RusticResult<()> {
         self.sender
             .send(load)

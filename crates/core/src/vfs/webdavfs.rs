@@ -132,10 +132,12 @@ impl<P, S: IndexedFull> Clone for WebDavFS<P, S> {
 impl<P: Debug + Send + Sync + 'static, S: IndexedFull + Debug + Send + Sync + 'static> DavFileSystem
     for WebDavFS<P, S>
 {
+    #[tracing::instrument(skip(self))]
     fn metadata<'a>(&'a self, davpath: &'a DavPath) -> FsFuture<'_, Box<dyn DavMetaData>> {
         self.symlink_metadata(davpath)
     }
 
+    #[tracing::instrument(skip(self))]
     fn symlink_metadata<'a>(&'a self, davpath: &'a DavPath) -> FsFuture<'_, Box<dyn DavMetaData>> {
         async move {
             let node = self.node_from_path(davpath)?;
@@ -145,6 +147,7 @@ impl<P: Debug + Send + Sync + 'static, S: IndexedFull + Debug + Send + Sync + 's
         .boxed()
     }
 
+    #[tracing::instrument(skip(self, _meta))]
     fn read_dir<'a>(
         &'a self,
         davpath: &'a DavPath,
@@ -162,6 +165,7 @@ impl<P: Debug + Send + Sync + 'static, S: IndexedFull + Debug + Send + Sync + 's
         .boxed()
     }
 
+    #[tracing::instrument(skip(self))]
     fn open<'a>(
         &'a self,
         path: &'a DavPath,
@@ -204,6 +208,7 @@ impl<P: Debug + Send + Sync + 'static, S: IndexedFull + Debug + Send + Sync + 's
 struct DavFsDirEntry(Node);
 
 impl DavDirEntry for DavFsDirEntry {
+    #[tracing::instrument(skip(self))]
     fn metadata(&self) -> FsFuture<'_, Box<dyn DavMetaData>> {
         async move {
             let meta: Box<dyn DavMetaData> = Box::new(DavFsMetaData(self.0.clone()));
@@ -213,11 +218,13 @@ impl DavDirEntry for DavFsDirEntry {
     }
 
     #[cfg(not(windows))]
+    #[tracing::instrument(skip(self))]
     fn name(&self) -> Vec<u8> {
         self.0.name().as_bytes().to_vec()
     }
 
     #[cfg(windows)]
+    #[tracing::instrument(skip(self))]
     fn name(&self) -> Vec<u8> {
         self.0
             .name()
@@ -252,6 +259,7 @@ impl<P, S> Debug for DavFsFile<P, S> {
 }
 
 impl<P: Debug + Send + Sync, S: IndexedFull + Debug + Send + Sync> DavFile for DavFsFile<P, S> {
+    #[tracing::instrument(skip(self))]
     fn metadata(&mut self) -> FsFuture<'_, Box<dyn DavMetaData>> {
         async move {
             let meta: Box<dyn DavMetaData> = Box::new(DavFsMetaData(self.node.clone()));
@@ -260,14 +268,17 @@ impl<P: Debug + Send + Sync, S: IndexedFull + Debug + Send + Sync> DavFile for D
         .boxed()
     }
 
+    #[tracing::instrument(skip(self, _buf))]
     fn write_bytes(&mut self, _buf: Bytes) -> FsFuture<'_, ()> {
         async move { Err(FsError::Forbidden) }.boxed()
     }
 
+    #[tracing::instrument(skip(self, _buf))]
     fn write_buf(&mut self, _buf: Box<dyn Buf + Send>) -> FsFuture<'_, ()> {
         async move { Err(FsError::Forbidden) }.boxed()
     }
 
+    #[tracing::instrument(skip(self))]
     fn read_bytes(&mut self, count: usize) -> FsFuture<'_, Bytes> {
         async move {
             let data = self
@@ -281,6 +292,7 @@ impl<P: Debug + Send + Sync, S: IndexedFull + Debug + Send + Sync> DavFile for D
         .boxed()
     }
 
+    #[tracing::instrument(skip(self))]
     fn seek(&mut self, pos: SeekFrom) -> FsFuture<'_, u64> {
         async move {
             match pos {
@@ -306,6 +318,7 @@ impl<P: Debug + Send + Sync, S: IndexedFull + Debug + Send + Sync> DavFile for D
         .boxed()
     }
 
+    #[tracing::instrument(skip(self))]
     fn flush(&mut self) -> FsFuture<'_, ()> {
         async move { Ok(()) }.boxed()
     }

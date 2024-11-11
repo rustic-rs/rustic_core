@@ -1,7 +1,7 @@
 use std::path::{Path, PathBuf};
 
 use bytesize::ByteSize;
-use log::{debug, trace};
+use tracing::{debug, trace};
 
 use crate::{
     archiver::{parent::ParentResult, tree::TreeType},
