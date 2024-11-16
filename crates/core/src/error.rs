@@ -194,26 +194,37 @@ pub struct RusticError {
 
 impl Display for RusticError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        writeln!(f, "Well, this is embarrassing.")?;
         writeln!(
             f,
-            "\n`rustic_core` experienced an error related to `{}`.",
+            "`rustic_core` experienced an error related to `{}`.",
             self.kind
         )?;
 
         writeln!(f, "\nMessage:")?;
-        if self.context.is_empty() {
+        let context = if self.context.is_empty() {
             writeln!(f, "{}", self.guidance)?;
+            Vec::new()
         } else {
             // If there is context, we want to iterate over it
             // use the key to replace the placeholder in the guidance.
             let mut guidance = self.guidance.to_string();
-            self.context.iter().for_each(|(key, value)| {
-                let pattern = "{".to_owned() + key + "}";
-                guidance = guidance.replace(&pattern, value);
-            });
+            let context = self
+                .context
+                .iter()
+                // remove context which has been used in the guidance
+                .filter(|(key, value)| {
+                    let pattern = "{".to_owned() + key + "}";
+                    if guidance.contains(&pattern) {
+                        guidance = guidance.replace(&pattern, value);
+                        false
+                    } else {
+                        true
+                    }
+                })
+                .collect();
             writeln!(f, "{guidance}")?;
-        }
+            context
+        };
 
         if let Some(code) = &self.error_code {
             let default_docs_url = EcoString::from(constants::DEFAULT_DOCS_URL);
@@ -258,16 +269,19 @@ impl Display for RusticError {
 
         writeln!(f, "\n\nSome additional details ...")?;
 
-        if !self.context.is_empty() {
+        if !context.is_empty() {
             writeln!(f, "\nContext:")?;
-            self.context
+            context
                 .iter()
                 .try_for_each(|(key, value)| writeln!(f, "- {key}: {value}"))?;
         }
 
         if let Some(cause) = &self.source {
-            writeln!(f, "\nCaused by:")?;
-            writeln!(f, "{cause} : (source: {:?})", cause.source())?;
+            write!(f, "\n Caused by:\n{cause}")?;
+            if let Some(cause) = cause.source() {
+                write!(f, " : (source: {cause:?})")?;
+            }
+            writeln!(f)?;
         }
 
         if let Some(severity) = &self.severity {
