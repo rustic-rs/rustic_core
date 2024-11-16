@@ -1,12 +1,11 @@
 use std::{
     collections::HashMap,
     fs::{self, File},
-    io::{ErrorKind, Read, Seek, SeekFrom, Write},
+    io::{self, Read, Seek, SeekFrom, Write},
     path::PathBuf,
     sync::Arc,
 };
 
-use anyhow::Result;
 use bytes::Bytes;
 use dirs::cache_dir;
 use log::{trace, warn};
@@ -14,7 +13,7 @@ use walkdir::WalkDir;
 
 use crate::{
     backend::{FileType, ReadBackend, WriteBackend},
-    error::{CacheBackendErrorKind, RusticResult},
+    error::{ErrorKind, RusticError, RusticResult},
     id::Id,
     repofile::configfile::RepositoryId,
 };
@@ -60,12 +59,12 @@ impl ReadBackend for CachedBackend {
     ///
     /// # Errors
     ///
-    /// If the backend does not support listing files.
+    /// * If the backend does not support listing files.
     ///
     /// # Returns
     ///
     /// A vector of tuples containing the id and size of the files.
-    fn list_with_size(&self, tpe: FileType) -> Result<Vec<(Id, u32)>> {
+    fn list_with_size(&self, tpe: FileType) -> RusticResult<Vec<(Id, u32)>> {
         let list = self.be.list_with_size(tpe)?;
 
         if tpe.is_cacheable() {
@@ -86,14 +85,12 @@ impl ReadBackend for CachedBackend {
     ///
     /// # Errors
     ///
-    /// * [`CacheBackendErrorKind::FromIoError`] - If the file could not be read.
+    /// * If the file could not be read.
     ///
     /// # Returns
     ///
     /// The data read.
-    ///
-    /// [`CacheBackendErrorKind::FromIoError`]: crate::error::CacheBackendErrorKind::FromIoError
-    fn read_full(&self, tpe: FileType, id: &Id) -> Result<Bytes> {
+    fn read_full(&self, tpe: FileType, id: &Id) -> RusticResult<Bytes> {
         if tpe.is_cacheable() {
             match self.cache.read_full(tpe, id) {
                 Ok(Some(data)) => return Ok(data),
@@ -124,13 +121,11 @@ impl ReadBackend for CachedBackend {
     ///
     /// # Errors
     ///
-    /// * [`CacheBackendErrorKind::FromIoError`] - If the file could not be read.
+    /// * If the file could not be read.
     ///
     /// # Returns
     ///
     /// The data read.
-    ///
-    /// [`CacheBackendErrorKind::FromIoError`]: crate::error::CacheBackendErrorKind::FromIoError
     fn read_partial(
         &self,
         tpe: FileType,
@@ -138,7 +133,7 @@ impl ReadBackend for CachedBackend {
         cacheable: bool,
         offset: u32,
         length: u32,
-    ) -> Result<Bytes> {
+    ) -> RusticResult<Bytes> {
         if cacheable || tpe.is_cacheable() {
             match self.cache.read_partial(tpe, id, offset, length) {
                 Ok(Some(data)) => return Ok(data),
@@ -164,14 +159,14 @@ impl ReadBackend for CachedBackend {
         self.be.needs_warm_up()
     }
 
-    fn warm_up(&self, tpe: FileType, id: &Id) -> Result<()> {
+    fn warm_up(&self, tpe: FileType, id: &Id) -> RusticResult<()> {
         self.be.warm_up(tpe, id)
     }
 }
 
 impl WriteBackend for CachedBackend {
     /// Creates the backend.
-    fn create(&self) -> Result<()> {
+    fn create(&self) -> RusticResult<()> {
         self.be.create()
     }
 
@@ -185,7 +180,7 @@ impl WriteBackend for CachedBackend {
     /// * `id` - The id of the file.
     /// * `cacheable` - Whether the file is cacheable.
     /// * `buf` - The data to write.
-    fn write_bytes(&self, tpe: FileType, id: &Id, cacheable: bool, buf: Bytes) -> Result<()> {
+    fn write_bytes(&self, tpe: FileType, id: &Id, cacheable: bool, buf: Bytes) -> RusticResult<()> {
         if cacheable || tpe.is_cacheable() {
             if let Err(err) = self.cache.write_bytes(tpe, id, &buf) {
                 warn!("Error in cache backend writing {tpe:?},{id}: {err}");
@@ -202,7 +197,7 @@ impl WriteBackend for CachedBackend {
     ///
     /// * `tpe` - The type of the file.
     /// * `id` - The id of the file.
-    fn remove(&self, tpe: FileType, id: &Id, cacheable: bool) -> Result<()> {
+    fn remove(&self, tpe: FileType, id: &Id, cacheable: bool) -> RusticResult<()> {
         if cacheable || tpe.is_cacheable() {
             if let Err(err) = self.cache.remove(tpe, id) {
                 warn!("Error in cache backend removing {tpe:?},{id}: {err}");
@@ -231,23 +226,54 @@ impl Cache {
     ///
     /// # Errors
     ///
-    /// * [`CacheBackendErrorKind::NoCacheDirectory`] - If no path is given and the default cache directory could not be determined.
-    /// * [`CacheBackendErrorKind::FromIoError`] - If the cache directory could not be created.
-    ///
-    /// [`CacheBackendErrorKind::NoCacheDirectory`]: crate::error::CacheBackendErrorKind::NoCacheDirectory
-    /// [`CacheBackendErrorKind::FromIoError`]: crate::error::CacheBackendErrorKind::FromIoError
+    /// * If no path is given and the default cache directory could not be determined.
+    /// * If the cache directory could not be created.
     pub fn new(id: RepositoryId, path: Option<PathBuf>) -> RusticResult<Self> {
         let mut path = if let Some(p) = path {
             p
         } else {
-            let mut dir = cache_dir().ok_or_else(|| CacheBackendErrorKind::NoCacheDirectory)?;
+            let mut dir = cache_dir().ok_or_else(||
+                RusticError::new(
+                    ErrorKind::Backend,
+                    "Cache directory could not be determined, please set the environment variable XDG_CACHE_HOME or HOME!" 
+                )
+            )?;
             dir.push("rustic");
             dir
         };
-        fs::create_dir_all(&path).map_err(CacheBackendErrorKind::FromIoError)?;
-        cachedir::ensure_tag(&path).map_err(CacheBackendErrorKind::FromIoError)?;
+
+        fs::create_dir_all(&path).map_err(|err| {
+            RusticError::with_source(
+                ErrorKind::InputOutput,
+                "Failed to create cache directory at `{path}`",
+                err,
+            )
+            .attach_context("path", path.display().to_string())
+            .attach_context("id", id.to_string())
+        })?;
+
+        cachedir::ensure_tag(&path).map_err(|err| {
+            RusticError::with_source(
+                ErrorKind::InputOutput,
+                "Failed to ensure cache directory tag at `{path}`",
+                err,
+            )
+            .attach_context("path", path.display().to_string())
+            .attach_context("id", id.to_string())
+        })?;
+
         path.push(id.to_hex());
-        fs::create_dir_all(&path).map_err(CacheBackendErrorKind::FromIoError)?;
+
+        fs::create_dir_all(&path).map_err(|err| {
+            RusticError::with_source(
+                ErrorKind::InputOutput,
+                "Failed to create cache directory with id `{id}` at `{path}`",
+                err,
+            )
+            .attach_context("path", path.display().to_string())
+            .attach_context("id", id.to_string())
+        })?;
+
         Ok(Self { path })
     }
 
@@ -255,7 +281,7 @@ impl Cache {
     ///
     /// # Panics
     ///
-    /// Panics if the path is not valid unicode.
+    /// * Panics if the path is not valid unicode.
     // TODO: Does this need to panic? Result?
     #[must_use]
     pub fn location(&self) -> &str {
@@ -297,17 +323,27 @@ impl Cache {
     ///
     /// # Errors
     ///
-    /// * [`CacheBackendErrorKind::FromIoError`] - If the cache directory could not be read.
-    /// * [`IdErrorKind::HexError`] - If the string is not a valid hexadecimal string
-    ///
-    /// [`CacheBackendErrorKind::FromIoError`]: crate::error::CacheBackendErrorKind::FromIoError
-    /// [`IdErrorKind::HexError`]: crate::error::IdErrorKind::HexError
+    /// * If the cache directory could not be read.
+    /// * If the string is not a valid hexadecimal string
     #[allow(clippy::unnecessary_wraps)]
     pub fn list_with_size(&self, tpe: FileType) -> RusticResult<HashMap<Id, u32>> {
         let path = self.path.join(tpe.dirname());
 
         let walker = WalkDir::new(path)
             .into_iter()
+            .inspect(|r| {
+                if let Err(err) = r {
+                    if err.depth() == 0 {
+                        if let Some(io_err) = err.io_error() {
+                            if io_err.kind() == io::ErrorKind::NotFound {
+                                // ignore errors if root path doesn't exist => this should return an empty list without error
+                                return;
+                            }
+                        }
+                    }
+                    warn!("Error while listing files: {err:?}");
+                }
+            })
             .filter_map(walkdir::Result::ok)
             .filter(|e| {
                 // only use files with length of 64 which are valid hex
@@ -339,9 +375,7 @@ impl Cache {
     ///
     /// # Errors
     ///
-    /// * [`CacheBackendErrorKind::FromIoError`] - If the cache directory could not be read.
-    ///
-    /// [`CacheBackendErrorKind::FromIoError`]: crate::error::CacheBackendErrorKind::FromIoError
+    /// * If the cache directory could not be read.
     pub fn remove_not_in_list(&self, tpe: FileType, list: &Vec<(Id, u32)>) -> RusticResult<()> {
         let mut list_cache = self.list_with_size(tpe)?;
         // remove present files from the cache list
@@ -369,18 +403,26 @@ impl Cache {
     ///
     /// # Errors
     ///
-    /// * [`CacheBackendErrorKind::FromIoError`] - If the file could not be read.
-    ///
-    /// [`CacheBackendErrorKind::FromIoError`]: crate::error::CacheBackendErrorKind::FromIoError
+    /// * If the file could not be read.
     pub fn read_full(&self, tpe: FileType, id: &Id) -> RusticResult<Option<Bytes>> {
         trace!("cache reading tpe: {:?}, id: {}", &tpe, &id);
-        match fs::read(self.path(tpe, id)) {
+
+        let path = self.path(tpe, id);
+
+        match fs::read(&path) {
             Ok(data) => {
                 trace!("cache hit!");
                 Ok(Some(data.into()))
             }
-            Err(err) if err.kind() == ErrorKind::NotFound => Ok(None),
-            Err(err) => Err(CacheBackendErrorKind::FromIoError(err).into()),
+            Err(err) if err.kind() == io::ErrorKind::NotFound => Ok(None),
+            Err(err) => Err(RusticError::with_source(
+                ErrorKind::InputOutput,
+                "Failed to read full data of file at `{path}`",
+                err,
+            )
+            .attach_context("path", path.display().to_string())
+            .attach_context("tpe", tpe.to_string())
+            .attach_context("id", id.to_string())),
         }
     }
 
@@ -395,9 +437,7 @@ impl Cache {
     ///
     /// # Errors
     ///
-    /// * [`CacheBackendErrorKind::FromIoError`] - If the file could not be read.
-    ///
-    /// [`CacheBackendErrorKind::FromIoError`]: crate::error::CacheBackendErrorKind::FromIoError
+    /// * If the file could not be read.
     pub fn read_partial(
         &self,
         tpe: FileType,
@@ -411,18 +451,54 @@ impl Cache {
             &id,
             &offset
         );
-        let mut file = match File::open(self.path(tpe, id)) {
+
+        let path = self.path(tpe, id);
+
+        let mut file = match File::open(&path) {
             Ok(file) => file,
-            Err(err) if err.kind() == ErrorKind::NotFound => return Ok(None),
-            Err(err) => return Err(CacheBackendErrorKind::FromIoError(err).into()),
+            Err(err) if err.kind() == io::ErrorKind::NotFound => return Ok(None),
+            Err(err) => {
+                return Err(RusticError::with_source(
+                    ErrorKind::InputOutput,
+                    "Failed to open file at `{path}`",
+                    err,
+                )
+                .attach_context("path", path.display().to_string())
+                .attach_context("tpe", tpe.to_string())
+                .attach_context("id", id.to_string()))
+            }
         };
+
         _ = file
             .seek(SeekFrom::Start(u64::from(offset)))
-            .map_err(CacheBackendErrorKind::FromIoError)?;
+            .map_err(|err| {
+                RusticError::with_source(
+                    ErrorKind::InputOutput,
+                    "Failed to seek to `{offset}` in file `{path}`",
+                    err,
+                )
+                .attach_context("path", path.display().to_string())
+                .attach_context("tpe", tpe.to_string())
+                .attach_context("id", id.to_string())
+                .attach_context("offset", offset.to_string())
+            })?;
+
         let mut vec = vec![0; length as usize];
-        file.read_exact(&mut vec)
-            .map_err(CacheBackendErrorKind::FromIoError)?;
+
+        file.read_exact(&mut vec).map_err(|err| {
+            RusticError::with_source(
+                ErrorKind::InputOutput,
+                "Failed to read at offset `{offset}` from file at `{path}`",
+                err,
+            )
+            .attach_context("tpe", tpe.to_string())
+            .attach_context("id", id.to_string())
+            .attach_context("offset", offset.to_string())
+            .attach_context("length", length.to_string())
+        })?;
+
         trace!("cache hit!");
+
         Ok(Some(vec.into()))
     }
 
@@ -436,21 +512,50 @@ impl Cache {
     ///
     /// # Errors
     ///
-    /// * [`CacheBackendErrorKind::FromIoError`] - If the file could not be written.
-    ///
-    /// [`CacheBackendErrorKind::FromIoError`]: crate::error::CacheBackendErrorKind::FromIoError
+    /// * If the file could not be written.
     pub fn write_bytes(&self, tpe: FileType, id: &Id, buf: &Bytes) -> RusticResult<()> {
         trace!("cache writing tpe: {:?}, id: {}", &tpe, &id);
-        fs::create_dir_all(self.dir(tpe, id)).map_err(CacheBackendErrorKind::FromIoError)?;
+
+        let dir = self.dir(tpe, id);
+
+        fs::create_dir_all(&dir).map_err(|err| {
+            RusticError::with_source(
+                ErrorKind::InputOutput,
+                "Failed to create directories at `{path}`",
+                err,
+            )
+            .attach_context("path", dir.display().to_string())
+            .attach_context("tpe", tpe.to_string())
+            .attach_context("id", id.to_string())
+        })?;
+
         let filename = self.path(tpe, id);
+
         let mut file = fs::OpenOptions::new()
             .create(true)
             .truncate(true)
             .write(true)
-            .open(filename)
-            .map_err(CacheBackendErrorKind::FromIoError)?;
-        file.write_all(buf)
-            .map_err(CacheBackendErrorKind::FromIoError)?;
+            .open(&filename)
+            .map_err(|err| {
+                RusticError::with_source(
+                    ErrorKind::InputOutput,
+                    "Failed to open file at `{path}`",
+                    err,
+                )
+                .attach_context("path", filename.display().to_string())
+            })?;
+
+        file.write_all(buf).map_err(|err| {
+            RusticError::with_source(
+                ErrorKind::InputOutput,
+                "Failed to write to buffer at `{path}`",
+                err,
+            )
+            .attach_context("path", filename.display().to_string())
+            .attach_context("tpe", tpe.to_string())
+            .attach_context("id", id.to_string())
+        })?;
+
         Ok(())
     }
 
@@ -463,13 +568,21 @@ impl Cache {
     ///
     /// # Errors
     ///
-    /// * [`CacheBackendErrorKind::FromIoError`] - If the file could not be removed.
-    ///
-    /// [`CacheBackendErrorKind::FromIoError`]: crate::error::CacheBackendErrorKind::FromIoError
+    /// * If the file could not be removed.
     pub fn remove(&self, tpe: FileType, id: &Id) -> RusticResult<()> {
         trace!("cache writing tpe: {:?}, id: {}", &tpe, &id);
         let filename = self.path(tpe, id);
-        fs::remove_file(filename).map_err(CacheBackendErrorKind::FromIoError)?;
+        fs::remove_file(&filename).map_err(|err| {
+            RusticError::with_source(
+                ErrorKind::InputOutput,
+                "Failed to remove file at `{path}`",
+                err,
+            )
+            .attach_context("path", filename.display().to_string())
+            .attach_context("tpe", tpe.to_string())
+            .attach_context("id", id.to_string())
+        })?;
+
         Ok(())
     }
 }

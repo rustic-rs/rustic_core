@@ -2,6 +2,7 @@
 use std::{
     collections::{BTreeSet, HashMap},
     fmt::Debug,
+    num::ParseIntError,
     str::FromStr,
 };
 
@@ -18,7 +19,7 @@ use crate::{
     backend::{cache::Cache, decrypt::DecryptReadBackend, node::NodeType, FileType, ReadBackend},
     blob::{tree::TreeStreamerOnce, BlobId, BlobType},
     crypto::hasher::hash,
-    error::{CommandErrorKind, RusticErrorKind, RusticResult},
+    error::{RusticError, RusticResult},
     id::Id,
     index::{
         binarysorted::{IndexCollector, IndexType},
@@ -29,7 +30,7 @@ use crate::{
         packfile::PackId, IndexFile, IndexPack, PackHeader, PackHeaderLength, PackHeaderRef,
     },
     repository::{Open, Repository},
-    TreeId,
+    ErrorKind, TreeId,
 };
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -97,8 +98,8 @@ impl ReadSubsetOption {
     }
 }
 
-/// parses n/m inclding named settings depending on current date
-fn parse_n_m(now: NaiveDateTime, n_in: &str, m_in: &str) -> Result<(u32, u32), CommandErrorKind> {
+/// parses n/m including named settings depending on current date
+fn parse_n_m(now: NaiveDateTime, n_in: &str, m_in: &str) -> Result<(u32, u32), ParseIntError> {
     let is_leap_year = |dt: NaiveDateTime| {
         let year = dt.year();
         year % 4 == 0 && (year % 25 != 0 || year % 16 == 0)
@@ -139,23 +140,52 @@ fn parse_n_m(now: NaiveDateTime, n_in: &str, m_in: &str) -> Result<(u32, u32), C
 }
 
 impl FromStr for ReadSubsetOption {
-    type Err = CommandErrorKind;
+    type Err = Box<RusticError>;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let result = if s == "all" {
             Self::All
         } else if let Some(p) = s.strip_suffix('%') {
             // try to read percentage
-            Self::Percentage(p.parse()?)
+            let percentage = p.parse().map_err(|err| {
+                RusticError::with_source(
+                    ErrorKind::InvalidInput,
+                    "Error parsing percentage from value `{value}` for ReadSubset option. Did you forget the '%'?",
+                    err,
+                )
+                .attach_context("value", p.to_string())
+            })?;
+
+            Self::Percentage(percentage)
         } else if let Some((n, m)) = s.split_once('/') {
             let now = Local::now().naive_local();
-            Self::IdSubSet(parse_n_m(now, n, m)?)
+            let subset = parse_n_m(now, n, m).map_err(
+                |err|
+                    RusticError::with_source(
+                        ErrorKind::InvalidInput,
+                        "Error parsing 'n/m' from value `{value}` for ReadSubset option. Allowed values: 'all', 'x%', 'n/m' or a size.",
+                        err
+                    )
+                    .attach_context("value", s)
+                    .attach_context("n/m", format!("{n}/{m}"))
+                    .attach_context("now", now.to_string())
+            )?;
+
+            Self::IdSubSet(subset)
         } else {
-            Self::Size(
-                ByteSize::from_str(s)
-                    .map_err(CommandErrorKind::FromByteSizeParser)?
-                    .as_u64(),
-            )
+            let byte_size = ByteSize::from_str(s)
+                    .map_err(|err| {
+                        RusticError::with_source(
+                            ErrorKind::InvalidInput,
+                            "Error parsing size from value `{value}` for ReadSubset option. Allowed values: 'all', 'x%', 'n/m' or a size.",
+                            err
+                        )
+                        .attach_context("value", s)
+                    })?
+                    .as_u64();
+
+            Self::Size(byte_size)
         };
+
         Ok(result)
     }
 }
@@ -197,7 +227,7 @@ pub struct CheckOptions {
 ///
 /// # Errors
 ///
-/// If the repository is corrupted
+/// * If the repository is corrupted
 ///
 /// # Panics
 ///
@@ -219,9 +249,7 @@ pub(crate) fn check_repository<P: ProgressBars, S: Open>(
                 //
                 // This lists files here and later when reading index / checking snapshots
                 // TODO: Only list the files once...
-                _ = be
-                    .list_with_size(file_type)
-                    .map_err(RusticErrorKind::Backend)?;
+                _ = be.list_with_size(file_type)?;
 
                 let p = pb.progress_bytes(format!("checking {file_type:?} in cache..."));
                 // TODO: Make concurrency (20) customizable
@@ -286,6 +314,7 @@ pub(crate) fn check_repository<P: ProgressBars, S: Open>(
         });
         p.finish();
     }
+
     Ok(())
 }
 
@@ -300,7 +329,7 @@ pub(crate) fn check_repository<P: ProgressBars, S: Open>(
 ///
 /// # Errors
 ///
-/// If a file is missing or has a different size
+/// * If a file is missing or has a different size
 fn check_hot_files(
     be: &impl ReadBackend,
     be_hot: &impl ReadBackend,
@@ -309,14 +338,11 @@ fn check_hot_files(
 ) -> RusticResult<()> {
     let p = pb.progress_spinner(format!("checking {file_type:?} in hot repo..."));
     let mut files = be
-        .list_with_size(file_type)
-        .map_err(RusticErrorKind::Backend)?
+        .list_with_size(file_type)?
         .into_iter()
         .collect::<HashMap<_, _>>();
 
-    let files_hot = be_hot
-        .list_with_size(file_type)
-        .map_err(RusticErrorKind::Backend)?;
+    let files_hot = be_hot.list_with_size(file_type)?;
 
     for (id, size_hot) in files_hot {
         match files.remove(&id) {
@@ -349,7 +375,7 @@ fn check_hot_files(
 ///
 /// # Errors
 ///
-/// If a file is missing or has a different size
+/// * If a file is missing or has a different size
 fn check_cache_files(
     _concurrency: usize,
     cache: &Cache,
@@ -406,7 +432,7 @@ fn check_cache_files(
 ///
 /// # Errors
 ///
-/// If a pack is missing or has a different size
+/// * If a pack is missing or has a different size
 ///
 /// # Returns
 ///
@@ -486,12 +512,9 @@ fn check_packs(
 ///
 /// # Errors
 ///
-/// If a pack is missing or has a different size
+/// * If a pack is missing or has a different size
 fn check_packs_list(be: &impl ReadBackend, mut packs: HashMap<PackId, u32>) -> RusticResult<()> {
-    for (id, size) in be
-        .list_with_size(FileType::Pack)
-        .map_err(RusticErrorKind::Backend)?
-    {
+    for (id, size) in be.list_with_size(FileType::Pack)? {
         match packs.remove(&PackId::from(id)) {
             None => warn!("pack {id} not referenced in index. Can be a parallel backup job. To repair: 'rustic repair index'."),
             Some(index_size) if index_size != size => {
@@ -516,16 +539,13 @@ fn check_packs_list(be: &impl ReadBackend, mut packs: HashMap<PackId, u32>) -> R
 ///
 /// # Errors
 ///
-/// If a pack is missing or has a different size
+/// * If a pack is missing or has a different size
 fn check_packs_list_hot(
     be: &impl ReadBackend,
     mut treepacks: HashMap<PackId, u32>,
     packs: &HashMap<PackId, u32>,
 ) -> RusticResult<()> {
-    for (id, size) in be
-        .list_with_size(FileType::Pack)
-        .map_err(RusticErrorKind::Backend)?
-    {
+    for (id, size) in be.list_with_size(FileType::Pack)? {
         match treepacks.remove(&PackId::from(id)) {
             None => {
                 if packs.contains_key(&PackId::from(id)) {
@@ -556,7 +576,7 @@ fn check_packs_list_hot(
 ///
 /// # Errors
 ///
-/// If a snapshot or tree is missing or has a different size
+/// * If a snapshot or tree is missing or has a different size
 fn check_trees(
     be: &impl DecryptReadBackend,
     index: &impl ReadGlobalIndex,
@@ -638,11 +658,11 @@ fn check_trees(
 ///
 /// # Errors
 ///
-/// If the pack is invalid
+/// * If the pack is invalid
 ///
 /// # Panics
 ///
-/// If zstd decompression fails.
+/// * If zstd decompression fails.
 fn check_pack(
     be: &impl DecryptReadBackend,
     index_pack: IndexPack,
@@ -667,7 +687,18 @@ fn check_pack(
 
     // check header length
     let header_len = PackHeaderRef::from_index_pack(&index_pack).size();
-    let pack_header_len = PackHeaderLength::from_binary(&data.split_off(data.len() - 4))?.to_u32();
+    let pack_header_len = PackHeaderLength::from_binary(&data.split_off(data.len() - 4))
+        .map_err(|err| {
+            RusticError::with_source(
+                ErrorKind::Internal,
+                "Error reading pack header length `{length}` for `{pack_id}`",
+                err,
+            )
+            .attach_context("pack_id", id.to_string())
+            .attach_context("length", header_len.to_string())
+            .ask_report()
+        })?
+        .to_u32();
     if pack_header_len != header_len {
         error!("pack {id}: Header length in pack file doesn't match index. In pack: {pack_header_len}, calculated: {header_len}");
         return Ok(());
@@ -676,7 +707,17 @@ fn check_pack(
     // check header
     let header = be.decrypt(&data.split_off(data.len() - header_len as usize))?;
 
-    let pack_blobs = PackHeader::from_binary(&header)?.into_blobs();
+    let pack_blobs = PackHeader::from_binary(&header)
+        .map_err(|err| {
+            RusticError::with_source(
+                ErrorKind::Internal,
+                "Error reading pack header for id `{pack_id}`",
+                err,
+            )
+            .attach_context("pack_id", id.to_string())
+            .ask_report()
+        })?
+        .into_blobs();
     let mut blobs = index_pack.blobs;
     blobs.sort_unstable_by_key(|b| b.offset);
     if pack_blobs != blobs {

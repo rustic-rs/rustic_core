@@ -3,7 +3,7 @@ use std::io::{self, Read};
 use rand::{thread_rng, Rng};
 use rustic_cdc::{Polynom, Polynom64, Rabin64, RollingHash64};
 
-use crate::error::{PolynomialErrorKind, RusticResult};
+use crate::error::{ErrorKind, RusticError, RusticResult};
 
 pub(super) mod constants {
     /// The Splitmask is used to determine if a chunk is a chunk boundary.
@@ -82,9 +82,9 @@ impl<R: Read + Send> ChunkIter<R> {
 }
 
 impl<R: Read + Send> Iterator for ChunkIter<R> {
-    type Item = io::Result<Vec<u8>>;
+    type Item = RusticResult<Vec<u8>>;
 
-    fn next(&mut self) -> Option<io::Result<Vec<u8>>> {
+    fn next(&mut self) -> Option<Self::Item> {
         if self.finished {
             return None;
         }
@@ -106,7 +106,13 @@ impl<R: Read + Send> Iterator for ChunkIter<R> {
             .read_to_end(&mut vec)
         {
             Ok(size) => size,
-            Err(err) => return Some(Err(err)),
+            Err(err) => {
+                return Some(Err(RusticError::with_source(
+                    ErrorKind::InputOutput,
+                    "Failed to read from reader in iterator",
+                    err,
+                )));
+            }
         };
 
         // If self.min_size is not reached, we are done.
@@ -144,8 +150,12 @@ impl<R: Read + Send> Iterator for ChunkIter<R> {
                     }
 
                     Err(ref e) if e.kind() == io::ErrorKind::Interrupted => continue,
-                    Err(e) => {
-                        return Some(Err(e));
+                    Err(err) => {
+                        return Some(Err(RusticError::with_source(
+                            ErrorKind::InputOutput,
+                            "Failed to read from reader in iterator",
+                            err,
+                        )));
                     }
                 }
             }
@@ -168,9 +178,7 @@ impl<R: Read + Send> Iterator for ChunkIter<R> {
 ///
 /// # Errors
 ///
-/// * [`PolynomialErrorKind::NoSuitablePolynomialFound`] - If no polynomial could be found in one million tries.
-///
-/// [`PolynomialErrorKind::NoSuitablePolynomialFound`]: crate::error::PolynomialErrorKind::NoSuitablePolynomialFound
+/// * If no polynomial could be found in one million tries.
 pub fn random_poly() -> RusticResult<u64> {
     for _ in 0..constants::RAND_POLY_MAX_TRIES {
         let mut poly: u64 = thread_rng().gen();
@@ -186,7 +194,12 @@ pub fn random_poly() -> RusticResult<u64> {
             return Ok(poly);
         }
     }
-    Err(PolynomialErrorKind::NoSuitablePolynomialFound.into())
+
+    Err(RusticError::new(
+        ErrorKind::Internal,
+        "No suitable polynomial found, this should essentially never happen. Please try again.",
+    )
+    .ask_report())
 }
 
 /// A trait for extending polynomials.

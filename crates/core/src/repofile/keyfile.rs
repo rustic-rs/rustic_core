@@ -7,9 +7,24 @@ use serde_with::{base64::Base64, serde_as, skip_serializing_none};
 use crate::{
     backend::{FileType, ReadBackend},
     crypto::{aespoly1305::Key, CryptoKey},
-    error::{CryptoErrorKind, KeyFileErrorKind, RusticErrorKind, RusticResult},
-    impl_repoid, RusticError,
+    error::{ErrorKind, RusticError, RusticResult},
+    impl_repoid,
 };
+
+/// [`KeyFileErrorKind`] describes the errors that can be returned for `KeyFile`s
+#[derive(thiserror::Error, Debug, displaydoc::Display)]
+#[non_exhaustive]
+pub enum KeyFileErrorKind {
+    /// conversion from `{from}` to `{to}` failed for `{x}` : `{source}`
+    ConversionFailed {
+        from: &'static str,
+        to: &'static str,
+        x: u32,
+        source: std::num::TryFromIntError,
+    },
+}
+
+pub(crate) type KeyFileResult<T> = Result<T, KeyFileErrorKind>;
 
 pub(super) mod constants {
     /// Returns the number of bits of the given type.
@@ -69,22 +84,41 @@ impl KeyFile {
     ///
     /// # Errors
     ///
-    /// * [`KeyFileErrorKind::InvalidSCryptParameters`] - If the parameters of the key derivation function are invalid
-    /// * [`KeyFileErrorKind::OutputLengthInvalid`] - If the output length of the key derivation function is invalid
+    /// * If the parameters of the key derivation function are invalid
+    /// * If the output length of the key derivation function is invalid
     ///
     /// # Returns
     ///
     /// The generated key
-    ///
-    /// [`KeyFileErrorKind::InvalidSCryptParameters`]: crate::error::KeyFileErrorKind::InvalidSCryptParameters
-    /// [`KeyFileErrorKind::OutputLengthInvalid`]: crate::error::KeyFileErrorKind::OutputLengthInvalid
     pub fn kdf_key(&self, passwd: &impl AsRef<[u8]>) -> RusticResult<Key> {
-        let params = Params::new(log_2(self.n)?, self.r, self.p, Params::RECOMMENDED_LEN)
-            .map_err(KeyFileErrorKind::InvalidSCryptParameters)?;
+        let params = Params::new(
+            log_2(self.n).map_err(|err| {
+                RusticError::with_source(
+                    ErrorKind::Internal,
+                    "Calculating log2 failed. Please check the key file and password.",
+                    err,
+                )
+            })?,
+            self.r,
+            self.p,
+            Params::RECOMMENDED_LEN,
+        )
+        .map_err(|err| {
+            RusticError::with_source(
+                ErrorKind::Key,
+                "Invalid scrypt parameters. Please check the key file and password.",
+                err,
+            )
+        })?;
 
         let mut key = [0; 64];
-        scrypt::scrypt(passwd.as_ref(), &self.salt, &params, &mut key)
-            .map_err(KeyFileErrorKind::OutputLengthInvalid)?;
+        scrypt::scrypt(passwd.as_ref(), &self.salt, &params, &mut key).map_err(|err| {
+            RusticError::with_source(
+                ErrorKind::Key,
+                "Output length invalid. Please check the key file and password.",
+                err,
+            )
+        })?;
 
         Ok(Key::from_slice(&key))
     }
@@ -98,18 +132,25 @@ impl KeyFile {
     ///
     /// # Errors
     ///
-    /// * [`KeyFileErrorKind::DeserializingFromSliceFailed`] - If the data could not be deserialized
+    /// * If the data could not be deserialized
     ///
     /// # Returns
     ///
     /// The extracted key
-    ///
-    /// [`KeyFileErrorKind::DeserializingFromSliceFailed`]: crate::error::KeyFileErrorKind::DeserializingFromSliceFailed
     pub fn key_from_data(&self, key: &Key) -> RusticResult<Key> {
         let dec_data = key.decrypt_data(&self.data)?;
-        Ok(serde_json::from_slice::<MasterKey>(&dec_data)
-            .map_err(KeyFileErrorKind::DeserializingFromSliceFailed)?
-            .key())
+
+        let key = serde_json::from_slice::<MasterKey>(&dec_data)
+            .map_err(|err| {
+                RusticError::with_source(
+                    ErrorKind::Key,
+                    "Deserializing master key from slice failed. Please check the key file.",
+                    err,
+                )
+            })?
+            .key();
+
+        Ok(key)
     }
 
     /// Extract a key from the data of the [`KeyFile`] using the key
@@ -121,13 +162,11 @@ impl KeyFile {
     ///
     /// # Errors
     ///
-    /// * [`KeyFileErrorKind::InvalidSCryptParameters`] - If the parameters of the key derivation function are invalid
+    /// * If the parameters of the key derivation function are invalid
     ///
     /// # Returns
     ///
     /// The extracted key
-    ///
-    /// [`KeyFileErrorKind::InvalidSCryptParameters`]: crate::error::KeyFileErrorKind::InvalidSCryptParameters
     pub fn key_from_password(&self, passwd: &impl AsRef<[u8]>) -> RusticResult<Key> {
         self.key_from_data(&self.kdf_key(passwd)?)
     }
@@ -144,15 +183,12 @@ impl KeyFile {
     ///
     /// # Errors
     ///
-    /// * [`KeyFileErrorKind::OutputLengthInvalid`] - If the output length of the key derivation function is invalid
-    /// * [`KeyFileErrorKind::CouldNotSerializeAsJsonByteVector`] - If the [`KeyFile`] could not be serialized
+    /// * If the output length of the key derivation function is invalid
+    /// * If the [`KeyFile`] could not be serialized
     ///
     /// # Returns
     ///
     /// The generated [`KeyFile`]
-    ///
-    /// [`KeyFileErrorKind::OutputLengthInvalid`]: crate::error::KeyFileErrorKind::OutputLengthInvalid
-    /// [`KeyFileErrorKind::CouldNotSerializeAsJsonByteVector`]: crate::error::KeyFileErrorKind::CouldNotSerializeAsJsonByteVector
     pub fn generate(
         key: Key,
         passwd: &impl AsRef<[u8]>,
@@ -166,14 +202,26 @@ impl KeyFile {
         thread_rng().fill_bytes(&mut salt);
 
         let mut key = [0; 64];
-        scrypt::scrypt(passwd.as_ref(), &salt, &params, &mut key)
-            .map_err(KeyFileErrorKind::OutputLengthInvalid)?;
+        scrypt::scrypt(passwd.as_ref(), &salt, &params, &mut key).map_err(|err| {
+            RusticError::with_source(
+                ErrorKind::Key,
+                "Output length invalid. Please check the key file and password.",
+                err,
+            )
+        })?;
 
         let key = Key::from_slice(&key);
-        let data = key.encrypt_data(
-            &serde_json::to_vec(&masterkey)
-                .map_err(KeyFileErrorKind::CouldNotSerializeAsJsonByteVector)?,
-        )?;
+
+        let json_byte_vec = serde_json::to_vec(&masterkey).map_err(|err| {
+            RusticError::with_source(
+                ErrorKind::Key,
+                "Could not serialize as JSON byte vector.",
+                err,
+            )
+            .ask_report()
+        })?;
+
+        let data = key.encrypt_data(&json_byte_vec)?;
 
         Ok(Self {
             hostname,
@@ -197,19 +245,22 @@ impl KeyFile {
     ///
     /// # Errors
     ///
-    // TODO!: Add errors!
+    /// * If the [`KeyFile`] could not be deserialized/read from the backend
     ///
     /// # Returns
     ///
     /// The [`KeyFile`] read from the backend
     fn from_backend<B: ReadBackend>(be: &B, id: &KeyId) -> RusticResult<Self> {
-        let data = be
-            .read_full(FileType::Key, id)
-            .map_err(RusticErrorKind::Backend)?;
-        Ok(
-            serde_json::from_slice(&data)
-                .map_err(KeyFileErrorKind::DeserializingFromSliceFailed)?,
-        )
+        let data = be.read_full(FileType::Key, id)?;
+
+        serde_json::from_slice(&data).map_err(|err| {
+            RusticError::with_source(
+                ErrorKind::Key,
+                "Couldn't deserialize the data for key `{key_id}`.",
+                err,
+            )
+            .attach_context("key_id", id.to_string())
+        })
     }
 }
 
@@ -221,19 +272,26 @@ impl KeyFile {
 ///
 /// # Errors
 ///
-/// * [`KeyFileErrorKind::ConversionFromU32ToU8Failed`] - If the conversion from `u32` to `u8` failed
+/// * If the conversion from `u32` to `u8` failed
 ///
 /// # Returns
 ///
 /// The logarithm to base 2 of the given number
-///
-/// [`KeyFileErrorKind::ConversionFromU32ToU8Failed`]: crate::error::KeyFileErrorKind::ConversionFromU32ToU8Failed
-fn log_2(x: u32) -> RusticResult<u8> {
+fn log_2(x: u32) -> KeyFileResult<u8> {
     assert!(x > 0);
-    Ok(u8::try_from(constants::num_bits::<u32>())
-        .map_err(KeyFileErrorKind::ConversionFromU32ToU8Failed)?
-        - u8::try_from(x.leading_zeros()).map_err(KeyFileErrorKind::ConversionFromU32ToU8Failed)?
-        - 1)
+    Ok(u8::try_from(constants::num_bits::<u32>()).map_err(|err| {
+        KeyFileErrorKind::ConversionFailed {
+            from: "usize",
+            to: "u8",
+            x,
+            source: err,
+        }
+    })? - u8::try_from(x.leading_zeros()).map_err(|err| KeyFileErrorKind::ConversionFailed {
+        from: "u32",
+        to: "u8",
+        x,
+        source: err,
+    })? - 1)
 }
 
 /// The mac of a [`Key`]
@@ -319,13 +377,11 @@ pub(crate) fn key_from_backend<B: ReadBackend>(
 ///
 /// # Errors
 ///
-/// * [`KeyFileErrorKind::NoSuitableKeyFound`] - If no suitable key was found
+/// * If no suitable key was found
 ///
 /// # Returns
 ///
 /// The found key
-///
-/// [`KeyFileErrorKind::NoSuitableKeyFound`]: crate::error::KeyFileErrorKind::NoSuitableKeyFound
 pub(crate) fn find_key_in_backend<B: ReadBackend>(
     be: &B,
     passwd: &impl AsRef<[u8]>,
@@ -334,15 +390,17 @@ pub(crate) fn find_key_in_backend<B: ReadBackend>(
     if let Some(id) = hint {
         key_from_backend(be, id, passwd)
     } else {
-        for id in be.list(FileType::Key).map_err(RusticErrorKind::Backend)? {
+        for id in be.list(FileType::Key)? {
             match key_from_backend(be, &id.into(), passwd) {
                 Ok(key) => return Ok(key),
-                Err(RusticError(RusticErrorKind::Crypto(
-                    CryptoErrorKind::DataDecryptionFailed(_),
-                ))) => continue,
+                Err(err) if err.is_code("C001") => continue,
                 err => return err,
             }
         }
-        Err(KeyFileErrorKind::NoSuitableKeyFound.into())
+
+        Err(RusticError::new(
+            ErrorKind::Password,
+            "The password that has been entered, seems to be incorrect. No suitable key found for the given password. Please check your password and try again.",
+        ).attach_error_code("C002"))
     }
 }

@@ -4,7 +4,10 @@ use aes256ctr_poly1305aes::{
 };
 use rand::{thread_rng, RngCore};
 
-use crate::{crypto::CryptoKey, error::CryptoErrorKind, error::RusticResult};
+use crate::{
+    crypto::CryptoKey,
+    error::{ErrorKind, RusticError, RusticResult},
+};
 
 pub(crate) type Nonce = aead::Nonce<Aes256CtrPoly1305Aes>;
 pub(crate) type AeadKey = aes256ctr_poly1305aes::Key;
@@ -81,16 +84,27 @@ impl CryptoKey for Key {
     ///
     /// # Errors
     ///
-    /// If the MAC couldn't be checked.
+    /// * If the MAC couldn't be checked.
     fn decrypt_data(&self, data: &[u8]) -> RusticResult<Vec<u8>> {
         if data.len() < 16 {
-            return Err(CryptoErrorKind::CryptoKeyTooShort)?;
+            return Err(RusticError::new(
+                ErrorKind::Cryptography,
+                "Data is too short (less than 16 bytes), cannot decrypt.",
+            ))?;
         }
 
         let nonce = Nonce::from_slice(&data[0..16]);
         Aes256CtrPoly1305Aes::new(&self.0)
             .decrypt(nonce, &data[16..])
-            .map_err(|err| CryptoErrorKind::DataDecryptionFailed(err).into())
+            .map_err(|err| {
+                RusticError::with_source(
+                    ErrorKind::Cryptography,
+                    "Data decryption failed, MAC check failed.",
+                    err,
+                )
+                .attach_context("nonce", format!("{nonce:?}"))
+                .attach_error_code("C001")
+            })
     }
 
     /// Returns the encrypted+MACed data from the given data.
@@ -101,7 +115,7 @@ impl CryptoKey for Key {
     ///
     /// # Errors
     ///
-    /// If the data could not be encrypted.
+    /// * If the data could not be encrypted.
     fn encrypt_data(&self, data: &[u8]) -> RusticResult<Vec<u8>> {
         let mut nonce = Nonce::default();
         thread_rng().fill_bytes(&mut nonce);
@@ -111,7 +125,10 @@ impl CryptoKey for Key {
         res.extend_from_slice(data);
         let tag = Aes256CtrPoly1305Aes::new(&self.0)
             .encrypt_in_place_detached(&nonce, &[], &mut res[16..])
-            .map_err(CryptoErrorKind::DataEncryptionFailed)?;
+            .map_err(|err| {
+                RusticError::with_source(ErrorKind::Cryptography, "Data encryption failed.", err)
+                    .attach_context("nonce", format!("{nonce:?}"))
+            })?;
         res.extend_from_slice(&tag);
         Ok(res)
     }

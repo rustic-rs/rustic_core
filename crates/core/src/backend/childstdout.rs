@@ -7,8 +7,8 @@ use std::{
 
 use crate::{
     backend::{ReadSource, ReadSourceEntry},
-    error::{RepositoryErrorKind, RusticResult},
-    CommandInput,
+    error::{ErrorKind, RusticError, RusticResult},
+    repository::command_input::{CommandInput, CommandInputErrorKind},
 };
 
 /// The `ChildStdoutSource` is a `ReadSource` when spawning a child process and reading its stdout
@@ -35,13 +35,10 @@ impl ChildStdoutSource {
             .args(cmd.args())
             .stdout(Stdio::piped())
             .spawn()
-            .map_err(|err| {
-                RepositoryErrorKind::CommandExecutionFailed(
-                    "stdin-command".into(),
-                    "call".into(),
-                    err,
-                )
-                .into()
+            .map_err(|err| CommandInputErrorKind::ProcessExecutionFailed {
+                command: cmd.clone(),
+                path: path.clone(),
+                source: err,
             });
 
         let process = cmd.on_failure().display_result(process)?;
@@ -73,6 +70,14 @@ impl ReadSource for ChildStdoutSource {
 
     fn entries(&self) -> Self::Iter {
         let open = self.process.lock().unwrap().stdout.take();
-        once(ReadSourceEntry::from_path(self.path.clone(), open))
+        once(
+            ReadSourceEntry::from_path(self.path.clone(), open).map_err(|err| {
+                RusticError::with_source(
+                    ErrorKind::Backend,
+                    "Failed to create ReadSourceEntry from ChildStdout",
+                    err,
+                )
+            }),
+        )
     }
 }

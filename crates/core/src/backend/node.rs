@@ -9,10 +9,9 @@ use std::{
 #[cfg(not(windows))]
 use std::fmt::Write;
 #[cfg(not(windows))]
-use std::os::unix::ffi::OsStrExt;
-
+use std::num::ParseIntError;
 #[cfg(not(windows))]
-use crate::RusticResult;
+use std::os::unix::ffi::OsStrExt;
 
 use chrono::{DateTime, Local};
 use derive_more::Constructor;
@@ -24,10 +23,67 @@ use serde_with::{
     serde_as, skip_serializing_none, DefaultOnNull,
 };
 
-#[cfg(not(windows))]
-use crate::error::NodeErrorKind;
-
 use crate::blob::{tree::TreeId, DataId};
+
+#[cfg(not(windows))]
+/// [`NodeErrorKind`] describes the errors that can be returned by an action utilizing a node in Backends
+#[derive(thiserror::Error, Debug, displaydoc::Display)]
+#[non_exhaustive]
+pub enum NodeErrorKind<'a> {
+    /// Unexpected EOF while parsing filename: `{file_name}`
+    #[cfg(not(windows))]
+    UnexpectedEOF {
+        /// The filename
+        file_name: String,
+        /// The remaining chars
+        chars: std::str::Chars<'a>,
+    },
+    /// Invalid unicode
+    #[cfg(not(windows))]
+    InvalidUnicode {
+        /// The filename
+        file_name: String,
+        /// The unicode codepoint
+        unicode: u32,
+        /// The remaining chars
+        chars: std::str::Chars<'a>,
+    },
+    /// Unrecognized Escape while parsing filename: `{file_name}`
+    #[cfg(not(windows))]
+    UnrecognizedEscape {
+        /// The filename
+        file_name: String,
+        /// The remaining chars
+        chars: std::str::Chars<'a>,
+    },
+    /// Parsing hex chars {chars:?} failed for `{hex}` in filename: `{file_name}` : `{source}`
+    #[cfg(not(windows))]
+    ParsingHexFailed {
+        /// The filename
+        file_name: String,
+        /// The hex string
+        hex: String,
+        /// The remaining chars
+        chars: std::str::Chars<'a>,
+        /// The error that occurred
+        source: ParseIntError,
+    },
+    /// Parsing unicode chars {chars:?} failed for `{target}` in filename: `{file_name}` : `{source}`
+    #[cfg(not(windows))]
+    ParsingUnicodeFailed {
+        /// The filename
+        file_name: String,
+        /// The target type
+        target: String,
+        /// The remaining chars
+        chars: std::str::Chars<'a>,
+        /// The error that occurred
+        source: ParseIntError,
+    },
+}
+
+#[cfg(not(windows))]
+pub(crate) type NodeResult<'a, T> = Result<T, NodeErrorKind<'a>>;
 
 #[derive(
     Default, Serialize, Deserialize, Clone, Debug, PartialEq, Eq, Constructor, PartialOrd, Ord,
@@ -38,8 +94,8 @@ pub struct Node {
     ///
     /// # Warning
     ///
-    /// This contains an escaped variant of the name in order to handle non-unicode filenames.
-    /// Don't access this field directly, use the [`Node::name()`] method instead!
+    /// * This contains an escaped variant of the name in order to handle non-unicode filenames.
+    /// * Don't access this field directly, use the [`Node::name()`] method instead!
     pub name: String,
     #[serde(flatten)]
     /// Information about node type
@@ -64,22 +120,25 @@ pub struct Node {
 }
 
 #[serde_as]
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, strum::Display)]
 #[serde(tag = "type", rename_all = "lowercase")]
 /// Types a [`Node`] can have with type-specific additional information
 pub enum NodeType {
     /// Node is a regular file
+    #[strum(to_string = "file")]
     File,
     /// Node is a directory
+    #[strum(to_string = "dir")]
     Dir,
     /// Node is a symlink
+    #[strum(to_string = "symlink:{linktarget}")]
     Symlink {
         /// The target of the symlink
         ///
         /// # Warning
         ///
-        /// This contains the target only if it is a valid unicode target.
-        /// Don't access this field directly, use the [`NodeType::to_link()`] method instead!
+        /// * This contains the target only if it is a valid unicode target.
+        /// * Don't access this field directly, use the [`NodeType::to_link()`] method instead!
         linktarget: String,
         #[serde_as(as = "DefaultOnNull<Option<Base64::<Standard,Padded>>>")]
         #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -89,20 +148,24 @@ pub enum NodeType {
         linktarget_raw: Option<Vec<u8>>,
     },
     /// Node is a block device file
+    #[strum(to_string = "dev:{device}")]
     Dev {
         #[serde(default)]
         /// Device id
         device: u64,
     },
     /// Node is a char device file
+    #[strum(to_string = "chardev:{device}")]
     Chardev {
         #[serde(default)]
         /// Device id
         device: u64,
     },
     /// Node is a fifo
+    #[strum(to_string = "fifo")]
     Fifo,
     /// Node is a socket
+    #[strum(to_string = "socket")]
     Socket,
 }
 
@@ -143,7 +206,7 @@ impl NodeType {
     ///
     /// # Panics
     ///
-    /// If called on a non-symlink node
+    /// * If called on a non-symlink node
     #[cfg(not(windows))]
     #[must_use]
     pub fn to_link(&self) -> &Path {
@@ -163,7 +226,7 @@ impl NodeType {
     ///
     /// # Warning
     ///
-    /// Must be only called on `NodeType::Symlink`!
+    /// * Must be only called on `NodeType::Symlink`!
     ///
     /// # Panics
     ///
@@ -295,7 +358,7 @@ impl Node {
     ///
     /// # Panics
     ///
-    /// If the name is not valid unicode
+    /// * If the name is not valid unicode
     pub fn name(&self) -> OsString {
         unescape_filename(&self.name).unwrap_or_else(|_| OsString::from_str(&self.name).unwrap())
     }
@@ -399,7 +462,7 @@ fn escape_filename(name: &OsStr) -> String {
 ///
 /// * `s` - The escaped filename
 // inspired by the enquote crate
-fn unescape_filename(s: &str) -> RusticResult<OsString> {
+fn unescape_filename(s: &str) -> NodeResult<'_, OsString> {
     let mut chars = s.chars();
     let mut u = Vec::new();
     loop {
@@ -408,7 +471,12 @@ fn unescape_filename(s: &str) -> RusticResult<OsString> {
             Some(c) => {
                 if c == '\\' {
                     match chars.next() {
-                        None => return Err(NodeErrorKind::UnexpectedEOF.into()),
+                        None => {
+                            return Err(NodeErrorKind::UnexpectedEOF {
+                                file_name: s.to_string(),
+                                chars,
+                            })
+                        }
                         Some(c) => match c {
                             '\\' => u.push(b'\\'),
                             '"' => u.push(b'"'),
@@ -424,31 +492,62 @@ fn unescape_filename(s: &str) -> RusticResult<OsString> {
                             // hex
                             'x' => {
                                 let hex = take(&mut chars, 2);
-                                u.push(
-                                    u8::from_str_radix(&hex, 16)
-                                        .map_err(NodeErrorKind::FromParseIntError)?,
-                                );
+                                u.push(u8::from_str_radix(&hex, 16).map_err(|err| {
+                                    NodeErrorKind::ParsingHexFailed {
+                                        file_name: s.to_string(),
+                                        hex: hex.to_string(),
+                                        chars: chars.clone(),
+                                        source: err,
+                                    }
+                                })?);
                             }
                             // unicode
                             'u' => {
-                                let n = u32::from_str_radix(&take(&mut chars, 4), 16)
-                                    .map_err(NodeErrorKind::FromParseIntError)?;
-                                let c =
-                                    std::char::from_u32(n).ok_or(NodeErrorKind::InvalidUnicode)?;
+                                let n = u32::from_str_radix(&take(&mut chars, 4), 16).map_err(
+                                    |err| NodeErrorKind::ParsingUnicodeFailed {
+                                        file_name: s.to_string(),
+                                        target: "u32".to_string(),
+                                        chars: chars.clone(),
+                                        source: err,
+                                    },
+                                )?;
+                                let c = std::char::from_u32(n).ok_or_else(|| {
+                                    NodeErrorKind::InvalidUnicode {
+                                        file_name: s.to_string(),
+                                        unicode: n,
+                                        chars: chars.clone(),
+                                    }
+                                })?;
                                 let mut bytes = vec![0u8; c.len_utf8()];
                                 _ = c.encode_utf8(&mut bytes);
                                 u.extend_from_slice(&bytes);
                             }
                             'U' => {
-                                let n = u32::from_str_radix(&take(&mut chars, 8), 16)
-                                    .map_err(NodeErrorKind::FromParseIntError)?;
-                                let c =
-                                    std::char::from_u32(n).ok_or(NodeErrorKind::InvalidUnicode)?;
+                                let n = u32::from_str_radix(&take(&mut chars, 8), 16).map_err(
+                                    |err| NodeErrorKind::ParsingUnicodeFailed {
+                                        file_name: s.to_string(),
+                                        target: "u32".to_string(),
+                                        chars: chars.clone(),
+                                        source: err,
+                                    },
+                                )?;
+                                let c = std::char::from_u32(n).ok_or_else(|| {
+                                    NodeErrorKind::InvalidUnicode {
+                                        file_name: s.to_string(),
+                                        unicode: n,
+                                        chars: chars.clone(),
+                                    }
+                                })?;
                                 let mut bytes = vec![0u8; c.len_utf8()];
                                 _ = c.encode_utf8(&mut bytes);
                                 u.extend_from_slice(&bytes);
                             }
-                            _ => return Err(NodeErrorKind::UnrecognizedEscape.into()),
+                            _ => {
+                                return Err(NodeErrorKind::UnrecognizedEscape {
+                                    file_name: s.to_string(),
+                                    chars: chars.clone(),
+                                })
+                            }
                         },
                     }
                 } else {

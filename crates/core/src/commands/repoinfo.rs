@@ -4,7 +4,7 @@ use serde_with::skip_serializing_none;
 use crate::{
     backend::{decrypt::DecryptReadBackend, FileType, ReadBackend, ALL_FILE_TYPES},
     blob::{BlobType, BlobTypeMap},
-    error::{RusticErrorKind, RusticResult},
+    error::RusticResult,
     index::IndexEntry,
     progress::{Progress, ProgressBars},
     repofile::indexfile::{IndexFile, IndexPack},
@@ -187,11 +187,11 @@ pub struct RepoFileInfo {
 ///
 /// # Errors
 ///
-/// If files could not be listed.
+/// * If files could not be listed.
 pub(crate) fn collect_file_info(be: &impl ReadBackend) -> RusticResult<Vec<RepoFileInfo>> {
     let mut files = Vec::with_capacity(ALL_FILE_TYPES.len());
     for tpe in ALL_FILE_TYPES {
-        let list = be.list_with_size(tpe).map_err(RusticErrorKind::Backend)?;
+        let list = be.list_with_size(tpe)?;
         let count = list.len() as u64;
         let size = list.iter().map(|f| u64::from(f.1)).sum();
         files.push(RepoFileInfo { tpe, count, size });
