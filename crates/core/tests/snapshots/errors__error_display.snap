@@ -2,8 +2,6 @@
 source: crates/core/tests/errors.rs
 expression: error
 ---
-Well, this is embarrassing.
-
 `rustic_core` experienced an error related to `input/output operations`.
 
 Message:
@@ -27,17 +25,15 @@ Thank you for helping us improve rustic!
 Some additional details ...
 
 Context:
-- path: /path/to/file
 - called: used s3 backend
 
 Caused by:
-Networking Error : (source: None)
+Networking Error
+
 
 Severity: Error
 
 Status: Permanent
 
 Backtrace:
-disabled backtrace
-
-To enable backtraces, set the RUST_BACKTRACE="1" environment variable.
+disabled backtrace (set 'RUST_BACKTRACE="1"' environment variable to enable)

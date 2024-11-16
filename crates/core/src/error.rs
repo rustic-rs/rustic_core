@@ -200,7 +200,8 @@ impl Display for RusticError {
             self.kind
         )?;
 
-        writeln!(f, "\nMessage:")?;
+        writeln!(f)?;
+        writeln!(f, "Message:")?;
         let context = if self.context.is_empty() {
             writeln!(f, "{}", self.guidance)?;
             Vec::new()
@@ -241,11 +242,13 @@ impl Display for RusticError {
                 docs_url + "/"
             };
 
-            writeln!(f, "\nFor more information, see: {docs_url}{code}")?;
+            writeln!(f)?;
+            writeln!(f, "For more information, see: {docs_url}{code}")?;
         }
 
         if !self.existing_issue_urls.is_empty() {
-            writeln!(f, "\nRelated issues:")?;
+            writeln!(f)?;
+            writeln!(f, "Related issues:")?;
             self.existing_issue_urls
                 .iter()
                 .try_for_each(|url| writeln!(f, "- {url}"))?;
@@ -255,51 +258,64 @@ impl Display for RusticError {
             let default_issue_url = EcoString::from(constants::DEFAULT_ISSUE_URL);
             let new_issue_url = self.new_issue_url.as_ref().unwrap_or(&default_issue_url);
 
+            writeln!(f)?;
+
             writeln!(
                 f,
-                "\nWe believe this is a bug, please report it by opening an issue at:"
+                "We believe this is a bug, please report it by opening an issue at:"
             )?;
             writeln!(f, "{new_issue_url}")?;
+            writeln!(f)?;
             writeln!(
                 f,
-                "\nIf you can, please attach an anonymized debug log to the issue."
+                "If you can, please attach an anonymized debug log to the issue."
             )?;
-            writeln!(f, "\nThank you for helping us improve rustic!")?;
+            writeln!(f)?;
+            writeln!(f, "Thank you for helping us improve rustic!")?;
         }
 
-        writeln!(f, "\n\nSome additional details ...")?;
+        writeln!(f)?;
+        writeln!(f)?;
+
+        writeln!(f, "Some additional details ...")?;
 
         if !context.is_empty() {
-            writeln!(f, "\nContext:")?;
+            writeln!(f)?;
+            writeln!(f, "Context:")?;
             context
                 .iter()
                 .try_for_each(|(key, value)| writeln!(f, "- {key}: {value}"))?;
         }
 
         if let Some(cause) = &self.source {
-            write!(f, "\n Caused by:\n{cause}")?;
-            if let Some(cause) = cause.source() {
-                write!(f, " : (source: {cause:?})")?;
+            writeln!(f)?;
+            writeln!(f, "Caused by:")?;
+            writeln!(f, "{cause}")?;
+            if let Some(source) = cause.source() {
+                write!(f, " : (source: {source:?})")?;
             }
             writeln!(f)?;
         }
 
         if let Some(severity) = &self.severity {
-            writeln!(f, "\nSeverity: {severity}")?;
+            writeln!(f)?;
+            writeln!(f, "Severity: {severity}")?;
         }
 
         if let Some(status) = &self.status {
-            writeln!(f, "\nStatus: {status}")?;
+            writeln!(f)?;
+            writeln!(f, "Status: {status}")?;
         }
 
         if let Some(backtrace) = &self.backtrace {
-            writeln!(f, "\nBacktrace:")?;
-            writeln!(f, "{backtrace}")?;
+            writeln!(f)?;
+            writeln!(f, "Backtrace:")?;
+            write!(f, "{backtrace}")?;
 
             if backtrace.status() == BacktraceStatus::Disabled {
                 writeln!(
                     f,
-                    "\nTo enable backtraces, set the RUST_BACKTRACE=\"1\" environment variable."
+                    " (set 'RUST_BACKTRACE=\"1\"' environment variable to enable)"
                 )?;
             }
         }
