@@ -8,7 +8,7 @@ use std::{
 
 use bytes::Bytes;
 use dirs::cache_dir;
-use log::{error, trace, warn};
+use log::{trace, warn};
 use walkdir::WalkDir;
 
 use crate::{
@@ -333,7 +333,15 @@ impl Cache {
             .into_iter()
             .inspect(|r| {
                 if let Err(err) = r {
-                    error!("Error while listing files: {err:?}");
+                    if err.depth() == 0 {
+                        if let Some(io_err) = err.io_error() {
+                            if io_err.kind() == io::ErrorKind::NotFound {
+                                // ignore errors if root path doesn't exist => this should return an empty list without error
+                                return;
+                            }
+                        }
+                    }
+                    warn!("Error while listing files: {err:?}");
                 }
             })
             .filter_map(walkdir::Result::ok)
