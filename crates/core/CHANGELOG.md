@@ -93,9 +93,11 @@ All notable changes to this project will be documented in this file.
 ## [0.3.1](https://github.com/rustic-rs/rustic_core/compare/rustic_core-v0.3.0...rustic_core-v0.3.1) - 2024-09-06
 
 ### Added
+
 - Add autocompletion hints  ([#257](https://github.com/rustic-rs/rustic_core/pull/257))
 
 ### Fixed
+
 - don't give invalid password error for other keyfile errors ([#247](https://github.com/rustic-rs/rustic_core/pull/247))
 - adjust tests to new Rust version ([#259](https://github.com/rustic-rs/rustic_core/pull/259))
 - fix FromStr for SnapshotGroupCriterion ([#254](https://github.com/rustic-rs/rustic_core/pull/254))
@@ -106,6 +108,7 @@ All notable changes to this project will be documented in this file.
 ## [0.3.0](https://github.com/rustic-rs/rustic_core/compare/rustic_core-v0.2.0...rustic_core-v0.3.0) - 2024-08-18
 
 ### Added
+
 - *(forget)* [**breaking**] Make keep-* Options and add keep-none ([#238](https://github.com/rustic-rs/rustic_core/pull/238))
 - add search methods to Repository ([#212](https://github.com/rustic-rs/rustic_core/pull/212))
 - [**breaking**] Allow specifying many options in config profile without array ([#211](https://github.com/rustic-rs/rustic_core/pull/211))
@@ -118,6 +121,7 @@ All notable changes to this project will be documented in this file.
 - Add append-only repository mode ([#164](https://github.com/rustic-rs/rustic_core/pull/164))
 
 ### Fixed
+
 - parse commands given by arg or env using shell_words ([#240](https://github.com/rustic-rs/rustic_core/pull/240))
 - Allow non-value/null xattr ([#235](https://github.com/rustic-rs/rustic_core/pull/235))
 - ensure Rust 1.76.0 compiles
@@ -129,7 +133,7 @@ All notable changes to this project will be documented in this file.
 - clippy lints ([#220](https://github.com/rustic-rs/rustic_core/pull/220))
 - *(errors)* Show filenames in error message coming from ignore source ([#215](https://github.com/rustic-rs/rustic_core/pull/215))
 - *(paths)* Handle paths starting with "." correctly ([#213](https://github.com/rustic-rs/rustic_core/pull/213))
-- Add warning about unsorted files and sort where neccessary ([#205](https://github.com/rustic-rs/rustic_core/pull/205))
+- Add warning about unsorted files and sort where necessary ([#205](https://github.com/rustic-rs/rustic_core/pull/205))
 - *(deps)* update rust crate thiserror to 1.0.58 ([#192](https://github.com/rustic-rs/rustic_core/pull/192))
 - *(deps)* update rust crate anyhow to 1.0.81 ([#191](https://github.com/rustic-rs/rustic_core/pull/191))
 - *(deps)* update rust crate serde_with to 3.7.0 ([#189](https://github.com/rustic-rs/rustic_core/pull/189))
@@ -143,6 +147,7 @@ All notable changes to this project will be documented in this file.
 - updated msrv and fix clippy lints ([#160](https://github.com/rustic-rs/rustic_core/pull/160))
 
 ### Other
+
 - dependency updates
 - Ensure that MSRV 1.76 works
 - *(deps)* more version updates ([#237](https://github.com/rustic-rs/rustic_core/pull/237))

@@ -1,0 +1,42 @@
+---
+source: crates/core/tests/errors.rs
+expression: error
+---
+RusticError {
+    kind: InputOutput,
+    guidance: "Prepended guidance line\nA file could not be read, make sure the file at `{path}` is existing and readable by the system.\nAppended guidance line",
+    docs_url: None,
+    error_code: Some(
+        "C001",
+    ),
+    ask_report: true,
+    existing_issue_urls: [
+        "https://github.com/rustic-rs/rustic_core/issues/209",
+    ],
+    new_issue_url: None,
+    context: [
+        (
+            "path",
+            "/path/to/file",
+        ),
+        (
+            "called",
+            "used s3 backend",
+        ),
+    ],
+    source: Some(
+        Custom {
+            kind: ConnectionReset,
+            error: "Networking Error",
+        },
+    ),
+    severity: Some(
+        Error,
+    ),
+    status: Some(
+        Permanent,
+    ),
+    backtrace: Some(
+        <disabled>,
+    ),
+}

@@ -16,7 +16,7 @@ use crate::{
         ignore::{LocalSource, LocalSourceFilterOptions, LocalSourceSaveOptions},
         stdin::StdinSource,
     },
-    error::RusticResult,
+    error::{ErrorKind, RusticError, RusticResult},
     progress::ProgressBars,
     repofile::{
         snapshotfile::{SnapshotGroup, SnapshotGroupCriterion, SnapshotId},
@@ -196,21 +196,16 @@ pub struct BackupOptions {
 ///
 /// # Errors
 ///
-/// * [`PackerErrorKind::SendingCrossbeamMessageFailed`] - If sending the message to the raw packer fails.
-/// * [`PackerErrorKind::IntConversionFailed`] - If converting the data length to u64 fails
-/// * [`PackerErrorKind::SendingCrossbeamMessageFailed`] - If sending the message to the raw packer fails.
-/// * [`CryptBackendErrorKind::SerializingToJsonByteVectorFailed`] - If the index file could not be serialized.
-/// * [`SnapshotFileErrorKind::OutOfRange`] - If the time is not in the range of `Local::now()`
+/// * If sending the message to the raw packer fails.
+/// * If converting the data length to u64 fails
+/// * If sending the message to the raw packer fails.
+/// * If the index file could not be serialized.
+/// * If the time is not in the range of `Local::now()`
 ///
 /// # Returns
 ///
 /// The snapshot pointing to the backup'ed data.
-///
-/// [`PackerErrorKind::SendingCrossbeamMessageFailed`]: crate::error::PackerErrorKind::SendingCrossbeamMessageFailed
-/// [`PackerErrorKind::IntConversionFailed`]: crate::error::PackerErrorKind::IntConversionFailed
-/// [`PackerErrorKind::SendingCrossbeamMessageFailed`]: crate::error::PackerErrorKind::SendingCrossbeamMessageFailed
-/// [`CryptBackendErrorKind::SerializingToJsonByteVectorFailed`]: crate::error::CryptBackendErrorKind::SerializingToJsonByteVectorFailed
-/// [`SnapshotFileErrorKind::OutOfRange`]: crate::error::SnapshotFileErrorKind::OutOfRange
+#[allow(clippy::too_many_lines)]
 pub(crate) fn backup<P: ProgressBars, S: IndexedIds>(
     repo: &Repository<P, S>,
     opts: &BackupOptions,
@@ -229,12 +224,44 @@ pub(crate) fn backup<P: ProgressBars, S: IndexedIds>(
     let as_path = opts
         .as_path
         .as_ref()
-        .map(|p| -> RusticResult<_> { Ok(p.parse_dot()?.to_path_buf()) })
+        .map(|p| -> RusticResult<_> {
+            Ok(p.parse_dot()
+                .map_err(|err| {
+                    RusticError::with_source(
+                        ErrorKind::InvalidInput,
+                        "Failed to parse dotted path `{path}`",
+                        err,
+                    )
+                    .attach_context("path", p.display().to_string())
+                })?
+                .to_path_buf())
+        })
         .transpose()?;
 
     match &as_path {
-        Some(p) => snap.paths.set_paths(&[p.clone()])?,
-        None => snap.paths.set_paths(&backup_path)?,
+        Some(p) => snap.paths.set_paths(&[p.clone()]).map_err(|err| {
+            RusticError::with_source(
+                ErrorKind::Internal,
+                "Failed to set paths `{paths}` in snapshot.",
+                err,
+            )
+            .attach_context("paths", p.display().to_string())
+        })?,
+        None => snap.paths.set_paths(&backup_path).map_err(|err| {
+            RusticError::with_source(
+                ErrorKind::Internal,
+                "Failed to set paths `{paths}` in snapshot.",
+                err,
+            )
+            .attach_context(
+                "paths",
+                backup_path
+                    .iter()
+                    .map(|p| p.display().to_string())
+                    .collect::<Vec<_>>()
+                    .join(","),
+            )
+        })?,
     };
 
     let (parent_id, parent) = opts.parent_opts.get_parent(repo, &snap, backup_stdin);

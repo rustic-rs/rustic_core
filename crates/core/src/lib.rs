@@ -145,14 +145,15 @@ pub use crate::{
         repoinfo::{BlobInfo, IndexInfos, PackInfo, RepoFileInfo, RepoFileInfos},
         restore::{FileDirStats, RestoreOptions, RestorePlan, RestoreStats},
     },
-    error::{RusticError, RusticResult},
+    error::{ErrorKind, RusticError, RusticResult, Severity, Status},
     id::{HexId, Id},
     progress::{NoProgress, NoProgressBars, Progress, ProgressBars},
     repofile::snapshotfile::{
         PathList, SnapshotGroup, SnapshotGroupCriterion, SnapshotOptions, StringList,
     },
     repository::{
-        CommandInput, FullIndex, IndexedFull, IndexedIds, IndexedStatus, IndexedTree, Open,
-        OpenStatus, Repository, RepositoryOptions,
+        command_input::{CommandInput, CommandInputErrorKind},
+        FullIndex, IndexedFull, IndexedIds, IndexedStatus, IndexedTree, Open, OpenStatus,
+        Repository, RepositoryOptions,
     },
 };

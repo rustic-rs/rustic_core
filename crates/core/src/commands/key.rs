@@ -4,7 +4,7 @@ use derive_setters::Setters;
 use crate::{
     backend::{decrypt::DecryptWriteBackend, FileType, WriteBackend},
     crypto::{aespoly1305::Key, hasher::hash},
-    error::{CommandErrorKind, RusticErrorKind, RusticResult},
+    error::{ErrorKind, RusticError, RusticResult},
     repofile::{KeyFile, KeyId},
     repository::{Open, Repository},
 };
@@ -43,13 +43,11 @@ pub struct KeyOptions {
 ///
 /// # Errors
 ///
-/// * [`CommandErrorKind::FromJsonError`] - If the key could not be serialized
+/// * If the key could not be serialized
 ///
 /// # Returns
 ///
 /// The id of the key.
-///
-/// [`CommandErrorKind::FromJsonError`]: crate::error::CommandErrorKind::FromJsonError
 pub(crate) fn add_current_key_to_repo<P, S: Open>(
     repo: &Repository<P, S>,
     opts: &KeyOptions,
@@ -96,13 +94,11 @@ pub(crate) fn init_key<P, S>(
 ///
 /// # Errors
 ///
-/// * [`CommandErrorKind::FromJsonError`] - If the key could not be serialized.
+/// * If the key could not be serialized.
 ///
 /// # Returns
 ///
 /// The id of the key.
-///
-/// [`CommandErrorKind::FromJsonError`]: crate::error::CommandErrorKind::FromJsonError
 pub(crate) fn add_key_to_repo<P, S>(
     repo: &Repository<P, S>,
     opts: &KeyOptions,
@@ -112,10 +108,18 @@ pub(crate) fn add_key_to_repo<P, S>(
     let ko = opts.clone();
     let keyfile = KeyFile::generate(key, &pass, ko.hostname, ko.username, ko.with_created)?;
 
-    let data = serde_json::to_vec(&keyfile).map_err(CommandErrorKind::FromJsonError)?;
+    let data = serde_json::to_vec(&keyfile).map_err(|err| {
+        RusticError::with_source(
+            ErrorKind::InputOutput,
+            "Failed to serialize keyfile to JSON.",
+            err,
+        )
+    })?;
+
     let id = KeyId::from(hash(&data));
+
     repo.be
-        .write_bytes(FileType::Key, &id, false, data.into())
-        .map_err(RusticErrorKind::Backend)?;
+        .write_bytes(FileType::Key, &id, false, data.into())?;
+
     Ok(id)
 }

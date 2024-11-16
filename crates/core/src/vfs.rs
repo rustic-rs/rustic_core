@@ -18,15 +18,25 @@ pub use crate::vfs::webdavfs::WebDavFS;
 
 use crate::{
     blob::{tree::TreeId, BlobId, DataId},
-    error::VfsErrorKind,
-    repofile::{BlobType, Metadata, Node, NodeType, SnapshotFile},
-};
-use crate::{
+    error::{ErrorKind, RusticError, RusticResult},
     index::ReadIndex,
+    repofile::{BlobType, Metadata, Node, NodeType, SnapshotFile},
     repository::{IndexedFull, IndexedTree, Repository},
     vfs::format::FormattedSnapshot,
-    RusticResult,
 };
+
+/// [`VfsErrorKind`] describes the errors that can be returned from the Virtual File System
+#[derive(thiserror::Error, Debug, displaydoc::Display)]
+pub enum VfsErrorKind {
+    /// Directory exists as non-virtual directory
+    DirectoryExistsAsNonVirtual,
+    /// Only normal paths allowed
+    OnlyNormalPathsAreAllowed,
+    /// Name `{0:?}` doesn't exist
+    NameDoesNotExist(OsString),
+}
+
+pub(crate) type VfsResult<T> = Result<T, VfsErrorKind>;
 
 #[derive(Debug, Clone, Copy)]
 /// `IdenticalSnapshot` describes how to handle identical snapshots.
@@ -85,20 +95,17 @@ impl VfsTree {
     ///
     /// # Errors
     ///
-    /// * [`VfsErrorKind::OnlyNormalPathsAreAllowed`] if the path is not a normal path
-    /// * [`VfsErrorKind::DirectoryExistsAsNonVirtual`] if the path is a directory in the repository
+    /// * If the path is not a normal path
+    /// * If the path is a directory in the repository
     ///
     /// # Returns
     ///
     /// `Ok(())` if the tree was added successfully
-    ///
-    /// [`VfsErrorKind::DirectoryExistsAsNonVirtual`]: crate::error::VfsErrorKind::DirectoryExistsAsNonVirtual
-    /// [`VfsErrorKind::OnlyNormalPathsAreAllowed`]: crate::error::VfsErrorKind::OnlyNormalPathsAreAllowed
-    fn add_tree(&mut self, path: &Path, new_tree: Self) -> RusticResult<()> {
+    fn add_tree(&mut self, path: &Path, new_tree: Self) -> VfsResult<()> {
         let mut tree = self;
         let mut components = path.components();
         let Some(Component::Normal(last)) = components.next_back() else {
-            return Err(VfsErrorKind::OnlyNormalPathsAreAllowed.into());
+            return Err(VfsErrorKind::OnlyNormalPathsAreAllowed);
         };
 
         for comp in components {
@@ -110,14 +117,14 @@ impl VfsTree {
                             .or_insert(Self::VirtualTree(BTreeMap::new()));
                     }
                     _ => {
-                        return Err(VfsErrorKind::DirectoryExistsAsNonVirtual.into());
+                        return Err(VfsErrorKind::DirectoryExistsAsNonVirtual);
                     }
                 }
             }
         }
 
         let Self::VirtualTree(virtual_tree) = tree else {
-            return Err(VfsErrorKind::DirectoryExistsAsNonVirtual.into());
+            return Err(VfsErrorKind::DirectoryExistsAsNonVirtual);
         };
 
         _ = virtual_tree.insert(last.to_os_string(), new_tree);
@@ -137,7 +144,7 @@ impl VfsTree {
     /// # Returns
     ///
     /// If the path is within a real repository tree, this returns the [`VfsTree::RusticTree`] and the remaining path
-    fn get_path(&self, path: &Path) -> RusticResult<VfsPath<'_>> {
+    fn get_path(&self, path: &Path) -> VfsResult<VfsPath<'_>> {
         let mut tree = self;
         let mut components = path.components();
         loop {
@@ -151,7 +158,7 @@ impl VfsTree {
                         if let Some(new_tree) = virtual_tree.get(name) {
                             tree = new_tree;
                         } else {
-                            return Err(VfsErrorKind::NameDoesNotExist(name.to_os_string()).into());
+                            return Err(VfsErrorKind::NameDoesNotExist(name.to_os_string()));
                         };
                     }
                     None => {
@@ -193,7 +200,7 @@ impl Vfs {
     ///
     /// # Panics
     ///
-    /// If the node is not a directory
+    /// * If the node is not a directory
     #[must_use]
     pub fn from_dir_node(node: &Node) -> Self {
         let tree = VfsTree::RusticTree(node.subtree.unwrap());
@@ -212,11 +219,9 @@ impl Vfs {
     ///
     /// # Errors
     ///
-    /// * [`VfsErrorKind::OnlyNormalPathsAreAllowed`] if the path is not a normal path
-    /// * [`VfsErrorKind::DirectoryExistsAsNonVirtual`] if the path is a directory in the repository
-    ///
-    /// [`VfsErrorKind::DirectoryExistsAsNonVirtual`]: crate::error::VfsErrorKind::DirectoryExistsAsNonVirtual
-    /// [`VfsErrorKind::OnlyNormalPathsAreAllowed`]: crate::error::VfsErrorKind::OnlyNormalPathsAreAllowed
+    /// * If the path is not a normal path
+    /// * If the path is a directory in the repository
+    #[allow(clippy::too_many_lines)]
     pub fn from_snapshots(
         mut snapshots: Vec<SnapshotFile>,
         path_template: &str,
@@ -249,7 +254,7 @@ impl Vfs {
             let filename = path.file_name().map(OsStr::to_os_string);
             let parent_path = path.parent().map(Path::to_path_buf);
 
-            // Save pathes for latest entries, if requested
+            // Save paths for latest entries, if requested
             if matches!(latest_option, Latest::AsLink) {
                 _ = dirs_for_link.insert(parent_path.clone(), filename.clone());
             }
@@ -264,10 +269,30 @@ impl Vfs {
                     && last_tree == snap.tree
                 {
                     if let Some(name) = last_name {
-                        tree.add_tree(path, VfsTree::Link(name))?;
+                        tree.add_tree(path, VfsTree::Link(name.clone()))
+                            .map_err(|err| {
+                                RusticError::with_source(
+                                    ErrorKind::Vfs,
+                                    "Failed to add a link `{name}` to root tree at `{path}`",
+                                    err,
+                                )
+                                .attach_context("path", path.display().to_string())
+                                .attach_context("name", name.to_string_lossy())
+                                .ask_report()
+                            })?;
                     }
                 } else {
-                    tree.add_tree(path, VfsTree::RusticTree(snap.tree))?;
+                    tree.add_tree(path, VfsTree::RusticTree(snap.tree))
+                        .map_err(|err| {
+                            RusticError::with_source(
+                                ErrorKind::Vfs,
+                                "Failed to add repository tree `{tree_id}` to root tree at `{path}`",
+                                err,
+                            )
+                            .attach_context("path", path.display().to_string())
+                            .attach_context("tree_id", snap.tree.to_string())
+                            .ask_report()
+                        })?;
                 }
             }
             last_parent = parent_path;
@@ -282,7 +307,18 @@ impl Vfs {
                 for (path, target) in dirs_for_link {
                     if let (Some(mut path), Some(target)) = (path, target) {
                         path.push("latest");
-                        tree.add_tree(&path, VfsTree::Link(target))?;
+                        tree.add_tree(&path, VfsTree::Link(target.clone()))
+                            .map_err(|err| {
+                                RusticError::with_source(
+                                    ErrorKind::Vfs,
+                                    "Failed to link latest `{target}` entry to root tree at `{path}`",
+                                    err,
+                                )
+                                .attach_context("path", path.display().to_string())
+                                .attach_context("target", target.to_string_lossy())
+                                .attach_context("latest", "link")
+                                .ask_report()
+                            })?;
                     }
                 }
             }
@@ -290,7 +326,18 @@ impl Vfs {
                 for (path, subtree) in dirs_for_snap {
                     if let Some(mut path) = path {
                         path.push("latest");
-                        tree.add_tree(&path, VfsTree::RusticTree(subtree))?;
+                        tree.add_tree(&path, VfsTree::RusticTree(subtree))
+                            .map_err(|err| {
+                                RusticError::with_source(
+                                    ErrorKind::Vfs,
+                                    "Failed to add latest subtree id `{id}` to root tree at `{path}`",
+                                    err,
+                                )
+                                .attach_context("path", path.display().to_string())
+                                .attach_context("tree_id", subtree.to_string())
+                                .attach_context("latest", "dir")
+                                .ask_report()
+                            })?;
                     }
                 }
             }
@@ -307,13 +354,12 @@ impl Vfs {
     ///
     /// # Errors
     ///
-    /// * [`VfsErrorKind::NameDoesNotExist`] - if the component name doesn't exist
+    /// * If the component name doesn't exist
     ///
     /// # Returns
     ///
     /// The [`Node`] at the specified path
     ///
-    /// [`VfsErrorKind::NameDoesNotExist`]: crate::error::VfsErrorKind::NameDoesNotExist
     /// [`Tree`]: crate::repofile::Tree
     pub fn node_from_path<P, S: IndexedFull>(
         &self,
@@ -321,20 +367,26 @@ impl Vfs {
         path: &Path,
     ) -> RusticResult<Node> {
         let meta = Metadata::default();
-        match self.tree.get_path(path)? {
+        match self.tree.get_path(path).map_err(|err| {
+            RusticError::with_source(
+                ErrorKind::Vfs,
+                "Failed to get tree at given path `{path}`",
+                err,
+            )
+            .attach_context("path", path.display().to_string())
+            .ask_report()
+        })? {
             VfsPath::RusticPath(tree_id, path) => Ok(repo.node_from_path(*tree_id, &path)?),
             VfsPath::VirtualTree(_) => {
                 Ok(Node::new(String::new(), NodeType::Dir, meta, None, None))
             }
-            VfsPath::Link(target) => {
-                return Ok(Node::new(
-                    String::new(),
-                    NodeType::from_link(Path::new(target)),
-                    meta,
-                    None,
-                    None,
-                ));
-            }
+            VfsPath::Link(target) => Ok(Node::new(
+                String::new(),
+                NodeType::from_link(Path::new(target)),
+                meta,
+                None,
+                None,
+            )),
         }
     }
 
@@ -347,24 +399,31 @@ impl Vfs {
     ///
     /// # Errors
     ///
-    /// * [`VfsErrorKind::NameDoesNotExist`] - if the component name doesn't exist
+    /// * If the component name doesn't exist
     ///
     /// # Returns
     ///
     /// The list of [`Node`]s at the specified path
     ///
-    /// [`VfsErrorKind::NameDoesNotExist`]: crate::error::VfsErrorKind::NameDoesNotExist
     /// [`Tree`]: crate::repofile::Tree
     ///
     /// # Panics
     ///
-    /// Panics if the path is not a directory.
+    /// * Panics if the path is not a directory.
     pub fn dir_entries_from_path<P, S: IndexedFull>(
         &self,
         repo: &Repository<P, S>,
         path: &Path,
     ) -> RusticResult<Vec<Node>> {
-        let result = match self.tree.get_path(path)? {
+        let result = match self.tree.get_path(path).map_err(|err| {
+            RusticError::with_source(
+                ErrorKind::Vfs,
+                "Failed to get tree at given path `{path}`",
+                err,
+            )
+            .attach_context("path", path.display().to_string())
+            .ask_report()
+        })? {
             VfsPath::RusticPath(tree_id, path) => {
                 let node = repo.node_from_path(*tree_id, &path)?;
                 if node.is_dir() {
@@ -385,7 +444,11 @@ impl Vfs {
                 })
                 .collect(),
             VfsPath::Link(str) => {
-                return Err(VfsErrorKind::NoDirectoryEntriesForSymlinkFound(str.clone()).into());
+                return Err(RusticError::new(
+                    ErrorKind::Vfs,
+                    "No directory entries for symlink `{symlink}` found. Is the path valid unicode?",
+                )
+                .attach_context("symlink", str.to_string_lossy().to_string()));
             }
         };
         Ok(result)
@@ -446,7 +509,7 @@ impl OpenFile {
     ///
     /// # Panics
     ///
-    /// Panics if the `Node` has no content
+    /// * Panics if the `Node` has no content
     pub fn from_node<P, S: IndexedFull>(repo: &Repository<P, S>, node: &Node) -> Self {
         let mut start = 0;
         let mut content: Vec<_> = node
@@ -461,7 +524,7 @@ impl OpenFile {
             })
             .collect();
 
-        // content is assumed to be partioned, so we add a starts_at:MAX entry
+        // content is assumed to be partitioned, so we add a starts_at:MAX entry
         content.push(BlobInfo {
             id: DataId::default(),
             starts_at: usize::MAX,
@@ -496,21 +559,30 @@ impl OpenFile {
         // find the start of relevant blobs => find the largest index such that self.content[i].starts_at <= offset, but
         // self.content[i+1] > offset  (note that a last dummy element has been added)
         let mut i = self.content.partition_point(|c| c.starts_at <= offset) - 1;
+
         offset -= self.content[i].starts_at;
+
         let mut result = BytesMut::with_capacity(length);
 
         while length > 0 && i < self.content.len() - 1 {
             let data = repo.get_blob_cached(&BlobId::from(*self.content[i].id), BlobType::Data)?;
+
             if offset > data.len() {
                 // we cannot read behind the blob. This only happens if offset is too large to fit in the last blob
                 break;
             }
+
             let to_copy = (data.len() - offset).min(length);
+
             result.extend_from_slice(&data[offset..offset + to_copy]);
+
             offset = 0;
+
             length -= to_copy;
+
             i += 1;
         }
+
         Ok(result.into())
     }
 }

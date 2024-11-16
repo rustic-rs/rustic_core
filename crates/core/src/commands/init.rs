@@ -10,7 +10,7 @@ use crate::{
         key::{init_key, KeyOptions},
     },
     crypto::aespoly1305::Key,
-    error::{RusticErrorKind, RusticResult},
+    error::RusticResult,
     id::Id,
     repofile::{configfile::RepositoryId, ConfigFile},
     repository::Repository,
@@ -32,13 +32,11 @@ use crate::{
 ///
 /// # Errors
 ///
-/// * [`PolynomialErrorKind::NoSuitablePolynomialFound`] - If no polynomial could be found in one million tries.
+/// * If no polynomial could be found in one million tries.
 ///
 /// # Returns
 ///
 /// A tuple of the key and the config file.
-///
-/// [`PolynomialErrorKind::NoSuitablePolynomialFound`]: crate::error::PolynomialErrorKind::NoSuitablePolynomialFound
 pub(crate) fn init<P, S>(
     repo: &Repository<P, S>,
     pass: &str,
@@ -85,7 +83,7 @@ pub(crate) fn init_with_config<P, S>(
     key_opts: &KeyOptions,
     config: &ConfigFile,
 ) -> RusticResult<Key> {
-    repo.be.create().map_err(RusticErrorKind::Backend)?;
+    repo.be.create()?;
     let (key, id) = init_key(repo, key_opts, pass)?;
     info!("key {id} successfully added.");
     save_config(repo, config.clone(), key)?;

@@ -18,7 +18,7 @@ use crate::{
     cdc::rolling_hash::Rabin64,
     chunker::ChunkIter,
     crypto::hasher::hash,
-    error::{ArchiverErrorKind, RusticResult},
+    error::{ErrorKind, RusticError, RusticResult},
     index::{indexer::SharedIndexer, ReadGlobalIndex},
     progress::Progress,
     repofile::configfile::ConfigFile,
@@ -55,11 +55,8 @@ impl<'a, BE: DecryptWriteBackend, I: ReadGlobalIndex> FileArchiver<'a, BE, I> {
     ///
     /// # Errors
     ///
-    /// * [`PackerErrorKind::SendingCrossbeamMessageFailed`] - If sending the message to the raw packer fails.
-    /// * [`PackerErrorKind::IntConversionFailed`] - If converting the data length to u64 fails
-    ///
-    /// [`PackerErrorKind::SendingCrossbeamMessageFailed`]: crate::error::PackerErrorKind::SendingCrossbeamMessageFailed
-    /// [`PackerErrorKind::IntConversionFailed`]: crate::error::PackerErrorKind::IntConversionFailed
+    /// * If sending the message to the raw packer fails.
+    /// * If converting the data length to u64 fails
     pub(crate) fn new(
         be: BE,
         index: &'a I,
@@ -75,7 +72,9 @@ impl<'a, BE: DecryptWriteBackend, I: ReadGlobalIndex> FileArchiver<'a, BE, I> {
             config,
             index.total_size(BlobType::Data),
         )?;
+
         let rabin = Rabin64::new_with_polynom(6, poly);
+
         Ok(Self {
             index,
             data_packer,
@@ -96,13 +95,11 @@ impl<'a, BE: DecryptWriteBackend, I: ReadGlobalIndex> FileArchiver<'a, BE, I> {
     ///
     /// # Errors
     ///
-    /// [`ArchiverErrorKind::UnpackingTreeTypeOptionalFailed`] - If the item could not be unpacked.
+    /// * If the item could not be unpacked.
     ///
     /// # Returns
     ///
     /// The processed item.
-    ///
-    /// [`ArchiverErrorKind::UnpackingTreeTypeOptionalFailed`]: crate::error::ArchiverErrorKind::UnpackingTreeTypeOptionalFailed
     pub(crate) fn process<O: ReadSourceOpen>(
         &self,
         item: ItemWithParent<Option<O>>,
@@ -118,8 +115,22 @@ impl<'a, BE: DecryptWriteBackend, I: ReadGlobalIndex> FileArchiver<'a, BE, I> {
                     (node, size)
                 } else if node.node_type == NodeType::File {
                     let r = open
-                        .ok_or(ArchiverErrorKind::UnpackingTreeTypeOptionalFailed)?
-                        .open()?;
+                        .ok_or_else(
+                            || RusticError::new(
+                                ErrorKind::Internal,
+                                "Failed to unpack tree type optional at `{path}`. Option should contain a value, but contained `None`.",
+                            )
+                            .attach_context("path", path.display().to_string())
+                            .ask_report(),
+                        )?
+                        .open()
+                        .map_err(|err| {
+                            err
+                            .overwrite_kind(ErrorKind::InputOutput)
+                            .prepend_guidance_line("Failed to open ReadSourceOpen at `{path}`")
+                            .attach_context("path", path.display().to_string())
+                        })?;
+
                     self.backup_reader(r, node, p)?
                 } else {
                     (node, 0)
@@ -138,12 +149,18 @@ impl<'a, BE: DecryptWriteBackend, I: ReadGlobalIndex> FileArchiver<'a, BE, I> {
     ) -> RusticResult<(Node, u64)> {
         let chunks: Vec<_> = ChunkIter::new(
             r,
-            usize::try_from(node.meta.size)
-                .map_err(ArchiverErrorKind::ConversionFromU64ToUsizeFailed)?,
+            usize::try_from(node.meta.size).map_err(|err| {
+                RusticError::with_source(
+                    ErrorKind::Internal,
+                    "Failed to convert node size `{size}` to usize",
+                    err,
+                )
+                .attach_context("size", node.meta.size.to_string())
+            })?,
             self.rabin.clone(),
         )
         .map(|chunk| {
-            let chunk = chunk.map_err(ArchiverErrorKind::FromStdIo)?;
+            let chunk = chunk?;
             let id = hash(&chunk);
             let size = chunk.len() as u64;
 
@@ -171,7 +188,7 @@ impl<'a, BE: DecryptWriteBackend, I: ReadGlobalIndex> FileArchiver<'a, BE, I> {
     ///
     /// # Panics
     ///
-    /// If the channel could not be dropped
+    /// * If the channel could not be dropped
     pub(crate) fn finalize(self) -> RusticResult<PackerStats> {
         self.data_packer.finalize()
     }

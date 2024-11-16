@@ -1,12 +1,12 @@
 #[cfg(not(windows))]
+use std::num::TryFromIntError;
+#[cfg(not(windows))]
 use std::os::unix::fs::{FileTypeExt, MetadataExt};
 
 use std::{
     fs::{read_link, File},
     path::{Path, PathBuf},
 };
-
-use serde_with::{serde_as, DisplayFromStr};
 
 use bytesize::ByteSize;
 #[cfg(not(windows))]
@@ -19,6 +19,7 @@ use ignore::{overrides::OverrideBuilder, DirEntry, Walk, WalkBuilder};
 use log::warn;
 #[cfg(not(windows))]
 use nix::unistd::{Gid, Group, Uid, User};
+use serde_with::{serde_as, DisplayFromStr};
 
 #[cfg(not(windows))]
 use crate::backend::node::ExtendedAttribute;
@@ -28,8 +29,38 @@ use crate::{
         node::{Metadata, Node, NodeType},
         ReadSource, ReadSourceEntry, ReadSourceOpen,
     },
-    error::{IgnoreErrorKind, RusticResult},
+    error::{ErrorKind, RusticError, RusticResult},
 };
+
+/// [`IgnoreErrorKind`] describes the errors that can be returned by a Ignore action in Backends
+#[derive(thiserror::Error, Debug, displaydoc::Display)]
+pub enum IgnoreErrorKind {
+    /// Failed to get metadata for entry: `{source:?}`
+    FailedToGetMetadata { source: ignore::Error },
+    #[cfg(all(not(windows), not(target_os = "openbsd")))]
+    /// Error getting xattrs for `{path:?}`: `{source:?}`
+    ErrorXattr {
+        path: PathBuf,
+        source: std::io::Error,
+    },
+    /// Error reading link target for `{path:?}`: `{source:?}`
+    ErrorLink {
+        path: PathBuf,
+        source: std::io::Error,
+    },
+    #[cfg(not(windows))]
+    /// Error converting ctime `{ctime}` and `ctime_nsec` `{ctime_nsec}` to Utc Timestamp: `{source:?}`
+    CtimeConversionToTimestampFailed {
+        ctime: i64,
+        ctime_nsec: i64,
+        source: TryFromIntError,
+    },
+    #[cfg(not(windows))]
+    /// Error acquiring metadata for `{name}`: `{source:?}`
+    AcquiringMetadataFailed { name: String, source: ignore::Error },
+}
+
+pub(crate) type IgnoreResult<T> = Result<T, IgnoreErrorKind>;
 
 /// A [`LocalSource`] is a source from local paths which is used to be read from (i.e. to backup it).
 #[derive(Debug)]
@@ -139,11 +170,9 @@ impl LocalSource {
     ///
     /// # Errors
     ///
-    /// * [`IgnoreErrorKind::GenericError`] - If the a glob pattern could not be added to the override builder.
-    /// * [`IgnoreErrorKind::FromIoError`] - If a glob file could not be read.
-    ///
-    /// [`IgnoreErrorKind::GenericError`]: crate::error::IgnoreErrorKind::GenericError
-    /// [`IgnoreErrorKind::FromIoError`]: crate::error::IgnoreErrorKind::FromIoError
+    /// * If the a glob pattern could not be added to the override builder.
+    /// * If a glob file could not be read.
+    #[allow(clippy::too_many_lines)]
     pub fn new(
         save_opts: LocalSourceSaveOptions,
         filter_opts: &LocalSourceFilterOptions,
@@ -157,46 +186,87 @@ impl LocalSource {
 
         let mut override_builder = OverrideBuilder::new("");
 
+        // FIXME: Refactor this to a function to be reused
+        // This is the same of `tree::NodeStreamer::new_with_glob()`
         for g in &filter_opts.globs {
-            _ = override_builder
-                .add(g)
-                .map_err(IgnoreErrorKind::GenericError)?;
+            _ = override_builder.add(g).map_err(|err| {
+                RusticError::with_source(
+                    ErrorKind::Internal,
+                    "Failed to add glob pattern `{glob}` to override builder.",
+                    err,
+                )
+                .attach_context("glob", g.to_string())
+                .ask_report()
+            })?;
         }
 
         for file in &filter_opts.glob_files {
             for line in std::fs::read_to_string(file)
-                .map_err(|err| IgnoreErrorKind::ErrorGlob {
-                    file: file.into(),
-                    source: err,
+                .map_err(|err| {
+                    RusticError::with_source(
+                        ErrorKind::Internal,
+                        "Failed to read string from glob file at `{glob_file}`",
+                        err,
+                    )
+                    .attach_context("glob_file", file.to_string())
+                    .ask_report()
                 })?
                 .lines()
             {
-                _ = override_builder
-                    .add(line)
-                    .map_err(IgnoreErrorKind::GenericError)?;
+                _ = override_builder.add(line).map_err(|err| {
+                    RusticError::with_source(
+                        ErrorKind::Internal,
+                        "Failed to add glob pattern line `{glob_pattern_line}` to override builder.",
+                        err,
+                    )
+                    .attach_context("glob_pattern_line", line.to_string())
+                    .ask_report()
+                })?;
             }
         }
 
-        _ = override_builder
-            .case_insensitive(true)
-            .map_err(IgnoreErrorKind::GenericError)?;
+        _ = override_builder.case_insensitive(true).map_err(|err| {
+            RusticError::with_source(
+                ErrorKind::Internal,
+                "Failed to set case insensitivity in override builder.",
+                err,
+            )
+            .ask_report()
+        })?;
         for g in &filter_opts.iglobs {
-            _ = override_builder
-                .add(g)
-                .map_err(IgnoreErrorKind::GenericError)?;
+            _ = override_builder.add(g).map_err(|err| {
+                RusticError::with_source(
+                    ErrorKind::Internal,
+                    "Failed to add iglob pattern `{iglob}` to override builder.",
+                    err,
+                )
+                .attach_context("iglob", g.to_string())
+                .ask_report()
+            })?;
         }
 
         for file in &filter_opts.iglob_files {
             for line in std::fs::read_to_string(file)
-                .map_err(|err| IgnoreErrorKind::ErrorGlob {
-                    file: file.into(),
-                    source: err,
+                .map_err(|err| {
+                    RusticError::with_source(
+                        ErrorKind::Internal,
+                        "Failed to read string from iglob file at `{iglob_file}`",
+                        err,
+                    )
+                    .attach_context("iglob_file", file.to_string())
+                    .ask_report()
                 })?
                 .lines()
             {
-                _ = override_builder
-                    .add(line)
-                    .map_err(IgnoreErrorKind::GenericError)?;
+                _ = override_builder.add(line).map_err(|err| {
+                    RusticError::with_source(
+                        ErrorKind::Internal,
+                        "Failed to add iglob pattern line `{iglob_pattern_line}` to override builder.",
+                        err,
+                    )
+                    .attach_context("iglob_pattern_line", line.to_string())
+                    .ask_report()
+                })?;
             }
         }
 
@@ -213,11 +283,14 @@ impl LocalSource {
             .sort_by_file_path(Path::cmp)
             .same_file_system(filter_opts.one_file_system)
             .max_filesize(filter_opts.exclude_larger_than.map(|s| s.as_u64()))
-            .overrides(
-                override_builder
-                    .build()
-                    .map_err(IgnoreErrorKind::GenericError)?,
-            );
+            .overrides(override_builder.build().map_err(|err| {
+                RusticError::with_source(
+                    ErrorKind::Internal,
+                    "Failed to build matcher for a set of glob overrides.",
+                    err,
+                )
+                .ask_report()
+            })?);
 
         let exclude_if_present = filter_opts.exclude_if_present.clone();
         if !filter_opts.exclude_if_present.is_empty() {
@@ -255,17 +328,16 @@ impl ReadSourceOpen for OpenFile {
     ///
     /// # Errors
     ///
-    /// * [`IgnoreErrorKind::UnableToOpenFile`] - If the file could not be opened.
-    ///
-    /// [`IgnoreErrorKind::UnableToOpenFile`]: crate::error::IgnoreErrorKind::UnableToOpenFile
+    /// * If the file could not be opened.
     fn open(self) -> RusticResult<Self::Reader> {
         let path = self.0;
         File::open(&path).map_err(|err| {
-            IgnoreErrorKind::UnableToOpenFile {
-                file: path,
-                source: err,
-            }
-            .into()
+            RusticError::with_source(
+                ErrorKind::InputOutput,
+                "Failed to open file at `{path}`. Please make sure the file exists and is accessible.",
+                err,
+            )
+            .attach_context("path", path.display().to_string())
         })
     }
 }
@@ -282,7 +354,7 @@ impl ReadSource for LocalSource {
     ///
     /// # Errors
     ///
-    /// If the size could not be determined.
+    /// * If the size could not be determined.
     fn size(&self) -> RusticResult<Option<u64>> {
         let mut size = 0;
         for entry in self.builder.build() {
@@ -330,11 +402,25 @@ impl Iterator for LocalSourceWalker {
         }
         .map(|e| {
             map_entry(
-                e.map_err(IgnoreErrorKind::GenericError)?,
+                e.map_err(|err| {
+                    RusticError::with_source(
+                        ErrorKind::Internal,
+                        "Failed to get next entry from walk iterator.",
+                        err,
+                    )
+                    .ask_report()
+                })?,
                 self.save_opts.with_atime,
                 self.save_opts.ignore_devid,
             )
-            .map_err(Into::into)
+            .map_err(|err| {
+                RusticError::with_source(
+                    ErrorKind::Internal,
+                    "Failed to map Directory entry to ReadSourceEntry.",
+                    err,
+                )
+                .ask_report()
+            })
         })
     }
 }
@@ -349,20 +435,19 @@ impl Iterator for LocalSourceWalker {
 ///
 /// # Errors
 ///
-/// * [`IgnoreErrorKind::GenericError`] - If metadata could not be read.
-/// * [`IgnoreErrorKind::FromIoError`] - If path of the entry could not be read.
-///
-/// [`IgnoreErrorKind::GenericError`]: crate::error::IgnoreErrorKind::GenericError
-/// [`IgnoreErrorKind::FromIoError`]: crate::error::IgnoreErrorKind::FromIoError
+/// * If metadata could not be read.
+/// * If path of the entry could not be read.
 #[cfg(windows)]
 #[allow(clippy::similar_names)]
 fn map_entry(
     entry: DirEntry,
     with_atime: bool,
     _ignore_devid: bool,
-) -> RusticResult<ReadSourceEntry<OpenFile>> {
+) -> IgnoreResult<ReadSourceEntry<OpenFile>> {
     let name = entry.file_name();
-    let m = entry.metadata().map_err(IgnoreErrorKind::GenericError)?;
+    let m = entry
+        .metadata()
+        .map_err(|err| IgnoreErrorKind::FailedToGetMetadata { source: err })?;
 
     // TODO: Set them to suitable values
     let uid = None;
@@ -473,7 +558,7 @@ fn get_group_by_gid(gid: u32) -> Option<String> {
 }
 
 #[cfg(all(not(windows), target_os = "openbsd"))]
-fn list_extended_attributes(path: &Path) -> RusticResult<Vec<ExtendedAttribute>> {
+fn list_extended_attributes(path: &Path) -> IgnoreResult<Vec<ExtendedAttribute>> {
     Ok(vec![])
 }
 
@@ -485,9 +570,9 @@ fn list_extended_attributes(path: &Path) -> RusticResult<Vec<ExtendedAttribute>>
 ///
 /// # Errors
 ///
-/// * [`IgnoreErrorKind::ErrorXattr`] - if Xattr couldn't be listed or couldn't be read
+/// * If Xattr couldn't be listed or couldn't be read
 #[cfg(all(not(windows), not(target_os = "openbsd")))]
-fn list_extended_attributes(path: &Path) -> RusticResult<Vec<ExtendedAttribute>> {
+fn list_extended_attributes(path: &Path) -> IgnoreResult<Vec<ExtendedAttribute>> {
     xattr::list(path)
         .map_err(|err| IgnoreErrorKind::ErrorXattr {
             path: path.to_path_buf(),
@@ -502,7 +587,7 @@ fn list_extended_attributes(path: &Path) -> RusticResult<Vec<ExtendedAttribute>>
                 })?,
             })
         })
-        .collect::<RusticResult<Vec<ExtendedAttribute>>>()
+        .collect::<IgnoreResult<Vec<ExtendedAttribute>>>()
 }
 
 /// Maps a [`DirEntry`] to a [`ReadSourceEntry`].
@@ -515,11 +600,8 @@ fn list_extended_attributes(path: &Path) -> RusticResult<Vec<ExtendedAttribute>>
 ///
 /// # Errors
 ///
-/// * [`IgnoreErrorKind::GenericError`] - If metadata could not be read.
-/// * [`IgnoreErrorKind::FromIoError`] - If the xattr of the entry could not be read.
-///
-/// [`IgnoreErrorKind::GenericError`]: crate::error::IgnoreErrorKind::GenericError
-/// [`IgnoreErrorKind::FromIoError`]: crate::error::IgnoreErrorKind::FromIoError
+/// * If metadata could not be read.
+/// * If the xattr of the entry could not be read.
 #[cfg(not(windows))]
 // map_entry: turn entry into (Path, Node)
 #[allow(clippy::similar_names)]
@@ -527,9 +609,14 @@ fn map_entry(
     entry: DirEntry,
     with_atime: bool,
     ignore_devid: bool,
-) -> RusticResult<ReadSourceEntry<OpenFile>> {
+) -> IgnoreResult<ReadSourceEntry<OpenFile>> {
     let name = entry.file_name();
-    let m = entry.metadata().map_err(IgnoreErrorKind::GenericError)?;
+    let m = entry
+        .metadata()
+        .map_err(|err| IgnoreErrorKind::AcquiringMetadataFailed {
+            name: name.to_string_lossy().to_string(),
+            source: err,
+        })?;
 
     let uid = m.uid();
     let gid = m.gid();
@@ -551,9 +638,13 @@ fn map_entry(
     let ctime = Utc
         .timestamp_opt(
             m.ctime(),
-            m.ctime_nsec()
-                .try_into()
-                .map_err(IgnoreErrorKind::FromTryFromIntError)?,
+            m.ctime_nsec().try_into().map_err(|err| {
+                IgnoreErrorKind::CtimeConversionToTimestampFailed {
+                    ctime: m.ctime(),
+                    ctime_nsec: m.ctime_nsec(),
+                    source: err,
+                }
+            })?,
         )
         .single()
         .map(|dt| dt.with_timezone(&Local));

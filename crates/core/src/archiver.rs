@@ -16,10 +16,18 @@ use crate::{
     },
     backend::{decrypt::DecryptFullBackend, ReadSource, ReadSourceEntry},
     blob::BlobType,
-    index::{indexer::Indexer, indexer::SharedIndexer, ReadGlobalIndex},
+    error::{ErrorKind, RusticError, RusticResult},
+    index::{
+        indexer::{Indexer, SharedIndexer},
+        ReadGlobalIndex,
+    },
     repofile::{configfile::ConfigFile, snapshotfile::SnapshotFile},
-    Progress, RusticResult,
+    Progress,
 };
+
+#[derive(thiserror::Error, Debug, displaydoc::Display)]
+/// Tree stack empty
+pub struct TreeStackEmptyError;
 
 /// The `Archiver` is responsible for archiving files and trees.
 /// It will read the file, chunk it, and write the chunks to the backend.
@@ -66,11 +74,8 @@ impl<'a, BE: DecryptFullBackend, I: ReadGlobalIndex> Archiver<'a, BE, I> {
     ///
     /// # Errors
     ///
-    /// * [`PackerErrorKind::SendingCrossbeamMessageFailed`] - If sending the message to the raw packer fails.
-    /// * [`PackerErrorKind::IntConversionFailed`] - If converting the data length to u64 fails
-    ///
-    /// [`PackerErrorKind::SendingCrossbeamMessageFailed`]: crate::error::PackerErrorKind::SendingCrossbeamMessageFailed
-    /// [`PackerErrorKind::IntConversionFailed`]: crate::error::PackerErrorKind::IntConversionFailed
+    /// * If sending the message to the raw packer fails.
+    /// * If converting the data length to u64 fails
     pub fn new(
         be: BE,
         index: &'a I,
@@ -84,6 +89,7 @@ impl<'a, BE: DecryptFullBackend, I: ReadGlobalIndex> Archiver<'a, BE, I> {
 
         let file_archiver = FileArchiver::new(be.clone(), index, indexer.clone(), config)?;
         let tree_archiver = TreeArchiver::new(be.clone(), index, indexer.clone(), config, summary)?;
+
         Ok(Self {
             file_archiver,
             tree_archiver,
@@ -114,13 +120,9 @@ impl<'a, BE: DecryptFullBackend, I: ReadGlobalIndex> Archiver<'a, BE, I> {
     ///
     /// # Errors
     ///
-    /// * [`PackerErrorKind::SendingCrossbeamMessageFailed`] - If sending the message to the raw packer fails.
-    /// * [`CryptBackendErrorKind::SerializingToJsonByteVectorFailed`] - If the index file could not be serialized.
-    /// * [`SnapshotFileErrorKind::OutOfRange`] - If the time is not in the range of `Local::now()`
-    ///
-    /// [`PackerErrorKind::SendingCrossbeamMessageFailed`]: crate::error::PackerErrorKind::SendingCrossbeamMessageFailed
-    /// [`CryptBackendErrorKind::SerializingToJsonByteVectorFailed`]: crate::error::CryptBackendErrorKind::SerializingToJsonByteVectorFailed
-    /// [`SnapshotFileErrorKind::OutOfRange`]: crate::error::SnapshotFileErrorKind::OutOfRange
+    /// * If sending the message to the raw packer fails.
+    /// * If the index file could not be serialized.
+    /// * If the time is not in the range of `Local::now()`.
     pub fn archive<R>(
         mut self,
         src: &R,
@@ -201,8 +203,12 @@ impl<'a, BE: DecryptFullBackend, I: ReadGlobalIndex> Archiver<'a, BE, I> {
                 })
                 .try_for_each(|item| self.tree_archiver.add(item))
             })
-            .unwrap()?;
-            src_size_handle.join().unwrap();
+            .expect("Scoped Archiver thread should not panic!")?;
+
+            src_size_handle
+                .join()
+                .expect("Scoped Size Handler thread should not panic!");
+
             Ok(())
         })?;
 
@@ -213,7 +219,13 @@ impl<'a, BE: DecryptFullBackend, I: ReadGlobalIndex> Archiver<'a, BE, I> {
 
         self.indexer.write().unwrap().finalize()?;
 
-        summary.finalize(self.snap.time)?;
+        summary.finalize(self.snap.time).map_err(|err| {
+            RusticError::with_source(
+                ErrorKind::Internal,
+                "Could not finalize summary, please check the logs for more information.",
+                err,
+            )
+        })?;
         self.snap.summary = Some(summary);
 
         if !skip_identical_parent || Some(self.snap.tree) != self.parent.tree_id() {

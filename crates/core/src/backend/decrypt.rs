@@ -1,6 +1,5 @@
 use std::{num::NonZeroU32, sync::Arc};
 
-use anyhow::Result;
 use bytes::Bytes;
 use crossbeam_channel::{unbounded, Receiver};
 use rayon::prelude::*;
@@ -8,20 +7,20 @@ use zstd::stream::{copy_encode, decode_all, encode_all};
 
 pub use zstd::compression_level_range;
 
+use crate::{
+    backend::{FileType, ReadBackend, WriteBackend},
+    crypto::{hasher::hash, CryptoKey},
+    error::{ErrorKind, RusticError, RusticResult},
+    id::Id,
+    repofile::{RepoFile, RepoId},
+    Progress,
+};
+
 /// The maximum compression level allowed by zstd
 #[must_use]
 pub fn max_compression_level() -> i32 {
     *compression_level_range().end()
 }
-
-use crate::{
-    backend::{FileType, ReadBackend, WriteBackend},
-    crypto::{hasher::hash, CryptoKey},
-    error::{CryptBackendErrorKind, RusticErrorKind},
-    id::Id,
-    repofile::{RepoFile, RepoId},
-    Progress, RusticResult,
-};
 
 /// A backend that can decrypt data.
 /// This is a trait that is implemented by all backends that can decrypt data.
@@ -42,7 +41,7 @@ pub trait DecryptReadBackend: ReadBackend + Clone + 'static {
     ///
     /// # Errors
     ///
-    /// If the data could not be decrypted.
+    /// * If the data could not be decrypted.
     fn decrypt(&self, data: &[u8]) -> RusticResult<Vec<u8>>;
 
     /// Reads the given file.
@@ -54,7 +53,7 @@ pub trait DecryptReadBackend: ReadBackend + Clone + 'static {
     ///
     /// # Errors
     ///
-    /// If the file could not be read.
+    /// * If the file could not be read.
     fn read_encrypted_full(&self, tpe: FileType, id: &Id) -> RusticResult<Bytes>;
 
     /// Reads the given file from partial data.
@@ -66,11 +65,8 @@ pub trait DecryptReadBackend: ReadBackend + Clone + 'static {
     ///
     /// # Errors
     ///
-    /// * [`CryptBackendErrorKind::DecodingZstdCompressedDataFailed`] - If the data could not be decoded.
-    /// * [`CryptBackendErrorKind::LengthOfUncompressedDataDoesNotMatch`] - If the length of the uncompressed data does not match the given length.
-    ///
-    /// [`CryptBackendErrorKind::DecodingZstdCompressedDataFailed`]: crate::error::CryptBackendErrorKind::DecodingZstdCompressedDataFailed
-    /// [`CryptBackendErrorKind::LengthOfUncompressedDataDoesNotMatch`]: crate::error::CryptBackendErrorKind::LengthOfUncompressedDataDoesNotMatch
+    /// * If the data could not be decoded.
+    /// * If the length of the uncompressed data does not match the given length.
     fn read_encrypted_from_partial(
         &self,
         data: &[u8],
@@ -78,10 +74,22 @@ pub trait DecryptReadBackend: ReadBackend + Clone + 'static {
     ) -> RusticResult<Bytes> {
         let mut data = self.decrypt(data)?;
         if let Some(length) = uncompressed_length {
-            data = decode_all(&*data)
-                .map_err(CryptBackendErrorKind::DecodingZstdCompressedDataFailed)?;
+            data = decode_all(&*data).map_err(|err| {
+                RusticError::with_source(
+                    ErrorKind::Internal,
+                    "Failed to decode zstd compressed data. The data may be corrupted.",
+                    err,
+                )
+            })?;
+
             if data.len() != length.get() as usize {
-                return Err(CryptBackendErrorKind::LengthOfUncompressedDataDoesNotMatch.into());
+                return Err(RusticError::new(
+                    ErrorKind::Internal,
+                    "Length of uncompressed data `{actual_length}` does not match the given length `{expected_length}`.",
+                )
+                .attach_context("expected_length", length.get().to_string())
+                .attach_context("actual_length", data.len().to_string())
+                .ask_report());
             }
         }
         Ok(data.into())
@@ -100,7 +108,7 @@ pub trait DecryptReadBackend: ReadBackend + Clone + 'static {
     ///
     /// # Errors
     ///
-    /// If the file could not be read.
+    /// * If the file could not be read.
     fn read_encrypted_partial(
         &self,
         tpe: FileType,
@@ -111,9 +119,7 @@ pub trait DecryptReadBackend: ReadBackend + Clone + 'static {
         uncompressed_length: Option<NonZeroU32>,
     ) -> RusticResult<Bytes> {
         self.read_encrypted_from_partial(
-            &self
-                .read_partial(tpe, id, cacheable, offset, length)
-                .map_err(RusticErrorKind::Backend)?,
+            &self.read_partial(tpe, id, cacheable, offset, length)?,
             uncompressed_length,
         )
     }
@@ -126,11 +132,18 @@ pub trait DecryptReadBackend: ReadBackend + Clone + 'static {
     ///
     /// # Errors
     ///
-    /// If the file could not be read.
+    /// * If the file could not be read.
     fn get_file<F: RepoFile>(&self, id: &Id) -> RusticResult<F> {
         let data = self.read_encrypted_full(F::TYPE, id)?;
-        Ok(serde_json::from_slice(&data)
-            .map_err(CryptBackendErrorKind::DeserializingFromBytesOfJsonTextFailed)?)
+        let deserialized = serde_json::from_slice(&data).map_err(|err| {
+            RusticError::with_source(
+                ErrorKind::Internal,
+                "Failed to deserialize file from JSON.",
+                err,
+            )
+        })?;
+
+        Ok(deserialized)
     }
 
     /// Streams all files.
@@ -145,7 +158,7 @@ pub trait DecryptReadBackend: ReadBackend + Clone + 'static {
     ///
     /// If the files could not be read.
     fn stream_all<F: RepoFile>(&self, p: &impl Progress) -> StreamResult<F::Id, F> {
-        let list = self.list(F::TYPE).map_err(RusticErrorKind::Backend)?;
+        let list = self.list(F::TYPE)?;
         self.stream_list(&list, p)
     }
 
@@ -191,7 +204,7 @@ pub trait DecryptWriteBackend: WriteBackend + Clone + 'static {
     ///
     /// # Errors
     ///
-    /// If the data could not be written.
+    /// * If the data could not be written.
     ///
     /// # Returns
     ///
@@ -215,7 +228,7 @@ pub trait DecryptWriteBackend: WriteBackend + Clone + 'static {
     ///
     /// # Errors
     ///
-    /// If the data could not be written.
+    /// * If the data could not be written.
     ///
     /// # Returns
     ///
@@ -223,8 +236,7 @@ pub trait DecryptWriteBackend: WriteBackend + Clone + 'static {
     fn hash_write_full_uncompressed(&self, tpe: FileType, data: &[u8]) -> RusticResult<Id> {
         let data = self.key().encrypt_data(data)?;
         let id = hash(&data);
-        self.write_bytes(tpe, &id, false, data.into())
-            .map_err(RusticErrorKind::Backend)?;
+        self.write_bytes(tpe, &id, false, data.into())?;
         Ok(id)
     }
     /// Saves the given file.
@@ -235,16 +247,21 @@ pub trait DecryptWriteBackend: WriteBackend + Clone + 'static {
     ///
     /// # Errors
     ///
-    /// * [`CryptBackendErrorKind::SerializingToJsonByteVectorFailed`] - If the file could not be serialized to json.
+    /// * If the file could not be serialized to json.
     ///
     /// # Returns
     ///
     /// The id of the file.
-    ///
-    /// [`CryptBackendErrorKind::SerializingToJsonByteVectorFailed`]: crate::error::CryptBackendErrorKind::SerializingToJsonByteVectorFailed
     fn save_file<F: RepoFile>(&self, file: &F) -> RusticResult<Id> {
-        let data = serde_json::to_vec(file)
-            .map_err(CryptBackendErrorKind::SerializingToJsonByteVectorFailed)?;
+        let data = serde_json::to_vec(file).map_err(|err| {
+            RusticError::with_source(
+                ErrorKind::Internal,
+                "Failed to serialize file to JSON.",
+                err,
+            )
+            .ask_report()
+        })?;
+
         self.hash_write_full(F::TYPE, &data)
     }
 
@@ -256,16 +273,21 @@ pub trait DecryptWriteBackend: WriteBackend + Clone + 'static {
     ///
     /// # Errors
     ///
-    /// * [`CryptBackendErrorKind::SerializingToJsonByteVectorFailed`] - If the file could not be serialized to json.
+    /// * If the file could not be serialized to json.
     ///
     /// # Returns
     ///
     /// The id of the file.
-    ///
-    /// [`CryptBackendErrorKind::SerializingToJsonByteVectorFailed`]: crate::error::CryptBackendErrorKind::SerializingToJsonByteVectorFailed
     fn save_file_uncompressed<F: RepoFile>(&self, file: &F) -> RusticResult<Id> {
-        let data = serde_json::to_vec(file)
-            .map_err(CryptBackendErrorKind::SerializingToJsonByteVectorFailed)?;
+        let data = serde_json::to_vec(file).map_err(|err| {
+            RusticError::with_source(
+                ErrorKind::Internal,
+                "Failed to serialize file to JSON.",
+                err,
+            )
+            .ask_report()
+        })?;
+
         self.hash_write_full_uncompressed(F::TYPE, &data)
     }
 
@@ -278,7 +300,7 @@ pub trait DecryptWriteBackend: WriteBackend + Clone + 'static {
     ///
     /// # Errors
     ///
-    /// * [`CryptBackendErrorKind::SerializingToJsonByteVectorFailed`] - If the file could not be serialized to json.
+    /// * If the file could not be serialized to json.
     fn save_list<'a, F: RepoFile, I: ExactSizeIterator<Item = &'a F> + Send>(
         &self,
         list: I,
@@ -302,10 +324,6 @@ pub trait DecryptWriteBackend: WriteBackend + Clone + 'static {
     /// * `cacheable` - Whether the files should be cached.
     /// * `list` - The list of files to delete.
     /// * `p` - The progress bar.
-    ///
-    /// # Panics
-    ///
-    /// If the files could not be deleted.
     fn delete_list<'a, ID: RepoId, I: ExactSizeIterator<Item = &'a ID> + Send>(
         &self,
         cacheable: bool,
@@ -314,8 +332,7 @@ pub trait DecryptWriteBackend: WriteBackend + Clone + 'static {
     ) -> RusticResult<()> {
         p.set_length(list.len() as u64);
         list.par_bridge().try_for_each(|id| -> RusticResult<_> {
-            // TODO: Don't panic on file not being able to be deleted.
-            self.remove(ID::TYPE, id, cacheable).unwrap();
+            self.remove(ID::TYPE, id, cacheable)?;
             p.inc(1);
             Ok(())
         })?;
@@ -380,9 +397,19 @@ impl<C: CryptoKey> DecryptBackend<C> {
         let decrypted = self.decrypt(data)?;
         Ok(match decrypted.first() {
             Some(b'{' | b'[') => decrypted, // not compressed
-            Some(2) => decode_all(&decrypted[1..])
-                .map_err(CryptBackendErrorKind::DecodingZstdCompressedDataFailed)?, // 2 indicates compressed data following
-            _ => return Err(CryptBackendErrorKind::DecryptionNotSupportedForBackend)?,
+            Some(2) => decode_all(&decrypted[1..]).map_err(|err| {
+                RusticError::with_source(
+                    ErrorKind::Internal,
+                    "Failed to decode zstd compressed data. The data may be corrupted.",
+                    err,
+                )
+            })?, // 2 indicates compressed data following
+            _ => {
+                return Err(RusticError::new(
+                    ErrorKind::Unsupported,
+                    "Decryption not supported. The data is not in a supported format.",
+                ))?
+            }
         })
     }
 
@@ -391,8 +418,15 @@ impl<C: CryptoKey> DecryptBackend<C> {
         let data_encrypted = match self.zstd {
             Some(level) => {
                 let mut out = vec![2_u8];
-                copy_encode(data, &mut out, level)
-                    .map_err(CryptBackendErrorKind::CopyEncodingDataFailed)?;
+                copy_encode(data, &mut out, level).map_err(|err| {
+                    RusticError::with_source(
+                        ErrorKind::Internal,
+                        "Compressing and appending data failed. The data may be corrupted.",
+                        err,
+                    )
+                    .attach_context("compression_level", level.to_string())
+                })?;
+
                 self.key().encrypt_data(&out)?
             }
             None => self.key().encrypt_data(data)?,
@@ -404,7 +438,12 @@ impl<C: CryptoKey> DecryptBackend<C> {
         if self.extra_verify {
             let check_data = self.decrypt_file(data_encrypted)?;
             if data != check_data {
-                return Err(CryptBackendErrorKind::ExtraVerificationFailed.into());
+                return Err(
+                    RusticError::new(
+                        ErrorKind::Verification,
+                        "Verification failed: After decrypting and decompressing the data changed! The data may be corrupted.\nPlease check the backend for corruption and try again. You can also try to run `rustic check --read-data` to check for corruption. This may take a long time.",
+                    ).attach_error_code("C003")
+                );
             }
         }
         Ok(())
@@ -412,15 +451,29 @@ impl<C: CryptoKey> DecryptBackend<C> {
 
     /// encrypt and potentially compress some data
     fn encrypt_data(&self, data: &[u8]) -> RusticResult<(Vec<u8>, u32, Option<NonZeroU32>)> {
-        let data_len: u32 = data
-            .len()
-            .try_into()
-            .map_err(CryptBackendErrorKind::IntConversionFailed)?;
+        let data_len: u32 = data.len().try_into().map_err(|err| {
+            RusticError::with_source(
+                ErrorKind::Internal,
+                "Failed to convert data length `{length}` to u32.",
+                err,
+            )
+            .attach_context("length", data.len().to_string())
+            .ask_report()
+        })?;
+
         let (data_encrypted, uncompressed_length) = match self.zstd {
             None => (self.key.encrypt_data(data)?, None),
             // compress if requested
             Some(level) => (
-                self.key.encrypt_data(&encode_all(data, level)?)?,
+                self.key
+                    .encrypt_data(&encode_all(data, level).map_err(|err| {
+                        RusticError::with_source(
+                            ErrorKind::Internal,
+                            "Failed to encode zstd compressed data. The data may be corrupted.",
+                            err,
+                        )
+                        .attach_context("compression_level", level.to_string())
+                    })?)?,
                 NonZeroU32::new(data_len),
             ),
         };
@@ -436,10 +489,17 @@ impl<C: CryptoKey> DecryptBackend<C> {
         if self.extra_verify {
             let data_check =
                 self.read_encrypted_from_partial(data_encrypted, uncompressed_length)?;
+
             if data != data_check {
-                return Err(CryptBackendErrorKind::ExtraVerificationFailed.into());
+                return Err(
+                    RusticError::new(
+                        ErrorKind::Verification,
+                        "Verification failed: After decrypting and decompressing the data changed! The data may be corrupted.\nPlease check the backend for corruption and try again. You can also try to run `rustic check --read-data` to check for corruption. This may take a long time.",
+                    ).attach_error_code("C003")
+                );
             }
         }
+
         Ok(())
     }
 }
@@ -462,25 +522,27 @@ impl<C: CryptoKey> DecryptWriteBackend for DecryptBackend<C> {
     ///
     /// # Errors
     ///
-    /// * [`CryptBackendErrorKind::CopyEncodingDataFailed`] - If the data could not be encoded.
+    /// * If the data could not be encoded.
     ///
     /// # Returns
     ///
     /// The id of the data.
-    ///
-    /// [`CryptBackendErrorKind::CopyEncodingDataFailed`]: crate::error::CryptBackendErrorKind::CopyEncodingDataFailed
     fn hash_write_full(&self, tpe: FileType, data: &[u8]) -> RusticResult<Id> {
         let data_encrypted = self.encrypt_file(data)?;
+
         self.very_file(&data_encrypted, data)?;
+
         let id = hash(&data_encrypted);
-        self.write_bytes(tpe, &id, false, data_encrypted.into())
-            .map_err(RusticErrorKind::Backend)?;
+
+        self.write_bytes(tpe, &id, false, data_encrypted.into())?;
         Ok(id)
     }
 
     fn process_data(&self, data: &[u8]) -> RusticResult<(Vec<u8>, u32, Option<NonZeroU32>)> {
         let (data_encrypted, data_len, uncompressed_length) = self.encrypt_data(data)?;
+
         self.very_data(&data_encrypted, uncompressed_length, data)?;
+
         Ok((data_encrypted, data_len, uncompressed_length))
     }
 
@@ -526,14 +588,10 @@ impl<C: CryptoKey> DecryptReadBackend for DecryptBackend<C> {
     ///
     /// # Errors
     ///
-    /// * [`CryptBackendErrorKind::DecryptionNotSupportedForBackend`] - If the backend does not support decryption.
-    /// * [`CryptBackendErrorKind::DecodingZstdCompressedDataFailed`] - If the data could not be decoded.
-    ///
-    /// [`CryptBackendErrorKind::DecryptionNotSupportedForBackend`]: crate::error::CryptBackendErrorKind::DecryptionNotSupportedForBackend
-    /// [`CryptBackendErrorKind::DecodingZstdCompressedDataFailed`]: crate::error::CryptBackendErrorKind::DecodingZstdCompressedDataFailed
+    /// * If the backend does not support decryption.
+    /// * If the data could not be decoded.
     fn read_encrypted_full(&self, tpe: FileType, id: &Id) -> RusticResult<Bytes> {
-        self.decrypt_file(&self.read_full(tpe, id).map_err(RusticErrorKind::Backend)?)
-            .map(Into::into)
+        self.decrypt_file(&self.read_full(tpe, id)?).map(Into::into)
     }
 }
 
@@ -542,15 +600,15 @@ impl<C: CryptoKey> ReadBackend for DecryptBackend<C> {
         self.be.location()
     }
 
-    fn list(&self, tpe: FileType) -> Result<Vec<Id>> {
+    fn list(&self, tpe: FileType) -> RusticResult<Vec<Id>> {
         self.be.list(tpe)
     }
 
-    fn list_with_size(&self, tpe: FileType) -> Result<Vec<(Id, u32)>> {
+    fn list_with_size(&self, tpe: FileType) -> RusticResult<Vec<(Id, u32)>> {
         self.be.list_with_size(tpe)
     }
 
-    fn read_full(&self, tpe: FileType, id: &Id) -> Result<Bytes> {
+    fn read_full(&self, tpe: FileType, id: &Id) -> RusticResult<Bytes> {
         self.be.read_full(tpe, id)
     }
 
@@ -561,21 +619,21 @@ impl<C: CryptoKey> ReadBackend for DecryptBackend<C> {
         cacheable: bool,
         offset: u32,
         length: u32,
-    ) -> Result<Bytes> {
+    ) -> RusticResult<Bytes> {
         self.be.read_partial(tpe, id, cacheable, offset, length)
     }
 }
 
 impl<C: CryptoKey> WriteBackend for DecryptBackend<C> {
-    fn create(&self) -> Result<()> {
+    fn create(&self) -> RusticResult<()> {
         self.be.create()
     }
 
-    fn write_bytes(&self, tpe: FileType, id: &Id, cacheable: bool, buf: Bytes) -> Result<()> {
+    fn write_bytes(&self, tpe: FileType, id: &Id, cacheable: bool, buf: Bytes) -> RusticResult<()> {
         self.be.write_bytes(tpe, id, cacheable, buf)
     }
 
-    fn remove(&self, tpe: FileType, id: &Id, cacheable: bool) -> Result<()> {
+    fn remove(&self, tpe: FileType, id: &Id, cacheable: bool) -> RusticResult<()> {
         self.be.remove(tpe, id, cacheable)
     }
 }

@@ -5,7 +5,7 @@ use bytes::Bytes;
 use crate::{
     backend::{decrypt::DecryptReadBackend, FileType, FindInBackend},
     blob::{tree::Tree, BlobId, BlobType},
-    error::{CommandErrorKind, RusticResult},
+    error::{ErrorKind, RusticError, RusticResult},
     index::ReadIndex,
     progress::ProgressBars,
     repofile::SnapshotFile,
@@ -27,17 +27,13 @@ use crate::{
 ///
 /// # Errors
 ///
-/// * [`IdErrorKind::HexError`] - If the string is not a valid hexadecimal string
-/// * [`BackendAccessErrorKind::NoSuitableIdFound`] - If no id could be found.
-/// * [`BackendAccessErrorKind::IdNotUnique`] - If the id is not unique.
+/// * If the string is not a valid hexadecimal string
+/// * If no id could be found.
+/// * If the id is not unique.
 ///
 /// # Returns
 ///
 /// The data read.
-///
-/// [`IdErrorKind::HexError`]: crate::error::IdErrorKind::HexError
-/// [`BackendAccessErrorKind::NoSuitableIdFound`]: crate::error::BackendAccessErrorKind::NoSuitableIdFound
-/// [`BackendAccessErrorKind::IdNotUnique`]: crate::error::BackendAccessErrorKind::IdNotUnique
 pub(crate) fn cat_file<P, S: Open>(
     repo: &Repository<P, S>,
     tpe: FileType,
@@ -63,9 +59,7 @@ pub(crate) fn cat_file<P, S: Open>(
 ///
 /// # Errors
 ///
-/// * [`IdErrorKind::HexError`] - If the string is not a valid hexadecimal string
-///
-/// [`IdErrorKind::HexError`]: crate::error::IdErrorKind::HexError
+/// * If the string is not a valid hexadecimal string
 pub(crate) fn cat_blob<P, S: IndexedFull>(
     repo: &Repository<P, S>,
     tpe: BlobType,
@@ -92,13 +86,11 @@ pub(crate) fn cat_blob<P, S: IndexedFull>(
 ///
 /// # Errors
 ///
-/// * [`CommandErrorKind::PathIsNoDir`] - If the path is not a directory.
+/// * If the path is not a directory.
 ///
 /// # Returns
 ///
 /// The data read.
-///
-/// [`CommandErrorKind::PathIsNoDir`]: crate::error::CommandErrorKind::PathIsNoDir
 pub(crate) fn cat_tree<P: ProgressBars, S: IndexedTree>(
     repo: &Repository<P, S>,
     snap: &str,
@@ -112,9 +104,13 @@ pub(crate) fn cat_tree<P: ProgressBars, S: IndexedTree>(
         &repo.pb.progress_counter("getting snapshot..."),
     )?;
     let node = Tree::node_from_path(repo.dbe(), repo.index(), snap.tree, Path::new(path))?;
-    let id = node
-        .subtree
-        .ok_or_else(|| CommandErrorKind::PathIsNoDir(path.to_string()))?;
+    let id = node.subtree.ok_or_else(|| {
+        RusticError::new(
+            ErrorKind::InvalidInput,
+            "Path `{path}` in Node subtree is not a directory. Please provide a directory path.",
+        )
+        .attach_context("path", path.to_string())
+    })?;
     let data = repo
         .index()
         .blob_from_backend(repo.dbe(), BlobType::Tree, &BlobId::from(*id))?;

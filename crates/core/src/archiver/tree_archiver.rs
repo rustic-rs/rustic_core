@@ -11,7 +11,7 @@ use crate::{
         tree::{Tree, TreeId},
         BlobType,
     },
-    error::{ArchiverErrorKind, RusticResult},
+    error::{ErrorKind, RusticError, RusticResult},
     index::{indexer::SharedIndexer, ReadGlobalIndex},
     repofile::{configfile::ConfigFile, snapshotfile::SnapshotSummary},
 };
@@ -57,11 +57,8 @@ impl<'a, BE: DecryptWriteBackend, I: ReadGlobalIndex> TreeArchiver<'a, BE, I> {
     ///
     /// # Errors
     ///
-    /// * [`PackerErrorKind::SendingCrossbeamMessageFailed`] - If sending the message to the raw packer fails.
-    /// * [`PackerErrorKind::IntConversionFailed`] - If converting the data length to u64 fails
-    ///
-    /// [`PackerErrorKind::SendingCrossbeamMessageFailed`]: crate::error::PackerErrorKind::SendingCrossbeamMessageFailed
-    /// [`PackerErrorKind::IntConversionFailed`]: crate::error::PackerErrorKind::IntConversionFailed
+    /// * If sending the message to the raw packer fails.
+    /// * If converting the data length to u64 fails
     pub(crate) fn new(
         be: BE,
         index: &'a I,
@@ -76,6 +73,7 @@ impl<'a, BE: DecryptWriteBackend, I: ReadGlobalIndex> TreeArchiver<'a, BE, I> {
             config,
             index.total_size(BlobType::Tree),
         )?;
+
         Ok(Self {
             tree: Tree::new(),
             stack: Vec::new(),
@@ -93,9 +91,7 @@ impl<'a, BE: DecryptWriteBackend, I: ReadGlobalIndex> TreeArchiver<'a, BE, I> {
     ///
     /// # Errors
     ///
-    /// * [`ArchiverErrorKind::TreeStackEmpty`] - If the tree stack is empty.
-    ///
-    /// [`ArchiverErrorKind::TreeStackEmpty`]: crate::error::ArchiverErrorKind::TreeStackEmpty
+    /// * If the tree stack is empty.
     // TODO: Add more errors!
     pub(crate) fn add(&mut self, item: TreeItem) -> RusticResult<()> {
         match item {
@@ -106,10 +102,9 @@ impl<'a, BE: DecryptWriteBackend, I: ReadGlobalIndex> TreeArchiver<'a, BE, I> {
                 self.stack.push((path, node, parent, tree));
             }
             TreeType::EndTree => {
-                let (path, mut node, parent, tree) = self
-                    .stack
-                    .pop()
-                    .ok_or_else(|| ArchiverErrorKind::TreeStackEmpty)?;
+                let (path, mut node, parent, tree) = self.stack.pop().ok_or_else(|| {
+                    RusticError::new(ErrorKind::Internal, "Tree stack is empty.").ask_report()
+                })?;
 
                 // save tree
                 trace!("finishing {path:?}");
@@ -164,15 +159,21 @@ impl<'a, BE: DecryptWriteBackend, I: ReadGlobalIndex> TreeArchiver<'a, BE, I> {
     ///
     /// # Errors
     ///
-    /// * [`PackerErrorKind::SendingCrossbeamMessageFailed`] - If sending the message to the raw packer fails.
+    /// * If sending the message to the raw packer fails.
     ///
     /// # Returns
     ///
     /// The id of the tree.
-    ///
-    /// [`PackerErrorKind::SendingCrossbeamMessageFailed`]: crate::error::PackerErrorKind::SendingCrossbeamMessageFailed
     fn backup_tree(&mut self, path: &Path, parent: &ParentResult<TreeId>) -> RusticResult<TreeId> {
-        let (chunk, id) = self.tree.serialize()?;
+        let (chunk, id) = self.tree.serialize().map_err(|err| {
+            RusticError::with_source(
+                ErrorKind::Internal,
+                "Failed to serialize tree at `{path}`",
+                err,
+            )
+            .attach_context("path", path.to_string_lossy())
+            .ask_report()
+        })?;
         let dirsize = chunk.len() as u64;
         let dirsize_bytes = ByteSize(dirsize).to_string_as(true);
 
@@ -209,7 +210,7 @@ impl<'a, BE: DecryptWriteBackend, I: ReadGlobalIndex> TreeArchiver<'a, BE, I> {
     ///
     /// # Errors
     ///
-    /// * [`PackerErrorKind::SendingCrossbeamMessageFailed`] - If sending the message to the raw packer fails.
+    /// * If sending the message to the raw packer fails.
     ///
     /// # Returns
     ///
@@ -217,9 +218,7 @@ impl<'a, BE: DecryptWriteBackend, I: ReadGlobalIndex> TreeArchiver<'a, BE, I> {
     ///
     /// # Panics
     ///
-    /// If the channel of the tree packer is not dropped.
-    ///
-    /// [`PackerErrorKind::SendingCrossbeamMessageFailed`]: crate::error::PackerErrorKind::SendingCrossbeamMessageFailed
+    /// * If the channel of the tree packer is not dropped.
     pub(crate) fn finalize(
         mut self,
         parent_tree: Option<TreeId>,

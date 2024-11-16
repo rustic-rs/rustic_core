@@ -1,14 +1,11 @@
 //! This module contains [`BackendOptions`] and helpers to choose a backend from a given url.
-use anyhow::{anyhow, Result};
 use derive_setters::Setters;
 use std::{collections::HashMap, sync::Arc};
 use strum_macros::{Display, EnumString};
 
-#[allow(unused_imports)]
-use rustic_core::{RepositoryBackends, WriteBackend};
+use rustic_core::{ErrorKind, RepositoryBackends, RusticError, RusticResult, WriteBackend};
 
 use crate::{
-    error::BackendAccessErrorKind,
     local::LocalBackend,
     util::{location_to_type_and_path, BackendLocation},
 };
@@ -75,12 +72,17 @@ impl BackendOptions {
     /// # Returns
     ///
     /// The backends for the repository.
-    pub fn to_backends(&self) -> Result<RepositoryBackends> {
+    pub fn to_backends(&self) -> RusticResult<RepositoryBackends> {
         let mut options = self.options.clone();
         options.extend(self.options_cold.clone());
         let be = self
             .get_backend(self.repository.as_ref(), options)?
-            .ok_or_else(|| anyhow!("No repository given."))?;
+            .ok_or_else(|| {
+                RusticError::new(
+                    ErrorKind::Backend,
+                    "No repository given. Please make sure, that you have set the repository.",
+                )
+            })?;
         let mut options = self.options.clone();
         options.extend(self.options_hot.clone());
         let be_hot = self.get_backend(self.repo_hot.as_ref(), options)?;
@@ -97,7 +99,7 @@ impl BackendOptions {
     ///
     /// # Errors
     ///
-    /// If the backend cannot be loaded, an error is returned.
+    /// * If the backend cannot be loaded, an error is returned.
     ///
     /// # Returns
     ///
@@ -108,13 +110,18 @@ impl BackendOptions {
         &self,
         repo_string: Option<&String>,
         options: HashMap<String, String>,
-    ) -> Result<Option<Arc<dyn WriteBackend>>> {
+    ) -> RusticResult<Option<Arc<dyn WriteBackend>>> {
         repo_string
             .map(|string| {
                 let (be_type, location) = location_to_type_and_path(string)?;
-                be_type.to_backend(location, options.into()).map_err(|err| {
-                    BackendAccessErrorKind::BackendLoadError(be_type.to_string(), err).into()
-                })
+                be_type
+                    .to_backend(location.clone(), options.into())
+                    .map_err(|err| {
+                        err
+                        .prepend_guidance_line("Could not load the backend `{name}` at `{location}`. Please check the given backend and try again.")
+                        .attach_context("name", be_type.to_string())
+                        .attach_context("location", location.to_string())
+                    })
             })
             .transpose()
     }
@@ -131,14 +138,12 @@ pub trait BackendChoice {
     ///
     /// # Errors
     ///
-    /// * [`BackendAccessErrorKind::BackendNotSupported`] - If the backend is not supported.
-    ///
-    /// [`BackendAccessErrorKind::BackendNotSupported`]: crate::error::BackendAccessErrorKind::BackendNotSupported
+    /// * If the backend is not supported.
     fn to_backend(
         &self,
         location: BackendLocation,
         options: Option<HashMap<String, String>>,
-    ) -> Result<Arc<dyn WriteBackend>>;
+    ) -> RusticResult<Arc<dyn WriteBackend>>;
 }
 
 /// The supported backend types.
@@ -176,7 +181,7 @@ impl BackendChoice for SupportedBackend {
         &self,
         location: BackendLocation,
         options: Option<HashMap<String, String>>,
-    ) -> Result<Arc<dyn WriteBackend>> {
+    ) -> RusticResult<Arc<dyn WriteBackend>> {
         let options = options.unwrap_or_default();
 
         Ok(match self {

@@ -1,6 +1,3 @@
-use integer_sqrt::IntegerSquareRoot;
-use log::warn;
-
 use std::{
     num::NonZeroU32,
     sync::{Arc, RwLock},
@@ -10,6 +7,8 @@ use std::{
 use bytes::{Bytes, BytesMut};
 use chrono::Local;
 use crossbeam_channel::{bounded, Receiver, Sender};
+use integer_sqrt::IntegerSquareRoot;
+use log::warn;
 use pariter::{scope, IteratorExt};
 
 use crate::{
@@ -19,7 +18,7 @@ use crate::{
     },
     blob::{BlobId, BlobType},
     crypto::{hasher::hash, CryptoKey},
-    error::{PackerErrorKind, RusticErrorKind, RusticResult},
+    error::{ErrorKind, RusticError, RusticResult},
     index::indexer::SharedIndexer,
     repofile::{
         configfile::ConfigFile,
@@ -28,6 +27,33 @@ use crate::{
         snapshotfile::SnapshotSummary,
     },
 };
+
+/// [`PackerErrorKind`] describes the errors that can be returned for a Packer
+#[derive(thiserror::Error, Debug, displaydoc::Display)]
+#[non_exhaustive]
+pub enum PackerErrorKind {
+    /// Conversion from `{from}` to `{to}` failed: `{source}`
+    Conversion {
+        to: &'static str,
+        from: &'static str,
+        source: std::num::TryFromIntError,
+    },
+    /// Sending crossbeam message failed: `size_limit`: `{size_limit:?}`, `id`: `{id:?}`, `data`: `{data:?}` : `{source}`
+    SendingCrossbeamMessage {
+        size_limit: Option<u32>,
+        id: BlobId,
+        data: Bytes,
+        source: crossbeam_channel::SendError<(Bytes, BlobId, Option<u32>)>,
+    },
+    /// Sending crossbeam data message failed: `data`: `{data:?}`, `index_pack`: `{index_pack:?}` : `{source}`
+    SendingCrossbeamDataMessage {
+        data: Bytes,
+        index_pack: IndexPack,
+        source: crossbeam_channel::SendError<(Bytes, IndexPack)>,
+    },
+}
+
+pub(crate) type PackerResult<T> = Result<T, PackerErrorKind>;
 
 pub(super) mod constants {
     use std::time::Duration;
@@ -144,7 +170,7 @@ impl PackSizer {
     ///
     /// # Panics
     ///
-    /// If the size is too large
+    /// * If the size is too large
     fn add_size(&mut self, added: u32) {
         self.current_size += u64::from(added);
     }
@@ -188,11 +214,8 @@ impl<BE: DecryptWriteBackend> Packer<BE> {
     ///
     /// # Errors
     ///
-    /// * [`PackerErrorKind::SendingCrossbeamMessageFailed`] - If sending the message to the raw packer fails.
-    /// * [`PackerErrorKind::IntConversionFailed`] - If converting the data length to u64 fails
-    ///
-    /// [`PackerErrorKind::SendingCrossbeamMessageFailed`]: crate::error::PackerErrorKind::SendingCrossbeamMessageFailed
-    /// [`PackerErrorKind::IntConversionFailed`]: crate::error::PackerErrorKind::IntConversionFailed
+    /// * If sending the message to the raw packer fails.
+    /// * If converting the data length to u64 fails
     #[allow(clippy::unnecessary_wraps)]
     pub fn new(
         be: BE,
@@ -249,7 +272,7 @@ impl<BE: DecryptWriteBackend> Packer<BE> {
                             |(_, id, _, _, _)| !indexer.read().unwrap().has(id),
                         )
                     })
-                    .try_for_each(|item: RusticResult<_>| {
+                    .try_for_each(|item: RusticResult<_>| -> RusticResult<()> {
                         let (data, id, data_len, ul, size_limit) = item?;
                         raw_packer
                             .write()
@@ -274,12 +297,18 @@ impl<BE: DecryptWriteBackend> Packer<BE> {
     ///
     /// # Errors
     ///
-    /// * [`PackerErrorKind::SendingCrossbeamMessageFailed`] - If sending the message to the raw packer fails.
-    ///
-    /// [`PackerErrorKind::SendingCrossbeamMessageFailed`]: crate::error::PackerErrorKind::SendingCrossbeamMessageFailed
+    /// * If sending the message to the raw packer fails.
     pub fn add(&self, data: Bytes, id: BlobId) -> RusticResult<()> {
         // compute size limit based on total size and size bounds
-        self.add_with_sizelimit(data, id, None)
+        self.add_with_sizelimit(data, id, None).map_err(|err| {
+            RusticError::with_source(
+                ErrorKind::Internal,
+                "Failed to add blob `{id}` to packfile.",
+                err,
+            )
+            .attach_context("id", id.to_string())
+            .ask_report()
+        })
     }
 
     /// Adds the blob to the packfile, allows specifying a size limit for the pack file
@@ -292,18 +321,21 @@ impl<BE: DecryptWriteBackend> Packer<BE> {
     ///
     /// # Errors
     ///
-    /// * [`PackerErrorKind::SendingCrossbeamMessageFailed`] - If sending the message to the raw packer fails.
-    ///
-    /// [`PackerErrorKind::SendingCrossbeamMessageFailed`]: crate::error::PackerErrorKind::SendingCrossbeamMessageFailed
+    /// * If sending the message to the raw packer fails.
     fn add_with_sizelimit(
         &self,
         data: Bytes,
         id: BlobId,
         size_limit: Option<u32>,
-    ) -> RusticResult<()> {
+    ) -> PackerResult<()> {
         self.sender
-            .send((data, id, size_limit))
-            .map_err(PackerErrorKind::SendingCrossbeamMessageFailed)?;
+            .send((data.clone(), id, size_limit))
+            .map_err(|err| PackerErrorKind::SendingCrossbeamMessage {
+                size_limit,
+                id,
+                data,
+                source: err,
+            })?;
         Ok(())
     }
 
@@ -319,8 +351,8 @@ impl<BE: DecryptWriteBackend> Packer<BE> {
     ///
     /// # Errors
     ///
-    /// If the blob is already present in the index
-    /// If sending the message to the raw packer fails.
+    /// * If the blob is already present in the index
+    /// * If sending the message to the raw packer fails.
     fn add_raw(
         &self,
         data: &[u8],
@@ -347,12 +379,14 @@ impl<BE: DecryptWriteBackend> Packer<BE> {
     ///
     /// # Panics
     ///
-    /// If the channel could not be dropped
+    /// * If the channel could not be dropped
     pub fn finalize(self) -> RusticResult<PackerStats> {
         // cancel channel
         drop(self.sender);
         // wait for items in channel to be processed
-        self.finish.recv().unwrap()
+        self.finish
+            .recv()
+            .expect("Should be able to receive from channel to finalize packer.")
     }
 }
 
@@ -377,7 +411,7 @@ impl PackerStats {
     ///
     /// # Panics
     ///
-    /// If the blob type is invalid
+    /// * If the blob type is invalid
     pub fn apply(self, summary: &mut SnapshotSummary, tpe: BlobType) {
         summary.data_added += self.data;
         summary.data_added_packed += self.data_packed;
@@ -476,10 +510,16 @@ impl<BE: DecryptWriteBackend> RawPacker<BE> {
     ///
     /// # Errors
     ///
-    /// If the packfile could not be saved
+    /// * If the packfile could not be saved
     fn finalize(&mut self) -> RusticResult<PackerStats> {
-        self.save()?;
+        self.save().map_err(|err| {
+            err.overwrite_kind(ErrorKind::Internal)
+                .prepend_guidance_line("Failed to save packfile. Data may be lost.")
+                .ask_report()
+        })?;
+
         self.file_writer.take().unwrap().finalize()?;
+
         Ok(std::mem::take(&mut self.stats))
     }
 
@@ -492,11 +532,15 @@ impl<BE: DecryptWriteBackend> RawPacker<BE> {
     /// # Returns
     ///
     /// The number of bytes written.
-    fn write_data(&mut self, data: &[u8]) -> RusticResult<u32> {
+    fn write_data(&mut self, data: &[u8]) -> PackerResult<u32> {
         let len = data
             .len()
             .try_into()
-            .map_err(PackerErrorKind::IntConversionFailed)?;
+            .map_err(|err| PackerErrorKind::Conversion {
+                to: "u32",
+                from: "usize",
+                source: err,
+            })?;
         self.file.extend_from_slice(data);
         self.size += len;
         Ok(len)
@@ -514,9 +558,7 @@ impl<BE: DecryptWriteBackend> RawPacker<BE> {
     ///
     /// # Errors
     ///
-    /// * [`PackerErrorKind::IntConversionFailed`] - If converting the data length to u64 fails
-    ///
-    /// [`PackerErrorKind::IntConversionFailed`]: crate::error::PackerErrorKind::IntConversionFailed
+    /// * If converting the data length to u64 fails
     fn add_raw(
         &mut self,
         data: &[u8],
@@ -529,18 +571,38 @@ impl<BE: DecryptWriteBackend> RawPacker<BE> {
             return Ok(());
         }
         self.stats.blobs += 1;
+
         self.stats.data += data_len;
-        let data_len_packed: u64 = data
-            .len()
-            .try_into()
-            .map_err(PackerErrorKind::IntConversionFailed)?;
+
+        let data_len_packed: u64 = data.len().try_into().map_err(|err| {
+            RusticError::with_source(
+                ErrorKind::Internal,
+                "Failed to convert data length `{length}` to u64.",
+                err,
+            )
+            .attach_context("length", data.len().to_string())
+        })?;
+
         self.stats.data_packed += data_len_packed;
 
         let size_limit = size_limit.unwrap_or_else(|| self.pack_sizer.pack_size());
+
         let offset = self.size;
-        let len = self.write_data(data)?;
+
+        let len = self.write_data(data).map_err(|err| {
+            RusticError::with_source(
+                ErrorKind::Internal,
+                "Failed to write data to packfile for blob `{id}`.",
+                err,
+            )
+            .attach_context("id", id.to_string())
+            .attach_context("size_limit", size_limit.to_string())
+            .attach_context("data_length_packed", data_len_packed.to_string())
+        })?;
+
         self.index
             .add(*id, self.blob_type, offset, len, uncompressed_length);
+
         self.count += 1;
 
         // check if PackFile needs to be saved
@@ -548,6 +610,7 @@ impl<BE: DecryptWriteBackend> RawPacker<BE> {
             warn!("couldn't get elapsed time from system time: {err:?}");
             Duration::ZERO
         });
+
         if self.count >= constants::MAX_COUNT
             || self.size >= size_limit
             || elapsed >= constants::MAX_AGE
@@ -565,26 +628,64 @@ impl<BE: DecryptWriteBackend> RawPacker<BE> {
     ///
     /// # Errors
     ///
-    /// * [`PackerErrorKind::IntConversionFailed`] - If converting the header length to u32 fails
-    /// * [`PackFileErrorKind::WritingBinaryRepresentationFailed`] - If the header could not be written
-    ///
-    /// [`PackerErrorKind::IntConversionFailed`]: crate::error::PackerErrorKind::IntConversionFailed
-    /// [`PackFileErrorKind::WritingBinaryRepresentationFailed`]: crate::error::PackFileErrorKind::WritingBinaryRepresentationFailed
+    /// * If converting the header length to u32 fails
+    /// * If the header could not be written
     fn write_header(&mut self) -> RusticResult<()> {
         // compute the pack header
-        let data = PackHeaderRef::from_index_pack(&self.index).to_binary()?;
+        let data = PackHeaderRef::from_index_pack(&self.index)
+            .to_binary()
+            .map_err(|err| -> Box<RusticError> {
+                RusticError::with_source(
+                    ErrorKind::Internal,
+                    "Failed to convert pack header `{index_pack_id}` to binary representation.",
+                    err,
+                )
+                .attach_context("index_pack_id", self.index.id.to_string())
+            })?;
 
         // encrypt and write to pack file
         let data = self.be.key().encrypt_data(&data)?;
 
-        let headerlen = data
-            .len()
-            .try_into()
-            .map_err(PackerErrorKind::IntConversionFailed)?;
-        _ = self.write_data(&data)?;
+        let headerlen: u32 = data.len().try_into().map_err(|err| {
+            RusticError::with_source(
+                ErrorKind::Internal,
+                "Failed to convert header length `{length}` to u32.",
+                err,
+            )
+            .attach_context("length", data.len().to_string())
+        })?;
+
+        // write header to pack file
+        _ = self.write_data(&data).map_err(|err| {
+            RusticError::with_source(
+                ErrorKind::Internal,
+                "Failed to write header with length `{length}` to packfile.",
+                err,
+            )
+            .attach_context("length", headerlen.to_string())
+        })?;
+
+        // convert header length to binary representation
+        let binary_repr = PackHeaderLength::from_u32(headerlen)
+            .to_binary()
+            .map_err(|err| {
+                RusticError::with_source(
+                    ErrorKind::Internal,
+                    "Failed to convert header length `{length}` to binary representation.",
+                    err,
+                )
+                .attach_context("length", headerlen.to_string())
+            })?;
 
         // finally write length of header unencrypted to pack file
-        _ = self.write_data(&PackHeaderLength::from_u32(headerlen).to_binary()?)?;
+        _ = self.write_data(&binary_repr).map_err(|err| {
+            RusticError::with_source(
+                ErrorKind::Internal,
+                "Failed to write header length `{length}` to packfile.",
+                err,
+            )
+            .attach_context("length", headerlen.to_string())
+        })?;
 
         Ok(())
     }
@@ -597,11 +698,8 @@ impl<BE: DecryptWriteBackend> RawPacker<BE> {
     ///
     /// # Errors
     ///
-    /// * [`PackerErrorKind::IntConversionFailed`] - If converting the header length to u32 fails
-    /// * [`PackFileErrorKind::WritingBinaryRepresentationFailed`] - If the header could not be written
-    ///
-    /// [`PackerErrorKind::IntConversionFailed`]: crate::error::PackerErrorKind::IntConversionFailed
-    /// [`PackFileErrorKind::WritingBinaryRepresentationFailed`]: crate::error::PackFileErrorKind::WritingBinaryRepresentationFailed
+    /// * If converting the header length to u32 fails
+    /// * If the header could not be written
     fn save(&mut self) -> RusticResult<()> {
         if self.size == 0 {
             return Ok(());
@@ -615,7 +713,14 @@ impl<BE: DecryptWriteBackend> RawPacker<BE> {
         self.file_writer
             .as_ref()
             .unwrap()
-            .send((file.into(), index))?;
+            .send((file.into(), index))
+            .map_err(|err| {
+                RusticError::with_source(
+                    ErrorKind::Internal,
+                    "Failed to send packfile to file writer.",
+                    err,
+                )
+            })?;
 
         Ok(())
     }
@@ -645,8 +750,7 @@ impl<BE: DecryptWriteBackend> FileWriterHandle<BE> {
         let (file, id, mut index) = load;
         index.id = id;
         self.be
-            .write_bytes(FileType::Pack, &id, self.cacheable, file)
-            .map_err(RusticErrorKind::Backend)?;
+            .write_bytes(FileType::Pack, &id, self.cacheable, file)?;
         index.time = Some(Local::now());
         Ok(index)
     }
@@ -718,10 +822,14 @@ impl Actor {
     /// # Errors
     ///
     /// If sending the message to the actor fails.
-    fn send(&self, load: (Bytes, IndexPack)) -> RusticResult<()> {
-        self.sender
-            .send(load)
-            .map_err(PackerErrorKind::SendingCrossbeamMessageFailedForIndexPack)?;
+    fn send(&self, load: (Bytes, IndexPack)) -> PackerResult<()> {
+        self.sender.send(load.clone()).map_err(|err| {
+            PackerErrorKind::SendingCrossbeamDataMessage {
+                data: load.0,
+                index_pack: load.1,
+                source: err,
+            }
+        })?;
         Ok(())
     }
 
@@ -729,7 +837,7 @@ impl Actor {
     ///
     /// # Panics
     ///
-    /// If the receiver is not present
+    /// * If the receiver is not present
     fn finalize(self) -> RusticResult<()> {
         // cancel channel
         drop(self.sender);
@@ -773,7 +881,7 @@ impl<BE: DecryptFullBackend> Repacker<BE> {
     ///
     /// # Errors
     ///
-    /// If the Packer could not be created
+    /// * If the Packer could not be created
     pub fn new(
         be: BE,
         blob_type: BlobType,
@@ -799,26 +907,33 @@ impl<BE: DecryptFullBackend> Repacker<BE> {
     ///
     /// # Errors
     ///
-    /// If the blob could not be added
-    /// If reading the blob from the backend fails
+    /// * If the blob could not be added
+    /// * If reading the blob from the backend fails
     pub fn add_fast(&self, pack_id: &PackId, blob: &IndexBlob) -> RusticResult<()> {
-        let data = self
-            .be
-            .read_partial(
-                FileType::Pack,
-                pack_id,
-                blob.tpe.is_cacheable(),
-                blob.offset,
-                blob.length,
-            )
-            .map_err(RusticErrorKind::Backend)?;
-        self.packer.add_raw(
-            &data,
-            &blob.id,
-            0,
-            blob.uncompressed_length,
-            Some(self.size_limit),
+        let data = self.be.read_partial(
+            FileType::Pack,
+            pack_id,
+            blob.tpe.is_cacheable(),
+            blob.offset,
+            blob.length,
         )?;
+
+        self.packer
+            .add_raw(
+                &data,
+                &blob.id,
+                0,
+                blob.uncompressed_length,
+                Some(self.size_limit),
+            )
+            .map_err(|err| {
+                err.overwrite_kind(ErrorKind::Internal)
+                    .prepend_guidance_line(
+                        "Failed to fast-add (unchecked) blob `{blob_id}` to packfile.",
+                    )
+                    .attach_context("blob_id", blob.id.to_string())
+            })?;
+
         Ok(())
     }
 
@@ -831,8 +946,8 @@ impl<BE: DecryptFullBackend> Repacker<BE> {
     ///
     /// # Errors
     ///
-    /// If the blob could not be added
-    /// If reading the blob from the backend fails
+    /// * If the blob could not be added
+    /// * If reading the blob from the backend fails
     pub fn add(&self, pack_id: &PackId, blob: &IndexBlob) -> RusticResult<()> {
         let data = self.be.read_encrypted_partial(
             FileType::Pack,
@@ -842,8 +957,17 @@ impl<BE: DecryptFullBackend> Repacker<BE> {
             blob.length,
             blob.uncompressed_length,
         )?;
+
         self.packer
-            .add_with_sizelimit(data, blob.id, Some(self.size_limit))?;
+            .add_with_sizelimit(data, blob.id, Some(self.size_limit))
+            .map_err(|err| {
+                RusticError::with_source(
+                    ErrorKind::Internal,
+                    "Failed to add blob to packfile.",
+                    err,
+                )
+            })?;
+
         Ok(())
     }
 

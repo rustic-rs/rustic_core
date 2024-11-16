@@ -50,15 +50,14 @@ rclone = ["rest", "dep:rand", "dep:semver"]
 rustic_core = { workspace = true }
 
 # errors
-anyhow = "1.0.89"
-displaydoc = "0.2.5"
-thiserror = "1.0.64"
+displaydoc = { workspace = true }
+thiserror = { workspace = true }
 
 # logging
-log = "0.4.22"
+log = { workspace = true }
 
 # other dependencies
-bytes = "1.7.2"
+bytes = { workspace = true }
 derive_setters = "0.1.6"
 humantime = "2.1.0"
 itertools = "0.13.0"
@@ -101,6 +100,7 @@ opendal = { version = "0.50.0", features = ["services-b2", "services-sftp", "ser
 opendal = { version = "0.50.0", features = ["services-b2", "services-swift", "services-azblob", "services-azdls", "services-cos", "services-fs", "services-ftp", "services-dropbox", "services-gdrive", "services-gcs", "services-ghac", "services-http", "services-ipmfs", "services-memory", "services-obs", "services-onedrive", "services-oss", "services-s3", "services-webdav", "services-webhdfs", "services-azfile", "layers-blocking", "layers-throttle"], optional = true }
 
 [dev-dependencies]
+anyhow = { workspace = true }
 rstest = { workspace = true }
 toml = "0.8.19"
 
