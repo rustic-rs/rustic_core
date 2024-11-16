@@ -193,6 +193,7 @@ pub struct RusticError {
 }
 
 impl Display for RusticError {
+    #[allow(clippy::too_many_lines)]
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         writeln!(
             f,
