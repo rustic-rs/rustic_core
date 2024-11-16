@@ -12,7 +12,6 @@ pub(crate) mod warm_up;
 
 use std::{io::Read, ops::Deref, path::PathBuf, sync::Arc};
 
-use anyhow::Result;
 use bytes::Bytes;
 use enum_map::Enum;
 use log::trace;
@@ -24,10 +23,19 @@ use serde_derive::{Deserialize, Serialize};
 
 use crate::{
     backend::node::{Metadata, Node, NodeType},
-    error::{BackendAccessErrorKind, RusticErrorKind},
+    error::{ErrorKind, RusticError, RusticResult},
     id::Id,
-    RusticResult,
 };
+
+/// [`BackendErrorKind`] describes the errors that can be returned by the various Backends
+#[derive(thiserror::Error, Debug, displaydoc::Display)]
+#[non_exhaustive]
+pub enum BackendErrorKind {
+    /// Path is not allowed: `{0:?}`
+    PathNotAllowed(PathBuf),
+}
+
+pub(crate) type BackendResult<T> = Result<T, BackendErrorKind>;
 
 /// All [`FileType`]s which are located in separated directories
 pub const ALL_FILE_TYPES: [FileType; 4] = [
@@ -38,7 +46,7 @@ pub const ALL_FILE_TYPES: [FileType; 4] = [
 ];
 
 /// Type for describing the kind of a file that can occur.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, Enum)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, Enum, derive_more::Display)]
 pub enum FileType {
     /// Config file
     #[serde(rename = "config")]
@@ -94,8 +102,8 @@ pub trait ReadBackend: Send + Sync + 'static {
     ///
     /// # Errors
     ///
-    /// If the files could not be listed.
-    fn list_with_size(&self, tpe: FileType) -> Result<Vec<(Id, u32)>>;
+    /// * If the files could not be listed.
+    fn list_with_size(&self, tpe: FileType) -> RusticResult<Vec<(Id, u32)>>;
 
     /// Lists all files of the given type.
     ///
@@ -105,8 +113,8 @@ pub trait ReadBackend: Send + Sync + 'static {
     ///
     /// # Errors
     ///
-    /// If the files could not be listed.
-    fn list(&self, tpe: FileType) -> Result<Vec<Id>> {
+    /// * If the files could not be listed.
+    fn list(&self, tpe: FileType) -> RusticResult<Vec<Id>> {
         Ok(self
             .list_with_size(tpe)?
             .into_iter()
@@ -123,8 +131,8 @@ pub trait ReadBackend: Send + Sync + 'static {
     ///
     /// # Errors
     ///
-    /// If the file could not be read.
-    fn read_full(&self, tpe: FileType, id: &Id) -> Result<Bytes>;
+    /// * If the file could not be read.
+    fn read_full(&self, tpe: FileType, id: &Id) -> RusticResult<Bytes>;
 
     /// Reads partial data of the given file.
     ///
@@ -138,7 +146,7 @@ pub trait ReadBackend: Send + Sync + 'static {
     ///
     /// # Errors
     ///
-    /// If the file could not be read.
+    /// * If the file could not be read.
     fn read_partial(
         &self,
         tpe: FileType,
@@ -146,7 +154,7 @@ pub trait ReadBackend: Send + Sync + 'static {
         cacheable: bool,
         offset: u32,
         length: u32,
-    ) -> Result<Bytes>;
+    ) -> RusticResult<Bytes>;
 
     /// Specify if the backend needs a warming-up of files before accessing them.
     fn needs_warm_up(&self) -> bool {
@@ -162,8 +170,8 @@ pub trait ReadBackend: Send + Sync + 'static {
     ///
     /// # Errors
     ///
-    /// If the file could not be read.
-    fn warm_up(&self, _tpe: FileType, _id: &Id) -> Result<()> {
+    /// * If the file could not be read.
+    fn warm_up(&self, _tpe: FileType, _id: &Id) -> RusticResult<()> {
         Ok(())
     }
 }
@@ -189,15 +197,12 @@ pub trait FindInBackend: ReadBackend {
     ///
     /// # Errors
     ///
-    /// * [`BackendAccessErrorKind::NoSuitableIdFound`] - If no id could be found.
-    /// * [`BackendAccessErrorKind::IdNotUnique`] - If the id is not unique.
+    /// * If no id could be found.
+    /// * If the id is not unique.
     ///
     /// # Note
     ///
     /// This function is used to find the id of a snapshot.
-    ///
-    /// [`BackendAccessErrorKind::NoSuitableIdFound`]: crate::error::BackendAccessErrorKind::NoSuitableIdFound
-    /// [`BackendAccessErrorKind::IdNotUnique`]: crate::error::BackendAccessErrorKind::IdNotUnique
     fn find_starts_with<T: AsRef<str>>(&self, tpe: FileType, vec: &[T]) -> RusticResult<Vec<Id>> {
         #[derive(Clone, Copy, PartialEq, Eq)]
         enum MapResult<T> {
@@ -206,7 +211,7 @@ pub trait FindInBackend: ReadBackend {
             NonUnique,
         }
         let mut results = vec![MapResult::None; vec.len()];
-        for id in self.list(tpe).map_err(RusticErrorKind::Backend)? {
+        for id in self.list(tpe)? {
             let id_hex = id.to_hex();
             for (i, v) in vec.iter().enumerate() {
                 if id_hex.starts_with(v.as_ref()) {
@@ -224,13 +229,16 @@ pub trait FindInBackend: ReadBackend {
             .enumerate()
             .map(|(i, id)| match id {
                 MapResult::Some(id) => Ok(id),
-                MapResult::None => Err(BackendAccessErrorKind::NoSuitableIdFound(
-                    (vec[i]).as_ref().to_string(),
+                MapResult::None => Err(RusticError::new(
+                    ErrorKind::Backend,
+                    "No suitable id found for `{id}`.",
                 )
-                .into()),
-                MapResult::NonUnique => {
-                    Err(BackendAccessErrorKind::IdNotUnique((vec[i]).as_ref().to_string()).into())
-                }
+                .attach_context("id", vec[i].as_ref().to_string())),
+                MapResult::NonUnique => Err(RusticError::new(
+                    ErrorKind::Backend,
+                    "Id not unique: `{id}`.",
+                )
+                .attach_context("id", vec[i].as_ref().to_string())),
             })
             .collect()
     }
@@ -244,13 +252,9 @@ pub trait FindInBackend: ReadBackend {
     ///
     /// # Errors
     ///
-    /// * [`IdErrorKind::HexError`] - If the string is not a valid hexadecimal string
-    /// * [`BackendAccessErrorKind::NoSuitableIdFound`] - If no id could be found.
-    /// * [`BackendAccessErrorKind::IdNotUnique`] - If the id is not unique.
-    ///
-    /// [`IdErrorKind::HexError`]: crate::error::IdErrorKind::HexError
-    /// [`BackendAccessErrorKind::NoSuitableIdFound`]: crate::error::BackendAccessErrorKind::NoSuitableIdFound
-    /// [`BackendAccessErrorKind::IdNotUnique`]: crate::error::BackendAccessErrorKind::IdNotUnique
+    /// * If the string is not a valid hexadecimal string
+    /// * If no id could be found.
+    /// * If the id is not unique.
     fn find_id(&self, tpe: FileType, id: &str) -> RusticResult<Id> {
         Ok(self.find_ids(tpe, &[id.to_string()])?.remove(0))
     }
@@ -268,13 +272,9 @@ pub trait FindInBackend: ReadBackend {
     ///
     /// # Errors
     ///
-    /// * [`IdErrorKind::HexError`] - If the string is not a valid hexadecimal string
-    /// * [`BackendAccessErrorKind::NoSuitableIdFound`] - If no id could be found.
-    /// * [`BackendAccessErrorKind::IdNotUnique`] - If the id is not unique.
-    ///
-    /// [`IdErrorKind::HexError`]: crate::error::IdErrorKind::HexError
-    /// [`BackendAccessErrorKind::NoSuitableIdFound`]: crate::error::BackendAccessErrorKind::NoSuitableIdFound
-    /// [`BackendAccessErrorKind::IdNotUnique`]: crate::error::BackendAccessErrorKind::IdNotUnique
+    /// * If the string is not a valid hexadecimal string
+    /// * If no id could be found.
+    /// * If the id is not unique.
     fn find_ids<T: AsRef<str>>(&self, tpe: FileType, ids: &[T]) -> RusticResult<Vec<Id>> {
         ids.iter()
             .map(|id| id.as_ref().parse())
@@ -294,12 +294,12 @@ pub trait WriteBackend: ReadBackend {
     ///
     /// # Errors
     ///
-    /// If the backend could not be created.
+    /// * If the backend could not be created.
     ///
     /// # Returns
     ///
     /// The result of the creation.
-    fn create(&self) -> Result<()> {
+    fn create(&self) -> RusticResult<()> {
         Ok(())
     }
 
@@ -314,12 +314,12 @@ pub trait WriteBackend: ReadBackend {
     ///
     /// # Errors
     ///
-    /// If the data could not be written.
+    /// * If the data could not be written.
     ///
     /// # Returns
     ///
     /// The result of the write.
-    fn write_bytes(&self, tpe: FileType, id: &Id, cacheable: bool, buf: Bytes) -> Result<()>;
+    fn write_bytes(&self, tpe: FileType, id: &Id, cacheable: bool, buf: Bytes) -> RusticResult<()>;
 
     /// Removes the given file.
     ///
@@ -331,12 +331,12 @@ pub trait WriteBackend: ReadBackend {
     ///
     /// # Errors
     ///
-    /// If the file could not be removed.
+    /// * If the file could not be removed.
     ///
     /// # Returns
     ///
     /// The result of the removal.
-    fn remove(&self, tpe: FileType, id: &Id, cacheable: bool) -> Result<()>;
+    fn remove(&self, tpe: FileType, id: &Id, cacheable: bool) -> RusticResult<()>;
 }
 
 #[cfg(test)]
@@ -345,8 +345,8 @@ mock! {
 
     impl ReadBackend for Backend{
         fn location(&self) -> String;
-        fn list_with_size(&self, tpe: FileType) -> Result<Vec<(Id, u32)>>;
-        fn read_full(&self, tpe: FileType, id: &Id) -> Result<Bytes>;
+        fn list_with_size(&self, tpe: FileType) -> RusticResult<Vec<(Id, u32)>>;
+        fn read_full(&self, tpe: FileType, id: &Id) -> RusticResult<Bytes>;
         fn read_partial(
             &self,
             tpe: FileType,
@@ -354,24 +354,24 @@ mock! {
             cacheable: bool,
             offset: u32,
             length: u32,
-        ) -> Result<Bytes>;
+        ) -> RusticResult<Bytes>;
     }
 
     impl WriteBackend for Backend {
-        fn create(&self) -> Result<()>;
-        fn write_bytes(&self, tpe: FileType, id: &Id, cacheable: bool, buf: Bytes) -> Result<()>;
-        fn remove(&self, tpe: FileType, id: &Id, cacheable: bool) -> Result<()>;
+        fn create(&self) -> RusticResult<()>;
+        fn write_bytes(&self, tpe: FileType, id: &Id, cacheable: bool, buf: Bytes) -> RusticResult<()>;
+        fn remove(&self, tpe: FileType, id: &Id, cacheable: bool) -> RusticResult<()>;
     }
 }
 
 impl WriteBackend for Arc<dyn WriteBackend> {
-    fn create(&self) -> Result<()> {
+    fn create(&self) -> RusticResult<()> {
         self.deref().create()
     }
-    fn write_bytes(&self, tpe: FileType, id: &Id, cacheable: bool, buf: Bytes) -> Result<()> {
+    fn write_bytes(&self, tpe: FileType, id: &Id, cacheable: bool, buf: Bytes) -> RusticResult<()> {
         self.deref().write_bytes(tpe, id, cacheable, buf)
     }
-    fn remove(&self, tpe: FileType, id: &Id, cacheable: bool) -> Result<()> {
+    fn remove(&self, tpe: FileType, id: &Id, cacheable: bool) -> RusticResult<()> {
         self.deref().remove(tpe, id, cacheable)
     }
 }
@@ -380,13 +380,13 @@ impl ReadBackend for Arc<dyn WriteBackend> {
     fn location(&self) -> String {
         self.deref().location()
     }
-    fn list_with_size(&self, tpe: FileType) -> Result<Vec<(Id, u32)>> {
+    fn list_with_size(&self, tpe: FileType) -> RusticResult<Vec<(Id, u32)>> {
         self.deref().list_with_size(tpe)
     }
-    fn list(&self, tpe: FileType) -> Result<Vec<Id>> {
+    fn list(&self, tpe: FileType) -> RusticResult<Vec<Id>> {
         self.deref().list(tpe)
     }
-    fn read_full(&self, tpe: FileType, id: &Id) -> Result<Bytes> {
+    fn read_full(&self, tpe: FileType, id: &Id) -> RusticResult<Bytes> {
         self.deref().read_full(tpe, id)
     }
     fn read_partial(
@@ -396,7 +396,7 @@ impl ReadBackend for Arc<dyn WriteBackend> {
         cacheable: bool,
         offset: u32,
         length: u32,
-    ) -> Result<Bytes> {
+    ) -> RusticResult<Bytes> {
         self.deref()
             .read_partial(tpe, id, cacheable, offset, length)
     }
@@ -426,10 +426,10 @@ pub struct ReadSourceEntry<O> {
 }
 
 impl<O> ReadSourceEntry<O> {
-    fn from_path(path: PathBuf, open: Option<O>) -> RusticResult<Self> {
+    fn from_path(path: PathBuf, open: Option<O>) -> BackendResult<Self> {
         let node = Node::new_node(
             path.file_name()
-                .ok_or_else(|| BackendAccessErrorKind::PathNotAllowed(path.clone()))?,
+                .ok_or_else(|| BackendErrorKind::PathNotAllowed(path.clone()))?,
             NodeType::File,
             Metadata::default(),
         );
@@ -447,7 +447,7 @@ pub trait ReadSourceOpen {
     ///
     /// # Errors
     ///
-    /// If the source could not be opened.
+    /// * If the source could not be opened.
     ///
     /// # Result
     ///
@@ -476,7 +476,7 @@ pub trait ReadSource: Sync + Send {
     ///
     /// # Errors
     ///
-    /// If the size could not be determined.
+    /// * If the size could not be determined.
     ///
     /// # Returns
     ///

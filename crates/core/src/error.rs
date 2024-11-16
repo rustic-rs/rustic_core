@@ -1,810 +1,521 @@
 //! Error types and Result module.
+//!
+//! ## Error handling rules
+//!
+//! ### Visibility
+//!
+//! All `pub fn` (associated) functions need to return a `Result<T, RusticError> (==RusticResult<T>)`, if they are fallible.
+//! As they are user facing and will cross the API boundary we need to make sure they are high-quality errors containing all
+//! needed information and actionable guidance.
+//!
+//! `pub(crate) fn` visibility should use a local error and thus a Result and error type limited in visibility, e.g.
+//! `pub(crate) type ArchiverResult<T> = Result<T, ArchiverErrorKind>`.
+//!
+//! ### Downgrading and Forwarding
+//!
+//! `RusticError`s should **not** be downgraded, instead we **upgrade** the function signature to contain a `RusticResult`.
+//! For instance, if a function returns `Result<T, ArchiverErrorKind>` and we discover an error path that contains a `RusticError`,
+//! we don't need to convert that into an `ArchiverErrorKind`, we should change the function signature, so it returns either a
+//! `Result<T, RusticError> (==RusticResult<T>)` or nested results like `RusticResult<Result<T, ArchiverErrorKind>>`.
+//! So even if the visibility of that function is `fn` or `pub(crate) fn` it should return a `RusticResult` containing a `RusticError`.
+//!
+//! If we `map_err` or `and_then` a `RusticError`, we don't want to create a new RusticError from it, but just attach some context
+//! to it, e.g. `map_err(|e| e.attach_context("key", "value"))`, so we don't lose the original error. We can also change the error
+//! kind with `map_err(|e| e.overwrite_kind(ErrorKind::NewKind))`. If we want to pre- or append to the guidance, we can use
+//! `map_err(|e| e.append_guidance_line("new line"))` or `map_err(|e| e.prepend_guidance_line("new line"))`.
+//!
+//! ### Conversion and Nested Results
+//!
+//! Converting between different error kinds or their variants e.g. `TreeErrorKind::Channel` -> `ArchiverErrorKind::Channel`
+//! should seldom happen (probably never?), as the caller is most likely not setup to handle such errors from a different layer,
+//! so at this point, we should return either a `RusticError` indicating this is a hard error. Or use a nested Result, e.g.
+//! `Result<Result<T, TreeErrorKind>, RusticError>`.
+//!
+//! Local error types in `pub fn` (associated) functions need to be manually converted into a `RusticError` with a good error message
+//! and other important information, e.g. actionable guidance for the user.
+//!
+//! ### Backend traits
+//!
+//! By using `RusticResult` in our `Backend` traits, we also make sure, we get back presentable errors for our users.
+//! We had them before as type erased errors, that we just bubbled up. Now we can provide more context and guidance.
+//!
+//! ### Traits
+//!
+//! All traits and implementations of (foreign) traits should use `RusticResult` as return type or `Box<RusticError>` as `Self::Err`.
+//!
+//! ### Display and Debug
+//!
+//! All types that we want to attach to an error should implement `Display` and `Debug` to provide a good error message and a nice way
+//! to display the error.
 
 // FIXME: Remove when 'displaydoc' has fixed/recommended further treatment upstream: https://github.com/yaahc/displaydoc/issues/48
 #![allow(clippy::doc_markdown)]
 // use std::error::Error as StdError;
 // use std::fmt;
 
+use derive_more::derive::Display;
+use ecow::{EcoString, EcoVec};
 use std::{
-    error::Error,
-    ffi::OsString,
-    num::{ParseFloatError, ParseIntError, TryFromIntError},
-    ops::RangeInclusive,
-    path::{PathBuf, StripPrefixError},
-    process::ExitStatus,
-    str::Utf8Error,
+    backtrace::{Backtrace, BacktraceStatus},
+    convert::Into,
+    fmt::{self, Display},
 };
 
-#[cfg(not(windows))]
-use nix::errno::Errno;
-
-use aes256ctr_poly1305aes::aead;
-use chrono::OutOfRangeError;
-use displaydoc::Display;
-use thiserror::Error;
-
-use crate::{
-    backend::node::NodeType,
-    blob::{tree::TreeId, BlobId},
-    repofile::{indexfile::IndexPack, packfile::PackId},
-};
-
-/// Result type that is being returned from methods that can fail and thus have [`RusticError`]s.
-pub type RusticResult<T> = Result<T, RusticError>;
-
-// [`Error`] is public, but opaque and easy to keep compatible.
-#[derive(Error, Debug)]
-#[error(transparent)]
-/// Errors that can result from rustic.
-pub struct RusticError(#[from] pub(crate) RusticErrorKind);
-
-// Accessors for anything we do want to expose publicly.
-impl RusticError {
-    /// Expose the inner error kind.
-    ///
-    /// This is useful for matching on the error kind.
-    pub fn into_inner(self) -> RusticErrorKind {
-        self.0
-    }
-
-    /// Checks if the error is due to an incorrect password
-    pub fn is_incorrect_password(&self) -> bool {
-        matches!(
-            self.0,
-            RusticErrorKind::Repository(RepositoryErrorKind::IncorrectPassword)
-        )
-    }
-
-    /// Get the corresponding backend error, if error is caused by the backend.
-    ///
-    /// Returns `anyhow::Error`; you need to cast this to the real backend error type
-    pub fn backend_error(&self) -> Option<&anyhow::Error> {
-        if let RusticErrorKind::Backend(error) = &self.0 {
-            Some(error)
-        } else {
-            None
-        }
-    }
+pub(crate) mod constants {
+    pub const DEFAULT_DOCS_URL: &str = "https://rustic.cli.rs/docs/errors/";
+    pub const DEFAULT_ISSUE_URL: &str = "https://github.com/rustic-rs/rustic_core/issues/new";
 }
 
-/// [`RusticErrorKind`] describes the errors that can happen while executing a high-level command.
+/// Result type that is being returned from methods that can fail and thus have [`RusticError`]s.
+pub type RusticResult<T, E = Box<RusticError>> = Result<T, E>;
+
+/// Severity of an error, ranging from informational to fatal.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Display)]
+pub enum Severity {
+    /// Informational
+    Info,
+
+    /// Warning
+    Warning,
+
+    /// Error
+    Error,
+
+    /// Fatal
+    Fatal,
+}
+
+/// Status of an error, indicating whether it is permanent, temporary, or persistent.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Display)]
+pub enum Status {
+    /// Permanent, may not be retried
+    Permanent,
+
+    /// Temporary, may be retried
+    Temporary,
+
+    /// Persistent, may be retried, but may not succeed
+    Persistent,
+}
+
+// NOTE:
+//
+// we use `an error related to {kind}` in the Display impl, so the variant display comments
+// should be able to be used in a sentence.
+//
+/// [`ErrorKind`] describes the errors that can happen while executing a high-level command.
 ///
 /// This is a non-exhaustive enum, so additional variants may be added in future. It is
 /// recommended to match against the wildcard `_` instead of listing all possible variants,
 /// to avoid problems when new variants are added.
 #[non_exhaustive]
-#[derive(Error, Debug)]
-pub enum RusticErrorKind {
-    /// [`CommandErrorKind`] describes the errors that can happen while executing a high-level command
-    #[error(transparent)]
-    Command(#[from] CommandErrorKind),
-
-    /// [`CryptoErrorKind`] describes the errors that can happen while dealing with Cryptographic functions
-    #[error(transparent)]
-    Crypto(#[from] CryptoErrorKind),
-
-    /// [`PolynomialErrorKind`] describes the errors that can happen while dealing with Polynomials
-    #[error(transparent)]
-    Polynomial(#[from] PolynomialErrorKind),
-
-    /// [`IdErrorKind`] describes the errors that can be returned by processing IDs
-    #[error(transparent)]
-    Id(#[from] IdErrorKind),
-
-    /// [`RepositoryErrorKind`] describes the errors that can be returned by processing Repositories
-    #[error(transparent)]
-    Repository(#[from] RepositoryErrorKind),
-
-    /// [`IndexErrorKind`] describes the errors that can be returned by processing Indizes
-    #[error(transparent)]
-    Index(#[from] IndexErrorKind),
-
-    /// describes the errors that can be returned by the various Backends
-    #[error(transparent)]
-    Backend(#[from] anyhow::Error),
-
-    /// [`BackendAccessErrorKind`] describes the errors that can be returned by accessing the various Backends
-    #[error(transparent)]
-    BackendAccess(#[from] BackendAccessErrorKind),
-
-    /// [`ConfigFileErrorKind`] describes the errors that can be returned for `ConfigFile`s
-    #[error(transparent)]
-    ConfigFile(#[from] ConfigFileErrorKind),
-
-    /// [`KeyFileErrorKind`] describes the errors that can be returned for `KeyFile`s
-    #[error(transparent)]
-    KeyFile(#[from] KeyFileErrorKind),
-
-    /// [`PackFileErrorKind`] describes the errors that can be returned for `PackFile`s
-    #[error(transparent)]
-    PackFile(#[from] PackFileErrorKind),
-
-    /// [`SnapshotFileErrorKind`] describes the errors that can be returned for `SnapshotFile`s
-    #[error(transparent)]
-    SnapshotFile(#[from] SnapshotFileErrorKind),
-
-    /// [`PackerErrorKind`] describes the errors that can be returned for a Packer
-    #[error(transparent)]
-    Packer(#[from] PackerErrorKind),
-
-    /// [`FileErrorKind`] describes the errors that can happen while dealing with files during restore/backups
-    #[error(transparent)]
-    File(#[from] FileErrorKind),
-
-    /// [`TreeErrorKind`] describes the errors that can come up dealing with Trees
-    #[error(transparent)]
-    Tree(#[from] TreeErrorKind),
-
-    /// [`CacheBackendErrorKind`] describes the errors that can be returned by a Caching action in Backends
-    #[error(transparent)]
-    CacheBackend(#[from] CacheBackendErrorKind),
-
-    /// [`CryptBackendErrorKind`] describes the errors that can be returned by a Decryption action in Backends
-    #[error(transparent)]
-    CryptBackend(#[from] CryptBackendErrorKind),
-
-    /// [`IgnoreErrorKind`] describes the errors that can be returned by a Ignore action in Backends
-    #[error(transparent)]
-    Ignore(#[from] IgnoreErrorKind),
-
-    /// [`LocalDestinationErrorKind`] describes the errors that can be returned by an action on the local filesystem as Destination
-    #[error(transparent)]
-    LocalDestination(#[from] LocalDestinationErrorKind),
-
-    /// [`NodeErrorKind`] describes the errors that can be returned by an action utilizing a node in Backends
-    #[error(transparent)]
-    Node(#[from] NodeErrorKind),
-
-    /// [`StdInErrorKind`] describes the errors that can be returned while dealing IO from CLI
-    #[error(transparent)]
-    StdIn(#[from] StdInErrorKind),
-
-    /// [`ArchiverErrorKind`] describes the errors that can be returned from the archiver
-    #[error(transparent)]
-    ArchiverError(#[from] ArchiverErrorKind),
-
-    /// [`VfsErrorKind`] describes the errors that can be returned from the Virtual File System
-    #[error(transparent)]
-    VfsError(#[from] VfsErrorKind),
-
-    /// [`std::io::Error`]
-    #[error(transparent)]
-    StdIo(#[from] std::io::Error),
+#[derive(thiserror::Error, Debug, displaydoc::Display, Default, Clone, Copy, PartialEq, Eq)]
+pub enum ErrorKind {
+    /// append-only mode
+    AppendOnly,
+    /// the backend
+    Backend,
+    /// the configuration
+    Configuration,
+    /// cryptographic operations
+    Cryptography,
+    /// running an external command
+    ExternalCommand,
+    /// internal operations
+    // Blob, Pack, Index, Tree Errors
+    // Compression, Parsing, Multithreading etc.
+    // These are deep errors that are not expected to be handled by the user.
+    Internal,
+    /// invalid user input
+    InvalidInput,
+    /// input/output operations
+    InputOutput,
+    /// a key
+    Key,
+    /// missing user input
+    MissingInput,
+    /// general operations
+    #[default]
+    Other,
+    /// password handling
+    Password,
+    /// the repository
+    Repository,
+    /// unsupported operations
+    Unsupported,
+    /// verification
+    Verification,
+    /// the virtual filesystem
+    Vfs,
 }
 
-/// [`CommandErrorKind`] describes the errors that can happen while executing a high-level command
-#[derive(Error, Debug, Display)]
-pub enum CommandErrorKind {
-    /// path is no dir: `{0}`
-    PathIsNoDir(String),
-    /// used blobs are missing: blob `{0}` doesn't existing
-    BlobsMissing(BlobId),
-    /// used pack `{0}`: size does not match! Expected size: `{1}`, real size: `{2}`
-    PackSizeNotMatching(PackId, u32, u32),
-    /// used pack `{0}` does not exist!
-    PackNotExisting(PackId),
-    /// pack `{0}` got no decision what to do
-    NoDecision(PackId),
-    /// [`std::num::ParseFloatError`]
-    #[error(transparent)]
-    FromParseFloatError(#[from] ParseFloatError),
-    /// [`std::num::ParseIntError`]
-    #[error(transparent)]
-    FromParseIntError(#[from] ParseIntError),
-    /// Bytesize parser failed: `{0}`
-    FromByteSizeParser(String),
-    /// --repack-uncompressed makes no sense for v1 repo!
-    RepackUncompressedRepoV1,
-    /// datetime out of range: `{0}`
-    FromOutOfRangeError(#[from] OutOfRangeError),
-    /// node type `{0:?}` not supported by dump
-    DumpNotSupported(NodeType),
-    /// [`serde_json::Error`]
-    #[error(transparent)]
-    FromJsonError(#[from] serde_json::Error),
-    /// version `{0}` is not supported. Allowed values: {1:?}
-    VersionNotSupported(u32, RangeInclusive<u32>),
-    /// cannot downgrade version from `{0}` to `{1}`
-    CannotDowngrade(u32, u32),
-    /// compression level `{0}` is not supported for repo v1
-    NoCompressionV1Repo(i32),
-    /// compression level `{0}` is not supported. Allowed values: `{1:?}`
-    CompressionLevelNotSupported(i32, RangeInclusive<i32>),
-    /// Size is too large: `{0}`
-    SizeTooLarge(bytesize::ByteSize),
-    /// min_packsize_tolerate_percent must be <= 100
-    MinPackSizeTolerateWrong,
-    /// max_packsize_tolerate_percent must be >= 100 or 0"
-    MaxPackSizeTolerateWrong,
-    /// error creating `{0:?}`: `{1:?}`
-    ErrorCreating(PathBuf, Box<RusticError>),
-    /// error collecting information for `{0:?}`: `{1:?}`
-    ErrorCollecting(PathBuf, Box<RusticError>),
-    /// error setting length for `{0:?}`: `{1:?}`
-    ErrorSettingLength(PathBuf, Box<RusticError>),
-    /// [`rayon::ThreadPoolBuildError`]
-    #[error(transparent)]
-    FromRayonError(#[from] rayon::ThreadPoolBuildError),
-    /// Conversion from integer failed: `{0:?}`
-    ConversionFromIntFailed(TryFromIntError),
-    /// Not allowed on an append-only repository: `{0}`
-    NotAllowedWithAppendOnly(String),
-    /// Specify one of the keep-* options for forget! Please use keep-none to keep no snapshot.
-    NoKeepOption,
-    /// [`shell_words::ParseError`]
-    #[error(transparent)]
-    FromParseError(#[from] shell_words::ParseError),
+#[derive(thiserror::Error, Debug)]
+#[non_exhaustive]
+/// Errors that can result from rustic.
+pub struct RusticError {
+    /// The kind of the error.
+    kind: ErrorKind,
+
+    /// The error message with guidance.
+    guidance: EcoString,
+
+    /// The URL of the documentation for the error.
+    docs_url: Option<EcoString>,
+
+    /// Error code.
+    error_code: Option<EcoString>,
+
+    /// Whether to ask the user to report the error.
+    ask_report: bool,
+
+    /// The URL of an already existing issue that is related to this error.
+    existing_issue_urls: EcoVec<EcoString>,
+
+    /// The URL of the issue tracker for opening a new issue.
+    new_issue_url: Option<EcoString>,
+
+    /// The context of the error.
+    context: EcoVec<(EcoString, EcoString)>,
+
+    /// Chain to the cause of the error.
+    source: Option<Box<(dyn std::error::Error + Send + Sync)>>,
+
+    /// Severity of the error.
+    severity: Option<Severity>,
+
+    /// The status of the error.
+    status: Option<Status>,
+
+    /// Backtrace of the error.
+    ///
+    // Need to use option, otherwise thiserror will not be able to derive the Error trait.
+    backtrace: Option<Backtrace>,
 }
 
-/// [`CryptoErrorKind`] describes the errors that can happen while dealing with Cryptographic functions
-#[derive(Error, Debug, Display, Copy, Clone)]
-pub enum CryptoErrorKind {
-    /// data decryption failed: `{0:?}`
-    DataDecryptionFailed(aead::Error),
-    /// data encryption failed: `{0:?}`
-    DataEncryptionFailed(aead::Error),
-    /// crypto key too short
-    CryptoKeyTooShort,
+impl Display for RusticError {
+    #[allow(clippy::too_many_lines)]
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        writeln!(
+            f,
+            "`rustic_core` experienced an error related to `{}`.",
+            self.kind
+        )?;
+
+        writeln!(f)?;
+        writeln!(f, "Message:")?;
+        let context = if self.context.is_empty() {
+            writeln!(f, "{}", self.guidance)?;
+            Vec::new()
+        } else {
+            // If there is context, we want to iterate over it
+            // use the key to replace the placeholder in the guidance.
+            let mut guidance = self.guidance.to_string();
+            let context = self
+                .context
+                .iter()
+                // remove context which has been used in the guidance
+                .filter(|(key, value)| {
+                    let pattern = "{".to_owned() + key + "}";
+                    if guidance.contains(&pattern) {
+                        guidance = guidance.replace(&pattern, value);
+                        false
+                    } else {
+                        true
+                    }
+                })
+                .collect();
+            writeln!(f, "{guidance}")?;
+            context
+        };
+
+        if let Some(code) = &self.error_code {
+            let default_docs_url = EcoString::from(constants::DEFAULT_DOCS_URL);
+            let docs_url = self
+                .docs_url
+                .as_ref()
+                .unwrap_or(&default_docs_url)
+                .to_string();
+
+            // If the docs_url doesn't end with a slash, add one.
+            let docs_url = if docs_url.ends_with('/') {
+                docs_url
+            } else {
+                docs_url + "/"
+            };
+
+            writeln!(f)?;
+            writeln!(f, "For more information, see: {docs_url}{code}")?;
+        }
+
+        if !self.existing_issue_urls.is_empty() {
+            writeln!(f)?;
+            writeln!(f, "Related issues:")?;
+            self.existing_issue_urls
+                .iter()
+                .try_for_each(|url| writeln!(f, "- {url}"))?;
+        }
+
+        if self.ask_report {
+            let default_issue_url = EcoString::from(constants::DEFAULT_ISSUE_URL);
+            let new_issue_url = self.new_issue_url.as_ref().unwrap_or(&default_issue_url);
+
+            writeln!(f)?;
+
+            writeln!(
+                f,
+                "We believe this is a bug, please report it by opening an issue at:"
+            )?;
+            writeln!(f, "{new_issue_url}")?;
+            writeln!(f)?;
+            writeln!(
+                f,
+                "If you can, please attach an anonymized debug log to the issue."
+            )?;
+            writeln!(f)?;
+            writeln!(f, "Thank you for helping us improve rustic!")?;
+        }
+
+        writeln!(f)?;
+        writeln!(f)?;
+
+        writeln!(f, "Some additional details ...")?;
+
+        if !context.is_empty() {
+            writeln!(f)?;
+            writeln!(f, "Context:")?;
+            context
+                .iter()
+                .try_for_each(|(key, value)| writeln!(f, "- {key}: {value}"))?;
+        }
+
+        if let Some(cause) = &self.source {
+            writeln!(f)?;
+            writeln!(f, "Caused by:")?;
+            writeln!(f, "{cause}")?;
+            if let Some(source) = cause.source() {
+                write!(f, " : (source: {source:?})")?;
+            }
+            writeln!(f)?;
+        }
+
+        if let Some(severity) = &self.severity {
+            writeln!(f)?;
+            writeln!(f, "Severity: {severity}")?;
+        }
+
+        if let Some(status) = &self.status {
+            writeln!(f)?;
+            writeln!(f, "Status: {status}")?;
+        }
+
+        if let Some(backtrace) = &self.backtrace {
+            writeln!(f)?;
+            writeln!(f, "Backtrace:")?;
+            write!(f, "{backtrace}")?;
+
+            if backtrace.status() == BacktraceStatus::Disabled {
+                writeln!(
+                    f,
+                    " (set 'RUST_BACKTRACE=\"1\"' environment variable to enable)"
+                )?;
+            }
+        }
+
+        Ok(())
+    }
 }
 
-/// [`PolynomialErrorKind`] describes the errors that can happen while dealing with Polynomials
-#[derive(Error, Debug, Display, Copy, Clone)]
-pub enum PolynomialErrorKind {
-    /// no suitable polynomial found
-    NoSuitablePolynomialFound,
+// Accessors for anything we do want to expose publicly.
+impl RusticError {
+    /// Creates a new error with the given kind and guidance.
+    pub fn new(kind: ErrorKind, guidance: impl Into<EcoString>) -> Box<Self> {
+        Box::new(Self {
+            kind,
+            guidance: guidance.into(),
+            context: EcoVec::default(),
+            source: None,
+            error_code: None,
+            docs_url: None,
+            new_issue_url: None,
+            existing_issue_urls: EcoVec::default(),
+            severity: None,
+            status: None,
+            ask_report: false,
+            // `Backtrace::capture()` will check if backtrace has been enabled
+            // internally. It's zero cost if backtrace is disabled.
+            backtrace: Some(Backtrace::capture()),
+        })
+    }
+
+    /// Creates a new error with the given kind and guidance.
+    pub fn with_source(
+        kind: ErrorKind,
+        guidance: impl Into<EcoString>,
+        source: impl Into<Box<(dyn std::error::Error + Send + Sync)>>,
+    ) -> Box<Self> {
+        Self::new(kind, guidance).attach_source(source)
+    }
+
+    /// Checks if the error has a specific error code.
+    pub fn is_code(&self, code: &str) -> bool {
+        self.error_code
+            .as_ref()
+            .map_or(false, |c| c.as_str() == code)
+    }
+
+    /// Checks if the error is due to an incorrect password
+    pub fn is_incorrect_password(&self) -> bool {
+        self.is_code("C002")
+    }
+
+    /// Creates a new error from a given error.
+    pub fn from<T: std::error::Error + Display + Send + Sync + 'static>(
+        kind: ErrorKind,
+        error: T,
+    ) -> Box<Self> {
+        Self::with_source(kind, error.to_string(), error)
+    }
 }
 
-/// [`FileErrorKind`] describes the errors that can happen while dealing with files during restore/backups
-#[derive(Error, Debug, Display)]
-pub enum FileErrorKind {
-    /// transposing an Option of a Result into a Result of an Option failed: `{0:?}`
-    TransposingOptionResultFailed(std::io::Error),
-    /// conversion from `u64` to `usize` failed: `{0:?}`
-    ConversionFromU64ToUsizeFailed(TryFromIntError),
-}
+// Setters for anything we do want to expose publicly.
+//
+// These were initially generated by `derive_setters`,
+// and then manually adjusted to return `Box<Self>` instead of `Self` which
+// unfortunately is not possible with the current version of the `derive_setters`.
+//
+// BEWARE! `attach_context` is manually implemented to allow for multiple contexts
+// to be added and is not generated by `derive_setters`.
+impl RusticError {
+    /// Attach what kind the error is.
+    pub fn overwrite_kind(self, value: impl Into<ErrorKind>) -> Box<Self> {
+        Box::new(Self {
+            kind: value.into(),
+            ..self
+        })
+    }
 
-/// [`IdErrorKind`] describes the errors that can be returned by processing IDs
-#[derive(Error, Debug, Display, Copy, Clone)]
-pub enum IdErrorKind {
-    /// Hex decoding error: `{0:?}`
-    HexError(hex::FromHexError),
-}
+    /// Ask the user to report the error.
+    pub fn ask_report(self) -> Box<Self> {
+        Box::new(Self {
+            ask_report: true,
+            ..self
+        })
+    }
 
-/// [`RepositoryErrorKind`] describes the errors that can be returned by processing Repositories
-#[derive(Error, Debug, Display)]
-pub enum RepositoryErrorKind {
-    /// No repository given. Please use the --repository option.
-    NoRepositoryGiven,
-    /// No password given. Please use one of the --password-* options.
-    NoPasswordGiven,
-    /// warm-up command must contain %id!
-    NoIDSpecified,
-    /// error opening password file `{0:?}`
-    OpeningPasswordFileFailed(std::io::Error),
-    /// No repository config file found. Is there a repo at `{0}`?
-    NoRepositoryConfigFound(String),
-    /// More than one repository config file at `{0}`. Aborting.
-    MoreThanOneRepositoryConfig(String),
-    /// keys from repo and repo-hot do not match for `{0}`. Aborting.
-    KeysDontMatchForRepositories(String),
-    /// repository is a hot repository!\nPlease use as --repo-hot in combination with the normal repo. Aborting.
-    HotRepositoryFlagMissing,
-    /// repo-hot is not a hot repository! Aborting.
-    IsNotHotRepository,
-    /// incorrect password!
-    IncorrectPassword,
-    /// error running the password command
-    PasswordCommandExecutionFailed,
-    /// error reading password from command
-    ReadingPasswordFromCommandFailed,
-    /// running command `{0}`:`{1}` was not successful: `{2}`
-    CommandExecutionFailed(String, String, std::io::Error),
-    /// running command {0}:{1} returned status: `{2}`
-    CommandErrorStatus(String, String, ExitStatus),
-    /// error listing the repo config file
-    ListingRepositoryConfigFileFailed,
-    /// error listing the repo keys
-    ListingRepositoryKeysFailed,
-    /// error listing the hot repo keys
-    ListingHotRepositoryKeysFailed,
-    /// error accessing config file
-    AccessToConfigFileFailed,
-    /// Thread pool build error: `{0:?}`
-    FromThreadPoolbilderError(rayon::ThreadPoolBuildError),
-    /// reading Password failed: `{0:?}`
-    ReadingPasswordFromReaderFailed(std::io::Error),
-    /// reading Password from prompt failed: `{0:?}`
-    ReadingPasswordFromPromptFailed(std::io::Error),
-    /// Config file already exists. Aborting.
-    ConfigFileExists,
-    /// did not find id `{0}` in index
-    IdNotFound(BlobId),
-    /// no suitable backend type found
-    NoBackendTypeGiven,
-}
+    /// Attach a chain to the cause of the error.
+    pub fn attach_source(
+        self,
+        value: impl Into<Box<(dyn std::error::Error + Send + Sync)>>,
+    ) -> Box<Self> {
+        Box::new(Self {
+            source: Some(value.into()),
+            ..self
+        })
+    }
 
-/// [`IndexErrorKind`] describes the errors that can be returned by processing Indizes
-#[derive(Error, Debug, Display, Clone, Copy)]
-pub enum IndexErrorKind {
-    /// blob not found in index
-    BlobInIndexNotFound,
-    /// failed to get a blob from the backend
-    GettingBlobIndexEntryFromBackendFailed,
-    /// saving IndexFile failed
-    SavingIndexFileFailed,
-}
+    /// Attach the error message with guidance.
+    pub fn overwrite_guidance(self, value: impl Into<EcoString>) -> Box<Self> {
+        Box::new(Self {
+            guidance: value.into(),
+            ..self
+        })
+    }
 
-/// [`BackendAccessErrorKind`] describes the errors that can be returned by the various Backends
-#[derive(Error, Debug, Display)]
-pub enum BackendAccessErrorKind {
-    /// backend `{0:?}` is not supported!
-    BackendNotSupported(String),
-    /// backend `{0}` cannot be loaded: {1:?}
-    BackendLoadError(String, anyhow::Error),
-    /// no suitable id found for `{0}`
-    NoSuitableIdFound(String),
-    /// id `{0}` is not unique
-    IdNotUnique(String),
-    /// [`std::io::Error`]
-    #[error(transparent)]
-    FromIoError(#[from] std::io::Error),
-    /// [`std::num::TryFromIntError`]
-    #[error(transparent)]
-    FromTryIntError(#[from] TryFromIntError),
-    /// [`LocalDestinationErrorKind`]
-    #[error(transparent)]
-    FromLocalError(#[from] LocalDestinationErrorKind),
-    /// [`IdErrorKind`]
-    #[error(transparent)]
-    FromIdError(#[from] IdErrorKind),
-    /// [`IndexErrorKind`]
-    #[error(transparent)]
-    FromIgnoreError(#[from] IgnoreErrorKind),
-    /// [`CryptBackendErrorKind`]
-    #[error(transparent)]
-    FromBackendDecryptionError(#[from] CryptBackendErrorKind),
-    /// [`ignore::Error`]
-    #[error(transparent)]
-    GenericError(#[from] ignore::Error),
-    /// creating data in backend failed
-    CreatingDataOnBackendFailed,
-    /// writing bytes to backend failed
-    WritingBytesToBackendFailed,
-    /// removing data from backend failed
-    RemovingDataFromBackendFailed,
-    /// failed to list files on Backend
-    ListingFilesOnBackendFailed,
-    /// Path is not allowed: `{0:?}`
-    PathNotAllowed(PathBuf),
-}
+    /// Append a newline to the guidance message.
+    /// This is useful for adding additional information to the guidance.
+    pub fn append_guidance_line(self, value: impl Into<EcoString>) -> Box<Self> {
+        Box::new(Self {
+            guidance: format!("{}\n{}", self.guidance, value.into()).into(),
+            ..self
+        })
+    }
 
-/// [`ConfigFileErrorKind`] describes the errors that can be returned for `ConfigFile`s
-#[derive(Error, Debug, Display)]
-pub enum ConfigFileErrorKind {
-    /// config version not supported!
-    ConfigVersionNotSupported,
-    /// Parsing Polynomial in config failed: `{0:?}`
-    ParsingFailedForPolynomial(#[from] ParseIntError),
-}
+    /// Prepend a newline to the guidance message.
+    /// This is useful for adding additional information to the guidance.
+    pub fn prepend_guidance_line(self, value: impl Into<EcoString>) -> Box<Self> {
+        Box::new(Self {
+            guidance: format!("{}\n{}", value.into(), self.guidance).into(),
+            ..self
+        })
+    }
 
-/// [`KeyFileErrorKind`] describes the errors that can be returned for `KeyFile`s
-#[derive(Error, Debug, Display)]
-pub enum KeyFileErrorKind {
-    /// no suitable key found!
-    NoSuitableKeyFound,
-    /// listing KeyFiles failed
-    ListingKeyFilesFailed,
-    /// couldn't get KeyFile from backend
-    CouldNotGetKeyFileFromBackend,
-    /// serde_json couldn't deserialize the data: `{0:?}`
-    DeserializingFromSliceFailed(serde_json::Error),
-    /// couldn't encrypt data: `{0:?}`
-    CouldNotEncryptData(#[from] CryptoErrorKind),
-    /// serde_json couldn't serialize the data into a JSON byte vector: `{0:?}`
-    CouldNotSerializeAsJsonByteVector(serde_json::Error),
-    /// conversion from `u32` to `u8` failed: `{0:?}`
-    ConversionFromU32ToU8Failed(TryFromIntError),
-    /// output length is invalid: `{0:?}`
-    OutputLengthInvalid(scrypt::errors::InvalidOutputLen),
-    /// invalid scrypt parameters: `{0:?}`
-    InvalidSCryptParameters(scrypt::errors::InvalidParams),
-}
+    // IMPORTANT: This is manually implemented to allow for multiple contexts to be added.
+    /// Attach context to the error.
+    pub fn attach_context(
+        mut self,
+        key: impl Into<EcoString>,
+        value: impl Into<EcoString>,
+    ) -> Box<Self> {
+        self.context.push((key.into(), value.into()));
+        Box::new(self)
+    }
 
-/// [`PackFileErrorKind`] describes the errors that can be returned for `PackFile`s
-#[derive(Error, Debug, Display)]
-pub enum PackFileErrorKind {
-    /// Failed reading binary representation of the pack header: `{0:?}`
-    ReadingBinaryRepresentationFailed(binrw::Error),
-    /// Failed writing binary representation of the pack header: `{0:?}`
-    WritingBinaryRepresentationFailed(binrw::Error),
-    /// Read header length is too large! Length: `{size_real}`, file size: `{pack_size}`
-    HeaderLengthTooLarge { size_real: u32, pack_size: u32 },
-    /// Read header length doesn't match header contents! Length: `{size_real}`, computed: `{size_computed}`
-    HeaderLengthDoesNotMatchHeaderContents { size_real: u32, size_computed: u32 },
-    /// pack size computed from header doesn't match real pack isch! Computed: `{size_computed}`, real: `{size_real}`
-    HeaderPackSizeComputedDoesNotMatchRealPackFile { size_real: u32, size_computed: u32 },
-    /// partially reading the pack header from packfile failed: `{0:?}`
-    ListingKeyFilesFailed(#[from] BackendAccessErrorKind),
-    /// decrypting from binary failed
-    BinaryDecryptionFailed,
-    /// Partial read of PackFile failed
-    PartialReadOfPackfileFailed,
-    /// writing Bytes failed
-    WritingBytesFailed,
-    /// [`CryptBackendErrorKind`]
-    #[error(transparent)]
-    PackDecryptionFailed(#[from] CryptBackendErrorKind),
-}
+    /// Overwrite context of the error.
+    ///
+    /// # Caution
+    ///
+    /// This should not be used in most cases, as it will overwrite any existing contexts.
+    /// Rather use `attach_context` for multiple contexts.
+    pub fn overwrite_context(self, value: impl Into<EcoVec<(EcoString, EcoString)>>) -> Box<Self> {
+        Box::new(Self {
+            context: value.into(),
+            ..self
+        })
+    }
 
-/// [`SnapshotFileErrorKind`] describes the errors that can be returned for `SnapshotFile`s
-#[derive(Error, Debug, Display)]
-pub enum SnapshotFileErrorKind {
-    /// non-unicode hostname `{0:?}`
-    NonUnicodeHostname(OsString),
-    /// non-unicode path `{0:?}`
-    NonUnicodePath(PathBuf),
-    /// no snapshots found
-    NoSnapshotsFound,
-    /// value `{0:?}` not allowed
-    ValueNotAllowed(String),
-    /// datetime out of range: `{0:?}`
-    OutOfRange(#[from] OutOfRangeError),
-    /// reading the description file failed: `{0:?}`
-    ReadingDescriptionFailed(#[from] std::io::Error),
-    /// getting the SnapshotFile from the backend failed
-    GettingSnapshotFileFailed,
-    /// getting the SnapshotFile by ID failed
-    GettingSnapshotFileByIdFailed,
-    /// unpacking SnapshotFile result failed
-    UnpackingSnapshotFileResultFailed,
-    /// collecting IDs failed: `{0:?}`
-    FindingIdsFailed(Vec<String>),
-    /// removing dots from paths failed: `{0:?}`
-    RemovingDotsFromPathFailed(std::io::Error),
-    /// canonicalizing path failed: `{0:?}`
-    CanonicalizingPathFailed(std::io::Error),
-}
+    /// Attach the URL of the documentation for the error.
+    pub fn attach_docs_url(self, value: impl Into<EcoString>) -> Box<Self> {
+        Box::new(Self {
+            docs_url: Some(value.into()),
+            ..self
+        })
+    }
 
-/// [`PackerErrorKind`] describes the errors that can be returned for a Packer
-#[derive(Error, Debug, Display)]
-pub enum PackerErrorKind {
-    /// error returned by cryptographic libraries: `{0:?}`
-    CryptoError(#[from] CryptoErrorKind),
-    /// could not compress due to unsupported config version: `{0:?}`
-    ConfigVersionNotSupported(#[from] ConfigFileErrorKind),
-    /// compressing data failed: `{0:?}`
-    CompressingDataFailed(#[from] std::io::Error),
-    /// getting total size failed
-    GettingTotalSizeFailed,
-    /// [`crossbeam_channel::SendError`]
-    #[error(transparent)]
-    SendingCrossbeamMessageFailed(
-        #[from] crossbeam_channel::SendError<(bytes::Bytes, BlobId, Option<u32>)>,
-    ),
-    /// [`crossbeam_channel::SendError`]
-    #[error(transparent)]
-    SendingCrossbeamMessageFailedForIndexPack(
-        #[from] crossbeam_channel::SendError<(bytes::Bytes, IndexPack)>,
-    ),
-    /// couldn't create binary representation for pack header: `{0:?}`
-    CouldNotCreateBinaryRepresentationForHeader(#[from] PackFileErrorKind),
-    /// failed to write bytes in backend: `{0:?}`
-    WritingBytesFailedInBackend(#[from] BackendAccessErrorKind),
-    /// failed to write bytes for PackFile: `{0:?}`
-    WritingBytesFailedForPackFile(PackFileErrorKind),
-    /// failed to read partially encrypted data: `{0:?}`
-    ReadingPartiallyEncryptedDataFailed(#[from] CryptBackendErrorKind),
-    /// failed to partially read  data: `{0:?}`
-    PartiallyReadingDataFailed(PackFileErrorKind),
-    /// failed to add index pack: `{0:?}`
-    AddingIndexPackFailed(#[from] IndexErrorKind),
-    /// conversion for integer failed: `{0:?}`
-    IntConversionFailed(#[from] TryFromIntError),
-}
+    /// Attach an error code.
+    pub fn attach_error_code(self, value: impl Into<EcoString>) -> Box<Self> {
+        Box::new(Self {
+            error_code: Some(value.into()),
+            ..self
+        })
+    }
 
-/// [`TreeErrorKind`] describes the errors that can come up dealing with Trees
-#[derive(Error, Debug, Display)]
-pub enum TreeErrorKind {
-    /// blob `{0}` not found in index
-    BlobIdNotFound(TreeId),
-    /// `{0:?}` is not a directory
-    NotADirectory(OsString),
-    /// Path `{0:?}` not found
-    PathNotFound(OsString),
-    /// path should not contain current or parent dir
-    ContainsCurrentOrParentDirectory,
-    /// serde_json couldn't serialize the tree: `{0:?}`
-    SerializingTreeFailed(#[from] serde_json::Error),
-    /// serde_json couldn't deserialize tree from bytes of JSON text: `{0:?}`
-    DeserializingTreeFailed(serde_json::Error),
-    /// reading blob data failed `{0:?}`
-    ReadingBlobDataFailed(#[from] IndexErrorKind),
-    /// slice is not UTF-8: `{0:?}`
-    PathIsNotUtf8Conform(#[from] Utf8Error),
-    /// error in building nodestreamer: `{0:?}`
-    BuildingNodeStreamerFailed(#[from] ignore::Error),
-    /// failed to read file string from glob file: `{0:?}`
-    ReadingFileStringFromGlobsFailed(#[from] std::io::Error),
-    /// [`crossbeam_channel::SendError`]
-    #[error(transparent)]
-    SendingCrossbeamMessageFailed(#[from] crossbeam_channel::SendError<(PathBuf, TreeId, usize)>),
-    /// [`crossbeam_channel::RecvError`]
-    #[error(transparent)]
-    ReceivingCrossbreamMessageFailed(#[from] crossbeam_channel::RecvError),
-}
+    /// Attach the URL of the issue tracker for opening a new issue.
+    pub fn attach_new_issue_url(self, value: impl Into<EcoString>) -> Box<Self> {
+        Box::new(Self {
+            new_issue_url: Some(value.into()),
+            ..self
+        })
+    }
 
-/// [`CacheBackendErrorKind`] describes the errors that can be returned by a Caching action in Backends
-#[derive(Error, Debug, Display)]
-pub enum CacheBackendErrorKind {
-    /// no cache dir
-    NoCacheDirectory,
-    /// [`std::io::Error`]
-    #[error(transparent)]
-    FromIoError(#[from] std::io::Error),
-    /// setting option on CacheBackend failed
-    SettingOptionOnCacheBackendFailed,
-    /// listing with size on CacheBackend failed
-    ListingWithSizeOnCacheBackendFailed,
-    /// fully reading from CacheBackend failed
-    FullyReadingFromCacheBackendFailed,
-    /// partially reading from CacheBackend failed
-    PartiallyReadingFromBackendDataFailed,
-    /// creating data on CacheBackend failed
-    CreatingDataOnCacheBackendFailed,
-    /// writing bytes on CacheBackend failed
-    WritingBytesOnCacheBackendFailed,
-    /// removing data on CacheBackend failed
-    RemovingDataOnCacheBackendFailed,
-}
+    /// Attach the URL of an already existing issue that is related to this error.
+    pub fn attach_existing_issue_url(mut self, value: impl Into<EcoString>) -> Box<Self> {
+        self.existing_issue_urls.push(value.into());
+        Box::new(self)
+    }
 
-/// [`CryptBackendErrorKind`] describes the errors that can be returned by a Decryption action in Backends
-#[derive(Error, Debug, Display)]
-pub enum CryptBackendErrorKind {
-    /// decryption not supported for backend
-    DecryptionNotSupportedForBackend,
-    /// length of uncompressed data does not match!
-    LengthOfUncompressedDataDoesNotMatch,
-    /// failed to read encrypted data during full read
-    DecryptionInFullReadFailed,
-    /// failed to read encrypted data during partial read
-    DecryptionInPartialReadFailed,
-    /// decrypting from backend failed
-    DecryptingFromBackendFailed,
-    /// deserializing from bytes of JSON Text failed: `{0:?}`
-    DeserializingFromBytesOfJsonTextFailed(serde_json::Error),
-    /// failed to write data in crypt backend
-    WritingDataInCryptBackendFailed,
-    /// failed to list Ids
-    ListingIdsInDecryptionBackendFailed,
-    /// [`CryptoErrorKind`]
-    #[error(transparent)]
-    FromKey(#[from] CryptoErrorKind),
-    /// [`std::io::Error`]
-    #[error(transparent)]
-    FromIo(#[from] std::io::Error),
-    /// [`serde_json::Error`]
-    #[error(transparent)]
-    FromJson(#[from] serde_json::Error),
-    /// writing full hash failed in CryptBackend
-    WritingFullHashFailed,
-    /// decoding Zstd compressed data failed: `{0:?}`
-    DecodingZstdCompressedDataFailed(std::io::Error),
-    /// Serializing to JSON byte vector failed: `{0:?}`
-    SerializingToJsonByteVectorFailed(serde_json::Error),
-    /// encrypting data failed
-    EncryptingDataFailed,
-    /// Compressing and appending data failed: `{0:?}`
-    CopyEncodingDataFailed(std::io::Error),
-    /// conversion for integer failed: `{0:?}`
-    IntConversionFailed(#[from] TryFromIntError),
-    /// Extra verification failed: After decrypting and decompressing the data changed!
-    ExtraVerificationFailed,
-}
+    /// Attach the severity of the error.
+    pub fn attach_severity(self, value: impl Into<Severity>) -> Box<Self> {
+        Box::new(Self {
+            severity: Some(value.into()),
+            ..self
+        })
+    }
 
-/// [`IgnoreErrorKind`] describes the errors that can be returned by a Ignore action in Backends
-#[derive(Error, Debug, Display)]
-pub enum IgnoreErrorKind {
-    /// generic Ignore error: `{0:?}`
-    GenericError(#[from] ignore::Error),
-    /// Error reading glob file `{file:?}`: `{source:?}`
-    ErrorGlob {
-        file: PathBuf,
-        source: std::io::Error,
-    },
-    /// Unable to open file `{file:?}`: `{source:?}`
-    UnableToOpenFile {
-        file: PathBuf,
-        source: std::io::Error,
-    },
-    /// Error getting xattrs for `{path:?}`: `{source:?}`
-    ErrorXattr {
-        path: PathBuf,
-        source: std::io::Error,
-    },
-    /// Error reading link target for `{path:?}`: `{source:?}`
-    ErrorLink {
-        path: PathBuf,
-        source: std::io::Error,
-    },
-    /// [`std::num::TryFromIntError`]
-    #[error(transparent)]
-    FromTryFromIntError(#[from] TryFromIntError),
-}
+    /// Attach the status of the error.
+    pub fn attach_status(self, value: impl Into<Status>) -> Box<Self> {
+        Box::new(Self {
+            status: Some(value.into()),
+            ..self
+        })
+    }
 
-/// [`LocalDestinationErrorKind`] describes the errors that can be returned by an action on the filesystem in Backends
-#[derive(Error, Debug, Display)]
-pub enum LocalDestinationErrorKind {
-    /// directory creation failed: `{0:?}`
-    DirectoryCreationFailed(#[from] std::io::Error),
-    /// file `{0:?}` should have a parent
-    FileDoesNotHaveParent(PathBuf),
-    /// [`std::num::TryFromIntError`]   
-    #[error(transparent)]
-    FromTryIntError(#[from] TryFromIntError),
-    /// [`IdErrorKind`]
-    #[error(transparent)]
-    FromIdError(#[from] IdErrorKind),
-    /// [`walkdir::Error`]
-    #[error(transparent)]
-    FromWalkdirError(#[from] walkdir::Error),
-    /// [`Errno`]
-    #[error(transparent)]
-    #[cfg(not(windows))]
-    FromErrnoError(#[from] Errno),
-    /// listing xattrs on `{path:?}`: `{source:?}`
-    #[cfg(not(any(windows, target_os = "openbsd")))]
-    ListingXattrsFailed {
-        path: PathBuf,
-        source: std::io::Error,
-    },
-    /// setting xattr `{name}` on `{filename:?}` with `{source:?}`
-    #[cfg(not(any(windows, target_os = "openbsd")))]
-    SettingXattrFailed {
-        name: String,
-        filename: PathBuf,
-        source: std::io::Error,
-    },
-    /// getting xattr `{name}` on `{filename:?}` with `{source:?}`
-    #[cfg(not(any(windows, target_os = "openbsd")))]
-    GettingXattrFailed {
-        name: String,
-        filename: PathBuf,
-        source: std::io::Error,
-    },
-    /// removing directories failed: `{0:?}`
-    DirectoryRemovalFailed(std::io::Error),
-    /// removing file failed: `{0:?}`
-    FileRemovalFailed(std::io::Error),
-    /// setting time metadata failed: `{0:?}`
-    SettingTimeMetadataFailed(std::io::Error),
-    /// opening file failed: `{0:?}`
-    OpeningFileFailed(std::io::Error),
-    /// setting file length failed: `{0:?}`
-    SettingFileLengthFailed(std::io::Error),
-    /// can't jump to position in file: `{0:?}`
-    CouldNotSeekToPositionInFile(std::io::Error),
-    /// couldn't write to buffer: `{0:?}`
-    CouldNotWriteToBuffer(std::io::Error),
-    /// reading exact length of file contents failed: `{0:?}`
-    ReadingExactLengthOfFileFailed(std::io::Error),
-    /// setting file permissions failed: `{0:?}`
-    #[cfg(not(windows))]
-    SettingFilePermissionsFailed(std::io::Error),
-    /// failed to symlink target `{linktarget:?}` from `{filename:?}` with `{source:?}`
-    #[cfg(not(windows))]
-    SymlinkingFailed {
-        linktarget: PathBuf,
-        filename: PathBuf,
-        source: std::io::Error,
-    },
-}
-
-/// [`NodeErrorKind`] describes the errors that can be returned by an action utilizing a node in Backends
-#[derive(Error, Debug, Display)]
-pub enum NodeErrorKind {
-    /// Parsing integer failed: `{0:?}`
-    FromParseIntError(#[from] ParseIntError),
-    /// Unexpected EOF
-    #[cfg(not(windows))]
-    UnexpectedEOF,
-    /// Invalid unicode
-    #[cfg(not(windows))]
-    InvalidUnicode,
-    /// Unrecognized Escape
-    #[cfg(not(windows))]
-    UnrecognizedEscape,
-}
-
-/// [`StdInErrorKind`] describes the errors that can be returned while dealing IO from CLI
-#[derive(Error, Debug, Display)]
-pub enum StdInErrorKind {
-    /// error reading from stdin: `{0:?}`
-    StdInError(#[from] std::io::Error),
-}
-
-/// [`ArchiverErrorKind`] describes the errors that can be returned from the archiver
-#[derive(Error, Debug, Display)]
-pub enum ArchiverErrorKind {
-    /// tree stack empty
-    TreeStackEmpty,
-    /// cannot open file
-    OpeningFileFailed,
-    /// option should contain a value, but contained `None`
-    UnpackingTreeTypeOptionalFailed,
-    /// couldn't get size for archive: `{0:?}`
-    CouldNotGetSizeForArchive(#[from] BackendAccessErrorKind),
-    /// couldn't determine size for item in Archiver
-    CouldNotDetermineSize,
-    /// failed to save index: `{0:?}`
-    IndexSavingFailed(#[from] IndexErrorKind),
-    /// failed to save file in backend: `{0:?}`
-    FailedToSaveFileInBackend(#[from] CryptBackendErrorKind),
-    /// finalizing SnapshotSummary failed: `{0:?}`
-    FinalizingSnapshotSummaryFailed(#[from] SnapshotFileErrorKind),
-    /// [`PackerErrorKind`]
-    #[error(transparent)]
-    FromPacker(#[from] PackerErrorKind),
-    /// [`TreeErrorKind`]
-    #[error(transparent)]
-    FromTree(#[from] TreeErrorKind),
-    /// [`ConfigFileErrorKind`]
-    #[error(transparent)]
-    FromConfigFile(#[from] ConfigFileErrorKind),
-    /// [`std::io::Error`]
-    #[error(transparent)]
-    FromStdIo(#[from] std::io::Error),
-    /// [`StripPrefixError`]
-    #[error(transparent)]
-    FromStripPrefix(#[from] StripPrefixError),
-    /// conversion from `u64` to `usize` failed: `{0:?}`
-    ConversionFromU64ToUsizeFailed(TryFromIntError),
-}
-
-/// [`VfsErrorKind`] describes the errors that can be returned from the Virtual File System
-#[derive(Error, Debug, Display)]
-pub enum VfsErrorKind {
-    /// No directory entries for symlink found: `{0:?}`
-    NoDirectoryEntriesForSymlinkFound(OsString),
-    /// Directory exists as non-virtual directory
-    DirectoryExistsAsNonVirtual,
-    /// Only normal paths allowed
-    OnlyNormalPathsAreAllowed,
-    /// Name `{0:?}`` doesn't exist
-    NameDoesNotExist(OsString),
-}
-
-trait RusticErrorMarker: Error {}
-
-impl RusticErrorMarker for CryptoErrorKind {}
-impl RusticErrorMarker for PolynomialErrorKind {}
-impl RusticErrorMarker for IdErrorKind {}
-impl RusticErrorMarker for RepositoryErrorKind {}
-impl RusticErrorMarker for IndexErrorKind {}
-impl RusticErrorMarker for BackendAccessErrorKind {}
-impl RusticErrorMarker for ConfigFileErrorKind {}
-impl RusticErrorMarker for KeyFileErrorKind {}
-impl RusticErrorMarker for PackFileErrorKind {}
-impl RusticErrorMarker for SnapshotFileErrorKind {}
-impl RusticErrorMarker for PackerErrorKind {}
-impl RusticErrorMarker for FileErrorKind {}
-impl RusticErrorMarker for TreeErrorKind {}
-impl RusticErrorMarker for CacheBackendErrorKind {}
-impl RusticErrorMarker for CryptBackendErrorKind {}
-impl RusticErrorMarker for IgnoreErrorKind {}
-impl RusticErrorMarker for LocalDestinationErrorKind {}
-impl RusticErrorMarker for NodeErrorKind {}
-impl RusticErrorMarker for StdInErrorKind {}
-impl RusticErrorMarker for ArchiverErrorKind {}
-impl RusticErrorMarker for CommandErrorKind {}
-impl RusticErrorMarker for VfsErrorKind {}
-impl RusticErrorMarker for std::io::Error {}
-
-impl<E> From<E> for RusticError
-where
-    E: RusticErrorMarker,
-    RusticErrorKind: From<E>,
-{
-    fn from(value: E) -> Self {
-        Self(RusticErrorKind::from(value))
+    /// Overwrite the backtrace of the error.
+    ///
+    /// This should not be used in most cases, as the backtrace is automatically captured.
+    pub fn overwrite_backtrace(self, value: impl Into<Backtrace>) -> Box<Self> {
+        Box::new(Self {
+            backtrace: Some(value.into()),
+            ..self
+        })
     }
 }

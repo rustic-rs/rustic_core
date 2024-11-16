@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.4.2](https://github.com/rustic-rs/rustic_core/compare/rustic_backend-v0.4.1...rustic_backend-v0.4.2) - 2024-10-24
+
+### Fixed
+
+- fix opendal paths on windows ([#340](https://github.com/rustic-rs/rustic_core/pull/340))
+
 ## [0.4.1](https://github.com/rustic-rs/rustic_core/compare/rustic_backend-v0.4.0...rustic_backend-v0.4.1) - 2024-10-03
 
 ### Fixed

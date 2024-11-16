@@ -7,7 +7,10 @@ use derive_more::{Constructor, Display};
 use rand::{thread_rng, RngCore};
 use serde_derive::{Deserialize, Serialize};
 
-use crate::{crypto::hasher::hash, error::IdErrorKind, RusticError, RusticResult};
+use crate::{
+    crypto::hasher::hash,
+    error::{ErrorKind, RusticError, RusticResult},
+};
 
 pub(super) mod constants {
     /// The length of the hash in bytes
@@ -40,6 +43,14 @@ macro_rules! define_new_id_struct {
         )]
         #[serde(transparent)]
         pub struct $a($crate::Id);
+
+        impl $a {
+            /// impl `into_inner`
+            #[must_use]
+            pub fn into_inner(self) -> $crate::Id {
+                self.0
+            }
+        }
     };
 }
 
@@ -71,10 +82,18 @@ pub struct Id(
 );
 
 impl FromStr for Id {
-    type Err = RusticError;
+    type Err = Box<RusticError>;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let mut id = Self::default();
-        hex::decode_to_slice(s, &mut id.0).map_err(IdErrorKind::HexError)?;
+        hex::decode_to_slice(s, &mut id.0).map_err(|err| {
+            RusticError::with_source(
+                ErrorKind::InvalidInput,
+                "Failed to decode hex string `{value}` into Id. The value must be a valid hexadecimal string.",
+                err
+            )
+            .attach_context("value", s)
+        })?;
+
         Ok(id)
     }
 }
@@ -88,19 +107,15 @@ impl Id {
     ///
     /// # Errors
     ///
-    /// * [`IdErrorKind::HexError`] - If the string is not a valid hexadecimal string
+    /// * If the string is not a valid hexadecimal string
     ///
     /// # Examples
     ///
     /// ```
-    /// use rustic_core::Id;
-    ///
+    /// # use rustic_core::Id;
     /// let id = Id::from_hex("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef").unwrap();
-    ///
-    /// assert_eq!(id.to_hex().as_str(), "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef");
+    /// # assert_eq!(id.to_hex().as_str(), "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef");
     /// ```
-    ///
-    /// [`IdErrorKind::HexError`]: crate::error::IdErrorKind::HexError
     #[deprecated(note = "use FromStr::from_str instead")]
     pub fn from_hex(s: &str) -> RusticResult<Self> {
         s.parse()
@@ -134,7 +149,7 @@ impl Id {
     ///
     /// # Panics
     ///
-    /// Panics if the `hex` crate fails to encode the hash
+    /// * Panics if the `hex` crate fails to encode the hash
     // TODO! - remove the panic
     #[must_use]
     pub fn to_hex(self) -> HexId {
@@ -202,7 +217,7 @@ impl HexId {
     ///
     /// # Panics
     ///
-    /// If the [`HexId`] is not a valid UTF-8 string
+    /// * If the [`HexId`] is not a valid UTF-8 string
     #[must_use]
     pub fn as_str(&self) -> &str {
         // This is only ever filled with hex chars, which are ascii

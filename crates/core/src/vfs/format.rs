@@ -9,15 +9,15 @@ use runtime_format::{FormatKey, FormatKeyError};
 /// To be formatted with [`runtime_format`].
 ///
 /// The following keys are available:
-/// - `id`: the snapshot id
-/// - `long_id`: the snapshot id as a string
-/// - `time`: the snapshot time
-/// - `username`: the snapshot username
-/// - `hostname`: the snapshot hostname
-/// - `label`: the snapshot label
-/// - `tags`: the snapshot tags
-/// - `backup_start`: the snapshot backup start time
-/// - `backup_end`: the snapshot backup end time
+/// * `id`: the snapshot id
+/// * `long_id`: the snapshot id as a string
+/// * `time`: the snapshot time
+/// * `username`: the snapshot username
+/// * `hostname`: the snapshot hostname
+/// * `label`: the snapshot label
+/// * `tags`: the snapshot tags
+/// * `backup_start`: the snapshot backup start time
+/// * `backup_end`: the snapshot backup end time
 #[derive(Debug)]
 pub(crate) struct FormattedSnapshot<'a> {
     /// The snapshot file.

@@ -84,7 +84,7 @@ impl<P, S: IndexedFull> WebDavFS<P, S> {
     ///
     /// # Errors
     ///
-    /// * [`FsError::GeneralFailure`] - If the [`Tree`] could not be found
+    /// * If the [`Tree`] could not be found
     ///
     /// # Returns
     ///
@@ -106,7 +106,7 @@ impl<P, S: IndexedFull> WebDavFS<P, S> {
     ///
     /// # Errors
     ///
-    /// * [`FsError::GeneralFailure`] - If the [`Tree`] could not be found
+    /// * If the [`Tree`] could not be found
     ///
     /// # Returns
     ///
@@ -186,7 +186,7 @@ impl<P: Debug + Send + Sync + 'static, S: IndexedFull + Debug + Send + Sync + 's
                 .inner
                 .repo
                 .open_file(&node)
-                .map_err(|_| FsError::GeneralFailure)?;
+                .map_err(|_err| FsError::GeneralFailure)?;
             let file: Box<dyn DavFile> = Box::new(DavFsFile {
                 node,
                 open,
@@ -274,7 +274,7 @@ impl<P: Debug + Send + Sync, S: IndexedFull + Debug + Send + Sync> DavFile for D
                 .fs
                 .repo
                 .read_file_at(&self.open, self.seek, count)
-                .map_err(|_| FsError::GeneralFailure)?;
+                .map_err(|_err| FsError::GeneralFailure)?;
             self.seek += data.len();
             Ok(data)
         }

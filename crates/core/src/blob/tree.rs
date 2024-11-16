@@ -4,7 +4,7 @@ use std::{
     ffi::{OsStr, OsString},
     mem,
     path::{Component, Path, PathBuf, Prefix},
-    str,
+    str::{self, Utf8Error},
 };
 
 use crossbeam_channel::{bounded, unbounded, Receiver, Sender};
@@ -12,7 +12,6 @@ use derivative::Derivative;
 use derive_setters::Setters;
 use ignore::overrides::{Override, OverrideBuilder};
 use ignore::Match;
-
 use serde::{Deserialize, Deserializer};
 use serde_derive::Serialize;
 
@@ -23,12 +22,31 @@ use crate::{
     },
     blob::BlobType,
     crypto::hasher::hash,
-    error::{RusticResult, TreeErrorKind},
+    error::{ErrorKind, RusticError, RusticResult},
     impl_blobid,
     index::ReadGlobalIndex,
     progress::Progress,
     repofile::snapshotfile::SnapshotSummary,
 };
+
+/// [`TreeErrorKind`] describes the errors that can come up dealing with Trees
+#[derive(thiserror::Error, Debug, displaydoc::Display)]
+#[non_exhaustive]
+pub enum TreeErrorKind {
+    /// path should not contain current or parent dir
+    ContainsCurrentOrParentDirectory,
+    /// `serde_json` couldn't serialize the tree: `{0:?}`
+    SerializingTreeFailed(serde_json::Error),
+    /// slice is not UTF-8: `{0:?}`
+    PathIsNotUtf8Conform(Utf8Error),
+    /// Error `{kind}` in tree streamer: `{source}`
+    Channel {
+        kind: &'static str,
+        source: Box<dyn std::error::Error + Send + Sync>,
+    },
+}
+
+pub(crate) type TreeResult<T> = Result<T, TreeErrorKind>;
 
 pub(super) mod constants {
     /// The maximum number of trees that are loaded in parallel
@@ -81,10 +99,15 @@ impl Tree {
     /// # Returns
     ///
     /// A tuple of the serialized tree as `Vec<u8>` and the tree's ID
-    pub(crate) fn serialize(&self) -> RusticResult<(Vec<u8>, TreeId)> {
+    pub(crate) fn serialize(&self) -> TreeResult<(Vec<u8>, TreeId)> {
         let mut chunk = serde_json::to_vec(&self).map_err(TreeErrorKind::SerializingTreeFailed)?;
-        chunk.push(b'\n'); // for whatever reason, restic adds a newline, so to be compatible...
+        // # COMPATIBILITY
+        //
+        // We add a newline to be compatible with `restic` here
+        chunk.push(b'\n');
+
         let id = hash(&chunk).into();
+
         Ok((chunk, id))
     }
 
@@ -97,15 +120,12 @@ impl Tree {
     ///
     /// # Errors
     ///
-    /// * [`TreeErrorKind::BlobIdNotFound`] - If the tree ID is not found in the backend.
-    /// * [`TreeErrorKind::DeserializingTreeFailed`] - If deserialization fails.
+    /// * If the tree ID is not found in the backend.
+    /// * If deserialization fails.
     ///
     /// # Returns
     ///
     /// The deserialized tree.
-    ///
-    /// [`TreeErrorKind::BlobIdNotFound`]: crate::error::TreeErrorKind::BlobIdNotFound
-    /// [`TreeErrorKind::DeserializingTreeFailed`]: crate::error::TreeErrorKind::DeserializingTreeFailed
     pub(crate) fn from_backend(
         be: &impl DecryptReadBackend,
         index: &impl ReadGlobalIndex,
@@ -113,10 +133,25 @@ impl Tree {
     ) -> RusticResult<Self> {
         let data = index
             .get_tree(&id)
-            .ok_or_else(|| TreeErrorKind::BlobIdNotFound(id))?
+            .ok_or_else(|| {
+                RusticError::new(
+                    ErrorKind::Internal,
+                    "Tree ID `{tree_id}` not found in index",
+                )
+                .attach_context("tree_id", id.to_string())
+            })?
             .read_data(be)?;
 
-        Ok(serde_json::from_slice(&data).map_err(TreeErrorKind::DeserializingTreeFailed)?)
+        let tree = serde_json::from_slice(&data).map_err(|err| {
+            RusticError::with_source(
+                ErrorKind::Internal,
+                "Failed to deserialize tree from JSON.",
+                err,
+            )
+            .ask_report()
+        })?;
+
+        Ok(tree)
     }
 
     /// Creates a new node from a path.
@@ -129,13 +164,9 @@ impl Tree {
     ///
     /// # Errors
     ///
-    /// * [`TreeErrorKind::NotADirectory`] - If the path is not a directory.
-    /// * [`TreeErrorKind::PathNotFound`] - If the path is not found.
-    /// * [`TreeErrorKind::PathIsNotUtf8Conform`] - If the path is not UTF-8 conform.
-    ///
-    /// [`TreeErrorKind::NotADirectory`]: crate::error::TreeErrorKind::NotADirectory
-    /// [`TreeErrorKind::PathNotFound`]: crate::error::TreeErrorKind::PathNotFound
-    /// [`TreeErrorKind::PathIsNotUtf8Conform`]: crate::error::TreeErrorKind::PathIsNotUtf8Conform
+    /// * If the path is not a directory.
+    /// * If the path is not found.
+    /// * If the path is not UTF-8 conform.
     pub(crate) fn node_from_path(
         be: &impl DecryptReadBackend,
         index: &impl ReadGlobalIndex,
@@ -146,16 +177,30 @@ impl Tree {
         node.subtree = Some(id);
 
         for p in path.components() {
-            if let Some(p) = comp_to_osstr(p)? {
-                let id = node
-                    .subtree
-                    .ok_or_else(|| TreeErrorKind::NotADirectory(p.clone()))?;
+            if let Some(p) = comp_to_osstr(p).map_err(|err| {
+                RusticError::with_source(
+                    ErrorKind::Internal,
+                    "Failed to convert Path component `{path}` to OsString.",
+                    err,
+                )
+                .attach_context("path", path.display().to_string())
+                .ask_report()
+            })? {
+                let id = node.subtree.ok_or_else(|| {
+                    RusticError::new(ErrorKind::Internal, "Node `{node}` is not a directory.")
+                        .attach_context("node", p.to_string_lossy())
+                        .ask_report()
+                })?;
                 let tree = Self::from_backend(be, index, id)?;
                 node = tree
                     .nodes
                     .into_iter()
                     .find(|node| node.name() == p)
-                    .ok_or_else(|| TreeErrorKind::PathNotFound(p.clone()))?;
+                    .ok_or_else(|| {
+                        RusticError::new(ErrorKind::Internal, "Node `{node}` not found in tree.")
+                            .attach_context("node", p.to_string_lossy())
+                            .ask_report()
+                    })?;
             }
         }
 
@@ -193,9 +238,14 @@ impl Tree {
                     let node_idx = nodes.entry(node).or_insert(new_idx);
                     Some(*node_idx)
                 } else {
-                    let id = node
-                        .subtree
-                        .ok_or_else(|| TreeErrorKind::NotADirectory(path_comp[idx].clone()))?;
+                    let id = node.subtree.ok_or_else(|| {
+                        RusticError::new(
+                            ErrorKind::Internal,
+                            "Subtree ID not found for node `{node}`",
+                        )
+                        .attach_context("node", path_comp[idx].to_string_lossy())
+                        .ask_report()
+                    })?;
 
                     find_node_from_component(
                         be,
@@ -217,7 +267,16 @@ impl Tree {
         let path_comp: Vec<_> = path
             .components()
             .filter_map(|p| comp_to_osstr(p).transpose())
-            .collect::<RusticResult<_>>()?;
+            .collect::<TreeResult<_>>()
+            .map_err(|err| {
+                RusticError::with_source(
+                    ErrorKind::Internal,
+                    "Failed to convert Path component `{path}` to OsString.",
+                    err,
+                )
+                .attach_context("path", path.display().to_string())
+                .ask_report()
+            })?;
 
         // caching all results
         let mut results_cache = vec![BTreeMap::new(); path_comp.len()];
@@ -289,9 +348,15 @@ impl Tree {
             for node in tree.nodes {
                 let node_path = path.join(node.name());
                 if node.is_dir() {
-                    let id = node
-                        .subtree
-                        .ok_or_else(|| TreeErrorKind::NotADirectory(node.name()))?;
+                    let id = node.subtree.ok_or_else(|| {
+                        RusticError::new(
+                            ErrorKind::Internal,
+                            "Subtree ID not found for node `{node}`",
+                        )
+                        .attach_context("node", node.name().to_string_lossy())
+                        .ask_report()
+                    })?;
+
                     result.append(&mut find_matching_nodes_recursive(
                         be, index, id, &node_path, state, matches,
                     )?);
@@ -361,12 +426,9 @@ pub struct FindMatches {
 ///
 /// # Errors
 ///
-/// * [`TreeErrorKind::ContainsCurrentOrParentDirectory`] - If the component is a current or parent directory.
-/// * [`TreeErrorKind::PathIsNotUtf8Conform`] - If the component is not UTF-8 conform.
-///
-/// [`TreeErrorKind::ContainsCurrentOrParentDirectory`]: crate::error::TreeErrorKind::ContainsCurrentOrParentDirectory
-/// [`TreeErrorKind::PathIsNotUtf8Conform`]: crate::error::TreeErrorKind::PathIsNotUtf8Conform
-pub(crate) fn comp_to_osstr(p: Component<'_>) -> RusticResult<Option<OsString>> {
+/// * If the component is a current or parent directory.
+/// * If the component is not UTF-8 conform.
+pub(crate) fn comp_to_osstr(p: Component<'_>) -> TreeResult<Option<OsString>> {
     let s = match p {
         Component::RootDir => None,
         Component::Prefix(p) => match p.kind() {
@@ -378,7 +440,7 @@ pub(crate) fn comp_to_osstr(p: Component<'_>) -> RusticResult<Option<OsString>> 
             ),
         },
         Component::Normal(p) => Some(p.to_os_string()),
-        _ => return Err(TreeErrorKind::ContainsCurrentOrParentDirectory.into()),
+        _ => return Err(TreeErrorKind::ContainsCurrentOrParentDirectory),
     };
     Ok(s)
 }
@@ -467,12 +529,8 @@ where
     ///
     /// # Errors
     ///
-    /// * [`TreeErrorKind::BlobIdNotFound`] - If the tree ID is not found in the backend.
-    /// * [`TreeErrorKind::DeserializingTreeFailed`] - If deserialization fails.
-    ///
-    /// [`TreeErrorKind::BlobIdNotFound`]: crate::error::TreeErrorKind::BlobIdNotFound
-    /// [`TreeErrorKind::DeserializingTreeFailed`]: crate::error::TreeErrorKind::DeserializingTreeFailed
-    #[allow(unused)]
+    /// * If the tree ID is not found in the backend.
+    /// * If deserialization fails.
     pub fn new(be: BE, index: &'a I, node: &Node) -> RusticResult<Self> {
         Self::new_streamer(be, index, node, None, true)
     }
@@ -488,11 +546,8 @@ where
     ///
     /// # Errors
     ///
-    /// * [`TreeErrorKind::BlobIdNotFound`] - If the tree ID is not found in the backend.
-    /// * [`TreeErrorKind::DeserializingTreeFailed`] - If deserialization fails.
-    ///
-    /// [`TreeErrorKind::BlobIdNotFound`]: crate::error::TreeErrorKind::BlobIdNotFound
-    /// [`TreeErrorKind::DeserializingTreeFailed`]: crate::error::TreeErrorKind::DeserializingTreeFailed
+    /// * If the tree ID is not found in the backend.
+    /// * If deserialization fails.
     fn new_streamer(
         be: BE,
         index: &'a I,
@@ -517,6 +572,7 @@ where
             recursive,
         })
     }
+
     /// Creates a new `NodeStreamer` with glob patterns.
     ///
     /// # Arguments
@@ -528,11 +584,8 @@ where
     ///
     /// # Errors
     ///
-    /// * [`TreeErrorKind::BuildingNodeStreamerFailed`] - If building the streamer fails.
-    /// * [`TreeErrorKind::ReadingFileStringFromGlobsFailed`] - If reading a glob file fails.
-    ///
-    /// [`TreeErrorKind::BuildingNodeStreamerFailed`]: crate::error::TreeErrorKind::BuildingNodeStreamerFailed
-    /// [`TreeErrorKind::ReadingFileStringFromGlobsFailed`]: crate::error::TreeErrorKind::ReadingFileStringFromGlobsFailed
+    /// * If building the streamer fails.
+    /// * If reading a glob file fails.
     pub fn new_with_glob(
         be: BE,
         index: &'a I,
@@ -541,45 +594,97 @@ where
     ) -> RusticResult<Self> {
         let mut override_builder = OverrideBuilder::new("");
 
+        // FIXME: Refactor this to a function to be reused
+        // This is the same of `backend::ignore::Localsource::new`
         for g in &opts.glob {
-            _ = override_builder
-                .add(g)
-                .map_err(TreeErrorKind::BuildingNodeStreamerFailed)?;
+            _ = override_builder.add(g).map_err(|err| {
+                RusticError::with_source(
+                    ErrorKind::Internal,
+                    "Failed to add glob pattern `{glob}` to override builder.",
+                    err,
+                )
+                .attach_context("glob", g.to_string())
+                .ask_report()
+            })?;
         }
 
         for file in &opts.glob_file {
             for line in std::fs::read_to_string(file)
-                .map_err(TreeErrorKind::ReadingFileStringFromGlobsFailed)?
+                .map_err(|err| {
+                    RusticError::with_source(
+                        ErrorKind::Internal,
+                        "Failed to read string from glob file `{glob_file}` ",
+                        err,
+                    )
+                    .attach_context("glob_file", file.to_string())
+                    .ask_report()
+                })?
                 .lines()
             {
-                _ = override_builder
-                    .add(line)
-                    .map_err(TreeErrorKind::BuildingNodeStreamerFailed)?;
+                _ = override_builder.add(line).map_err(|err| {
+                    RusticError::with_source(
+                        ErrorKind::Internal,
+                        "Failed to add glob pattern line `{glob_pattern_line}` to override builder.",
+                        err,
+                    )
+                    .attach_context("glob_pattern_line", line.to_string())
+                    .ask_report()
+                })?;
             }
         }
 
-        _ = override_builder
-            .case_insensitive(true)
-            .map_err(TreeErrorKind::BuildingNodeStreamerFailed)?;
+        _ = override_builder.case_insensitive(true).map_err(|err| {
+            RusticError::with_source(
+                ErrorKind::Internal,
+                "Failed to set case insensitivity in override builder.",
+                err,
+            )
+            .ask_report()
+        })?;
         for g in &opts.iglob {
-            _ = override_builder
-                .add(g)
-                .map_err(TreeErrorKind::BuildingNodeStreamerFailed)?;
+            _ = override_builder.add(g).map_err(|err| {
+                RusticError::with_source(
+                    ErrorKind::Internal,
+                    "Failed to add iglob pattern `{iglob}` to override builder.",
+                    err,
+                )
+                .attach_context("iglob", g.to_string())
+                .ask_report()
+            })?;
         }
 
         for file in &opts.iglob_file {
             for line in std::fs::read_to_string(file)
-                .map_err(TreeErrorKind::ReadingFileStringFromGlobsFailed)?
+                .map_err(|err| {
+                    RusticError::with_source(
+                        ErrorKind::Internal,
+                        "Failed to read string from iglob file `{iglob_file}`",
+                        err,
+                    )
+                    .attach_context("iglob_file", file.to_string())
+                    .ask_report()
+                })?
                 .lines()
             {
-                _ = override_builder
-                    .add(line)
-                    .map_err(TreeErrorKind::BuildingNodeStreamerFailed)?;
+                _ = override_builder.add(line).map_err(|err| {
+                    RusticError::with_source(
+                        ErrorKind::Internal,
+                        "Failed to add iglob pattern line `{iglob_pattern_line}` to override builder.",
+                        err,
+                    )
+                    .attach_context("iglob_pattern_line", line.to_string())
+                    .ask_report()
+                })?;
             }
         }
-        let overrides = override_builder
-            .build()
-            .map_err(TreeErrorKind::BuildingNodeStreamerFailed)?;
+        let overrides = override_builder.build().map_err(|err| {
+            RusticError::with_source(
+                ErrorKind::Internal,
+                "Failed to build matcher for a set of glob overrides.",
+                err,
+            )
+            .ask_report()
+        })?;
 
         Self::new_streamer(be, index, node, Some(overrides), opts.recursive)
     }
@@ -668,9 +773,7 @@ impl<P: Progress> TreeStreamerOnce<P> {
     ///
     /// # Errors
     ///
-    /// * [`TreeErrorKind::SendingCrossbeamMessageFailed`] - If sending the message fails.
-    ///
-    /// [`TreeErrorKind::SendingCrossbeamMessageFailed`]: crate::error::TreeErrorKind::SendingCrossbeamMessageFailed
+    /// * If sending the message fails.
     pub fn new<BE: DecryptReadBackend, I: ReadGlobalIndex>(
         be: &BE,
         index: &I,
@@ -707,7 +810,19 @@ impl<P: Progress> TreeStreamerOnce<P> {
         };
 
         for (count, id) in ids.into_iter().enumerate() {
-            if !streamer.add_pending(PathBuf::new(), id, count)? {
+            if !streamer
+                .add_pending(PathBuf::new(), id, count)
+                .map_err(|err| {
+                    RusticError::with_source(
+                        ErrorKind::Internal,
+                        "Failed to add tree ID `{tree_id}` to unbounded pending queue (`{count}`).",
+                        err,
+                    )
+                    .attach_context("tree_id", id.to_string())
+                    .attach_context("count", count.to_string())
+                    .ask_report()
+                })?
+            {
                 streamer.p.inc(1);
                 streamer.finished_ids += 1;
             }
@@ -730,16 +845,18 @@ impl<P: Progress> TreeStreamerOnce<P> {
     ///
     /// # Errors
     ///
-    /// * [`TreeErrorKind::SendingCrossbeamMessageFailed`] - If sending the message fails.
-    ///
-    /// [`TreeErrorKind::SendingCrossbeamMessageFailed`]: crate::error::TreeErrorKind::SendingCrossbeamMessageFailed
-    fn add_pending(&mut self, path: PathBuf, id: TreeId, count: usize) -> RusticResult<bool> {
+    /// * If sending the message fails.
+    fn add_pending(&mut self, path: PathBuf, id: TreeId, count: usize) -> TreeResult<bool> {
         if self.visited.insert(id) {
             self.queue_in
                 .as_ref()
                 .unwrap()
                 .send((path, id, count))
-                .map_err(TreeErrorKind::SendingCrossbeamMessageFailed)?;
+                .map_err(|err| TreeErrorKind::Channel {
+                    kind: "sending crossbeam message",
+                    source: err.into(),
+                })?;
+
             self.counter[count] += 1;
             Ok(true)
         } else {
@@ -757,12 +874,17 @@ impl<P: Progress> Iterator for TreeStreamerOnce<P> {
             self.p.finish();
             return None;
         }
+
         let (path, tree, count) = match self.queue_out.recv() {
             Ok(Ok(res)) => res,
             Err(err) => {
-                return Some(Err(
-                    TreeErrorKind::ReceivingCrossbreamMessageFailed(err).into()
-                ))
+                return Some(Err(RusticError::with_source(
+                    ErrorKind::Internal,
+                    "Failed to receive tree from crossbeam channel.",
+                    err,
+                )
+                .attach_context("finished_ids", self.finished_ids.to_string())
+                .ask_report()));
             }
             Ok(Err(err)) => return Some(Err(err)),
         };
@@ -771,17 +893,32 @@ impl<P: Progress> Iterator for TreeStreamerOnce<P> {
             if let Some(id) = node.subtree {
                 let mut path = path.clone();
                 path.push(node.name());
-                match self.add_pending(path, id, count) {
+                match self.add_pending(path.clone(), id, count) {
                     Ok(_) => {}
-                    Err(err) => return Some(Err(err)),
+                    Err(err) => {
+                        return Some(Err(err).map_err(|err| {
+                            RusticError::with_source(
+                                ErrorKind::Internal,
+                                "Failed to add tree ID `{tree_id}` to pending queue (`{count}`).",
+                                err,
+                            )
+                            .attach_context("path", path.display().to_string())
+                            .attach_context("tree_id", id.to_string())
+                            .attach_context("count", count.to_string())
+                            .ask_report()
+                        }))
+                    }
                 }
             }
         }
+
         self.counter[count] -= 1;
+
         if self.counter[count] == 0 {
             self.p.inc(1);
             self.finished_ids += 1;
         }
+
         Some(Ok((path, tree)))
     }
 }

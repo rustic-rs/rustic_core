@@ -6,14 +6,13 @@ use derive_more::Constructor;
 use crate::{
     backend::{decrypt::DecryptReadBackend, FileType},
     blob::{tree::TreeId, BlobId, BlobType, DataId},
-    error::IndexErrorKind,
+    error::{ErrorKind, RusticError, RusticResult},
     index::binarysorted::{Index, IndexCollector, IndexType},
     progress::Progress,
     repofile::{
         indexfile::{IndexBlob, IndexFile},
         packfile::PackId,
     },
-    RusticResult,
 };
 
 pub(crate) mod binarysorted;
@@ -70,6 +69,7 @@ impl IndexEntry {
             self.length,
             self.uncompressed_length,
         )?;
+
         Ok(data)
     }
 
@@ -175,9 +175,7 @@ pub trait ReadIndex {
     ///
     /// # Errors
     ///
-    /// * [`IndexErrorKind::BlobInIndexNotFound`] - If the blob could not be found in the index
-    ///
-    /// [`IndexErrorKind::BlobInIndexNotFound`]: crate::error::IndexErrorKind::BlobInIndexNotFound
+    /// * If the blob could not be found in the index
     fn blob_from_backend(
         &self,
         be: &impl DecryptReadBackend,
@@ -185,7 +183,14 @@ pub trait ReadIndex {
         id: &BlobId,
     ) -> RusticResult<Bytes> {
         self.get_id(tpe, id).map_or_else(
-            || Err(IndexErrorKind::BlobInIndexNotFound.into()),
+            || {
+                Err(RusticError::new(
+                    ErrorKind::Internal,
+                    "Blob `{id}` with type `{type}` not found in index",
+                )
+                .attach_context("id", id.to_string())
+                .attach_context("type", tpe.to_string()))
+            },
             |ie| ie.read_data(be),
         )
     }
@@ -267,7 +272,7 @@ impl GlobalIndex {
     ///
     /// # Errors
     ///
-    /// If the index could not be read
+    /// * If the index could not be read
     fn new_from_collector(
         be: &impl DecryptReadBackend,
         p: &impl Progress,
@@ -302,7 +307,7 @@ impl GlobalIndex {
     ///
     /// # Errors
     ///
-    /// If the index could not be read
+    /// * If the index could not be read
     pub fn only_full_trees(be: &impl DecryptReadBackend, p: &impl Progress) -> RusticResult<Self> {
         Self::new_from_collector(be, p, IndexCollector::new(IndexType::DataIds))
     }

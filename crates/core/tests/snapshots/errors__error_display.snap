@@ -1,0 +1,39 @@
+---
+source: crates/core/tests/errors.rs
+expression: error
+---
+`rustic_core` experienced an error related to `input/output operations`.
+
+Message:
+Prepended guidance line
+A file could not be read, make sure the file at `/path/to/file` is existing and readable by the system.
+Appended guidance line
+
+For more information, see: https://rustic.cli.rs/docs/errors/C001
+
+Related issues:
+- https://github.com/rustic-rs/rustic_core/issues/209
+
+We believe this is a bug, please report it by opening an issue at:
+https://github.com/rustic-rs/rustic_core/issues/new
+
+If you can, please attach an anonymized debug log to the issue.
+
+Thank you for helping us improve rustic!
+
+
+Some additional details ...
+
+Context:
+- called: used s3 backend
+
+Caused by:
+Networking Error
+
+
+Severity: Error
+
+Status: Permanent
+
+Backtrace:
+disabled backtrace (set 'RUST_BACKTRACE="1"' environment variable to enable)

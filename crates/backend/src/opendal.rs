@@ -1,18 +1,20 @@
 /// `OpenDAL` backend for rustic.
-use std::{collections::BTreeMap, path::PathBuf, str::FromStr, sync::OnceLock};
+use std::{collections::BTreeMap, str::FromStr, sync::OnceLock};
 
-use anyhow::{anyhow, Error, Result};
 use bytes::Bytes;
 use bytesize::ByteSize;
-use log::trace;
+use log::{error, trace};
 use opendal::{
     layers::{BlockingLayer, ConcurrentLimitLayer, LoggingLayer, RetryLayer, ThrottleLayer},
-    BlockingOperator, ErrorKind, Metakey, Operator, Scheme,
+    BlockingOperator, Metakey, Operator, Scheme,
 };
 use rayon::prelude::{IntoParallelIterator, ParallelIterator};
 use tokio::runtime::Runtime;
+use typed_path::UnixPathBuf;
 
-use rustic_core::{FileType, Id, ReadBackend, WriteBackend, ALL_FILE_TYPES};
+use rustic_core::{
+    ErrorKind, FileType, Id, ReadBackend, RusticError, RusticResult, WriteBackend, ALL_FILE_TYPES,
+};
 
 mod constants {
     /// Default number of retries
@@ -45,16 +47,42 @@ pub struct Throttle {
 }
 
 impl FromStr for Throttle {
-    type Err = Error;
-    fn from_str(s: &str) -> Result<Self> {
+    type Err = Box<RusticError>;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
         let mut values = s
             .split(',')
-            .map(|s| ByteSize::from_str(s.trim()).map_err(|err| anyhow!("Error: {err}")))
-            .map(|b| -> Result<u32> { Ok(b?.as_u64().try_into()?) });
+            .map(|s| {
+                ByteSize::from_str(s.trim()).map_err(|err| {
+                    RusticError::with_source(
+                        ErrorKind::InvalidInput,
+                        "Parsing ByteSize from throttle string `{string}` failed",
+                        err,
+                    )
+                    .attach_context("string", s)
+                })
+            })
+            .map(|b| -> RusticResult<u32> {
+                let bytesize = b?.as_u64();
+                bytesize.try_into().map_err(|err| {
+                    RusticError::with_source(
+                        ErrorKind::Internal,
+                        "Converting ByteSize `{bytesize}` to u32 failed",
+                        err,
+                    )
+                    .attach_context("bytesize", bytesize.to_string())
+                })
+            });
+
         let bandwidth = values
             .next()
-            .ok_or_else(|| anyhow!("no bandwidth given"))??;
-        let burst = values.next().ok_or_else(|| anyhow!("no burst given"))??;
+            .transpose()?
+            .ok_or_else(|| RusticError::new(ErrorKind::MissingInput, "No bandwidth given."))?;
+
+        let burst = values
+            .next()
+            .transpose()?
+            .ok_or_else(|| RusticError::new(ErrorKind::MissingInput, "No burst given."))?;
+
         Ok(Self { bandwidth, burst })
     }
 }
@@ -69,20 +97,36 @@ impl OpenDALBackend {
     ///
     /// # Errors
     ///
-    /// If the path is not a valid `OpenDAL` path, an error is returned.
+    /// * If the path is not a valid `OpenDAL` path.
     ///
     /// # Returns
     ///
     /// A new `OpenDAL` backend.
-    pub fn new(path: impl AsRef<str>, options: BTreeMap<String, String>) -> Result<Self> {
+    pub fn new(path: impl AsRef<str>, options: BTreeMap<String, String>) -> RusticResult<Self> {
         let max_retries = match options.get("retry").map(String::as_str) {
             Some("false" | "off") => 0,
             None | Some("default") => constants::DEFAULT_RETRY,
-            Some(value) => usize::from_str(value)?,
+            Some(value) => usize::from_str(value).map_err(|err| {
+                RusticError::with_source(
+                    ErrorKind::InvalidInput,
+                    "Parsing retry value `{value}` failed, the value must be a valid integer.",
+                    err,
+                )
+                .attach_context("value", value.to_string())
+            })?,
         };
         let connections = options
             .get("connections")
-            .map(|c| usize::from_str(c))
+            .map(|c| {
+                usize::from_str(c).map_err(|err| {
+                    RusticError::with_source(
+                        ErrorKind::InvalidInput,
+                        "Parsing connections value `{value}` failed, the value must be a valid integer.",
+                        err,
+                    )
+                    .attach_context("value", c.to_string())
+                })
+            })
             .transpose()?;
 
         let throttle = options
@@ -90,8 +134,24 @@ impl OpenDALBackend {
             .map(|t| Throttle::from_str(t))
             .transpose()?;
 
-        let schema = Scheme::from_str(path.as_ref())?;
-        let mut operator = Operator::via_iter(schema, options)?
+        let schema = Scheme::from_str(path.as_ref()).map_err(|err| {
+            RusticError::with_source(
+                ErrorKind::InvalidInput,
+                "Parsing scheme from path `{path}` failed, the path must contain a valid scheme.",
+                err,
+            )
+            .attach_context("path", path.as_ref().to_string())
+        })?;
+        let mut operator = Operator::via_iter(schema, options)
+            .map_err(|err| {
+                RusticError::with_source(
+                    ErrorKind::Backend,
+                    "Creating Operator from path `{path}` failed. Please check the given schema and options.",
+                    err,
+                )
+                .attach_context("path", path.as_ref().to_string())
+                .attach_context("schema", schema.to_string())
+            })?
             .layer(RetryLayer::new().with_max_times(max_retries).with_jitter());
 
         if let Some(Throttle { bandwidth, burst }) = throttle {
@@ -105,7 +165,10 @@ impl OpenDALBackend {
         let _guard = runtime().enter();
         let operator = operator
             .layer(LoggingLayer::default())
-            .layer(BlockingLayer::create()?)
+            .layer(BlockingLayer::create().map_err(|err| {
+                RusticError::with_source(ErrorKind::Backend, "Creating BlockingLayer failed.", err)
+                    .ask_report()
+            })?)
             .blocking();
 
         Ok(Self { operator })
@@ -126,11 +189,12 @@ impl OpenDALBackend {
     fn path(&self, tpe: FileType, id: &Id) -> String {
         let hex_id = id.to_hex();
         match tpe {
-            FileType::Config => PathBuf::from("config"),
-            FileType::Pack => PathBuf::from("data").join(&hex_id[0..2]).join(hex_id),
-            _ => PathBuf::from(tpe.dirname()).join(hex_id),
+            FileType::Config => UnixPathBuf::from("config"),
+            FileType::Pack => UnixPathBuf::from("data")
+                .join(&hex_id[0..2])
+                .join(&hex_id[..]),
+            _ => UnixPathBuf::from(tpe.dirname()).join(&hex_id[..]),
         }
-        .to_string_lossy()
         .to_string()
     }
 }
@@ -154,21 +218,41 @@ impl ReadBackend for OpenDALBackend {
     /// # Notes
     ///
     /// If the file type is `FileType::Config`, this will return a list with a single default id.
-    fn list(&self, tpe: FileType) -> Result<Vec<Id>> {
+    fn list(&self, tpe: FileType) -> RusticResult<Vec<Id>> {
         trace!("listing tpe: {tpe:?}");
         if tpe == FileType::Config {
-            return Ok(if self.operator.is_exist("config")? {
-                vec![Id::default()]
-            } else {
-                Vec::new()
-            });
+            return Ok(
+                if self.operator.is_exist("config").map_err(|err| {
+                    RusticError::with_source(
+                        ErrorKind::Backend,
+                        "Path `config` does not exist.",
+                        err,
+                    )
+                    .ask_report()
+                })? {
+                    vec![Id::default()]
+                } else {
+                    Vec::new()
+                },
+            );
         }
+
+        let path = tpe.dirname().to_string() + "/";
 
         Ok(self
             .operator
-            .list_with(&(tpe.dirname().to_string() + "/"))
+            .list_with(&path)
             .recursive(true)
-            .call()?
+            .call()
+            .map_err(|err| {
+                RusticError::with_source(
+                    ErrorKind::Backend,
+                    "Listing all files of `{path}` failed in the backend. Please check if the given path is correct.",
+                    err,
+                )
+                .attach_context("path", path)
+                .attach_context("type", tpe.to_string())
+            })?
             .into_iter()
             .filter(|e| e.metadata().is_file())
             .filter_map(|e| e.name().parse().ok())
@@ -181,35 +265,94 @@ impl ReadBackend for OpenDALBackend {
     ///
     /// * `tpe` - The type of the files to list.
     ///
-    fn list_with_size(&self, tpe: FileType) -> Result<Vec<(Id, u32)>> {
+    fn list_with_size(&self, tpe: FileType) -> RusticResult<Vec<(Id, u32)>> {
         trace!("listing tpe: {tpe:?}");
         if tpe == FileType::Config {
             return match self.operator.stat("config") {
-                Ok(entry) => Ok(vec![(Id::default(), entry.content_length().try_into()?)]),
-                Err(err) if err.kind() == ErrorKind::NotFound => Ok(Vec::new()),
-                Err(err) => Err(err.into()),
+                Ok(entry) => Ok(vec![(
+                    Id::default(),
+                    entry.content_length().try_into().map_err(|err| {
+                        RusticError::with_source(
+                            ErrorKind::Internal,
+                            "Parsing content length `{length}` failed",
+                            err,
+                        )
+                        .attach_context("length", entry.content_length().to_string())
+                    })?,
+                )]),
+                Err(err) if err.kind() == opendal::ErrorKind::NotFound => Ok(Vec::new()),
+                Err(err) => Err(err).map_err(|err|
+                    RusticError::with_source(
+                        ErrorKind::Backend,
+                        "Getting Metadata of type `{type}` failed in the backend. Please check if `{type}` exists.",
+                        err,
+                    )
+                    .attach_context("type", tpe.to_string())
+                ),
             };
         }
 
+        let path = tpe.dirname().to_string() + "/";
         Ok(self
             .operator
-            .list_with(&(tpe.dirname().to_string() + "/"))
+            .list_with(&path)
             .recursive(true)
             .metakey(Metakey::ContentLength)
-            .call()?
+            .call()
+            .map_err(|err|
+                RusticError::with_source(
+                    ErrorKind::Backend,
+                    "Listing all files of `{type}` in directory `{path}` and their sizes failed in the backend. Please check if the given path is correct.",
+                    err,
+                )
+                .attach_context("path", path)
+                .attach_context("type", tpe.to_string())
+            )?
             .into_iter()
             .filter(|e| e.metadata().is_file())
-            .map(|e| -> Result<(Id, u32)> {
-                Ok((e.name().parse()?, e.metadata().content_length().try_into()?))
+            .map(|e| -> RusticResult<(Id, u32)> {
+                Ok((
+                    e.name().parse()?,
+                    e.metadata()
+                        .content_length()
+                        .try_into()
+                        .map_err(|err|
+                            RusticError::with_source(
+                                ErrorKind::Internal,
+                                "Parsing content length `{length}` failed",
+                                err,
+                            )
+                            .attach_context("length", e.metadata().content_length().to_string())
+                        )?,
+                ))
             })
-            .filter_map(Result::ok)
+            .inspect(|r| {
+                if let Err(err) = r {
+                    error!("Error while listing files: {err:?}");
+                }
+            })
+            .filter_map(RusticResult::ok)
             .collect())
     }
 
-    fn read_full(&self, tpe: FileType, id: &Id) -> Result<Bytes> {
+    fn read_full(&self, tpe: FileType, id: &Id) -> RusticResult<Bytes> {
         trace!("reading tpe: {tpe:?}, id: {id}");
 
-        Ok(self.operator.read(&self.path(tpe, id))?.to_bytes())
+        let path = self.path(tpe, id);
+        Ok(self
+            .operator
+            .read(&path)
+            .map_err(|err|
+                RusticError::with_source(
+                    ErrorKind::Backend,
+                    "Reading file `{path}` failed in the backend. Please check if the given path is correct.",
+                    err,
+                )
+                .attach_context("path", path)
+                .attach_context("type", tpe.to_string())
+                .attach_context("id", id.to_string())
+            )?
+            .to_bytes())
     }
 
     fn read_partial(
@@ -219,37 +362,72 @@ impl ReadBackend for OpenDALBackend {
         _cacheable: bool,
         offset: u32,
         length: u32,
-    ) -> Result<Bytes> {
+    ) -> RusticResult<Bytes> {
         trace!("reading tpe: {tpe:?}, id: {id}, offset: {offset}, length: {length}");
         let range = u64::from(offset)..u64::from(offset + length);
+        let path = self.path(tpe, id);
+
         Ok(self
             .operator
-            .read_with(&self.path(tpe, id))
+            .read_with(&path)
             .range(range)
-            .call()?
+            .call()
+            .map_err(|err|
+                RusticError::with_source(
+                    ErrorKind::Backend,
+                    "Partially reading file `{path}` failed in the backend. Please check if the given path is correct.",
+                    err,
+                )
+                .attach_context("path", path)
+                .attach_context("type", tpe.to_string())
+                .attach_context("id", id.to_string())
+                .attach_context("offset", offset.to_string())
+                .attach_context("length", length.to_string())
+            )?
             .to_bytes())
     }
 }
 
 impl WriteBackend for OpenDALBackend {
     /// Create a repository on the backend.
-    fn create(&self) -> Result<()> {
+    fn create(&self) -> RusticResult<()> {
         trace!("creating repo at {:?}", self.location());
 
         for tpe in ALL_FILE_TYPES {
+            let path = tpe.dirname().to_string() + "/";
             self.operator
-                .create_dir(&(tpe.dirname().to_string() + "/"))?;
+                .create_dir(&path)
+                .map_err(|err|
+                    RusticError::with_source(
+                        ErrorKind::Backend,
+                        "Creating directory `{path}` failed in the backend `{location}`. Please check if the given path is correct.",
+                        err,
+                    )
+                    .attach_context("path", path)
+                    .attach_context("location", self.location())
+                    .attach_context("type", tpe.to_string())
+                )?;
         }
         // creating 256 dirs can be slow on remote backends, hence we parallelize it.
-        (0u8..=255).into_par_iter().try_for_each(|i| {
-            self.operator.create_dir(
-                &(PathBuf::from("data")
-                    .join(hex::encode([i]))
-                    .to_string_lossy()
-                    .to_string()
-                    + "/"),
-            )
-        })?;
+        (0u8..=255)
+            .into_par_iter()
+            .try_for_each(|i| {
+                let path = UnixPathBuf::from("data")
+                        .join(hex::encode([i]))
+                        .to_string_lossy()
+                        .to_string()
+                        + "/";
+
+                self.operator.create_dir(&path).map_err(|err|
+                    RusticError::with_source(
+                        ErrorKind::Backend,
+                        "Creating directory `{path}` failed in the backend `{location}`. Please check if the given path is correct.",
+                        err,
+                    )
+                    .attach_context("path", path)
+                    .attach_context("location", self.location())
+                )
+            })?;
 
         Ok(())
     }
@@ -262,10 +440,26 @@ impl WriteBackend for OpenDALBackend {
     /// * `id` - The id of the file.
     /// * `cacheable` - Whether the file is cacheable.
     /// * `buf` - The bytes to write.
-    fn write_bytes(&self, tpe: FileType, id: &Id, _cacheable: bool, buf: Bytes) -> Result<()> {
+    fn write_bytes(
+        &self,
+        tpe: FileType,
+        id: &Id,
+        _cacheable: bool,
+        buf: Bytes,
+    ) -> RusticResult<()> {
         trace!("writing tpe: {:?}, id: {}", &tpe, &id);
         let filename = self.path(tpe, id);
-        self.operator.write(&filename, buf)?;
+        self.operator.write(&filename, buf).map_err(|err| {
+            RusticError::with_source(
+                ErrorKind::Backend,
+                "Writing file `{path}` failed in the backend. Please check if the given path is correct.",
+                err,
+            )
+            .attach_context("path", filename)
+            .attach_context("type", tpe.to_string())
+            .attach_context("id", id.to_string())
+        })?;
+
         Ok(())
     }
 
@@ -276,21 +470,30 @@ impl WriteBackend for OpenDALBackend {
     /// * `tpe` - The type of the file.
     /// * `id` - The id of the file.
     /// * `cacheable` - Whether the file is cacheable.
-    fn remove(&self, tpe: FileType, id: &Id, _cacheable: bool) -> Result<()> {
+    fn remove(&self, tpe: FileType, id: &Id, _cacheable: bool) -> RusticResult<()> {
         trace!("removing tpe: {:?}, id: {}", &tpe, &id);
         let filename = self.path(tpe, id);
-        self.operator.delete(&filename)?;
+        self.operator.delete(&filename).map_err(|err| {
+            RusticError::with_source(
+                ErrorKind::Backend,
+                "Deleting file `{path}` failed in the backend. Please check if the given path is correct.",
+                err,
+            )
+            .attach_context("path", filename)
+            .attach_context("type", tpe.to_string())
+            .attach_context("id", id.to_string())
+        })?;
         Ok(())
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use std::fs;
-
     use super::*;
+    use anyhow::Result;
     use rstest::rstest;
     use serde::Deserialize;
+    use std::{fs, path::PathBuf};
 
     #[rstest]
     #[case("10kB,10MB", Throttle{bandwidth:10_000, burst:10_000_000})]

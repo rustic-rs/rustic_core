@@ -1,8 +1,8 @@
 use crate::SupportedBackend;
-use anyhow::Result;
+use rustic_core::{ErrorKind, RusticError, RusticResult};
 
 /// A backend location. This is a string that represents the location of the backend.
-#[derive(PartialEq, Eq, Debug)]
+#[derive(PartialEq, Eq, Debug, Clone)]
 pub struct BackendLocation(String);
 
 impl std::ops::Deref for BackendLocation {
@@ -34,7 +34,7 @@ impl std::fmt::Display for BackendLocation {
 ///
 /// # Errors
 ///
-/// If the url is not a valid url, an error is returned.
+/// * If the url is not a valid url, an error is returned.
 ///
 /// # Returns
 ///
@@ -45,7 +45,7 @@ impl std::fmt::Display for BackendLocation {
 /// If the url is a windows path, the type will be "local".
 pub fn location_to_type_and_path(
     raw_location: &str,
-) -> Result<(SupportedBackend, BackendLocation)> {
+) -> RusticResult<(SupportedBackend, BackendLocation)> {
     match raw_location.split_once(':') {
         #[cfg(windows)]
         Some((drive_letter, _)) if drive_letter.len() == 1 && !raw_location.contains('/') => Ok((
@@ -58,7 +58,14 @@ pub fn location_to_type_and_path(
             BackendLocation(raw_location.to_string()),
         )),
         Some((scheme, path)) => Ok((
-            SupportedBackend::try_from(scheme)?,
+            SupportedBackend::try_from(scheme).map_err(|err| {
+                RusticError::with_source(
+                ErrorKind::Unsupported,
+                "The backend type `{name}` is not supported. Please check the given backend and try again.",
+                err
+            )
+            .attach_context("name", scheme)
+            })?,
             BackendLocation(path.to_string()),
         )),
         None => Ok((

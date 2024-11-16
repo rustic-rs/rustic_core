@@ -6,7 +6,7 @@ use rayon::ThreadPoolBuilder;
 
 use crate::{
     backend::{FileType, ReadBackend},
-    error::{RepositoryErrorKind, RusticResult},
+    error::{ErrorKind, RusticError, RusticResult},
     progress::{Progress, ProgressBars},
     repofile::packfile::PackId,
     repository::Repository,
@@ -27,11 +27,8 @@ pub(super) mod constants {
 ///
 /// # Errors
 ///
-/// * [`RepositoryErrorKind::FromSplitError`] - If the command could not be parsed.
-/// * [`RepositoryErrorKind::FromThreadPoolbilderError`] - If the thread pool could not be created.
-///
-/// [`RepositoryErrorKind::FromSplitError`]: crate::error::RepositoryErrorKind::FromSplitError
-/// [`RepositoryErrorKind::FromThreadPoolbilderError`]: crate::error::RepositoryErrorKind::FromThreadPoolbilderError
+/// * If the command could not be parsed.
+/// * If the thread pool could not be created.
 pub(crate) fn warm_up_wait<P: ProgressBars, S>(
     repo: &Repository<P, S>,
     packs: impl ExactSizeIterator<Item = PackId>,
@@ -54,11 +51,8 @@ pub(crate) fn warm_up_wait<P: ProgressBars, S>(
 ///
 /// # Errors
 ///
-/// * [`RepositoryErrorKind::FromSplitError`] - If the command could not be parsed.
-/// * [`RepositoryErrorKind::FromThreadPoolbilderError`] - If the thread pool could not be created.
-///
-/// [`RepositoryErrorKind::FromSplitError`]: crate::error::RepositoryErrorKind::FromSplitError
-/// [`RepositoryErrorKind::FromThreadPoolbilderError`]: crate::error::RepositoryErrorKind::FromThreadPoolbilderError
+/// * If the command could not be parsed.
+/// * If the thread pool could not be created.
 pub(crate) fn warm_up<P: ProgressBars, S>(
     repo: &Repository<P, S>,
     packs: impl ExactSizeIterator<Item = PackId>,
@@ -81,9 +75,7 @@ pub(crate) fn warm_up<P: ProgressBars, S>(
 ///
 /// # Errors
 ///
-/// * [`RepositoryErrorKind::FromSplitError`] - If the command could not be parsed.
-///
-/// [`RepositoryErrorKind::FromSplitError`]: crate::error::RepositoryErrorKind::FromSplitError
+/// * If the command could not be parsed.
 fn warm_up_command<P: ProgressBars>(
     packs: impl ExactSizeIterator<Item = PackId>,
     command: &CommandInput,
@@ -97,8 +89,21 @@ fn warm_up_command<P: ProgressBars>(
             .iter()
             .map(|c| c.replace("%id", &pack.to_hex()))
             .collect();
+
         debug!("calling {command:?}...");
-        let status = Command::new(command.command()).args(&args).status()?;
+
+        let status = Command::new(command.command())
+            .args(&args)
+            .status()
+            .map_err(|err| {
+                RusticError::with_source(
+                    ErrorKind::ExternalCommand,
+                    "Error in executing warm-up command `{command}`.",
+                    err,
+                )
+                .attach_context("command", command.to_string())
+            })?;
+
         if !status.success() {
             warn!("warm-up command was not successful for pack {pack:?}. {status}");
         }
@@ -116,9 +121,7 @@ fn warm_up_command<P: ProgressBars>(
 ///
 /// # Errors
 ///
-/// * [`RepositoryErrorKind::FromThreadPoolbilderError`] - If the thread pool could not be created.
-///
-/// [`RepositoryErrorKind::FromThreadPoolbilderError`]: crate::error::RepositoryErrorKind::FromThreadPoolbilderError
+/// * If the thread pool could not be created.
 fn warm_up_repo<P: ProgressBars, S>(
     repo: &Repository<P, S>,
     packs: impl ExactSizeIterator<Item = PackId>,
@@ -129,7 +132,13 @@ fn warm_up_repo<P: ProgressBars, S>(
     let pool = ThreadPoolBuilder::new()
         .num_threads(constants::MAX_READER_THREADS_NUM)
         .build()
-        .map_err(RepositoryErrorKind::FromThreadPoolbilderError)?;
+        .map_err(|err| {
+            RusticError::with_source(
+                ErrorKind::Internal,
+                "Failed to create thread pool for warm-up. Please try again.",
+                err,
+            )
+        })?;
     let progress_bar_ref = &progress_bar;
     let backend = &repo.be;
     pool.in_place_scope(|scope| {

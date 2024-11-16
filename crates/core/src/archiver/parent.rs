@@ -6,10 +6,9 @@ use std::{
 use log::warn;
 
 use crate::{
-    archiver::tree::TreeType,
+    archiver::{tree::TreeType, TreeStackEmptyError},
     backend::{decrypt::DecryptReadBackend, node::Node},
     blob::tree::{Tree, TreeId},
-    error::{ArchiverErrorKind, RusticResult},
     index::ReadGlobalIndex,
 };
 
@@ -218,14 +217,9 @@ impl Parent {
     ///
     /// # Errors
     ///
-    /// * [`ArchiverErrorKind::TreeStackEmpty`] - If the tree stack is empty.
-    ///
-    /// [`ArchiverErrorKind::TreeStackEmpty`]: crate::error::ArchiverErrorKind::TreeStackEmpty
-    fn finish_dir(&mut self) -> RusticResult<()> {
-        let (tree, node_idx) = self
-            .stack
-            .pop()
-            .ok_or_else(|| ArchiverErrorKind::TreeStackEmpty)?;
+    /// * If the tree stack is empty.
+    fn finish_dir(&mut self) -> Result<(), TreeStackEmptyError> {
+        let (tree, node_idx) = self.stack.pop().ok_or(TreeStackEmptyError)?;
 
         self.tree = tree;
         self.node_idx = node_idx;
@@ -252,15 +246,13 @@ impl Parent {
     ///
     /// # Errors
     ///
-    /// * [`ArchiverErrorKind::TreeStackEmpty`] - If the tree stack is empty.
-    ///
-    /// [`ArchiverErrorKind::TreeStackEmpty`]: crate::error::ArchiverErrorKind::TreeStackEmpty
+    /// * If the tree stack is empty.
     pub(crate) fn process<O>(
         &mut self,
         be: &impl DecryptReadBackend,
         index: &impl ReadGlobalIndex,
         item: TreeType<O, OsString>,
-    ) -> RusticResult<ItemWithParent<O>> {
+    ) -> Result<ItemWithParent<O>, TreeStackEmptyError> {
         let result = match item {
             TreeType::NewTree((path, node, tree)) => {
                 let parent_result = self
