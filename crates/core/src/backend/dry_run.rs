@@ -103,6 +103,10 @@ impl<BE: DecryptFullBackend> ReadBackend for DryRunBackend<BE> {
     ) -> RusticResult<Bytes> {
         self.be.read_partial(tpe, id, cacheable, offset, length)
     }
+
+    fn is_async_incompatible(&self) -> bool {
+        self.be.is_async_incompatible()
+    }
 }
 
 impl<BE: DecryptFullBackend> DecryptWriteBackend for DryRunBackend<BE> {

@@ -622,6 +622,10 @@ impl<C: CryptoKey> ReadBackend for DecryptBackend<C> {
     ) -> RusticResult<Bytes> {
         self.be.read_partial(tpe, id, cacheable, offset, length)
     }
+
+    fn is_async_incompatible(&self) -> bool {
+        self.be.is_async_incompatible()
+    }
 }
 
 impl<C: CryptoKey> WriteBackend for DecryptBackend<C> {
