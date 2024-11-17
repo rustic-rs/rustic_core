@@ -1,5 +1,4 @@
-[target.x86_64-pc-windows-gnu]
-pre-build = [ # additional commands to run prior to building the package
-  "dpkg --add-architecture $CROSS_DEB_ARCH",
-  "apt-get update && apt-get --assume-yes install nasm:$CROSS_DEB_ARCH",
+[target.x86_64-pc-windows-gnu.env]
+passthrough = [
+  "AWS_LC_SYS_PREBUILT_NASM=1",
 ]
