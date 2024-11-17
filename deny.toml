@@ -74,6 +74,10 @@ ignore = [
   # FIXME!: See https://github.com/RustCrypto/RSA/issues/19#issuecomment-1822995643.
   # There is no workaround available yet.
   "RUSTSEC-2023-0071",
+  # FIXME: backoff => used in backend, need to be replaced with backon
+  "RUSTSEC-2024-0384",
+  # FIXME: derivative => used for default impls
+  "RUSTSEC-2024-0388",
   # { id = "RUSTSEC-0000-0000", reason = "you can specify a reason the advisory is ignored" },
   # "a-crate-that-is-yanked@0.1.1", # you can also ignore yanked crate versions if you wish
   # { crate = "a-crate-that-is-yanked@0.1.1", reason = "you can specify why you are ignoring the yanked crate" },
@@ -101,6 +105,7 @@ allow = [
   "CC0-1.0",
   "BSD-3-Clause",
   "OpenSSL",
+  "Unicode-3.0",
 ]
 # The confidence threshold for detecting a license from license text.
 # The higher the value, the more closely the license text must be to the

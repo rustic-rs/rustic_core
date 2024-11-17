@@ -222,7 +222,7 @@ impl ReadBackend for OpenDALBackend {
         trace!("listing tpe: {tpe:?}");
         if tpe == FileType::Config {
             return Ok(
-                if self.operator.is_exist("config").map_err(|err| {
+                if self.operator.exists("config").map_err(|err| {
                     RusticError::with_source(
                         ErrorKind::Backend,
                         "Path `config` does not exist.",
