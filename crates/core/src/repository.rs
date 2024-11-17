@@ -1874,7 +1874,7 @@ impl<P: ProgressBars, S: IndexedTree> Repository<P, S> {
 impl<P: ProgressBars, S: IndexedIds> Repository<P, S> {
     /// Run a backup of `source` using the given options.
     ///
-    /// You have to give a preflled [`SnapshotFile`] which is modified and saved.
+    /// You have to give a prefilled [`SnapshotFile`] which is modified and saved.
     ///
     /// # Arguments
     ///

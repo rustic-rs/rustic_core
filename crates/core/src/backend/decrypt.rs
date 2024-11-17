@@ -216,7 +216,7 @@ pub trait DecryptWriteBackend: WriteBackend + Clone + 'static {
     ///
     /// # Returns
     ///
-    /// The processed data, the original data length and when compression is used, the uncomressed length
+    /// The processed data, the original data length and when compression is used, the uncompressed length
     fn process_data(&self, data: &[u8]) -> RusticResult<(Vec<u8>, u32, Option<NonZeroU32>)>;
 
     /// Writes the given data to the backend without compression and returns the id of the data.
@@ -559,7 +559,7 @@ impl<C: CryptoKey> DecryptWriteBackend for DecryptBackend<C> {
     ///
     /// # Arguments
     ///
-    /// * `extra_echeck` - The compression level to use for zstd.
+    /// * `extra_verify` - The compression level to use for zstd.
     fn set_extra_verify(&mut self, extra_verify: bool) {
         self.extra_verify = extra_verify;
     }
