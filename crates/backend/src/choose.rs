@@ -1,6 +1,6 @@
 //! This module contains [`BackendOptions`] and helpers to choose a backend from a given url.
 use derive_setters::Setters;
-use std::{collections::HashMap, sync::Arc};
+use std::{collections::BTreeMap, sync::Arc};
 use strum_macros::{Display, EnumString};
 
 use rustic_core::{ErrorKind, RepositoryBackends, RusticError, RusticResult, WriteBackend};
@@ -48,18 +48,18 @@ pub struct BackendOptions {
 
     /// Other options for this repository (hot and cold part)
     #[cfg_attr(feature = "clap", clap(skip))]
-    #[cfg_attr(feature = "merge", merge(strategy = conflate::hashmap::ignore))]
-    pub options: HashMap<String, String>,
+    #[cfg_attr(feature = "merge", merge(strategy = conflate::btreemap::append_or_ignore))]
+    pub options: BTreeMap<String, String>,
 
     /// Other options for the hot repository
     #[cfg_attr(feature = "clap", clap(skip))]
-    #[cfg_attr(feature = "merge", merge(strategy = conflate::hashmap::ignore))]
-    pub options_hot: HashMap<String, String>,
+    #[cfg_attr(feature = "merge", merge(strategy = conflate::btreemap::append_or_ignore))]
+    pub options_hot: BTreeMap<String, String>,
 
     /// Other options for the cold repository
     #[cfg_attr(feature = "clap", clap(skip))]
-    #[cfg_attr(feature = "merge", merge(strategy = conflate::hashmap::ignore))]
-    pub options_cold: HashMap<String, String>,
+    #[cfg_attr(feature = "merge", merge(strategy = conflate::btreemap::append_or_ignore))]
+    pub options_cold: BTreeMap<String, String>,
 }
 
 impl BackendOptions {
@@ -109,7 +109,7 @@ impl BackendOptions {
     fn get_backend(
         &self,
         repo_string: Option<&String>,
-        options: HashMap<String, String>,
+        options: BTreeMap<String, String>,
     ) -> RusticResult<Option<Arc<dyn WriteBackend>>> {
         repo_string
             .map(|string| {
@@ -142,7 +142,7 @@ pub trait BackendChoice {
     fn to_backend(
         &self,
         location: BackendLocation,
-        options: Option<HashMap<String, String>>,
+        options: Option<BTreeMap<String, String>>,
     ) -> RusticResult<Arc<dyn WriteBackend>>;
 }
 
@@ -180,7 +180,7 @@ impl BackendChoice for SupportedBackend {
     fn to_backend(
         &self,
         location: BackendLocation,
-        options: Option<HashMap<String, String>>,
+        options: Option<BTreeMap<String, String>>,
     ) -> RusticResult<Arc<dyn WriteBackend>> {
         let options = options.unwrap_or_default();
 

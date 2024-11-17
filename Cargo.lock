@@ -739,9 +739,9 @@ dependencies = [
 
 [[package]]
 name = "conflate"
-version = "0.2.0"
+version = "0.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "06f57b4959992e02db0da86fcb4b0c80dc112d31b823de27f61576b1c809bc45"
+checksum = "ce1803bd64597191f7f4afa2dd0437f76b7b3c065d0e4566380012406c28eaac"
 dependencies = [
  "conflate_derive",
  "num-traits",
