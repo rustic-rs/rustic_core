@@ -174,6 +174,21 @@ pub trait ReadBackend: Send + Sync + 'static {
     fn warm_up(&self, _tpe: FileType, _id: &Id) -> RusticResult<()> {
         Ok(())
     }
+
+    /// Getter to now if some backend is compatible
+    /// with async features in `rustic_core` implementations.
+    ///
+    /// ## Default impl
+    ///
+    /// A default impl allow these change to be non-breaking.
+    /// By default it is `false`, async compatibility is opt-in.
+    ///
+    /// ## Temporary
+    ///
+    /// see <https://github.com/rustic-rs/rustic/issues/1181>
+    fn is_async_compatible(&self) -> bool {
+        false
+    }
 }
 
 /// Trait for Searching in a backend.
@@ -343,7 +358,7 @@ pub trait WriteBackend: ReadBackend {
 mock! {
     Backend {}
 
-    impl ReadBackend for Backend{
+    impl ReadBackend for Backend {
         fn location(&self) -> String;
         fn list_with_size(&self, tpe: FileType) -> RusticResult<Vec<(Id, u32)>>;
         fn read_full(&self, tpe: FileType, id: &Id) -> RusticResult<Bytes>;
@@ -355,6 +370,7 @@ mock! {
             offset: u32,
             length: u32,
         ) -> RusticResult<Bytes>;
+        fn is_async_compatible(&self) -> bool;
     }
 
     impl WriteBackend for Backend {
@@ -399,6 +415,9 @@ impl ReadBackend for Arc<dyn WriteBackend> {
     ) -> RusticResult<Bytes> {
         self.deref()
             .read_partial(tpe, id, cacheable, offset, length)
+    }
+    fn is_async_compatible(&self) -> bool {
+        self.deref().is_async_compatible()
     }
 }
 

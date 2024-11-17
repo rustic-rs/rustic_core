@@ -398,6 +398,13 @@ impl ReadBackend for LocalBackend {
 
         Ok(vec.into())
     }
+
+    /// [`LocalBackend`] doesn't use `async`, even under the hood.
+    ///
+    /// So it can be called from `async` features.
+    fn is_async_compatible(&self) -> bool {
+        true
+    }
 }
 
 impl WriteBackend for LocalBackend {
