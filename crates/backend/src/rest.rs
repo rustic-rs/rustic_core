@@ -121,6 +121,14 @@ impl backon_extension::NotifyWhenRetry for reqwest::Error {
     }
 }
 
+fn construct_backoff_error(err: reqwest::Error) -> Box<RusticError> {
+    RusticError::with_source(
+        ErrorKind::Backend,
+        "Backoff failed, please check the logs for more information.",
+        err,
+    )
+}
+
 /// A backend implementation that uses REST to access the backend.
 #[derive(Clone, Debug)]
 pub struct RestBackend {
@@ -333,13 +341,7 @@ impl ReadBackend for RestBackend {
                     })
                     .collect())
             })
-            .map_err(|err| {
-                RusticError::with_source(
-                    ErrorKind::Backend,
-                    "Backoff failed, please check the logs for more information.",
-                    err,
-                )
-            })
+            .map_err(construct_backoff_error)
     }
 
     /// Returns the content of a file.
@@ -369,13 +371,7 @@ impl ReadBackend for RestBackend {
                     .error_for_status()?
                     .bytes()?)
             })
-            .map_err(|err| {
-                RusticError::with_source(
-                    ErrorKind::Backend,
-                    "Backoff failed, please check the logs for more information.",
-                    err,
-                )
-            })
+            .map_err(construct_backoff_error)
     }
 
     /// Returns a part of the content of a file.
@@ -420,13 +416,7 @@ impl ReadBackend for RestBackend {
                     .error_for_status()?
                     .bytes()?)
             })
-            .map_err(|err| {
-                RusticError::with_source(
-                    ErrorKind::Backend,
-                    "Backoff failed, please check the logs for more information.",
-                    err,
-                )
-            })
+            .map_err(construct_backoff_error)
     }
 }
 
@@ -465,13 +455,7 @@ impl WriteBackend for RestBackend {
                 _ = self.client.post(url.clone()).send()?.error_for_status()?;
                 Ok(())
             })
-            .map_err(|err| {
-                RusticError::with_source(
-                    ErrorKind::Backend,
-                    "Backoff failed, please check the logs for more information.",
-                    err,
-                )
-            })
+            .map_err(construct_backoff_error)
     }
 
     /// Writes bytes to the given file.
@@ -512,13 +496,7 @@ impl WriteBackend for RestBackend {
                     .error_for_status()?;
                 Ok(())
             })
-            .map_err(|err| {
-                RusticError::with_source(
-                    ErrorKind::Backend,
-                    "Backoff failed, please check the logs for more information.",
-                    err,
-                )
-            })
+            .map_err(construct_backoff_error)
     }
 
     /// Removes the given file.
@@ -543,12 +521,6 @@ impl WriteBackend for RestBackend {
                 _ = self.client.delete(url.clone()).send()?.error_for_status()?;
                 Ok(())
             })
-            .map_err(|err| {
-                RusticError::with_source(
-                    ErrorKind::Backend,
-                    "Backoff failed, please check the logs for more information.",
-                    err,
-                )
-            })
+            .map_err(construct_backoff_error)
     }
 }
