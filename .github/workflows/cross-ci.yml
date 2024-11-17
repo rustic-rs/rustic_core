@@ -11,6 +11,9 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
   cancel-in-progress: true
 
+env:
+  AWS_LC_SYS_PREBUILT_NASM: 1
+
 jobs:
   cross-check:
     # Only run if the commit doesn't come from a merged PR, we assume CI is running in the PR as well
