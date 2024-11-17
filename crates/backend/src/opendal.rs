@@ -391,7 +391,7 @@ impl ReadBackend for OpenDALBackend {
     ///
     /// When implementing `rustic_core` using this backend in some `async` features will not work.
     ///
-    /// see https://github.com/rustic-rs/rustic/issues/1181
+    /// see <https://github.com/rustic-rs/rustic/issues/1181>
     fn is_async_incompatible(&self) -> bool {
         true
     }

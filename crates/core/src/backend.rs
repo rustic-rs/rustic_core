@@ -178,7 +178,7 @@ pub trait ReadBackend: Send + Sync + 'static {
     /// Check if one of this repository backend is incompatible
     /// with async features in `rustic_core` implementations.
     ///
-    /// see https://github.com/rustic-rs/rustic/issues/1181
+    /// see <https://github.com/rustic-rs/rustic/issues/1181>
     fn is_async_incompatible(&self) -> bool;
 }
 

@@ -690,14 +690,14 @@ impl<P, S> Repository<P, S> {
     /// Check if one of this repository backend is incompatible
     /// with async features in `rustic_core` implementations.
     ///
-    /// see https://github.com/rustic-rs/rustic/issues/1181
+    /// see <https://github.com/rustic-rs/rustic/issues/1181>
     pub fn is_async_incompatible(&self) -> bool {
         // check if be or be_hot is incompatible with async
         self.be.is_async_incompatible()
             || self
                 .be_hot
                 .as_ref()
-                .map_or(false, |be_hot| be_hot.is_async_incompatible())
+                .map_or(false, ReadBackend::is_async_incompatible)
     }
 }
 
