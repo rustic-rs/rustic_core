@@ -44,7 +44,7 @@ mod backon_extension {
         fn notify(&self, dur: Duration) {}
     }
 
-    /// A backon::backoff extension that limits the number of retries
+    /// A `backon::backoff` extension that limits the number of retries
     #[derive(Debug)]
     pub struct LimitRetry {
         max_retries: usize,
@@ -58,7 +58,7 @@ mod backon_extension {
         }
     }
 
-    /// We need to impl [`Clone`] manually because [backon::ExponentialBuilder] doesn't.
+    /// We need to impl [`Clone`] manually because [`backon::ExponentialBuilder`] doesn't.
     impl Clone for LimitRetry {
         fn clone(&self) -> Self {
             Self {
@@ -104,10 +104,10 @@ impl backon_extension::NotifyWhenRetry for reqwest::Error {
     ///
     /// Else return `false` and the combined backoff will stop early.
     fn when_retry(&self) -> bool {
-        match self.status() {
-            Some(status_code) => !status_code.is_client_error(), // do no retry if client error
-            None => true,                                        // else retry
-        }
+        self.status().map_or(
+            true,                                         // retry
+            |status_code| !status_code.is_client_error(), // do not retry if `is_client_error`
+        )
     }
 
     /// Notify function for backon in case of error
@@ -363,13 +363,12 @@ impl ReadBackend for RestBackend {
             .map_err(|err| construct_join_url_error(err, tpe, id, &self.url))?;
 
         self.retry_handler
-            .retry_notify::<_, _, reqwest::Error>(|| {
-                Ok(self
-                    .client
+            .retry_notify(|| {
+                self.client
                     .get(url.clone())
                     .send()?
                     .error_for_status()?
-                    .bytes()?)
+                    .bytes()
             })
             .map_err(construct_backoff_error)
     }
@@ -407,14 +406,13 @@ impl ReadBackend for RestBackend {
         })?;
 
         self.retry_handler
-            .retry_notify::<_, _, reqwest::Error>(|| {
-                Ok(self
-                    .client
+            .retry_notify(|| {
+                self.client
                     .get(url.clone())
                     .header("Range", header_value.clone())
                     .send()?
                     .error_for_status()?
-                    .bytes()?)
+                    .bytes()
             })
             .map_err(construct_backoff_error)
     }
