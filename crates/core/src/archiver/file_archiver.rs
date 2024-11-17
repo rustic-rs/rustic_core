@@ -1,5 +1,7 @@
 use std::io::Read;
 
+use rustic_cdc::Rabin64;
+
 use crate::{
     archiver::{
         parent::{ItemWithParent, ParentResult},
@@ -15,7 +17,6 @@ use crate::{
         packer::{Packer, PackerStats},
         BlobId, BlobType, DataId,
     },
-    cdc::rolling_hash::Rabin64,
     chunker::ChunkIter,
     crypto::hasher::hash,
     error::{ErrorKind, RusticError, RusticResult},
@@ -73,7 +74,7 @@ impl<'a, BE: DecryptWriteBackend, I: ReadGlobalIndex> FileArchiver<'a, BE, I> {
             index.total_size(BlobType::Data),
         )?;
 
-        let rabin = Rabin64::new_with_polynom(6, poly);
+        let rabin = Rabin64::new_with_polynom(6, &poly);
 
         Ok(Self {
             index,

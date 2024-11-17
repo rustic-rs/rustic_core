@@ -1,14 +1,9 @@
 use std::io::{self, Read};
 
 use rand::{thread_rng, Rng};
+use rustic_cdc::{Polynom, Polynom64, Rabin64, RollingHash64};
 
-use crate::{
-    cdc::{
-        polynom::{Polynom, Polynom64},
-        rolling_hash::{Rabin64, RollingHash64},
-    },
-    error::{ErrorKind, RusticError, RusticResult},
-};
+use crate::error::{ErrorKind, RusticError, RusticResult};
 
 pub(super) mod constants {
     /// The Splitmask is used to determine if a chunk is a chunk boundary.
@@ -249,9 +244,9 @@ impl PolynomExtend for Polynom64 {
         }
 
         if self.degree() < other.degree() {
-            self.gcd(other.modulo(self))
+            self.gcd(other.modulo(&self))
         } else {
-            other.gcd(self.modulo(other))
+            other.gcd(self.modulo(&other))
         }
     }
 
@@ -269,14 +264,14 @@ impl PolynomExtend for Polynom64 {
         let mut b = other;
 
         if b & 1 > 0 {
-            res = res.add(a).modulo(modulo);
+            res = res.add(a).modulo(&modulo);
         }
 
         while b != 0 {
-            a = (a << 1).modulo(modulo);
+            a = (a << 1).modulo(&modulo);
             b >>= 1;
             if b & 1 > 0 {
-                res = res.add(a).modulo(modulo);
+                res = res.add(a).modulo(&modulo);
             }
         }
 
@@ -296,7 +291,7 @@ fn qp(p: i32, g: Polynom64) -> Polynom64 {
     }
 
     // add x
-    res.add(2).modulo(g)
+    res.add(2).modulo(&g)
 }
 
 #[cfg(test)]
@@ -310,7 +305,7 @@ mod tests {
         let mut reader = Cursor::new(empty);
 
         let poly = random_poly().unwrap();
-        let rabin = Rabin64::new_with_polynom(6, poly);
+        let rabin = Rabin64::new_with_polynom(6, &poly);
         let chunker = ChunkIter::new(&mut reader, 0, rabin);
 
         assert_eq!(0, chunker.into_iter().count());
@@ -322,7 +317,7 @@ mod tests {
         let mut reader = Cursor::new(empty);
 
         let poly = random_poly().unwrap();
-        let rabin = Rabin64::new_with_polynom(6, poly);
+        let rabin = Rabin64::new_with_polynom(6, &poly);
         let chunker = ChunkIter::new(&mut reader, 100, rabin);
 
         assert_eq!(0, chunker.into_iter().count());
@@ -333,7 +328,7 @@ mod tests {
         let mut reader = repeat(0u8);
 
         let poly = random_poly().unwrap();
-        let rabin = Rabin64::new_with_polynom(6, poly);
+        let rabin = Rabin64::new_with_polynom(6, &poly);
         let mut chunker = ChunkIter::new(&mut reader, usize::MAX, rabin);
 
         let chunk = chunker.next().unwrap().unwrap();
