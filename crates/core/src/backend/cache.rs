@@ -516,6 +516,7 @@ impl Cache {
                 "Failed to read at offset `{offset}` from file at `{path}`",
                 err,
             )
+            .attach_context("path", path.display().to_string())
             .attach_context("tpe", tpe.to_string())
             .attach_context("id", id.to_string())
             .attach_context("offset", offset.to_string())
