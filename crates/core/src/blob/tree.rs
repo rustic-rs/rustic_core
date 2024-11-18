@@ -8,7 +8,6 @@ use std::{
 };
 
 use crossbeam_channel::{bounded, unbounded, Receiver, Sender};
-use derivative::Derivative;
 use derive_setters::Setters;
 use ignore::overrides::{Override, OverrideBuilder};
 use ignore::Match;
@@ -455,8 +454,7 @@ impl IntoIterator for Tree {
 }
 
 #[cfg_attr(feature = "clap", derive(clap::Parser))]
-#[derive(Derivative, Clone, Debug, Setters)]
-#[derivative(Default)]
+#[derive(Clone, Debug, Setters)]
 #[setters(into)]
 #[non_exhaustive]
 /// Options for listing the `Nodes` of a `Tree`
@@ -488,8 +486,19 @@ pub struct TreeStreamerOptions {
 
     /// recursively list the dir
     #[cfg_attr(feature = "clap", clap(long))]
-    #[derivative(Default(value = "true"))]
     pub recursive: bool,
+}
+
+impl Default for TreeStreamerOptions {
+    fn default() -> Self {
+        Self {
+            glob: Vec::default(),
+            iglob: Vec::default(),
+            glob_file: Vec::default(),
+            iglob_file: Vec::default(),
+            recursive: true,
+        }
+    }
 }
 
 /// [`NodeStreamer`] recursively streams all nodes of a given tree including all subtrees in-order

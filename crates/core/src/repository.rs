@@ -418,8 +418,25 @@ impl<P, S> Repository<P, S> {
     ///
     /// The id of the config file or `None` if no config file is found
     pub fn config_id(&self) -> RusticResult<Option<ConfigId>> {
-        let config_ids = self.be.list(FileType::Config)?;
+        self.config_id_with_backend(&self.be)
+    }
 
+    /// Returns the Id of the config file corresponding to a specific backend.
+    ///
+    /// # Errors
+    ///
+    /// * If listing the repository config file failed
+    /// * If there is more than one repository config file.
+    ///
+    /// # Arguments
+    ///
+    /// * `be` - The backend to use
+    ///
+    /// # Returns
+    ///
+    /// The id of the config file or `None` if no config file is found
+    fn config_id_with_backend(&self, be: &dyn WriteBackend) -> RusticResult<Option<ConfigId>> {
+        let config_ids = be.list(FileType::Config)?;
         match config_ids.len() {
             1 => Ok(Some(ConfigId::from(config_ids[0]))),
             0 => Ok(None),
@@ -574,7 +591,12 @@ impl<P, S> Repository<P, S> {
         key_opts: &KeyOptions,
         config_opts: &ConfigOptions,
     ) -> RusticResult<Repository<P, OpenStatus>> {
-        if self.config_id()?.is_some() {
+        let config_exists = self.config_id_with_backend(&self.be)?.is_some();
+        let hot_config_exists = match self.be_hot {
+            None => false,
+            Some(ref be) => self.config_id_with_backend(be)?.is_some(),
+        };
+        if config_exists || hot_config_exists {
             return Err(RusticError::new(
                 ErrorKind::Configuration,
                 "Config file already exists for `{name}`. Please check the repository.",
