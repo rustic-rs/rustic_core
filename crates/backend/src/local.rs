@@ -315,7 +315,7 @@ impl ReadBackend for LocalBackend {
             })
             .inspect(|r| {
                 if let Err(err) = r {
-                    error!("Error while listing files: {err:?}");
+                    error!("Error while listing files: {}", err.display_log());
                 }
             })
             .filter_map(RusticResult::ok);
@@ -557,7 +557,7 @@ impl WriteBackend for LocalBackend {
 
         if let Some(command) = &self.post_create_command {
             if let Err(err) = Self::call_command(tpe, id, &filename, command) {
-                warn!("post-create: {err}");
+                warn!("post-create: {}", err.display_log());
             }
         }
         Ok(())
@@ -587,7 +587,7 @@ impl WriteBackend for LocalBackend {
         )?;
         if let Some(command) = &self.post_delete_command {
             if let Err(err) = Self::call_command(tpe, id, &filename, command) {
-                warn!("post-delete: {err}");
+                warn!("post-delete: {}", err.display_log());
             }
         }
         Ok(())

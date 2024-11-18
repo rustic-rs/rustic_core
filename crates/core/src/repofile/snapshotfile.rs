@@ -607,7 +607,7 @@ impl SnapshotFile {
     /// * If no id could be found.
     /// * If the id is not unique.
     pub(crate) fn from_id<B: DecryptReadBackend>(be: &B, id: &str) -> RusticResult<Self> {
-        info!("getting snapshot...");
+        info!("getting snapshot ...");
         let id = be.find_id(FileType::Snapshot, id)?;
         Self::from_backend(be, &SnapshotId::from(id))
     }

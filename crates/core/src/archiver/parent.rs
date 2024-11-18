@@ -98,7 +98,10 @@ impl Parent {
         let tree = tree_id.and_then(|tree_id| match Tree::from_backend(be, index, tree_id) {
             Ok(tree) => Some(tree),
             Err(err) => {
-                warn!("ignoring error when loading parent tree {tree_id}: {err}");
+                warn!(
+                    "ignoring error when loading parent tree {tree_id}: {}",
+                    err.display_log()
+                );
                 None
             }
         });
@@ -202,7 +205,10 @@ impl Parent {
                 |tree_id| match Tree::from_backend(be, index, tree_id) {
                     Ok(tree) => Some(tree),
                     Err(err) => {
-                        warn!("ignoring error when loading parent tree {tree_id}: {err}");
+                        warn!(
+                            "ignoring error when loading parent tree {tree_id}: {}",
+                            err.display_log()
+                        );
                         None
                     }
                 },
@@ -274,8 +280,9 @@ impl Parent {
                             ParentResult::Matched(())
                         } else {
                             warn!(
-                            "missing blobs in index for unchanged file {path:?}; re-reading file",
-                        );
+                                "missing blobs in index for unchanged file {}; re-reading file",
+                                path.display()
+                            );
                             ParentResult::NotFound
                         }
                     }

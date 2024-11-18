@@ -267,7 +267,7 @@ pub(crate) fn backup<P: ProgressBars, S: IndexedIds>(
     let (parent_id, parent) = opts.parent_opts.get_parent(repo, &snap, backup_stdin);
     match parent_id {
         Some(id) => {
-            info!("using parent {}", id);
+            info!("using parent {id}");
             snap.parent = Some(id);
         }
         None => {
@@ -276,7 +276,7 @@ pub(crate) fn backup<P: ProgressBars, S: IndexedIds>(
     };
 
     let be = DryRunBackend::new(repo.dbe().clone(), opts.dry_run);
-    info!("starting to backup {source}...");
+    info!("starting to backup {source} ...");
     let archiver = Archiver::new(be, index, repo.config(), parent, snap)?;
     let p = repo.pb.progress_bytes("backing up...");
 
