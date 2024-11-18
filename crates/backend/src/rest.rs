@@ -48,19 +48,29 @@ pub struct RestBackend {
 }
 
 impl RestBackend {
-    // call the given operation retrying non-permanent errors and giving warnings for failed operations
+    /// Call the given operation retrying non-permanent errors and giving warnings for failed operations
+    ///
+    /// ## Permanent/non-permanent errors
+    ///
+    /// - client_error are considered permanent
+    /// - others are not, and are subject to retry
+    ///
+    /// ## Returns
+    ///
+    /// The operation result
+    /// or the last error (permanent or not) that occurred.
     fn retry_notify<F, T>(&self, op: F) -> Result<T, reqwest::Error>
     where
         F: FnMut() -> Result<T, reqwest::Error>,
     {
         op.retry(self.backoff)
-            .notify(|err, duration| warn!("Error {err} at {duration:?}, retrying"))
             .when(|err| {
                 err.status().map_or(
                     true,                                         // retry
                     |status_code| !status_code.is_client_error(), // do not retry if `is_client_error`
                 )
             })
+            .notify(|err, duration| warn!("Error {err} at {duration:?}, retrying"))
             .call()
     }
 
