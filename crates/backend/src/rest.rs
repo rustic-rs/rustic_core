@@ -52,7 +52,7 @@ impl RestBackend {
     ///
     /// ## Permanent/non-permanent errors
     ///
-    /// - client_error are considered permanent
+    /// -  `client_error` are considered permanent
     /// - others are not, and are subject to retry
     ///
     /// ## Returns
