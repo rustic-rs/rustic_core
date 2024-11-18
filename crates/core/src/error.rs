@@ -375,8 +375,14 @@ impl RusticError {
     ///
     /// This is a more concise version of the error message.
     pub fn display_log(&self) -> String {
-        let guidance = if self.context.is_empty() {
-            self.guidance.to_string()
+        use std::fmt::Write;
+
+        let mut fmt = String::new();
+
+        _ = write!(fmt, "Error: ");
+
+        if self.context.is_empty() {
+            _ = write!(fmt, "{}", self.guidance);
         } else {
             // If there is context, we want to iterate over it
             // use the key to replace the placeholder in the guidance.
@@ -390,33 +396,26 @@ impl RusticError {
                     guidance = guidance.replace(&pattern, value);
                 });
 
-            guidance
+            _ = write!(fmt, "{guidance}");
         };
 
-        let kind = format!("related to {}", self.kind);
+        _ = write!(fmt, " (kind: related to {}", self.kind);
 
-        let error_code = self
-            .error_code
-            .as_ref()
-            .map_or(String::new(), |code| format!(", code: {code}"));
+        if let Some(code) = &self.error_code {
+            _ = write!(fmt, ", code: {code}");
+        }
 
-        let output = self.source.as_ref().map_or_else(
-            || {
-                format!("Error: {guidance} (kind: {kind}{error_code})")
-            },
-            |cause| {
-                cause.source().map_or_else(
-                    || {
-                        format!("Error: {guidance} (kind: {kind}{error_code}): caused by: {cause}")
-                    },
-                    |source| {
-                        format!("Error: {guidance} (kind: {kind}{error_code}): caused by: {cause} : (source: {source})")
-                    },
-                )
-            },
-        );
+        _ = write!(fmt, ")");
 
-        output
+        if let Some(cause) = &self.source {
+            _ = write!(fmt, ": caused by: {cause}");
+
+            if let Some(source) = cause.source() {
+                _ = write!(fmt, " : (source: {source})");
+            }
+        }
+
+        fmt
     }
 }
 
