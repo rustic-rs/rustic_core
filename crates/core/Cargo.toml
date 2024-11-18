@@ -45,7 +45,6 @@ displaydoc = { workspace = true }
 thiserror = { workspace = true }
 
 # macros
-derivative = "2.2.0"
 derive_more = { version = "1.0.0", features = ["add", "constructor", "display", "from", "deref", "from_str"] }
 derive_setters = "0.1.6"
 

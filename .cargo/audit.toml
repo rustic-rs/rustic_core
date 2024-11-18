@@ -5,6 +5,4 @@ ignore = [
   "RUSTSEC-2023-0071",
   # FIXME: backoff => used in backend, need to be replaced with backon
   "RUSTSEC-2024-0384",
-  # FIXME: derivative => used for default impls
-  "RUSTSEC-2024-0388",
 ]

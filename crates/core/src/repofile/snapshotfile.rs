@@ -9,7 +9,6 @@ use std::{
 use chrono::{DateTime, Duration, Local, OutOfRangeError};
 #[cfg(feature = "clap")]
 use clap::ValueHint;
-use derivative::Derivative;
 use derive_setters::Setters;
 use dunce::canonicalize;
 use gethostname::gethostname;
@@ -162,9 +161,8 @@ impl SnapshotOptions {
 ///
 /// This is an extended version of the summaryOutput structure of restic in
 /// restic/internal/ui/backup$/json.go
-#[derive(Serialize, Deserialize, Debug, Clone, Derivative)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(default)]
-#[derivative(Default)]
 #[non_exhaustive]
 pub struct SnapshotSummary {
     /// New files compared to the last (i.e. parent) snapshot
@@ -229,11 +227,9 @@ pub struct SnapshotSummary {
     /// # Note
     ///
     /// This may differ from the snapshot `time`.
-    #[derivative(Default(value = "Local::now()"))]
     pub backup_start: DateTime<Local>,
 
     /// The time that the backup has been finished.
-    #[derivative(Default(value = "Local::now()"))]
     pub backup_end: DateTime<Local>,
 
     /// Total duration of the backup in seconds, i.e. the time between `backup_start` and `backup_end`
@@ -241,6 +237,36 @@ pub struct SnapshotSummary {
 
     /// Total duration that the rustic command ran in seconds
     pub total_duration: f64,
+}
+
+impl Default for SnapshotSummary {
+    fn default() -> Self {
+        Self {
+            files_new: Default::default(),
+            files_changed: Default::default(),
+            files_unmodified: Default::default(),
+            total_files_processed: Default::default(),
+            total_bytes_processed: Default::default(),
+            dirs_new: Default::default(),
+            dirs_changed: Default::default(),
+            dirs_unmodified: Default::default(),
+            total_dirs_processed: Default::default(),
+            total_dirsize_processed: Default::default(),
+            data_blobs: Default::default(),
+            tree_blobs: Default::default(),
+            data_added: Default::default(),
+            data_added_packed: Default::default(),
+            data_added_files: Default::default(),
+            data_added_files_packed: Default::default(),
+            data_added_trees: Default::default(),
+            data_added_trees_packed: Default::default(),
+            command: String::default(),
+            backup_start: Local::now(),
+            backup_end: Local::now(),
+            backup_duration: Default::default(),
+            total_duration: Default::default(),
+        }
+    }
 }
 
 impl SnapshotSummary {
@@ -269,11 +295,10 @@ impl SnapshotSummary {
 }
 
 /// Options for deleting snapshots.
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Derivative, Copy)]
-#[derivative(Default)]
+#[derive(Serialize, Default, Deserialize, Debug, Clone, PartialEq, Eq, Copy)]
 pub enum DeleteOption {
     /// No delete option set.
-    #[derivative(Default)]
+    #[default]
     NotSet,
     /// This snapshot should be never deleted (remove-protection).
     Never,
@@ -291,8 +316,7 @@ impl DeleteOption {
 impl_repofile!(SnapshotId, FileType::Snapshot, SnapshotFile);
 
 #[skip_serializing_none]
-#[derive(Debug, Clone, Serialize, Deserialize, Derivative)]
-#[derivative(Default)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 /// A [`SnapshotFile`] is the repository representation of the snapshot metadata saved in a repository.
 ///
 /// It is usually saved in the repository under `snapshot/<ID>`
@@ -302,14 +326,10 @@ impl_repofile!(SnapshotId, FileType::Snapshot, SnapshotFile);
 /// [`SnapshotFile`] implements [`Eq`], [`PartialEq`], [`Ord`], [`PartialOrd`] by comparing only the `time` field.
 /// If you need another ordering, you have to implement that yourself.
 pub struct SnapshotFile {
-    #[derivative(Default(value = "Local::now()"))]
     /// Timestamp of this snapshot
     pub time: DateTime<Local>,
 
     /// Program identifier and its version that have been used to create this snapshot.
-    #[derivative(Default(
-        value = "\"rustic \".to_string() + option_env!(\"PROJECT_VERSION\").unwrap_or(env!(\"CARGO_PKG_VERSION\"))"
-    ))]
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub program_version: String,
 
@@ -362,6 +382,33 @@ pub struct SnapshotFile {
     /// The snapshot Id (not stored within the JSON)
     #[serde(default, skip_serializing_if = "Id::is_null")]
     pub id: SnapshotId,
+}
+
+impl Default for SnapshotFile {
+    fn default() -> Self {
+        Self {
+            time: Local::now(),
+            program_version: {
+                let project_version =
+                    option_env!("PROJECT_VERSION").unwrap_or(env!("CARGO_PKG_VERSION"));
+                format!("rustic {project_version}")
+            },
+            parent: Option::default(),
+            tree: TreeId::default(),
+            label: String::default(),
+            paths: StringList::default(),
+            hostname: String::default(),
+            username: String::default(),
+            uid: Default::default(),
+            gid: Default::default(),
+            tags: StringList::default(),
+            original: Option::default(),
+            delete: DeleteOption::default(),
+            summary: Option::default(),
+            description: Option::default(),
+            id: SnapshotId::default(),
+        }
+    }
 }
 
 impl SnapshotFile {
