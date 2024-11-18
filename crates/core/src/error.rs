@@ -19,7 +19,7 @@
 //! `Result<T, RusticError> (==RusticResult<T>)` or nested results like `RusticResult<Result<T, ArchiverErrorKind>>`.
 //! So even if the visibility of that function is `fn` or `pub(crate) fn` it should return a `RusticResult` containing a `RusticError`.
 //!
-//! If we `map_err` or `and_then` a `RusticError`, we don't want to create a new RusticError from it, but just attach some context
+//! If we `map_err` or `and_then` a `RusticError`, we don't want to create a new `RusticError` from it, but just attach some context
 //! to it, e.g. `map_err(|e| e.attach_context("key", "value"))`, so we don't lose the original error. We can also change the error
 //! kind with `map_err(|e| e.overwrite_kind(ErrorKind::NewKind))`. If we want to pre- or append to the guidance, we can use
 //! `map_err(|e| e.append_guidance_line("new line"))` or `map_err(|e| e.prepend_guidance_line("new line"))`.
@@ -47,11 +47,6 @@
 //!
 //! All types that we want to attach to an error should implement `Display` and `Debug` to provide a good error message and a nice way
 //! to display the error.
-
-// FIXME: Remove when 'displaydoc' has fixed/recommended further treatment upstream: https://github.com/yaahc/displaydoc/issues/48
-#![allow(clippy::doc_markdown)]
-// use std::error::Error as StdError;
-// use std::fmt;
 
 use derive_more::derive::Display;
 use ecow::{EcoString, EcoVec};
@@ -293,7 +288,7 @@ impl Display for RusticError {
             writeln!(f, "Caused by:")?;
             writeln!(f, "{cause}")?;
             if let Some(source) = cause.source() {
-                write!(f, " : (source: {source:?})")?;
+                write!(f, " : (source: {source})")?;
             }
             writeln!(f)?;
         }
@@ -374,6 +369,53 @@ impl RusticError {
         error: T,
     ) -> Box<Self> {
         Self::with_source(kind, error.to_string(), error)
+    }
+
+    /// Returns a String representation for logging purposes.
+    /// This is a more concise version of the error message.
+    pub fn to_log_output(&self) -> String {
+        let guidance = if self.context.is_empty() {
+            self.guidance.to_string()
+        } else {
+            // If there is context, we want to iterate over it
+            // use the key to replace the placeholder in the guidance.
+            let mut guidance = self.guidance.to_string();
+
+            self.context
+                .iter()
+                // remove context which has been used in the guidance
+                .for_each(|(key, value)| {
+                    let pattern = "{".to_owned() + key + "}";
+                    guidance = guidance.replace(&pattern, value);
+                });
+
+            guidance
+        };
+
+        let kind = format!("related to {}", self.kind);
+
+        let error_code = self
+            .error_code
+            .as_ref()
+            .map_or(String::new(), |code| format!(", code: {code}"));
+
+        let output = self.source.as_ref().map_or_else(
+            || {
+                format!("Error: {guidance} (kind: {kind}{error_code})")
+            },
+            |cause| {
+                cause.source().map_or_else(
+                    || {
+                        format!("Error: {guidance} (kind: {kind}{error_code}): caused by: {cause}")
+                    },
+                    |source| {
+                        format!("Error: {guidance} (kind: {kind}{error_code}): caused by: {cause} : (source: {source})")
+                    },
+                )
+            },
+        );
+
+        output
     }
 }
 

@@ -358,10 +358,10 @@ impl ReadSource for LocalSource {
     fn size(&self) -> RusticResult<Option<u64>> {
         let mut size = 0;
         for entry in self.builder.build() {
-            if let Err(e) = entry.and_then(|e| e.metadata()).map(|m| {
+            if let Err(err) = entry.and_then(|e| e.metadata()).map(|m| {
                 size += if m.is_dir() { 0 } else { m.len() };
             }) {
-                warn!("ignoring error {}", e);
+                warn!("ignoring error {err}");
             }
         }
         Ok(Some(size))
@@ -656,8 +656,8 @@ fn map_entry(
     let links = if m.is_dir() { 0 } else { m.nlink() };
 
     let extended_attributes = match list_extended_attributes(entry.path()) {
-        Err(e) => {
-            warn!("ignoring error: {e}\n");
+        Err(err) => {
+            warn!("ignoring error: {err}");
             vec![]
         }
         Ok(xattr_list) => xattr_list,

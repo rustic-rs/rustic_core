@@ -144,9 +144,9 @@ fn warm_up_repo<P: ProgressBars, S>(
     pool.in_place_scope(|scope| {
         for pack in packs {
             scope.spawn(move |_| {
-                if let Err(e) = backend.warm_up(FileType::Pack, &pack) {
+                if let Err(err) = backend.warm_up(FileType::Pack, &pack) {
                     // FIXME: Use error handling
-                    error!("warm-up failed for pack {pack:?}. {e}");
+                    error!("warm-up failed for pack {pack:?}. {}", err.to_log_output());
                 };
                 progress_bar_ref.inc(1);
             });

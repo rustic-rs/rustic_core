@@ -20,12 +20,35 @@ fn error() -> Box<RusticError> {
     .ask_report()
 }
 
+#[fixture]
+fn minimal_error() -> Box<RusticError> {
+    RusticError::new(
+        ErrorKind::InputOutput,
+        "A file could not be read, make sure the file at `{path}` is existing and readable by the system.",
+    )
+    .attach_context("path", "/path/to/file")
+}
+
 #[rstest]
+#[allow(clippy::boxed_local)]
 fn test_error_display(error: Box<RusticError>) {
     insta::assert_snapshot!(error);
 }
 
 #[rstest]
+#[allow(clippy::boxed_local)]
 fn test_error_debug(error: Box<RusticError>) {
     insta::assert_debug_snapshot!(error);
+}
+
+#[rstest]
+#[allow(clippy::boxed_local)]
+fn test_log_output_passes(error: Box<RusticError>) {
+    insta::assert_snapshot!(error.to_log_output());
+}
+
+#[rstest]
+#[allow(clippy::boxed_local)]
+fn test_log_output_minimal_passes(minimal_error: Box<RusticError>) {
+    insta::assert_snapshot!(minimal_error.to_log_output());
 }

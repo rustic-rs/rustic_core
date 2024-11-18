@@ -328,7 +328,7 @@ impl ReadBackend for OpenDALBackend {
             })
             .inspect(|r| {
                 if let Err(err) = r {
-                    error!("Error while listing files: {err:?}");
+                    error!("Error while listing files: {}", err.to_log_output());
                 }
             })
             .filter_map(RusticResult::ok)

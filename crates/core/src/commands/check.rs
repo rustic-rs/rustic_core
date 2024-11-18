@@ -274,7 +274,10 @@ pub(crate) fn check_repository<P: ProgressBars, S: Open>(
             .map(|(id, size)| (**id, *size))
             .collect();
         if let Err(err) = cache.remove_not_in_list(FileType::Pack, &ids) {
-            warn!("Error in cache backend removing pack files: {err}");
+            warn!(
+                "Error in cache backend removing pack files: {}",
+                err.to_log_output()
+            );
         }
         p.finish();
 
@@ -309,21 +312,13 @@ pub(crate) fn check_repository<P: ProgressBars, S: Open>(
             let data = match be.read_full(FileType::Pack, &id) {
                 Ok(data) => data,
                 Err(err) => {
-                    // FIXME: This needs different handling, now it prints a full display of RusticError
-                    // Instead we should actually collect and return a list of errors on the happy path
-                    // for `Check`, as this is a non-critical operation and we want to show all errors
-                    // to the user.
-                    error!("Error reading data for pack {id} : {err}");
+                    error!("Error reading data for pack {id} : {}", err.to_log_output());
                     return;
                 }
             };
             match check_pack(be, pack, data, &p) {
                 Ok(()) => {}
-                // FIXME: This needs different handling, now it prints a full display of RusticError
-                // Instead we should actually collect and return a list of errors on the happy path
-                // for `Check`, as this is a non-critical operation and we want to show all errors
-                // to the user.
-                Err(err) => error!("Pack {id} is not valid: {err}",),
+                Err(err) => error!("Pack {id} is not valid: {}", err.to_log_output()),
             }
         });
         p.finish();
@@ -362,7 +357,6 @@ fn check_hot_files(
         match files.remove(&id) {
             None => error!("hot file Type: {file_type:?}, Id: {id} does not exist in repo"),
             Some(size) if size != size_hot => {
-                // TODO: This should be an actual error not a log entry
                 error!("Type: {file_type:?}, Id: {id}: hot size: {size_hot}, actual size: {size}");
             }
             _ => {} //everything ok
@@ -415,10 +409,16 @@ fn check_cache_files(
                 be.read_full(file_type, &id),
             ) {
                 (Err(err), _) => {
-                    error!("Error reading cached file Type: {file_type:?}, Id: {id} : {err}");
+                    error!(
+                        "Error reading cached file Type: {file_type:?}, Id: {id} : {}",
+                        err.to_log_output()
+                    );
                 }
                 (_, Err(err)) => {
-                    error!("Error reading file Type: {file_type:?}, Id: {id} : {err}");
+                    error!(
+                        "Error reading file Type: {file_type:?}, Id: {id} : {}",
+                        err.to_log_output()
+                    );
                 }
                 (Ok(Some(data_cached)), Ok(data)) if data_cached != data => {
                     error!(

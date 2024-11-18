@@ -90,7 +90,10 @@ pub(crate) fn repair_index<P: ProgressBars, S: Open>(
         debug!("reading pack {id}...");
         match PackHeader::from_file(be, id, size_hint, packsize) {
             Err(err) => {
-                warn!("error reading pack {id} (-> removing from index): {err}");
+                warn!(
+                    "error reading pack {id} (-> removing from index): {}",
+                    err.to_log_output()
+                );
             }
             Ok(header) => {
                 let pack = IndexPack {
