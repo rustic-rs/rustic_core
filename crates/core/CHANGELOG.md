@@ -2,6 +2,26 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.6.0](https://github.com/rustic-rs/rustic_core/compare/rustic_core-v0.5.5...rustic_core-v0.6.0) - 2024-11-18
+
+### Added
+
+- *(async)* add `async_compatible` methods to identify backend compatibility ([#355](https://github.com/rustic-rs/rustic_core/pull/355))
+
+### Fixed
+
+- prevent overwriting hot repository on init ([#353](https://github.com/rustic-rs/rustic_core/pull/353))
+
+### Other
+
+- *(error)* enhance error logging and output formatting ([#361](https://github.com/rustic-rs/rustic_core/pull/361))
+- *(deps)* remove Derivative and replace with Default impl due to RUSTSEC-2024-0388 ([#359](https://github.com/rustic-rs/rustic_core/pull/359))
+- *(error)* improve error messages and file handling ([#334](https://github.com/rustic-rs/rustic_core/pull/334))
+- *(deps)* lock file maintenance rust dependencies ([#345](https://github.com/rustic-rs/rustic_core/pull/345))
+- *(deps)* remove cdc and switch to rustic_cdc ([#348](https://github.com/rustic-rs/rustic_core/pull/348))
+- *(deps)* [**breaking**] upgrade to new conflate version ([#300](https://github.com/rustic-rs/rustic_core/pull/300))
+- *(errors)* [**breaking**] Improve error handling, display and clean up codebase ([#321](https://github.com/rustic-rs/rustic_core/pull/321))
+
 ## [0.5.5](https://github.com/rustic-rs/rustic_core/compare/rustic_core-v0.5.4...rustic_core-v0.5.5) - 2024-10-25
 
 ### Fixed
