@@ -29,11 +29,13 @@ jobs:
       # This is because we have a workspace with multiple crates, and we want to generate coverage for all of them, but we only want to
       # report the coverage of rustic_backend and rustic_core crates (currently) as this is where the main logic is
       - name: Generate code coverage
+        env: 
+          RUST_BACKTRACE: 0
         run: |
           cargo tarpaulin --verbose --all-features --workspace --timeout 120 --out xml
       
       - name: Upload coverage reports to Codecov
         uses: codecov/codecov-action@b9fd7d16f6d7d1b5d2bec1a2887e65ceed900238 # v4
         with:
-            token: ${{ secrets.CODECOV_TOKEN }}
-            slug: rustic-rs/rustic_core
+          token: ${{ secrets.CODECOV_TOKEN }}
+          slug: rustic-rs/rustic_core
