@@ -306,10 +306,24 @@ pub(crate) fn check_repository<P: ProgressBars, S: Open>(
 
         packs.into_par_iter().for_each(|pack| {
             let id = pack.id;
-            let data = be.read_full(FileType::Pack, &id).unwrap();
+            let data = match be.read_full(FileType::Pack, &id) {
+                Ok(data) => data,
+                Err(err) => {
+                    // FIXME: This needs different handling, now it prints a full display of RusticError
+                    // Instead we should actually collect and return a list of errors on the happy path
+                    // for `Check`, as this is a non-critical operation and we want to show all errors
+                    // to the user.
+                    error!("Error reading data for pack {id} : {err}");
+                    return;
+                }
+            };
             match check_pack(be, pack, data, &p) {
                 Ok(()) => {}
-                Err(err) => error!("Error reading pack {id} : {err}",),
+                // FIXME: This needs different handling, now it prints a full display of RusticError
+                // Instead we should actually collect and return a list of errors on the happy path
+                // for `Check`, as this is a non-critical operation and we want to show all errors
+                // to the user.
+                Err(err) => error!("Pack {id} is not valid: {err}",),
             }
         });
         p.finish();
