@@ -1,0 +1,5 @@
+---
+source: crates/core/tests/errors.rs
+expression: minimal_error.to_log_output()
+---
+Error: A file could not be read, make sure the file at `/path/to/file` is existing and readable by the system. (kind: related to input/output operations)
