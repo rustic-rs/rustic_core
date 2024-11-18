@@ -70,6 +70,25 @@ impl LocalBackend {
         })
     }
 
+    /// Base path of the given file type and id.
+    ///
+    /// # Arguments
+    ///
+    /// * `tpe` - The type of the file.
+    /// * `id` - The id of the file.
+    ///
+    /// # Returns
+    ///
+    /// The base path of the file.
+    fn base_path(&self, tpe: FileType, id: &Id) -> PathBuf {
+        let hex_id = id.to_hex();
+        match tpe {
+            FileType::Config => self.path.clone(),
+            FileType::Pack => self.path.join("data").join(&hex_id[0..2]),
+            _ => self.path.join(tpe.dirname()),
+        }
+    }
+
     /// Path to the given file type and id.
     ///
     /// If the file type is `FileType::Pack`, the id will be used to determine the subdirectory.
@@ -86,8 +105,7 @@ impl LocalBackend {
         let hex_id = id.to_hex();
         match tpe {
             FileType::Config => self.path.join("config"),
-            FileType::Pack => self.path.join("data").join(&hex_id[0..2]).join(hex_id),
-            _ => self.path.join(tpe.dirname()).join(hex_id),
+            _ => self.base_path(tpe, id).join(hex_id),
         }
     }
 
@@ -168,21 +186,6 @@ impl LocalBackend {
             .attach_context("status", status.to_string()));
         }
         Ok(())
-    }
-
-    /// Returns the parent path of the given file type and id.
-    ///
-    /// # Arguments
-    ///
-    /// * `tpe` - The type of the file.
-    /// * `id` - The id of the file.
-    ///
-    /// # Returns
-    ///
-    /// The parent path of the file or `None` if the file does not have a parent.
-    fn parent_path(&self, tpe: FileType, id: &Id) -> Option<PathBuf> {
-        let path = self.path(tpe, id);
-        path.parent().map(Path::to_path_buf)
     }
 }
 
@@ -489,19 +492,10 @@ impl WriteBackend for LocalBackend {
         trace!("writing tpe: {:?}, id: {}", &tpe, &id);
         let filename = self.path(tpe, id);
 
-        let Some(parent) = self.parent_path(tpe, id) else {
-            return Err(
-                RusticError::new(
-                    ErrorKind::Backend,
-                    "The file `{path}` does not have a parent directory. This may be empty or a root path. Please check the file and try again.",
-                )
-                .attach_context("path", filename.display().to_string())
-                .ask_report()
-            );
-        };
+        let parent = self.base_path(tpe, id);
 
         // create parent directory if it does not exist
-        fs::create_dir_all(parent.clone()).map_err(|err| {
+        fs::create_dir_all(&parent).map_err(|err| {
             RusticError::with_source(
                 ErrorKind::InputOutput,
                 "Failed to create directories `{path}`. Does the directory already exist? Please check the file and try again.",
