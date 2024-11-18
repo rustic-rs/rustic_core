@@ -175,7 +175,7 @@ pub trait ReadBackend: Send + Sync + 'static {
         Ok(())
     }
 
-    /// Getter to now if some backend is compatible
+    /// Getter to determine if some backend is compatible
     /// with async features in `rustic_core` implementations.
     ///
     /// ## Default impl
