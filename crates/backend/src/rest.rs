@@ -350,6 +350,16 @@ impl ReadBackend for RestBackend {
         })
         .map_err(construct_backoff_error)
     }
+
+    /// [`RestBackend`] uses `reqwest` which blocking implementation
+    /// uses an `async` runtime under the hood.
+    ///
+    /// When implementing `rustic_core` using this backend in some `async` features will not work.
+    ///
+    /// see <https://github.com/rustic-rs/rustic/issues/1181>
+    fn is_async_compatible(&self) -> bool {
+        false
+    }
 }
 
 fn construct_join_url_error(

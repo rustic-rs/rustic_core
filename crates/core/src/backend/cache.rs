@@ -177,6 +177,10 @@ impl ReadBackend for CachedBackend {
     fn warm_up(&self, tpe: FileType, id: &Id) -> RusticResult<()> {
         self.be.warm_up(tpe, id)
     }
+
+    fn is_async_compatible(&self) -> bool {
+        self.be.is_async_compatible()
+    }
 }
 
 impl WriteBackend for CachedBackend {
