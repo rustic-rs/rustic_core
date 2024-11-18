@@ -100,7 +100,7 @@ impl Parent {
             Err(err) => {
                 warn!(
                     "ignoring error when loading parent tree {tree_id}: {}",
-                    err.to_log_output()
+                    err.display_log()
                 );
                 None
             }
@@ -207,7 +207,7 @@ impl Parent {
                     Err(err) => {
                         warn!(
                             "ignoring error when loading parent tree {tree_id}: {}",
-                            err.to_log_output()
+                            err.display_log()
                         );
                         None
                     }

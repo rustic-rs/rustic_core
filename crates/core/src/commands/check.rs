@@ -276,7 +276,7 @@ pub(crate) fn check_repository<P: ProgressBars, S: Open>(
         if let Err(err) = cache.remove_not_in_list(FileType::Pack, &ids) {
             warn!(
                 "Error in cache backend removing pack files: {}",
-                err.to_log_output()
+                err.display_log()
             );
         }
         p.finish();
@@ -312,13 +312,13 @@ pub(crate) fn check_repository<P: ProgressBars, S: Open>(
             let data = match be.read_full(FileType::Pack, &id) {
                 Ok(data) => data,
                 Err(err) => {
-                    error!("Error reading data for pack {id} : {}", err.to_log_output());
+                    error!("Error reading data for pack {id} : {}", err.display_log());
                     return;
                 }
             };
             match check_pack(be, pack, data, &p) {
                 Ok(()) => {}
-                Err(err) => error!("Pack {id} is not valid: {}", err.to_log_output()),
+                Err(err) => error!("Pack {id} is not valid: {}", err.display_log()),
             }
         });
         p.finish();
@@ -411,13 +411,13 @@ fn check_cache_files(
                 (Err(err), _) => {
                     error!(
                         "Error reading cached file Type: {file_type:?}, Id: {id} : {}",
-                        err.to_log_output()
+                        err.display_log()
                     );
                 }
                 (_, Err(err)) => {
                     error!(
                         "Error reading file Type: {file_type:?}, Id: {id} : {}",
-                        err.to_log_output()
+                        err.display_log()
                     );
                 }
                 (Ok(Some(data_cached)), Ok(data)) if data_cached != data => {

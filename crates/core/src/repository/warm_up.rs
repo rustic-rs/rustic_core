@@ -146,7 +146,7 @@ fn warm_up_repo<P: ProgressBars, S>(
             scope.spawn(move |_| {
                 if let Err(err) = backend.warm_up(FileType::Pack, &pack) {
                     // FIXME: Use error handling
-                    error!("warm-up failed for pack {pack:?}. {}", err.to_log_output());
+                    error!("warm-up failed for pack {pack:?}. {}", err.display_log());
                 };
                 progress_bar_ref.inc(1);
             });

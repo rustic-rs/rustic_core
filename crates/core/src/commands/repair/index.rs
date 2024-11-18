@@ -92,7 +92,7 @@ pub(crate) fn repair_index<P: ProgressBars, S: Open>(
             Err(err) => {
                 warn!(
                     "error reading pack {id} (-> removing from index): {}",
-                    err.to_log_output()
+                    err.display_log()
                 );
             }
             Ok(header) => {

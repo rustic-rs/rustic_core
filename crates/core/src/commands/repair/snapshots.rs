@@ -214,7 +214,7 @@ pub(crate) fn repair_tree<BE: DecryptWriteBackend>(
 
             let (tree, mut changed) = Tree::from_backend(be, index, id).map_or_else(
                 |err| {
-                    warn!("tree {id} could not be loaded: {}", err.to_log_output());
+                    warn!("tree {id} could not be loaded: {}", err.display_log());
                     (Tree::new(), Changed::This)
                 },
                 |tree| (tree, Changed::None),

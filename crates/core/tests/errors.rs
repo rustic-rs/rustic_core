@@ -44,11 +44,11 @@ fn test_error_debug(error: Box<RusticError>) {
 #[rstest]
 #[allow(clippy::boxed_local)]
 fn test_log_output_passes(error: Box<RusticError>) {
-    insta::assert_snapshot!(error.to_log_output());
+    insta::assert_snapshot!(error.display_log());
 }
 
 #[rstest]
 #[allow(clippy::boxed_local)]
 fn test_log_output_minimal_passes(minimal_error: Box<RusticError>) {
-    insta::assert_snapshot!(minimal_error.to_log_output());
+    insta::assert_snapshot!(minimal_error.display_log());
 }

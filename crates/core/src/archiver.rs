@@ -144,7 +144,7 @@ impl<'a, BE: DecryptFullBackend, I: ReadGlobalIndex> Archiver<'a, BE, I> {
                     match src.size() {
                         Ok(Some(size)) => p.set_length(size),
                         Ok(None) => {}
-                        Err(err) => warn!("error determining backup size: {}", err.to_log_output()),
+                        Err(err) => warn!("error determining backup size: {}", err.display_log()),
                     }
                 }
             });
@@ -152,7 +152,7 @@ impl<'a, BE: DecryptFullBackend, I: ReadGlobalIndex> Archiver<'a, BE, I> {
             // filter out errors and handle as_path
             let iter = src.entries().filter_map(|item| match item {
                 Err(err) => {
-                    warn!("ignoring error: {}", err.to_log_output());
+                    warn!("ignoring error: {}", err.display_log());
                     None
                 }
                 Ok(ReadSourceEntry { path, node, open }) => {
@@ -197,7 +197,7 @@ impl<'a, BE: DecryptFullBackend, I: ReadGlobalIndex> Archiver<'a, BE, I> {
                 .filter_map(|item| match item {
                     Ok(item) => Some(item),
                     Err(err) => {
-                        warn!("ignoring error: {}", err.to_log_output());
+                        warn!("ignoring error: {}", err.display_log());
                         None
                     }
                 })

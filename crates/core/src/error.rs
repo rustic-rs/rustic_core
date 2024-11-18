@@ -372,8 +372,9 @@ impl RusticError {
     }
 
     /// Returns a String representation for logging purposes.
+    ///
     /// This is a more concise version of the error message.
-    pub fn to_log_output(&self) -> String {
+    pub fn display_log(&self) -> String {
         let guidance = if self.context.is_empty() {
             self.guidance.to_string()
         } else {

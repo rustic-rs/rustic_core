@@ -71,7 +71,7 @@ impl ReadBackend for CachedBackend {
             if let Err(err) = self.cache.remove_not_in_list(tpe, &list) {
                 warn!(
                     "Error in cache backend removing files {tpe:?}: {}",
-                    err.to_log_output()
+                    err.display_log()
                 );
             }
         }
@@ -100,7 +100,7 @@ impl ReadBackend for CachedBackend {
                 Ok(None) => {}
                 Err(err) => warn!(
                     "Error in cache backend reading {tpe:?},{id}: {}",
-                    err.to_log_output()
+                    err.display_log()
                 ),
             }
             let res = self.be.read_full(tpe, id);
@@ -108,7 +108,7 @@ impl ReadBackend for CachedBackend {
                 if let Err(err) = self.cache.write_bytes(tpe, id, data) {
                     warn!(
                         "Error in cache backend writing {tpe:?},{id}: {}",
-                        err.to_log_output()
+                        err.display_log()
                     );
                 }
             }
@@ -149,7 +149,7 @@ impl ReadBackend for CachedBackend {
                 Ok(None) => {}
                 Err(err) => warn!(
                     "Error in cache backend reading {tpe:?},{id}: {}",
-                    err.to_log_output()
+                    err.display_log()
                 ),
             };
             // read full file, save to cache and return partial content
@@ -159,7 +159,7 @@ impl ReadBackend for CachedBackend {
                     if let Err(err) = self.cache.write_bytes(tpe, id, &data) {
                         warn!(
                             "Error in cache backend writing {tpe:?},{id}: {}",
-                            err.to_log_output()
+                            err.display_log()
                         );
                     }
                     Ok(Bytes::copy_from_slice(&data.slice(range)))
@@ -200,7 +200,7 @@ impl WriteBackend for CachedBackend {
             if let Err(err) = self.cache.write_bytes(tpe, id, &buf) {
                 warn!(
                     "Error in cache backend writing {tpe:?},{id}: {}",
-                    err.to_log_output()
+                    err.display_log()
                 );
             }
         }
@@ -220,7 +220,7 @@ impl WriteBackend for CachedBackend {
             if let Err(err) = self.cache.remove(tpe, id) {
                 warn!(
                     "Error in cache backend removing {tpe:?},{id}: {}",
-                    err.to_log_output()
+                    err.display_log()
                 );
             }
         }
