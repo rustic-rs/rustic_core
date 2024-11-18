@@ -30,7 +30,7 @@ jobs:
       # report the coverage of rustic_backend and rustic_core crates (currently) as this is where the main logic is
       - name: Generate code coverage
         env: 
-          RUST_BACKTRACE: 0
+          RUST_BACKTRACE: "0"
         run: |
           cargo tarpaulin --verbose --all-features --workspace --timeout 120 --out xml
       
