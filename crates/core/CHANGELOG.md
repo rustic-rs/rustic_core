@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.6.1](https://github.com/rustic-rs/rustic_core/compare/rustic_core-v0.6.0...rustic_core-v0.6.1) - 2024-11-19
+
+### Added
+
+- make FilePolicy usable in cli and config
+
+### Fixed
+
+- *(error)* add missing context to error in cache backend
+
 ## [0.6.0](https://github.com/rustic-rs/rustic_core/compare/rustic_core-v0.5.5...rustic_core-v0.6.0) - 2024-11-18
 
 ### Added
