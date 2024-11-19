@@ -1,0 +1,7 @@
+---
+source: crates/core/tests/errors.rs
+expression: error.to_log_output()
+---
+Error: Prepended guidance line
+A file could not be read, make sure the file at `/path/to/file` is existing and readable by the system.
+Appended guidance line (kind: related to input/output operations, code: C001): caused by: Networking Error

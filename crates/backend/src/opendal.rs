@@ -328,7 +328,7 @@ impl ReadBackend for OpenDALBackend {
             })
             .inspect(|r| {
                 if let Err(err) = r {
-                    error!("Error while listing files: {err:?}");
+                    error!("Error while listing files: {}", err.display_log());
                 }
             })
             .filter_map(RusticResult::ok)
@@ -385,6 +385,15 @@ impl ReadBackend for OpenDALBackend {
                 .attach_context("length", length.to_string())
             )?
             .to_bytes())
+    }
+
+    /// [`OpenDALBackend`] is `sync` and uses `block_on(async Fn)` under the hood.
+    ///
+    /// When implementing `rustic_core` using this backend in some `async` features will not work.
+    ///
+    /// see <https://github.com/rustic-rs/rustic/issues/1181>
+    fn is_async_compatible(&self) -> bool {
+        false
     }
 }
 

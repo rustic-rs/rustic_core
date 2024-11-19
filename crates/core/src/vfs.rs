@@ -173,8 +173,10 @@ impl VfsTree {
     }
 }
 
-#[derive(Debug, Clone, Copy, EnumString)]
+#[cfg_attr(feature = "clap", derive(clap::ValueEnum))]
+#[derive(Debug, Clone, Copy, EnumString, serde::Deserialize, serde::Serialize)]
 #[strum(ascii_case_insensitive)]
+#[serde(rename_all = "lowercase")]
 #[non_exhaustive]
 /// Policy to describe how to handle access to a file
 pub enum FilePolicy {

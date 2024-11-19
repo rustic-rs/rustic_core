@@ -2,6 +2,23 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.5.0](https://github.com/rustic-rs/rustic_core/compare/rustic_backend-v0.4.2...rustic_backend-v0.5.0) - 2024-11-18
+
+### Added
+
+- *(async)* add `async_compatible` methods to identify backend compatibility ([#355](https://github.com/rustic-rs/rustic_core/pull/355))
+- add 'yandex-disk' to enabled opendal services and update opendal to 0.50.2 ([#360](https://github.com/rustic-rs/rustic_core/pull/360))
+
+### Other
+
+- *(error)* enhance error logging and output formatting ([#361](https://github.com/rustic-rs/rustic_core/pull/361))
+- *(backend)* simplify code in local backend ([#362](https://github.com/rustic-rs/rustic_core/pull/362))
+- *(backend)* migrate from `backoff` to `backon` ([#356](https://github.com/rustic-rs/rustic_core/pull/356))
+- *(error)* improve error messages and file handling ([#334](https://github.com/rustic-rs/rustic_core/pull/334))
+- *(deps)* lock file maintenance rust dependencies ([#345](https://github.com/rustic-rs/rustic_core/pull/345))
+- *(deps)* [**breaking**] upgrade to new conflate version ([#300](https://github.com/rustic-rs/rustic_core/pull/300))
+- *(errors)* [**breaking**] Improve error handling, display and clean up codebase ([#321](https://github.com/rustic-rs/rustic_core/pull/321))
+
 ## [0.4.2](https://github.com/rustic-rs/rustic_core/compare/rustic_backend-v0.4.1...rustic_backend-v0.4.2) - 2024-10-24
 
 ### Fixed

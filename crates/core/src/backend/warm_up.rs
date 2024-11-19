@@ -59,6 +59,10 @@ impl ReadBackend for WarmUpAccessBackend {
         _ = self.be.read_partial(tpe, id, false, 0, 1);
         Ok(())
     }
+
+    fn is_async_compatible(&self) -> bool {
+        self.be.is_async_compatible()
+    }
 }
 
 impl WriteBackend for WarmUpAccessBackend {
