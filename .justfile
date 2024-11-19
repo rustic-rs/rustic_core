@@ -29,8 +29,8 @@ build:
 b: build
 
 check:
-    cargo check --no-default-features
-    cargo check --all-features
+    cargo check --no-default-features --all-targets --workspace 
+    cargo check --all-features --all-targets --workspace
 
 c: check
 
