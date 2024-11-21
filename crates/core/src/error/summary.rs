@@ -39,7 +39,16 @@ use ecow::EcoString;
 pub type IssueIdentifier = EcoString;
 
 pub type Issues = BTreeMap<IssueScope, BTreeMap<IssueIdentifier, CondensedIssue>>;
-pub type Metrics = BTreeMap<EcoString, EcoString>;
+
+#[derive(Debug, Clone, derive_more::Display, derive_more::From, serde::Serialize)]
+#[display("{metric}")]
+pub enum MetricValue {
+    Int(i64),
+    Float(f64),
+    String(EcoString),
+}
+
+pub type Metrics = BTreeMap<EcoString, MetricValue>;
 
 #[derive(
     Debug,
@@ -146,12 +155,12 @@ impl Summary {
     }
 
     /// Adds a custom metric
-    pub fn add_metric(&mut self, key: &str, value: &str) {
+    pub fn add_metric(&mut self, key: &str, value: MetricValue) {
         _ = self
             .metrics
             .entry(key.into())
-            .and_modify(|val| *val = value.into())
-            .or_insert_with(|| value.into());
+            .and_modify(|val| *val = value.clone())
+            .or_insert_with(|| value);
     }
 
     pub fn export_issues(&mut self) -> bool {
@@ -297,9 +306,14 @@ mod tests {
 
         assert_eq!(summary.issues.len(), 1);
 
-        let user_input_issues = summary.issues.get(&IssueScope::UserInput).unwrap();
+        let user_input_issues = summary
+            .issues
+            .get(&IssueScope::UserInput)
+            .expect("Expected to find UserInput issues in the summary, but none were found");
 
-        let issue = user_input_issues.get("Invalid input").unwrap();
+        let issue = user_input_issues.get("Invalid input").expect(
+            "Expected to find an issue with the message 'Invalid input', but none were found",
+        );
 
         assert_eq!(issue.count, 1);
 
@@ -369,7 +383,7 @@ mod tests {
             Some("Inconsistent state on disk"),
         );
 
-        summary.add_metric("execution_time", "5s");
+        summary.add_metric("execution_time (sec)", 5.into());
 
         summary.complete();
 
@@ -393,7 +407,7 @@ mod tests {
             DisplayOptionKind::Metrics => {
                 assert!(display_output.contains("Metrics:"));
 
-                assert!(display_output.contains("execution_time: 5s"));
+                assert!(display_output.contains("execution_time (sec): 5"));
 
                 assert_snapshot!(display.to_string(), display_output);
             }
@@ -408,7 +422,7 @@ mod tests {
 
                 assert!(display_output.contains("Metrics:"));
 
-                assert!(display_output.contains("execution_time: 5s"));
+                assert!(display_output.contains("execution_time (sec): 5"));
             }
         }
     }
