@@ -31,14 +31,15 @@
 use std::{
     collections::{BTreeMap, HashSet},
     fmt::{self, Display},
-    string::ToString,
     time::Instant,
 };
 
-pub type IssueIdentifier = String;
+use ecow::EcoString;
+
+pub type IssueIdentifier = EcoString;
 
 pub type Issues = BTreeMap<IssueScope, BTreeMap<IssueIdentifier, CondensedIssue>>;
-pub type Metrics = BTreeMap<String, String>;
+pub type Metrics = BTreeMap<EcoString, EcoString>;
 
 #[derive(
     Debug,
@@ -63,13 +64,13 @@ pub enum IssueScope {
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
 pub struct CondensedIssue {
     /// High-level description of the problem
-    message: String,
+    message: EcoString,
 
     /// Number of occurrences
     count: usize,
 
     /// Optional diagnostic information, e.g. an error message
-    root_cause: Option<String>,
+    root_cause: Option<EcoString>,
 }
 
 #[derive(Debug, Clone, Copy, Default, Hash, PartialEq, Eq, derive_more::Display)]
@@ -84,7 +85,7 @@ pub enum DisplayOptionKind {
 #[derive(Debug, Clone)]
 pub struct Summary {
     /// Name of the active context, e.g. a command or operation
-    context: String,
+    context: EcoString,
 
     /// Start time of the collection
     // Instant cannot be (de-)serialized, for an implementation see:
@@ -109,7 +110,7 @@ impl Summary {
     /// Constructor to create an initial empty Summary
     pub fn new(context: &str) -> Self {
         Self {
-            context: context.to_string(),
+            context: context.into(),
             start_time: Instant::now(),
             end_time: None,
             issues: Issues::default(),
@@ -129,17 +130,17 @@ impl Summary {
             .issues
             .entry(scope)
             .or_default()
-            .entry(message.to_string())
+            .entry(message.into())
             .and_modify(|val| {
                 val.count += 1;
                 if val.root_cause.is_none() {
-                    val.root_cause = root_cause.map(ToString::to_string);
+                    val.root_cause = root_cause.map(Into::into);
                 }
             })
             .or_insert(CondensedIssue {
-                message: message.to_string(),
+                message: message.into(),
                 count: 1,
-                root_cause: root_cause.map(ToString::to_string),
+                root_cause: root_cause.map(Into::into),
             });
     }
 
@@ -147,9 +148,9 @@ impl Summary {
     pub fn add_metric(&mut self, key: &str, value: &str) {
         _ = self
             .metrics
-            .entry(key.to_string())
-            .and_modify(|val| *val = value.to_string())
-            .or_insert(value.to_string());
+            .entry(key.into())
+            .and_modify(|val| *val = value.into())
+            .or_insert(value.into());
     }
 
     pub fn export_issues(&mut self) -> bool {
@@ -178,62 +179,89 @@ impl Summary {
     }
 }
 
+// Display Helpers
+impl Summary {
+    fn should_display_timing(&self) -> bool {
+        !self.display.is_disjoint(&HashSet::from([
+            DisplayOptionKind::Timing,
+            DisplayOptionKind::All,
+        ]))
+    }
+
+    fn should_display_issues(&self) -> bool {
+        !self.display.is_disjoint(&HashSet::from([
+            DisplayOptionKind::Issues,
+            DisplayOptionKind::All,
+        ]))
+    }
+
+    fn should_display_metrics(&self) -> bool {
+        !self.display.is_disjoint(&HashSet::from([
+            DisplayOptionKind::Metrics,
+            DisplayOptionKind::All,
+        ]))
+    }
+
+    fn display_timing(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        writeln!(f)?;
+        if let Some(end_time) = self.end_time {
+            let duration = end_time.duration_since(self.start_time);
+            let human_duration = humantime::format_duration(duration);
+
+            writeln!(f, "Execution Time: {human_duration}")?;
+        }
+
+        Ok(())
+    }
+
+    fn display_issues(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        writeln!(f)?;
+        writeln!(f, "Issues Encountered:")?;
+        for (scope, scoped_issues) in &self.issues {
+            writeln!(f, "  Scope: {scope}")?;
+            for (message, issue) in scoped_issues {
+                let root_cause_info = issue
+                    .root_cause
+                    .as_ref()
+                    .map_or_else(String::new, |root| format!(" (Root Cause: {root})"));
+
+                writeln!(
+                    f,
+                    "    {} - Occurrences: {}{}",
+                    message, issue.count, root_cause_info
+                )?;
+            }
+        }
+
+        Ok(())
+    }
+
+    fn display_metrics(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        writeln!(f)?;
+        writeln!(f, "Metrics:")?;
+        for (key, value) in &self.metrics {
+            writeln!(f, "  {key}: {value}")?;
+        }
+
+        Ok(())
+    }
+}
+
 impl Display for Summary {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         // General context information
         writeln!(f, "Context: {}", self.context)?;
-        // Display Duration
-        if !self.display.is_disjoint(&HashSet::from([
-            DisplayOptionKind::Timing,
-            DisplayOptionKind::All,
-        ])) {
-            writeln!(f)?;
-            if let Some(end_time) = self.end_time {
-                let duration = end_time.duration_since(self.start_time);
-                let human_duration = humantime::format_duration(duration);
 
-                writeln!(f, "Execution Time: {human_duration}")?;
-            }
+        if self.should_display_timing() {
+            self.display_timing(f)?;
         }
 
-        // Display Issues
-        if !self.issues.is_empty()
-            && !self.display.is_disjoint(&HashSet::from([
-                DisplayOptionKind::Issues,
-                DisplayOptionKind::All,
-            ]))
-        {
-            writeln!(f)?;
-            writeln!(f, "Issues Encountered:")?;
-            for (scope, scoped_issues) in &self.issues {
-                writeln!(f, "  Scope: {scope}")?;
-                for (message, issue) in scoped_issues {
-                    let root_cause_info = issue
-                        .root_cause
-                        .as_ref()
-                        .map_or_else(String::new, |root| format!(" (Root Cause: {root})"));
-
-                    writeln!(
-                        f,
-                        "    {} - Occurrences: {}{}",
-                        message, issue.count, root_cause_info
-                    )?;
-                }
-            }
+        if !self.issues.is_empty() && self.should_display_issues() {
+            self.display_issues(f)?;
         }
 
-        // Additional metrics
-        if !self.metrics.is_empty()
-            && !self.display.is_disjoint(&HashSet::from([
-                DisplayOptionKind::Metrics,
-                DisplayOptionKind::All,
-            ]))
-        {
-            writeln!(f)?;
-            writeln!(f, "Metrics:")?;
-            for (key, value) in &self.metrics {
-                writeln!(f, "  {key}: {value}")?;
-            }
+        if !self.metrics.is_empty() && self.should_display_metrics() {
+            self.display_metrics(f)?;
         }
 
         Ok(())
@@ -242,8 +270,6 @@ impl Display for Summary {
 
 #[cfg(test)]
 mod tests {
-    use std::{thread::sleep, time::Duration};
-
     use insta::assert_snapshot;
     use rstest::rstest;
 
@@ -252,8 +278,6 @@ mod tests {
     #[test]
     fn test_summary_completion_and_display_passes() {
         let mut summary = Summary::new("test_command");
-
-        sleep(Duration::from_millis(250));
 
         summary.complete();
 

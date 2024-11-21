@@ -1222,6 +1222,9 @@ name = "ecow"
 version = "0.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e42fc0a93992b20c58b99e59d61eaf1635a25bfbe49e4275c34ba0aee98119ba"
+dependencies = [
+ "serde",
+]
 
 [[package]]
 name = "either"
