@@ -1,0 +1,11 @@
+---
+source: crates/core/src/error/summary.rs
+expression: display_output
+---
+Context: Check
+
+Issues Encountered:
+  Scope: Internal
+    Pack not found - Occurrences: 1 (Root Cause: Inconsistent state on disk)
+  Scope: UserInput
+    Invalid input - Occurrences: 2 (Root Cause: Missing field)
