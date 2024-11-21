@@ -40,15 +40,7 @@ pub type IssueIdentifier = EcoString;
 
 pub type Issues = BTreeMap<IssueScope, BTreeMap<IssueIdentifier, CondensedIssue>>;
 
-#[derive(Debug, Clone, derive_more::Display, derive_more::From, serde::Serialize)]
-#[display("{metric}")]
-pub enum MetricValue {
-    Int(i64),
-    Float(f64),
-    String(EcoString),
-}
-
-pub type Metrics = BTreeMap<EcoString, MetricValue>;
+pub type Metrics = BTreeMap<EcoString, EcoString>;
 
 #[derive(
     Debug,
@@ -118,7 +110,7 @@ pub struct Summary {
 
 impl Summary {
     /// Constructor to create an initial empty Summary
-    pub fn new(context: &str) -> Self {
+    pub fn new(context: impl Into<EcoString>) -> Self {
         Self {
             context: context.into(),
             start_time: Instant::now(),
@@ -135,27 +127,37 @@ impl Summary {
     }
 
     /// Adds a new issue to the summary, condensing similar issues
-    pub fn add_issue(&mut self, scope: IssueScope, message: &str, root_cause: Option<&str>) {
+    pub fn add_issue(
+        &mut self,
+        scope: IssueScope,
+        message: impl Into<EcoString>,
+        root_cause: Option<impl Into<EcoString>>,
+    ) {
+        let message = message.into();
+        let root_cause = root_cause.map(Into::into);
+
         _ = self
             .issues
             .entry(scope)
             .or_default()
-            .entry(message.into())
+            .entry(message.clone())
             .and_modify(|val| {
                 val.count += 1;
                 if val.root_cause.is_none() {
-                    val.root_cause = root_cause.map(Into::into);
+                    val.root_cause.clone_from(&root_cause);
                 }
             })
             .or_insert(CondensedIssue {
-                message: message.into(),
+                message,
                 count: 1,
-                root_cause: root_cause.map(Into::into),
+                root_cause,
             });
     }
 
     /// Adds a custom metric
-    pub fn add_metric(&mut self, key: &str, value: MetricValue) {
+    pub fn add_metric(&mut self, key: impl Into<EcoString>, value: impl Into<EcoString>) {
+        let value = value.into();
+
         _ = self
             .metrics
             .entry(key.into())
@@ -383,7 +385,7 @@ mod tests {
             Some("Inconsistent state on disk"),
         );
 
-        summary.add_metric("execution_time (sec)", 5.into());
+        summary.add_metric("execution_time", "5s");
 
         summary.complete();
 
@@ -407,7 +409,7 @@ mod tests {
             DisplayOptionKind::Metrics => {
                 assert!(display_output.contains("Metrics:"));
 
-                assert!(display_output.contains("execution_time (sec): 5"));
+                assert!(display_output.contains("execution_time: 5s"));
 
                 assert_snapshot!(display.to_string(), display_output);
             }
@@ -422,7 +424,7 @@ mod tests {
 
                 assert!(display_output.contains("Metrics:"));
 
-                assert!(display_output.contains("execution_time (sec): 5"));
+                assert!(display_output.contains("execution_time: 5s"));
             }
         }
     }
