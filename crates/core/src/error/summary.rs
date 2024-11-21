@@ -52,7 +52,6 @@ pub type Metrics = BTreeMap<EcoString, EcoString>;
     Ord,
     derive_more::Display,
     serde::Serialize,
-    serde::Deserialize,
 )]
 pub enum IssueScope {
     #[default]
@@ -61,7 +60,7 @@ pub enum IssueScope {
     UserInput,
 }
 
-#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Default, serde::Serialize)]
 pub struct CondensedIssue {
     /// High-level description of the problem
     message: EcoString,
@@ -73,7 +72,9 @@ pub struct CondensedIssue {
     root_cause: Option<EcoString>,
 }
 
-#[derive(Debug, Clone, Copy, Default, Hash, PartialEq, Eq, derive_more::Display)]
+#[derive(
+    Debug, Clone, Copy, Default, Hash, PartialEq, Eq, derive_more::Display, serde::Serialize,
+)]
 pub enum DisplayOptionKind {
     #[default]
     Issues,
@@ -150,7 +151,7 @@ impl Summary {
             .metrics
             .entry(key.into())
             .and_modify(|val| *val = value.into())
-            .or_insert(value.into());
+            .or_insert_with(|| value.into());
     }
 
     pub fn export_issues(&mut self) -> bool {
@@ -170,7 +171,7 @@ impl Summary {
     }
 
     pub fn export_none(&mut self) {
-        self.display.clear()
+        self.display.clear();
     }
 
     pub fn set_export(&mut self, option: DisplayOptionKind) -> bool {
