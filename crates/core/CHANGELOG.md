@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.7.0](https://github.com/rustic-rs/rustic_core/compare/rustic_core-v0.6.1...rustic_core-v0.7.0) - 2024-11-24
+
+### Other
+
+- remove webdav feature ([#366](https://github.com/rustic-rs/rustic_core/pull/366))
+- Revert "feat(async): add `async_compatible` methods to identify backend compatibility ([#355](https://github.com/rustic-rs/rustic_core/pull/355))"
+
 ## [0.6.1](https://github.com/rustic-rs/rustic_core/compare/rustic_core-v0.6.0...rustic_core-v0.6.1) - 2024-11-19
 
 ### Added
