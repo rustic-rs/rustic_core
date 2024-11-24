@@ -33,7 +33,6 @@ default = []
 cli = ["merge", "clap"]
 merge = ["dep:conflate"]
 clap = ["dep:clap"]
-webdav = ["dep:dav-server", "dep:futures"]
 
 [package.metadata.docs.rs]
 all-features = true
@@ -90,8 +89,6 @@ clap = { version = "4.5.19", optional = true, features = ["derive", "env", "wrap
 conflate = { version = "0.3.1", optional = true }
 
 # vfs support
-dav-server = { version = "0.7.0", default-features = false, optional = true }
-futures = { version = "0.3.30", optional = true }
 runtime-format = "0.1.3"
 
 # other dependencies
