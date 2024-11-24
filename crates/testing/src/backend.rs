@@ -58,11 +58,6 @@ pub mod in_memory_backend {
         ) -> RusticResult<Bytes> {
             Ok(self.0.read().unwrap()[tpe][id].slice(offset as usize..(offset + length) as usize))
         }
-
-        /// [`InMemoryBackend`] doesn't use `async`, even under the hood.
-        fn is_async_compatible(&self) -> bool {
-            true
-        }
     }
 
     impl WriteBackend for InMemoryBackend {
