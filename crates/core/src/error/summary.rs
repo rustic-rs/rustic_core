@@ -54,6 +54,25 @@ pub type Metrics = BTreeMap<EcoString, EcoString>;
     derive_more::Display,
     serde::Serialize,
 )]
+pub enum IssueCategory {
+    #[default]
+    Warning,
+    Error,
+    Info,
+}
+
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    Default,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    derive_more::Display,
+    serde::Serialize,
+)]
 pub enum IssueScope {
     #[default]
     Internal,
@@ -65,6 +84,8 @@ pub enum IssueScope {
 pub struct CondensedIssue {
     /// High-level description of the problem
     message: EcoString,
+
+    category: IssueCategory,
 
     /// Number of occurrences
     count: usize,
@@ -106,6 +127,9 @@ pub struct Summary {
 
     /// Display this data
     display: HashSet<DisplayOptionKind>,
+
+    /// Log enabled
+    log_enabled: bool,
 }
 
 impl Summary {
@@ -118,6 +142,7 @@ impl Summary {
             issues: Issues::default(),
             metrics: BTreeMap::default(),
             display: HashSet::from([DisplayOptionKind::default()]),
+            log_enabled: false,
         }
     }
 
@@ -130,11 +155,16 @@ impl Summary {
     pub fn add_issue(
         &mut self,
         scope: IssueScope,
+        category: IssueCategory,
         message: impl Into<EcoString>,
         root_cause: Option<impl Into<EcoString>>,
     ) {
-        let message = message.into();
         let root_cause = root_cause.map(Into::into);
+        let message = message.into();
+
+        if self.log_enabled {
+            Self::log_issue(scope, category, &message, &root_cause);
+        }
 
         _ = self
             .issues
@@ -148,6 +178,7 @@ impl Summary {
                 }
             })
             .or_insert(CondensedIssue {
+                category,
                 message,
                 count: 1,
                 root_cause,
@@ -188,6 +219,31 @@ impl Summary {
     pub fn set_export(&mut self, option: DisplayOptionKind) -> bool {
         self.display.clear();
         self.display.insert(option)
+    }
+
+    fn log_issue(
+        scope: IssueScope,
+        category: IssueCategory,
+        message: EcoString,
+        root_cause: Option<&EcoString>,
+    ) {
+        let mut to_print = String::new();
+
+        if root_cause.is_none() {
+            writeln!(to_print, "in scope '{scope}': {message}",)
+        } else {
+            let root_cause = format_root_cause(root_cause);
+            writeln!(
+                to_print,
+                "in scope '{scope}': {message} (Root Cause: {root_cause})",
+            )
+        }
+
+        match category {
+            IssueCategory::Error => log::error(to_print),
+            IssueCategory::Warning => log::warn(to_print),
+            IssueCategory::Info => log::info(to_print),
+        }
     }
 }
 
@@ -232,10 +288,7 @@ impl Summary {
         for (scope, scoped_issues) in &self.issues {
             writeln!(f, "  Scope: {scope}")?;
             for (message, issue) in scoped_issues {
-                let root_cause_info = issue
-                    .root_cause
-                    .as_ref()
-                    .map_or_else(String::new, |root| format!(" (Root Cause: {root})"));
+                let root_cause_info = format_root_cause(issue.root_cause);
 
                 writeln!(
                     f,
@@ -257,6 +310,14 @@ impl Summary {
 
         Ok(())
     }
+}
+
+fn format_root_cause(root_cause: Option<EcoString>) -> String {
+    let root_cause_info = root_cause
+        .as_ref()
+        .map_or_else(String::new, |root| format!(" (Root Cause: {root})"));
+
+    root_cause_info
 }
 
 impl Display for Summary {
