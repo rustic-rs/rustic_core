@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.5.1](https://github.com/rustic-rs/rustic_core/compare/rustic_backend-v0.5.0...rustic_backend-v0.5.1) - 2024-11-24
+
+### Other
+
+- Revert "feat(async): add `async_compatible` methods to identify backend compatibility ([#355](https://github.com/rustic-rs/rustic_core/pull/355))"
+
 ## [0.5.0](https://github.com/rustic-rs/rustic_core/compare/rustic_backend-v0.4.2...rustic_backend-v0.5.0) - 2024-11-18
 
 ### Added

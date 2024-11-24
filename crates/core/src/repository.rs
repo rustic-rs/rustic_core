@@ -708,19 +708,6 @@ impl<P, S> Repository<P, S> {
     pub fn list<T: RepoId>(&self) -> RusticResult<impl Iterator<Item = T>> {
         Ok(self.be.list(T::TYPE)?.into_iter().map(Into::into))
     }
-
-    /// Check if one of this repository backend is incompatible
-    /// with async features in `rustic_core` implementations.
-    ///
-    /// see <https://github.com/rustic-rs/rustic/issues/1181>
-    pub fn is_async_compatible(&self) -> bool {
-        // check if be or be_hot is incompatible with async
-        self.be.is_async_compatible()
-            && self
-                .be_hot
-                .as_ref()
-                .map_or(true, ReadBackend::is_async_compatible)
-    }
 }
 
 impl<P: ProgressBars, S> Repository<P, S> {
@@ -1909,7 +1896,7 @@ impl<P: ProgressBars, S: IndexedTree> Repository<P, S> {
 impl<P: ProgressBars, S: IndexedIds> Repository<P, S> {
     /// Run a backup of `source` using the given options.
     ///
-    /// You have to give a prefilled [`SnapshotFile`] which is modified and saved.
+    /// You have to give a preflled [`SnapshotFile`] which is modified and saved.
     ///
     /// # Arguments
     ///

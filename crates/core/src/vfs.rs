@@ -1,6 +1,4 @@
 mod format;
-#[cfg(feature = "webdav")]
-mod webdavfs;
 
 use std::{
     collections::BTreeMap,
@@ -11,10 +9,6 @@ use std::{
 use bytes::{Bytes, BytesMut};
 use runtime_format::FormatArgs;
 use strum::EnumString;
-
-#[cfg(feature = "webdav")]
-/// A struct which enables `WebDAV` access to a [`Vfs`] using [`dav-server`]
-pub use crate::vfs::webdavfs::WebDavFS;
 
 use crate::{
     blob::{tree::TreeId, BlobId, DataId},
@@ -454,25 +448,6 @@ impl Vfs {
             }
         };
         Ok(result)
-    }
-
-    #[cfg(feature = "webdav")]
-    /// Turn the [`Vfs`] into a [`WebDavFS`]
-    ///
-    /// # Arguments
-    ///
-    /// * `repo` - The repository to use
-    /// * `file_policy` - The policy to use for files
-    ///
-    /// # Returns
-    ///
-    /// The boxed [`WebDavFS`] for the [`Vfs`]
-    pub fn into_webdav_fs<P, S: IndexedFull>(
-        self,
-        repo: Repository<P, S>,
-        file_policy: FilePolicy,
-    ) -> Box<WebDavFS<P, S>> {
-        Box::new(WebDavFS::new(repo, self, file_policy))
     }
 }
 

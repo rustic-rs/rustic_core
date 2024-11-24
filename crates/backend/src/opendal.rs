@@ -386,15 +386,6 @@ impl ReadBackend for OpenDALBackend {
             )?
             .to_bytes())
     }
-
-    /// [`OpenDALBackend`] is `sync` and uses `block_on(async Fn)` under the hood.
-    ///
-    /// When implementing `rustic_core` using this backend in some `async` features will not work.
-    ///
-    /// see <https://github.com/rustic-rs/rustic/issues/1181>
-    fn is_async_compatible(&self) -> bool {
-        false
-    }
 }
 
 impl WriteBackend for OpenDALBackend {

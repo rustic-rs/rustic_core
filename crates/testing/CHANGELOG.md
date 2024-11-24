@@ -6,6 +6,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.1](https://github.com/rustic-rs/rustic_core/compare/rustic_testing-v0.3.0...rustic_testing-v0.3.1) - 2024-11-24
+
+### Other
+
+- Revert "feat(async): add `async_compatible` methods to identify backend compatibility ([#355](https://github.com/rustic-rs/rustic_core/pull/355))"
+
 ## [0.3.0](https://github.com/rustic-rs/rustic_core/compare/rustic_testing-v0.2.3...rustic_testing-v0.3.0) - 2024-11-18
 
 ### Added
