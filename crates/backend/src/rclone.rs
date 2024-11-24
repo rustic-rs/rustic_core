@@ -353,11 +353,6 @@ impl ReadBackend for RcloneBackend {
     ) -> RusticResult<Bytes> {
         self.rest.read_partial(tpe, id, cacheable, offset, length)
     }
-
-    /// [`RcloneBackend`] uses [`RestBackend`].
-    fn is_async_compatible(&self) -> bool {
-        self.rest.is_async_compatible()
-    }
 }
 
 impl WriteBackend for RcloneBackend {
