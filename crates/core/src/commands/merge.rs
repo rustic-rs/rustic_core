@@ -59,16 +59,16 @@ pub(crate) fn merge_snapshots<P: ProgressBars, S: IndexedTree>(
         .max_by_key(|sn| sn.time)
         .map_or(now, |sn| sn.time);
 
-    let mut summary = snap.summary.take().unwrap_or_default();
-    summary.backup_start = Local::now();
+    let mut snapshot_summary = snap.summary.take().unwrap_or_default();
+    snapshot_summary.backup_start = Local::now();
 
     let trees: Vec<TreeId> = snapshots.iter().map(|sn| sn.tree).collect();
-    snap.tree = merge_trees(repo, &trees, cmp, &mut summary)?;
+    snap.tree = merge_trees(repo, &trees, cmp, &mut snapshot_summary)?;
 
-    summary.finalize(now).map_err(|err| {
+    snapshot_summary.finalize(now).map_err(|err| {
         RusticError::with_source(ErrorKind::Internal, "Failed to finalize summary.", err)
     })?;
-    snap.summary = Some(summary);
+    snap.summary = Some(snapshot_summary);
 
     snap.id = repo.dbe().save_file(&snap)?.into();
     Ok(snap)

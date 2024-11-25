@@ -11,7 +11,7 @@ use bytes::Bytes;
 use bytesize::ByteSize;
 use chrono::{Datelike, Local, NaiveDateTime, Timelike};
 use derive_setters::Setters;
-use log::{debug, error, warn};
+use log::{debug, error};
 use rand::{prelude::SliceRandom, thread_rng, Rng};
 use rayon::prelude::{IntoParallelIterator, ParallelIterator};
 use zstd::stream::decode_all;
@@ -21,7 +21,7 @@ use crate::{
     blob::{tree::TreeStreamerOnce, BlobId, BlobType},
     crypto::hasher::hash,
     error::{
-        summary::{self, IssueScope, Summary},
+        summary::{IssueScope, Summary},
         RusticError, RusticResult,
     },
     id::Id,
@@ -241,7 +241,7 @@ pub(crate) fn check_repository<P: ProgressBars, S: Open>(
     opts: CheckOptions,
     trees: Vec<TreeId>,
 ) -> RusticResult<Summary> {
-    let summary = Summary::new("check");
+    let summary = Arc::new(Mutex::new(Summary::new("check")));
     let be = repo.dbe();
     let cache = repo.cache();
     let hot_be = &repo.be_hot;
@@ -261,7 +261,9 @@ pub(crate) fn check_repository<P: ProgressBars, S: Open>(
                 // TODO: Make concurrency (20) customizable
                 let cache_file_summary = check_cache_files(20, cache, raw_be, file_type, &p)?;
 
-                summary.merge(cache_file_summary);
+                if let Some(cache_file_summary) = cache_file_summary {
+                    summary.lock().unwrap().merge(cache_file_summary);
+                }
             }
         }
     }
@@ -269,12 +271,16 @@ pub(crate) fn check_repository<P: ProgressBars, S: Open>(
     if let Some(hot_be) = hot_be {
         for file_type in [FileType::Snapshot, FileType::Index] {
             let hot_file_summary = check_hot_files(raw_be, hot_be, file_type, pb)?;
-
-            summary.merge(hot_file_summary);
+            {
+                summary.lock().unwrap().merge(hot_file_summary);
+            }
         }
     }
 
-    let index_collector = check_packs(be, hot_be, pb)?;
+    let (index_collector, check_packs_summary) = check_packs(be, hot_be, pb)?;
+    {
+        summary.lock().unwrap().merge(check_packs_summary);
+    }
 
     if let Some(cache) = &cache {
         let p = pb.progress_spinner("cleaning up packs from cache...");
@@ -284,23 +290,33 @@ pub(crate) fn check_repository<P: ProgressBars, S: Open>(
             .map(|(id, size)| (**id, *size))
             .collect();
         if let Err(err) = cache.remove_not_in_list(FileType::Pack, &ids) {
-            warn!(
-                "Error in cache backend removing pack files: {}",
-                err.display_log()
+            summary.lock().unwrap().add_warning(
+                IssueScope::Internal,
+                "Error in cache backend removing pack files",
+                Some(err.display_log().into()),
             );
         }
+
         p.finish();
 
         if !opts.trust_cache {
             let p = pb.progress_bytes("checking packs in cache...");
+
             // TODO: Make concurrency (5) customizable
-            check_cache_files(5, cache, raw_be, FileType::Pack, &p)?;
+            let cache_file_summary = check_cache_files(5, cache, raw_be, FileType::Pack, &p)?;
+
+            if let Some(cache_file_summary) = cache_file_summary {
+                summary.lock().unwrap().merge(cache_file_summary);
+            }
         }
     }
 
     let index_be = GlobalIndex::new_from_index(index_collector.into_index());
 
-    let packs = check_trees(be, &index_be, trees, pb)?;
+    let (packs, check_trees_summary) = check_trees(be, &index_be, trees, pb)?;
+    {
+        summary.lock().unwrap().merge(check_trees_summary);
+    }
 
     if opts.read_data {
         let packs = index_be
@@ -322,19 +338,42 @@ pub(crate) fn check_repository<P: ProgressBars, S: Open>(
             let data = match be.read_full(FileType::Pack, &id) {
                 Ok(data) => data,
                 Err(err) => {
-                    error!("Error reading data for pack {id} : {}", err.display_log());
+                    summary.lock().unwrap().add_error(
+                        IssueScope::Internal,
+                        format!("Error reading pack {id} from backend",),
+                        Some(err.display_log().into()),
+                    );
                     return;
                 }
             };
             match check_pack(be, pack, data, &p) {
                 Ok(()) => {}
-                Err(err) => error!("Pack {id} is not valid: {}", err.display_log()),
+                Err(err) => {
+                    summary.lock().unwrap().add_error(
+                        IssueScope::Internal,
+                        format!("Pack {id} is not valid",),
+                        Some(err.display_log().into()),
+                    );
+                }
             }
         });
         p.finish();
     }
 
-    Ok(())
+    let mut summary = Arc::try_unwrap(summary)
+        .map_err(|_err| RusticError::new(ErrorKind::Internal, "Error unwrapping Mutex from Arc."))?
+        .into_inner()
+        .map_err(|err| {
+            RusticError::with_source(
+                ErrorKind::Internal,
+                "Mutex poisoned while getting summary for check command.",
+                err,
+            )
+        })?;
+
+    summary.complete();
+
+    Ok(summary)
 }
 
 /// Checks if all files in the backend are also in the hot backend
@@ -385,11 +424,18 @@ fn check_hot_files(
     }
 
     for (id, _) in files {
-        error!("hot file Type: {file_type:?}, Id: {id} is missing!",);
+        summary.add_error(
+            IssueScope::Internal,
+            format!("hot file Type: {file_type:?}, Id: {id} is missing in hot repo",),
+            None,
+        );
     }
+
     p.finish();
 
-    Ok(())
+    summary.complete();
+
+    Ok(summary)
 }
 
 /// Checks if all files in the cache are also in the backend
@@ -411,12 +457,12 @@ fn check_cache_files(
     be: &impl ReadBackend,
     file_type: FileType,
     p: &impl Progress,
-) -> RusticResult<Summary> {
+) -> RusticResult<Option<Summary>> {
     let summary = Arc::new(Mutex::new(Summary::new("cache files").enable_log()));
     let files = cache.list_with_size(file_type)?;
 
     if files.is_empty() {
-        return Ok(());
+        return Ok(None);
     }
 
     let total_size = files.values().map(|size| u64::from(*size)).sum();
@@ -425,30 +471,28 @@ fn check_cache_files(
     files
         .into_par_iter()
         .for_each_with((cache, be, p.clone()), |(cache, be, p), (id, size)| {
+            let summary = Arc::clone(&summary);
             // Read file from cache and from backend and compare
             match (
                 cache.read_full(file_type, &id),
                 be.read_full(file_type, &id),
             ) {
                 (Err(err), _) => {
-                    let mut summary = summary.lock().unwrap();
-                    summary.add_error(
+                    summary.lock().unwrap().add_error(
                         IssueScope::Internal,
                         format!("Error reading cached file Type: {file_type:?}, Id: {id}",),
-                        Some(err.display_log()),
+                        Some(err.display_log().into()),
                     );
                 }
                 (_, Err(err)) => {
-                    let mut summary = summary.lock().unwrap();
-                    summary.add_error(
+                    summary.lock().unwrap().add_error(
                         IssueScope::Internal,
                         format!("Error reading file Type: {file_type:?}, Id: {id}",),
-                        Some(err.display_log()),
+                        Some(err.display_log().into()),
                     );
                 }
                 (Ok(Some(data_cached)), Ok(data)) if data_cached != data => {
-                    let mut summary = summary.lock().unwrap();
-                    summary.add_error(
+                    summary.lock().unwrap().add_error(
                         IssueScope::Internal,
                         format!("Cached file Type: {file_type:?}, Id: {id} is not identical to backend!",),
                         None
@@ -462,9 +506,20 @@ fn check_cache_files(
 
     p.finish();
 
-    summary.lock().unwrap().complete();
+    let mut summary = Arc::try_unwrap(summary)
+        .map_err(|_err| RusticError::new(ErrorKind::Internal, "Error unwrapping Mutex from Arc."))?
+        .into_inner()
+        .map_err(|err| {
+            RusticError::with_source(
+                ErrorKind::Internal,
+                "Mutex poisoned while getting summary for check command.",
+                err,
+            )
+        })?;
 
-    Ok(summary.into_inner().unwrap())
+    summary.complete();
+
+    Ok(Some(summary))
 }
 
 /// Check if packs correspond to index and are present in the backend
@@ -487,7 +542,8 @@ fn check_packs(
     be: &impl DecryptReadBackend,
     hot_be: &Option<impl ReadBackend>,
     pb: &impl ProgressBars,
-) -> RusticResult<IndexCollector> {
+) -> RusticResult<(IndexCollector, Summary)> {
+    let mut summary = Summary::new("packs").enable_log();
     let mut packs = HashMap::new();
     let mut tree_packs = HashMap::new();
     let mut index_collector = IndexCollector::new(IndexType::Full);
@@ -507,7 +563,11 @@ fn check_packs(
 
             // Check if time is set _
             if check_time && p.time.is_none() {
-                error!("pack {}: No time is set! Run prune to correct this!", p.id);
+                summary.add_error(
+                    IssueScope::Internal,
+                    format!("pack {}: No time is set! Run prune to correct this!", p.id),
+                    None,
+                );
             }
 
             // check offsests in index
@@ -516,16 +576,24 @@ fn check_packs(
             blobs.sort_unstable();
             for blob in blobs {
                 if blob.tpe != blob_type {
-                    error!(
-                        "pack {}: blob {} blob type does not match: type: {:?}, expected: {:?}",
-                        p.id, blob.id, blob.tpe, blob_type
+                    summary.add_error(
+                        IssueScope::Internal,
+                        format!(
+                            "pack {}: blob {} blob type does not match: type: {:?}, expected: {blob_type:?}",
+                            p.id, blob.id, blob.tpe
+                        ),
+                        None,
                     );
                 }
 
                 if blob.offset != expected_offset {
-                    error!(
-                        "pack {}: blob {} offset in index: {}, expected: {}",
-                        p.id, blob.id, blob.offset, expected_offset
+                    summary.add_error(
+                        IssueScope::Internal,
+                        format!(
+                            "pack {}: blob {} offset in index: {}, expected: {expected_offset}",
+                            p.id, blob.id, blob.offset
+                        ),
+                        None,
                     );
                 }
                 expected_offset += blob.length;
@@ -537,15 +605,19 @@ fn check_packs(
 
     if let Some(hot_be) = hot_be {
         let p = pb.progress_spinner("listing packs in hot repo...");
-        check_packs_list_hot(hot_be, tree_packs, &packs)?;
+        let packs_list_hot_summary = check_packs_list_hot(hot_be, tree_packs, &packs)?;
+        summary.merge(packs_list_hot_summary);
         p.finish();
     }
 
     let p = pb.progress_spinner("listing packs...");
-    check_packs_list(be, packs)?;
+    let check_packs_list_summary = check_packs_list(be, packs)?;
+    summary.merge(check_packs_list_summary);
     p.finish();
 
-    Ok(index_collector)
+    summary.complete();
+
+    Ok((index_collector, summary))
 }
 
 // TODO: Add documentation
@@ -559,21 +631,42 @@ fn check_packs(
 /// # Errors
 ///
 /// * If a pack is missing or has a different size
-fn check_packs_list(be: &impl ReadBackend, mut packs: HashMap<PackId, u32>) -> RusticResult<()> {
+fn check_packs_list(
+    be: &impl ReadBackend,
+    mut packs: HashMap<PackId, u32>,
+) -> RusticResult<Summary> {
+    let mut summary = Summary::new("packs").enable_log();
     for (id, size) in be.list_with_size(FileType::Pack)? {
         match packs.remove(&PackId::from(id)) {
-            None => warn!("pack {id} not referenced in index. Can be a parallel backup job. To repair: 'rustic repair index'."),
+            None => {
+                summary.add_warning(
+                    IssueScope::Internal,
+                    format!("pack {id} not referenced in index. Can be a parallel backup job. To repair: 'rustic repair index'."),
+                    None,
+                );
+            }
             Some(index_size) if index_size != size => {
-                error!("pack {id}: size computed by index: {index_size}, actual size: {size}. To repair: 'rustic repair index'.");
+                summary.add_error(
+                    IssueScope::Internal,
+                    format!("pack {id}: size computed by index: {index_size}, actual size: {size}. To repair: 'rustic repair index'."),
+                    None,
+                );
             }
             _ => {} //everything ok
         }
     }
 
     for (id, _) in packs {
-        error!("pack {id} is referenced by the index but not present! To repair: 'rustic repair index'.",);
+        summary.add_error(
+            IssueScope::Internal,
+            format!("pack {id} is referenced by the index but not present! To repair: 'rustic repair index'.",),
+            None,
+        );
     }
-    Ok(())
+
+    summary.complete();
+
+    Ok(summary)
 }
 
 /// Checks if all packs in the backend are also in the index
@@ -590,27 +683,48 @@ fn check_packs_list_hot(
     be: &impl ReadBackend,
     mut treepacks: HashMap<PackId, u32>,
     packs: &HashMap<PackId, u32>,
-) -> RusticResult<()> {
+) -> RusticResult<Summary> {
+    let mut summary = Summary::new("hot packs").enable_log();
+
     for (id, size) in be.list_with_size(FileType::Pack)? {
         match treepacks.remove(&PackId::from(id)) {
             None => {
                 if packs.contains_key(&PackId::from(id)) {
-                    warn!("hot pack {id} is a data pack. This should not happen.");
+                    summary.add_warning(
+                        IssueScope::Internal,
+                        format!("hot pack {id} is a data pack. This should not happen."),
+                        None,
+                    );
                 } else {
-                    warn!("hot pack {id} not referenced in index. Can be a parallel backup job. To repair: 'rustic repair index'.");
+                    summary.add_warning(
+                        IssueScope::Internal,
+                        format!("hot pack {id} not referenced in index. Can be a parallel backup job. To repair: 'rustic repair index'."),
+                        None,
+                    );
                 }
             }
             Some(index_size) if index_size != size => {
-                error!("hot pack {id}: size computed by index: {index_size}, actual size: {size}. To repair: 'rustic repair index'.");
+                summary.add_error(
+                    IssueScope::Internal,
+                    format!("hot pack {id}: size computed by index: {index_size}, actual size: {size}. To repair: 'rustic repair index'."),
+                    None,
+                );
             }
             _ => {} //everything ok
         }
     }
 
     for (id, _) in treepacks {
-        error!("tree pack {id} is referenced by the index but not present in hot repo! To repair: 'rustic repair index'.",);
+        summary.add_error(
+            IssueScope::Internal,
+            format!("hot pack {id} is referenced by the index but not present in hot repo! To repair: 'rustic repair index'.",),
+            None,
+        );
     }
-    Ok(())
+
+    summary.complete();
+
+    Ok(summary)
 }
 
 /// Check if all snapshots and contained trees can be loaded and contents exist in the index
@@ -628,7 +742,8 @@ fn check_trees(
     index: &impl ReadGlobalIndex,
     snap_trees: Vec<TreeId>,
     pb: &impl ProgressBars,
-) -> RusticResult<BTreeSet<PackId>> {
+) -> RusticResult<(BTreeSet<PackId>, Summary)> {
+    let mut summary = Box::new(Summary::new("trees").enable_log());
     let mut packs = BTreeSet::new();
     let p = pb.progress_counter("checking trees...");
     let mut tree_streamer = TreeStreamerOnce::new(be, index, snap_trees, p)?;
@@ -636,22 +751,30 @@ fn check_trees(
         let (path, tree) = item;
         for node in tree.nodes {
             match node.node_type {
-                NodeType::File => node.content.as_ref().map_or_else(
-                    || {
-                        error!("file {:?} doesn't have a content", path.join(node.name()));
-                    },
-                    |content| {
+                NodeType::File => {
+                    if let Some(content) = node.content.as_ref() {
                         for (i, id) in content.iter().enumerate() {
                             if id.is_null() {
-                                error!("file {:?} blob {} has null ID", path.join(node.name()), i);
+                                summary.add_error(
+                                    IssueScope::Internal,
+                                    format!(
+                                        "file {:?} blob {} has null ID",
+                                        path.join(node.name()),
+                                        i
+                                    ),
+                                    None,
+                                );
                             }
 
                             match index.get_data(id) {
                                 None => {
-                                    error!(
-                                        "file {:?} blob {} is missing in index",
-                                        path.join(node.name()),
-                                        id
+                                    summary.add_error(
+                                        IssueScope::Internal,
+                                        format!(
+                                            "file {:?} blob {id} is missing in index",
+                                            path.join(node.name())
+                                        ),
+                                        None,
                                     );
                                 }
                                 Some(entry) => {
@@ -659,23 +782,41 @@ fn check_trees(
                                 }
                             }
                         }
-                    },
-                ),
+                    } else {
+                        summary.add_error(
+                            IssueScope::Internal,
+                            format!("file {:?} doesn't have a content", path.join(node.name())),
+                            None,
+                        );
+                    }
+                }
 
                 NodeType::Dir => {
                     match node.subtree {
                         None => {
-                            error!("dir {:?} subtree does not exist", path.join(node.name()));
+                            summary.add_error(
+                                IssueScope::Internal,
+                                format!("dir {:?} subtree does not exist", path.join(node.name())),
+                                None,
+                            );
                         }
                         Some(tree) if tree.is_null() => {
-                            error!("dir {:?} subtree has null ID", path.join(node.name()));
+                            summary.add_error(
+                                IssueScope::Internal,
+                                format!("dir {:?} subtree has null ID", path.join(node.name())),
+                                None,
+                            );
                         }
                         Some(id) => match index.get_tree(&id) {
                             None => {
-                                error!(
-                                    "dir {:?} subtree blob {} is missing in index",
-                                    path.join(node.name()),
-                                    id
+                                summary.add_error(
+                                    IssueScope::Internal,
+                                    format!(
+                                        "dir {:?} subtree tree {} is missing in index",
+                                        path.join(node.name()),
+                                        id
+                                    ),
+                                    None,
                                 );
                             }
                             Some(entry) => {
@@ -690,7 +831,9 @@ fn check_trees(
         }
     }
 
-    Ok(packs)
+    summary.complete();
+
+    Ok((packs, *summary))
 }
 
 /// Check if a pack is valid

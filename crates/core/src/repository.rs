@@ -46,7 +46,7 @@ use crate::{
         restore::{collect_and_prepare, restore_repository, RestoreOptions, RestorePlan},
     },
     crypto::aespoly1305::Key,
-    error::{ErrorKind, RusticResult},
+    error::{summary::Summary, ErrorKind, RusticResult},
     index::{
         binarysorted::{IndexCollector, IndexType},
         GlobalIndex, IndexEntry, ReadGlobalIndex, ReadIndex,
@@ -1146,16 +1146,16 @@ impl<P: ProgressBars, S: Open> Repository<P, S> {
     /// # Panics
     ///
     // TODO: Document panics
-    pub fn check(&self, opts: CheckOptions) -> RusticResult<()> {
+    pub fn check(&self, opts: CheckOptions) -> RusticResult<Summary> {
         let trees = self
             .get_all_snapshots()?
             .into_iter()
             .map(|snap| snap.tree)
             .collect();
 
-        check_repository(self, opts, trees)?;
+        let summary = check_repository(self, opts, trees)?;
 
-        Ok(())
+        Ok(summary)
     }
 
     /// Check the repository and given trees for errors or inconsistencies
@@ -1170,7 +1170,11 @@ impl<P: ProgressBars, S: Open> Repository<P, S> {
     /// # Panics
     ///
     // TODO: Document panics
-    pub fn check_with_trees(&self, opts: CheckOptions, trees: Vec<TreeId>) -> RusticResult<()> {
+    pub fn check_with_trees(
+        &self,
+        opts: CheckOptions,
+        trees: Vec<TreeId>,
+    ) -> RusticResult<Summary> {
         check_repository(self, opts, trees)
     }
 
