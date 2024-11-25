@@ -149,6 +149,33 @@ impl Summary {
         self.end_time = Some(Instant::now());
     }
 
+    pub fn add_error(
+        &mut self,
+        scope: IssueScope,
+        message: impl Into<EcoString>,
+        root_cause: Option<impl Into<EcoString>>,
+    ) {
+        self.add_issue(IssueCategory::Error, scope, message, root_cause);
+    }
+
+    pub fn add_warning(
+        &mut self,
+        scope: IssueScope,
+        message: impl Into<EcoString>,
+        root_cause: Option<impl Into<EcoString>>,
+    ) {
+        self.add_issue(IssueCategory::Warning, scope, message, root_cause);
+    }
+
+    pub fn add_info(
+        &mut self,
+        scope: IssueScope,
+        message: impl Into<EcoString>,
+        root_cause: Option<impl Into<EcoString>>,
+    ) {
+        self.add_issue(IssueCategory::Info, scope, message, root_cause);
+    }
+
     /// Adds a new issue to the summary, condensing similar issues
     pub fn add_issue(
         &mut self,
