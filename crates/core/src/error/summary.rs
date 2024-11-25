@@ -155,8 +155,9 @@ impl Summary {
         self.clone()
     }
 
-    pub fn is_error(&self) -> bool {
+    pub fn contains_error(&self) -> bool {
         self.issues.contains_key(&IssueCategory::Error)
+            && !self.issues[&IssueCategory::Error].is_empty()
     }
 
     pub fn add_error(
