@@ -288,7 +288,7 @@ impl Summary {
     // ? merged summaries.
     // ?
     // ? How do we merge the other fields? E.g. Timing, Metrics, etc.
-    pub fn merge(&mut self, other: Summary) {
+    pub fn merge(&mut self, other: Self) {
         self.issues.extend(other.issues);
         self.metrics.extend(other.metrics);
     }
@@ -415,7 +415,7 @@ mod tests {
             IssueCategory::Error,
             IssueScope::UserInput,
             "Invalid input",
-            Some("Missing field"),
+            Some("Missing field".into()),
         );
 
         assert_eq!(summary.issues.len(), 1);
@@ -442,14 +442,14 @@ mod tests {
             IssueCategory::Error,
             IssueScope::UserInput,
             "Invalid input",
-            Some("Missing field"),
+            Some("Missing field".into()),
         );
 
         summary.add_issue(
             IssueCategory::Error,
             IssueScope::UserInput,
             "Invalid input",
-            Some("Missing field"),
+            Some("Missing field".into()),
         );
 
         assert_eq!(summary.issues.len(), 1);
@@ -485,21 +485,21 @@ mod tests {
             IssueCategory::Error,
             IssueScope::UserInput,
             "Invalid input",
-            Some("Missing field"),
+            Some("Missing field".into()),
         );
 
         summary.add_issue(
             IssueCategory::Error,
             IssueScope::UserInput,
             "Invalid input",
-            Some("Missing field"),
+            Some("Missing field".into()),
         );
 
         summary.add_issue(
             IssueCategory::Warning,
             IssueScope::Internal,
             "Pack not found",
-            Some("Inconsistent state on disk"),
+            Some("Inconsistent state on disk".into()),
         );
 
         summary.add_metric("execution_time", "5s");
@@ -554,7 +554,7 @@ mod tests {
             IssueCategory::Error,
             IssueScope::UserInput,
             "Invalid input",
-            Some("Missing field"),
+            Some("Missing field".into()),
         );
 
         summary.add_metric("execution_time", "5s");
@@ -567,7 +567,7 @@ mod tests {
             IssueCategory::Error,
             IssueScope::UserInput,
             "Invalid input",
-            Some("Missing field"),
+            Some("Missing field".into()),
         );
 
         other_summary.add_metric("execution_time", "5s");
