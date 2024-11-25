@@ -4,6 +4,7 @@ use std::{
     fmt::Debug,
     num::ParseIntError,
     str::FromStr,
+    sync::{Arc, Mutex},
 };
 
 use bytes::Bytes;
@@ -19,7 +20,10 @@ use crate::{
     backend::{cache::Cache, decrypt::DecryptReadBackend, node::NodeType, FileType, ReadBackend},
     blob::{tree::TreeStreamerOnce, BlobId, BlobType},
     crypto::hasher::hash,
-    error::{RusticError, RusticResult},
+    error::{
+        summary::{self, Summary},
+        RusticError, RusticResult,
+    },
     id::Id,
     index::{
         binarysorted::{IndexCollector, IndexType},
@@ -236,7 +240,8 @@ pub(crate) fn check_repository<P: ProgressBars, S: Open>(
     repo: &Repository<P, S>,
     opts: CheckOptions,
     trees: Vec<TreeId>,
-) -> RusticResult<()> {
+) -> RusticResult<Summary> {
+    let summary = Summary::new("check");
     let be = repo.dbe();
     let cache = repo.cache();
     let hot_be = &repo.be_hot;
@@ -253,7 +258,7 @@ pub(crate) fn check_repository<P: ProgressBars, S: Open>(
 
                 let p = pb.progress_bytes(format!("checking {file_type:?} in cache..."));
                 // TODO: Make concurrency (20) customizable
-                check_cache_files(20, cache, raw_be, file_type, &p)?;
+                let cache_file_summary = check_cache_files(20, cache, raw_be, file_type, &p)?;
             }
         }
     }
@@ -390,7 +395,8 @@ fn check_cache_files(
     be: &impl ReadBackend,
     file_type: FileType,
     p: &impl Progress,
-) -> RusticResult<()> {
+) -> RusticResult<Summary> {
+    let summary = Arc::new(Mutex::new(Summary::new("cache files")));
     let files = cache.list_with_size(file_type)?;
 
     if files.is_empty() {
