@@ -244,6 +244,14 @@ impl Summary {
         Ok(())
     }
 
+    // ! TODO: Refactor this method to merge the context of each summary
+    // !
+    // ? How do we merge the context of each summary?
+    // ? We can't merge the context, as it's a unique identifier for each summary.
+    // ? We could add a new field to each CondensedIssue to store the context of the
+    // ? merged summaries.
+    // ?
+    // ? How do we merge the other fields? E.g. Timing, Metrics, etc.
     pub fn merge(&mut self, other: Summary) {
         self.issues.extend(other.issues);
         self.metrics.extend(other.metrics);
