@@ -149,15 +149,20 @@ impl Summary {
         self.end_time = Some(Instant::now());
     }
 
-    pub fn enable_log(&mut self) {
+    pub fn enable_log(&mut self) -> Self {
         self.log_enabled = true;
+        self.clone()
+    }
+
+    pub fn is_error(&self) -> bool {
+        self.issues.contains_key(&IssueCategory::Error)
     }
 
     pub fn add_error(
         &mut self,
         scope: IssueScope,
         message: impl Into<EcoString>,
-        root_cause: Option<impl Into<EcoString>>,
+        root_cause: impl Into<Option<EcoString>>,
     ) {
         self.add_issue(IssueCategory::Error, scope, message, root_cause);
     }
@@ -166,7 +171,7 @@ impl Summary {
         &mut self,
         scope: IssueScope,
         message: impl Into<EcoString>,
-        root_cause: Option<impl Into<EcoString>>,
+        root_cause: impl Into<Option<EcoString>>,
     ) {
         self.add_issue(IssueCategory::Warning, scope, message, root_cause);
     }
@@ -175,7 +180,7 @@ impl Summary {
         &mut self,
         scope: IssueScope,
         message: impl Into<EcoString>,
-        root_cause: Option<impl Into<EcoString>>,
+        root_cause: impl Into<Option<EcoString>>,
     ) {
         self.add_issue(IssueCategory::Info, scope, message, root_cause);
     }
@@ -186,9 +191,9 @@ impl Summary {
         category: IssueCategory,
         scope: IssueScope,
         message: impl Into<EcoString>,
-        root_cause: Option<impl Into<EcoString>>,
+        root_cause: impl Into<Option<EcoString>>,
     ) {
-        let root_cause = root_cause.map(Into::into);
+        let root_cause = root_cause.into();
         let message = message.into();
 
         if self.log_enabled {
