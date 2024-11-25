@@ -31,6 +31,7 @@
 use std::{
     collections::{BTreeMap, HashSet},
     fmt::{self, Display, Write},
+    sync::{Arc, Mutex},
     time::Instant,
 };
 
@@ -291,6 +292,14 @@ impl Summary {
     pub fn merge(&mut self, other: Self) {
         self.issues.extend(other.issues);
         self.metrics.extend(other.metrics);
+    }
+
+    pub fn into_boxed(self) -> Box<Self> {
+        Box::new(self)
+    }
+
+    pub fn into_arc_mutex(self) -> Arc<Mutex<Self>> {
+        Arc::new(Mutex::new(self))
     }
 }
 
