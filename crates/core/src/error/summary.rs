@@ -305,7 +305,7 @@ impl Summary {
         Arc::new(Mutex::new(self))
     }
 
-    pub fn retrieve_from_arc_mutex(arc_mutex: Arc<Mutex<Summary>>) -> RusticResult<Self> {
+    pub fn retrieve_from_arc_mutex(arc_mutex: Arc<Mutex<Self>>) -> RusticResult<Self> {
         Arc::try_unwrap(arc_mutex)
             .map_err(|_err| {
                 RusticError::new(ErrorKind::Internal, "Error unwrapping Mutex from Arc.")
