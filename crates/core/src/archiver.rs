@@ -84,11 +84,12 @@ impl<'a, BE: DecryptFullBackend, I: ReadGlobalIndex> Archiver<'a, BE, I> {
         mut snap: SnapshotFile,
     ) -> RusticResult<Self> {
         let indexer = Indexer::new(be.clone()).into_shared();
-        let mut summary = snap.summary.take().unwrap_or_default();
-        summary.backup_start = Local::now();
+        let mut snapshot_summary = snap.summary.take().unwrap_or_default();
+        snapshot_summary.backup_start = Local::now();
 
         let file_archiver = FileArchiver::new(be.clone(), index, indexer.clone(), config)?;
-        let tree_archiver = TreeArchiver::new(be.clone(), index, indexer.clone(), config, summary)?;
+        let tree_archiver =
+            TreeArchiver::new(be.clone(), index, indexer.clone(), config, snapshot_summary)?;
 
         Ok(Self {
             file_archiver,
@@ -213,20 +214,20 @@ impl<'a, BE: DecryptFullBackend, I: ReadGlobalIndex> Archiver<'a, BE, I> {
         })?;
 
         let stats = self.file_archiver.finalize()?;
-        let (id, mut summary) = self.tree_archiver.finalize(self.parent.tree_id())?;
-        stats.apply(&mut summary, BlobType::Data);
+        let (id, mut snapshot_summary) = self.tree_archiver.finalize(self.parent.tree_id())?;
+        stats.apply(&mut snapshot_summary, BlobType::Data);
         self.snap.tree = id;
 
         self.indexer.write().unwrap().finalize()?;
 
-        summary.finalize(self.snap.time).map_err(|err| {
+        snapshot_summary.finalize(self.snap.time).map_err(|err| {
             RusticError::with_source(
                 ErrorKind::Internal,
                 "Could not finalize summary, please check the logs for more information.",
                 err,
             )
         })?;
-        self.snap.summary = Some(summary);
+        self.snap.summary = Some(snapshot_summary);
 
         if !skip_identical_parent || Some(self.snap.tree) != self.parent.tree_id() {
             let id = self.be.save_file(&self.snap)?;
