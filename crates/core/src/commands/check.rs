@@ -236,6 +236,7 @@ pub struct CheckOptions {
 /// # Panics
 ///
 // TODO: Add panics
+#[allow(clippy::too_many_lines)]
 pub(crate) fn check_repository<P: ProgressBars, S: Open>(
     repo: &Repository<P, S>,
     opts: CheckOptions,
