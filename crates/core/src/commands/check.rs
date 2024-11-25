@@ -257,15 +257,20 @@ pub(crate) fn check_repository<P: ProgressBars, S: Open>(
                 _ = be.list_with_size(file_type)?;
 
                 let p = pb.progress_bytes(format!("checking {file_type:?} in cache..."));
+
                 // TODO: Make concurrency (20) customizable
                 let cache_file_summary = check_cache_files(20, cache, raw_be, file_type, &p)?;
+
+                summary.merge(cache_file_summary);
             }
         }
     }
 
     if let Some(hot_be) = hot_be {
         for file_type in [FileType::Snapshot, FileType::Index] {
-            check_hot_files(raw_be, hot_be, file_type, pb)?;
+            let hot_file_summary = check_hot_files(raw_be, hot_be, file_type, pb)?;
+
+            summary.merge(hot_file_summary);
         }
     }
 
@@ -349,7 +354,8 @@ fn check_hot_files(
     be_hot: &impl ReadBackend,
     file_type: FileType,
     pb: &impl ProgressBars,
-) -> RusticResult<()> {
+) -> RusticResult<Summary> {
+    let mut summary = Summary::new("hot files").enable_log();
     let p = pb.progress_spinner(format!("checking {file_type:?} in hot repo..."));
     let mut files = be
         .list_with_size(file_type)?
@@ -360,9 +366,19 @@ fn check_hot_files(
 
     for (id, size_hot) in files_hot {
         match files.remove(&id) {
-            None => error!("hot file Type: {file_type:?}, Id: {id} does not exist in repo"),
+            None => {
+                summary.add_error(
+                    IssueScope::Internal,
+                    format!("hot file Type: {file_type:?}, Id: {id} does not exist in repo",),
+                    None,
+                );
+            }
             Some(size) if size != size_hot => {
-                error!("Type: {file_type:?}, Id: {id}: hot size: {size_hot}, actual size: {size}");
+                summary.add_error(
+                    IssueScope::Internal,
+                    format!("hot file Type: {file_type:?}, Id: {id} has different size in repo",),
+                    None,
+                );
             }
             _ => {} //everything ok
         }
@@ -396,7 +412,7 @@ fn check_cache_files(
     file_type: FileType,
     p: &impl Progress,
 ) -> RusticResult<Summary> {
-    let summary = Arc::new(Mutex::new(Summary::new("cache files")));
+    let summary = Arc::new(Mutex::new(Summary::new("cache files").enable_log()));
     let files = cache.list_with_size(file_type)?;
 
     if files.is_empty() {
