@@ -243,6 +243,11 @@ impl Summary {
 
         Ok(())
     }
+
+    pub fn merge(&mut self, other: Summary) {
+        self.issues.extend(other.issues);
+        self.metrics.extend(other.metrics);
+    }
 }
 
 // Display Helpers
@@ -495,5 +500,39 @@ mod tests {
                 assert!(display_output.contains("execution_time: 5s"));
             }
         }
+    }
+
+    #[test]
+    fn test_merge_summaries_passes() {
+        let mut summary = Summary::new("Check Trees");
+
+        summary.add_issue(
+            IssueCategory::Error,
+            IssueScope::UserInput,
+            "Invalid input",
+            Some("Missing field"),
+        );
+
+        summary.add_metric("execution_time", "5s");
+
+        summary.complete();
+
+        let mut other_summary = Summary::new("Check Packs");
+
+        other_summary.add_issue(
+            IssueCategory::Error,
+            IssueScope::UserInput,
+            "Invalid input",
+            Some("Missing field"),
+        );
+
+        other_summary.add_metric("execution_time", "5s");
+
+        other_summary.complete();
+
+        summary.merge(other_summary);
+
+        assert_eq!(summary.issues.len(), 1);
+        assert_eq!(summary.metrics.len(), 1);
     }
 }
