@@ -447,6 +447,8 @@ mod tests {
 
         assert_eq!(summary.issues.len(), 1);
 
+        assert!(summary.contains_error());
+
         let user_input_issues = summary
             .issues
             .get(&IssueCategory::Error)
@@ -480,6 +482,8 @@ mod tests {
         );
 
         assert_eq!(summary.issues.len(), 1);
+
+        assert!(summary.contains_error());
 
         let user_input_issues = summary.issues.get(&IssueCategory::Error).unwrap();
 
@@ -532,6 +536,8 @@ mod tests {
         summary.add_metric("execution_time", "5s");
 
         summary.complete();
+
+        assert!(summary.contains_error());
 
         let display_output = format!("{summary}");
 
@@ -600,6 +606,8 @@ mod tests {
         other_summary.add_metric("execution_time", "5s");
 
         other_summary.complete();
+
+        assert!(summary.contains_error());
 
         summary.merge(other_summary);
 
