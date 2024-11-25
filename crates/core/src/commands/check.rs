@@ -4,7 +4,7 @@ use std::{
     fmt::Debug,
     num::ParseIntError,
     str::FromStr,
-    sync::{Arc, Mutex},
+    sync::Arc,
 };
 
 use bytes::Bytes;
@@ -242,7 +242,7 @@ pub(crate) fn check_repository<P: ProgressBars, S: Open>(
     opts: CheckOptions,
     trees: Vec<TreeId>,
 ) -> RusticResult<Summary> {
-    let summary = Arc::new(Mutex::new(Summary::new("check")));
+    let summary = Summary::new("check").into_arc_mutex();
     let be = repo.dbe();
     let cache = repo.cache();
     let hot_be = &repo.be_hot;
@@ -459,7 +459,7 @@ fn check_cache_files(
     file_type: FileType,
     p: &impl Progress,
 ) -> RusticResult<Option<Summary>> {
-    let summary = Arc::new(Mutex::new(Summary::new("cache files").enable_log()));
+    let summary = Summary::new("cache files").enable_log().into_arc_mutex();
     let files = cache.list_with_size(file_type)?;
 
     if files.is_empty() {
@@ -744,7 +744,7 @@ fn check_trees(
     snap_trees: Vec<TreeId>,
     pb: &impl ProgressBars,
 ) -> RusticResult<(BTreeSet<PackId>, Summary)> {
-    let mut summary = Box::new(Summary::new("trees").enable_log());
+    let mut summary = Summary::new("trees").enable_log().into_boxed();
     let mut packs = BTreeSet::new();
     let p = pb.progress_counter("checking trees...");
     let mut tree_streamer = TreeStreamerOnce::new(be, index, snap_trees, p)?;
