@@ -37,6 +37,8 @@ use std::{
 
 use ecow::EcoString;
 
+use crate::error::{ErrorKind, RusticError, RusticResult};
+
 pub type Issues = BTreeMap<IssueCategory, BTreeMap<IssueScope, CondensedIssue>>;
 
 pub type Metrics = BTreeMap<EcoString, EcoString>;
@@ -301,6 +303,21 @@ impl Summary {
 
     pub fn into_arc_mutex(self) -> Arc<Mutex<Self>> {
         Arc::new(Mutex::new(self))
+    }
+
+    pub fn retrieve_from_arc_mutex(arc_mutex: Arc<Mutex<Summary>>) -> RusticResult<Self> {
+        Arc::try_unwrap(arc_mutex)
+            .map_err(|_err| {
+                RusticError::new(ErrorKind::Internal, "Error unwrapping Mutex from Arc.")
+            })?
+            .into_inner()
+            .map_err(|err| {
+                RusticError::with_source(
+                    ErrorKind::Internal,
+                    "Mutex poisoned while getting summary for check command.",
+                    err,
+                )
+            })
     }
 }
 
