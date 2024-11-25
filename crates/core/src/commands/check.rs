@@ -361,16 +361,7 @@ pub(crate) fn check_repository<P: ProgressBars, S: Open>(
         p.finish();
     }
 
-    let mut summary = Arc::try_unwrap(summary)
-        .map_err(|_err| RusticError::new(ErrorKind::Internal, "Error unwrapping Mutex from Arc."))?
-        .into_inner()
-        .map_err(|err| {
-            RusticError::with_source(
-                ErrorKind::Internal,
-                "Mutex poisoned while getting summary for check command.",
-                err,
-            )
-        })?;
+    let mut summary = Summary::retrieve_from_arc_mutex(summary)?;
 
     summary.complete();
 
@@ -507,16 +498,7 @@ fn check_cache_files(
 
     p.finish();
 
-    let mut summary = Arc::try_unwrap(summary)
-        .map_err(|_err| RusticError::new(ErrorKind::Internal, "Error unwrapping Mutex from Arc."))?
-        .into_inner()
-        .map_err(|err| {
-            RusticError::with_source(
-                ErrorKind::Internal,
-                "Mutex poisoned while getting summary for check command.",
-                err,
-            )
-        })?;
+    let mut summary = Summary::retrieve_from_arc_mutex(summary)?;
 
     summary.complete();
 
