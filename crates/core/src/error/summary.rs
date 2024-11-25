@@ -30,15 +30,13 @@
 
 use std::{
     collections::{BTreeMap, HashSet},
-    fmt::{self, Display},
+    fmt::{self, Display, Write},
     time::Instant,
 };
 
 use ecow::EcoString;
 
-pub type IssueIdentifier = EcoString;
-
-pub type Issues = BTreeMap<IssueScope, BTreeMap<IssueIdentifier, CondensedIssue>>;
+pub type Issues = BTreeMap<IssueCategory, BTreeMap<IssueScope, CondensedIssue>>;
 
 pub type Metrics = BTreeMap<EcoString, EcoString>;
 
@@ -154,8 +152,8 @@ impl Summary {
     /// Adds a new issue to the summary, condensing similar issues
     pub fn add_issue(
         &mut self,
-        scope: IssueScope,
         category: IssueCategory,
+        scope: IssueScope,
         message: impl Into<EcoString>,
         root_cause: Option<impl Into<EcoString>>,
     ) {
@@ -163,14 +161,15 @@ impl Summary {
         let message = message.into();
 
         if self.log_enabled {
-            Self::log_issue(scope, category, &message, &root_cause);
+            // We ignore the result here, as we don't want to propagate the error
+            _ = Self::log_issue(scope, category, &message, &root_cause);
         }
 
         _ = self
             .issues
-            .entry(scope)
+            .entry(category)
             .or_default()
-            .entry(message.clone())
+            .entry(scope)
             .and_modify(|val| {
                 val.count += 1;
                 if val.root_cause.is_none() {
@@ -224,26 +223,25 @@ impl Summary {
     fn log_issue(
         scope: IssueScope,
         category: IssueCategory,
-        message: EcoString,
-        root_cause: Option<&EcoString>,
-    ) {
+        message: &EcoString,
+        root_cause: &Option<EcoString>,
+    ) -> fmt::Result {
         let mut to_print = String::new();
 
         if root_cause.is_none() {
-            writeln!(to_print, "in scope '{scope}': {message}",)
+            writeln!(to_print, "in scope '{scope}': {message}",)?;
         } else {
             let root_cause = format_root_cause(root_cause);
-            writeln!(
-                to_print,
-                "in scope '{scope}': {message} (Root Cause: {root_cause})",
-            )
+            writeln!(to_print, "in scope '{scope}': {message}{root_cause}",)?;
         }
 
         match category {
-            IssueCategory::Error => log::error(to_print),
-            IssueCategory::Warning => log::warn(to_print),
-            IssueCategory::Info => log::info(to_print),
+            IssueCategory::Error => log::error!("{to_print}"),
+            IssueCategory::Warning => log::warn!("{to_print}"),
+            IssueCategory::Info => log::info!("{to_print}"),
         }
+
+        Ok(())
     }
 }
 
@@ -284,16 +282,19 @@ impl Summary {
 
     fn display_issues(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         writeln!(f)?;
+
         writeln!(f, "Issues Encountered:")?;
-        for (scope, scoped_issues) in &self.issues {
-            writeln!(f, "  Scope: {scope}")?;
-            for (message, issue) in scoped_issues {
-                let root_cause_info = format_root_cause(issue.root_cause);
+
+        for (category, scoped_issues) in &self.issues {
+            writeln!(f, "{category}")?;
+            for (scope, issue) in scoped_issues {
+                writeln!(f, "  Scope: {scope}")?;
+                let root_cause_info = format_root_cause(&issue.root_cause);
 
                 writeln!(
                     f,
-                    "    {} - Occurrences: {}{}",
-                    message, issue.count, root_cause_info
+                    "    {} - Occurrences: {}{root_cause_info}",
+                    issue.message, issue.count
                 )?;
             }
         }
@@ -312,7 +313,7 @@ impl Summary {
     }
 }
 
-fn format_root_cause(root_cause: Option<EcoString>) -> String {
+fn format_root_cause(root_cause: &Option<EcoString>) -> String {
     let root_cause_info = root_cause
         .as_ref()
         .map_or_else(String::new, |root| format!(" (Root Cause: {root})"));
@@ -362,6 +363,7 @@ mod tests {
         let mut summary = Summary::new("test_command");
 
         summary.add_issue(
+            IssueCategory::Error,
             IssueScope::UserInput,
             "Invalid input",
             Some("Missing field"),
@@ -371,10 +373,10 @@ mod tests {
 
         let user_input_issues = summary
             .issues
-            .get(&IssueScope::UserInput)
+            .get(&IssueCategory::Error)
             .expect("Expected to find UserInput issues in the summary, but none were found");
 
-        let issue = user_input_issues.get("Invalid input").expect(
+        let issue = user_input_issues.get(&IssueScope::UserInput).expect(
             "Expected to find an issue with the message 'Invalid input', but none were found",
         );
 
@@ -388,12 +390,14 @@ mod tests {
         let mut summary = Summary::new("test_command");
 
         summary.add_issue(
+            IssueCategory::Error,
             IssueScope::UserInput,
             "Invalid input",
             Some("Missing field"),
         );
 
         summary.add_issue(
+            IssueCategory::Error,
             IssueScope::UserInput,
             "Invalid input",
             Some("Missing field"),
@@ -401,9 +405,9 @@ mod tests {
 
         assert_eq!(summary.issues.len(), 1);
 
-        let user_input_issues = summary.issues.get(&IssueScope::UserInput).unwrap();
+        let user_input_issues = summary.issues.get(&IssueCategory::Error).unwrap();
 
-        let issue = user_input_issues.get("Invalid input").unwrap();
+        let issue = user_input_issues.get(&IssueScope::UserInput).unwrap();
 
         assert_eq!(issue.count, 2);
     }
@@ -429,18 +433,21 @@ mod tests {
         _ = summary.set_export(display);
 
         summary.add_issue(
+            IssueCategory::Error,
             IssueScope::UserInput,
             "Invalid input",
             Some("Missing field"),
         );
 
         summary.add_issue(
+            IssueCategory::Error,
             IssueScope::UserInput,
             "Invalid input",
             Some("Missing field"),
         );
 
         summary.add_issue(
+            IssueCategory::Warning,
             IssueScope::Internal,
             "Pack not found",
             Some("Inconsistent state on disk"),
