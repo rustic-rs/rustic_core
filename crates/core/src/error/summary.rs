@@ -149,6 +149,10 @@ impl Summary {
         self.end_time = Some(Instant::now());
     }
 
+    pub fn enable_log(&mut self) {
+        self.log_enabled = true;
+    }
+
     pub fn add_error(
         &mut self,
         scope: IssueScope,
