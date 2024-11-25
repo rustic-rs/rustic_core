@@ -21,7 +21,7 @@ use crate::{
     blob::{tree::TreeStreamerOnce, BlobId, BlobType},
     crypto::hasher::hash,
     error::{
-        summary::{self, Summary},
+        summary::{self, IssueScope, Summary},
         RusticError, RusticResult,
     },
     id::Id,
@@ -415,20 +415,27 @@ fn check_cache_files(
                 be.read_full(file_type, &id),
             ) {
                 (Err(err), _) => {
-                    error!(
-                        "Error reading cached file Type: {file_type:?}, Id: {id} : {}",
-                        err.display_log()
+                    let mut summary = summary.lock().unwrap();
+                    summary.add_error(
+                        IssueScope::Internal,
+                        format!("Error reading cached file Type: {file_type:?}, Id: {id}",),
+                        Some(err.display_log()),
                     );
                 }
                 (_, Err(err)) => {
-                    error!(
-                        "Error reading file Type: {file_type:?}, Id: {id} : {}",
-                        err.display_log()
+                    let mut summary = summary.lock().unwrap();
+                    summary.add_error(
+                        IssueScope::Internal,
+                        format!("Error reading file Type: {file_type:?}, Id: {id}",),
+                        Some(err.display_log()),
                     );
                 }
                 (Ok(Some(data_cached)), Ok(data)) if data_cached != data => {
-                    error!(
-                        "Cached file Type: {file_type:?}, Id: {id} is not identical to backend!"
+                    let mut summary = summary.lock().unwrap();
+                    summary.add_error(
+                        IssueScope::Internal,
+                        format!("Cached file Type: {file_type:?}, Id: {id} is not identical to backend!",),
+                        None
                     );
                 }
                 (Ok(_), Ok(_)) => {} // everything ok
@@ -438,7 +445,10 @@ fn check_cache_files(
         });
 
     p.finish();
-    Ok(())
+
+    summary.lock().unwrap().complete();
+
+    Ok(summary.into_inner().unwrap())
 }
 
 /// Check if packs correspond to index and are present in the backend
