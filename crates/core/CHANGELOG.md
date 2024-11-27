@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.7.1](https://github.com/rustic-rs/rustic_core/compare/rustic_core-v0.7.0...rustic_core-v0.7.1) - 2024-11-27
+
+### Other
+
+- *(deps)* update dependencies
+- update README badges for rustic_core and rustic_backend to include MSRV
+
 ## [0.7.0](https://github.com/rustic-rs/rustic_core/compare/rustic_core-v0.6.1...rustic_core-v0.7.0) - 2024-11-24
 
 ### Other
