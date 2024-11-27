@@ -162,7 +162,7 @@ jobs:
     # Only run if the commit doesn't come from a merged PR, we assume CI is running in the PR as well
     # so we don't want to have runs double up
     if: github.event.pull_request.merged == false
-    name: Cross checking ${{ matrix.job.target }}
+    name: Cross checking ${{ matrix.job.target }} on ${{ matrix.rust }}
     runs-on: ${{ matrix.job.os }}
     strategy:
       fail-fast: false
