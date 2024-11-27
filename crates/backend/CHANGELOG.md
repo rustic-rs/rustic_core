@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.5.2](https://github.com/rustic-rs/rustic_core/compare/rustic_backend-v0.5.1...rustic_backend-v0.5.2) - 2024-11-27
+
+### Fixed
+
+- *(backend)* temporarily remove ftp service to fix build in ci/cd ([#371](https://github.com/rustic-rs/rustic_core/pull/371))
+
+### Other
+
+- *(deps)* update dependencies
+- add note about temporarily disabling ftp feature in opendal backend due to build issues
+- update README badges for rustic_core and rustic_backend to include MSRV
+
 ## [0.5.1](https://github.com/rustic-rs/rustic_core/compare/rustic_backend-v0.5.0...rustic_backend-v0.5.1) - 2024-11-24
 
 ### Other
