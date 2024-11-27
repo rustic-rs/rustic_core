@@ -10,6 +10,12 @@
 <a href="https://crates.io/crates/rustic_backend"><img src="https://img.shields.io/crates/d/rustic_backend.svg" /></a>
 <p>
 
+## News
+
+We temporarily disabled the `service-ftp` feature on the `opendal` backend due
+to build issues. We are working on a fix and will re-enable it as soon as
+possible.
+
 ## About
 
 This library is a part of the [rustic](https://rustic.cli.rs) project and
