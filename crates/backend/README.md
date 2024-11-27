@@ -3,6 +3,7 @@
 </p>
 <p align="center"><b>Library for supporting various backends in rustic</b></p>
 <p align="center">
+<a href="https://crates.io/crates/rustic_backend"><img src="https://img.shields.io/crates/msrv/rustic_backend" /></a>
 <a href="https://crates.io/crates/rustic_backend"><img src="https://img.shields.io/crates/v/rustic_backend.svg" /></a>
 <a href="https://docs.rs/rustic_backend/"><img src="https://img.shields.io/docsrs/rustic_backend?style=flat&amp;labelColor=1c1d42&amp;color=4f396a&amp;logo=Rust&amp;logoColor=white" /></a>
 <a href="https://github.com/rustic-rs/rustic_core/blob/main/crates/backend/LICENSE-APACHE"><img src="https://img.shields.io/badge/license-Apache2.0/MIT-blue.svg" /></a>
