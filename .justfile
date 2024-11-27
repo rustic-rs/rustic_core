@@ -37,7 +37,7 @@ c: check
 ci:
     just loop . dev
 
-dev: format lint test
+dev: format lint test lint-deps
 
 d: dev
 
@@ -63,6 +63,10 @@ inverse-deps crate:
 lint: check
     cargo clippy --no-default-features -- -D warnings
     cargo clippy --all-targets --all-features -- -D warnings
+
+lint-deps:
+    cargo audit
+    cargo deny check
 
 loop dir action:
     watchexec -w {{ dir }} -- "just {{ action }}"
