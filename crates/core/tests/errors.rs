@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 use rstest::{fixture, rstest};
 
 use rustic_core::{ErrorKind, RusticError, Severity, Status};

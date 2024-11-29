@@ -26,7 +26,7 @@ pub(crate) struct FormattedSnapshot<'a> {
     pub(crate) time_format: &'a str,
 }
 
-impl<'a> FormatKey for FormattedSnapshot<'a> {
+impl FormatKey for FormattedSnapshot<'_> {
     fn fmt(&self, key: &str, f: &mut fmt::Formatter<'_>) -> Result<(), FormatKeyError> {
         match key {
             "id" => write!(f, "{}", self.snap.id),
