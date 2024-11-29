@@ -426,6 +426,7 @@ impl KeepOptions {
     /// # Returns
     ///
     /// The list of reasons why the snapshot should be kept
+    #[allow(clippy::too_many_lines)]
     fn matches(
         &mut self,
         sn: &SnapshotFile,
