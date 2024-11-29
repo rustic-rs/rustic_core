@@ -379,7 +379,7 @@ fn equal_hour(sn1: &SnapshotFile, sn2: &SnapshotFile) -> bool {
 ///
 /// # Returns
 ///
-/// Whether the hours of the snapshots are equal
+/// Whether the minutes of the snapshots are equal
 fn equal_minute(sn1: &SnapshotFile, sn2: &SnapshotFile) -> bool {
     let (t1, t2) = (sn1.time, sn2.time);
     t1.year() == t2.year()
