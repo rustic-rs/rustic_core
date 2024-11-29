@@ -264,7 +264,7 @@ pub(crate) fn check_repository<P: ProgressBars, S: Open>(
         }
     }
 
-    let index_collector = check_packs(be, hot_be, pb)?;
+    let index_collector = check_packs(be, hot_be.as_ref(), pb)?;
 
     if let Some(cache) = &cache {
         let p = pb.progress_spinner("cleaning up packs from cache...");
@@ -453,7 +453,7 @@ fn check_cache_files(
 /// The index collector
 fn check_packs(
     be: &impl DecryptReadBackend,
-    hot_be: &Option<impl ReadBackend>,
+    hot_be: Option<&impl ReadBackend>,
     pb: &impl ProgressBars,
 ) -> RusticResult<IndexCollector> {
     let mut packs = HashMap::new();
