@@ -1,0 +1,8 @@
+---
+source: crates/core/src/error/summary.rs
+expression: display_output
+---
+Context: Check
+
+Metrics:
+  execution_time: 5s
