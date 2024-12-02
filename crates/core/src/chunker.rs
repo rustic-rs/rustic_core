@@ -16,8 +16,8 @@ pub(super) mod constants {
     pub(super) const MIN_SIZE: usize = 512 * KB;
     /// The maximum size of a chunk.
     pub(super) const MAX_SIZE: usize = 8 * MB;
-    /// Buffer size used for reading.
-    pub(super) const BUF_SIZE: usize = 64 * KB;
+    /// Buffer size used for reading - TODO: Find out optimal size for best performance!
+    pub(super) const BUF_SIZE: usize = 4 * KB;
     /// Random polynomial maximum tries.
     pub(super) const RAND_POLY_MAX_TRIES: i32 = 1_000_000;
 }
@@ -68,8 +68,8 @@ impl<R: Read + Send> ChunkIter<R> {
     /// * `rabin` - The rolling hash.
     pub(crate) fn new(reader: R, size_hint: usize, rabin: Rabin64) -> Self {
         Self {
-            buf: Vec::with_capacity(4 * constants::KB),
-            pos: 0,
+            buf: vec![0; constants::BUF_SIZE],
+            pos: constants::BUF_SIZE,
             reader,
             predicate: default_predicate,
             rabin,
@@ -137,8 +137,6 @@ impl<R: Read + Send> Iterator for ChunkIter<R> {
             }
 
             if self.buf.len() == self.pos {
-                // TODO: use a possibly uninitialized buffer here
-                self.buf.resize(constants::BUF_SIZE, 0);
                 match self.reader.read(&mut self.buf[..]) {
                     Ok(0) => {
                         self.finished = true;
@@ -165,7 +163,7 @@ impl<R: Read + Send> Iterator for ChunkIter<R> {
             self.pos += 1;
             self.rabin.slide(byte);
         }
-        self.size_hint -= vec.len();
+        self.size_hint = self.size_hint.saturating_sub(vec.len()); // size_hint can be too small!
         Some(Ok(vec))
     }
 }
