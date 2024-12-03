@@ -157,6 +157,14 @@ pub struct RepositoryOptions {
     #[cfg_attr(feature = "merge", merge(strategy = conflate::option::overwrite_none))]
     pub warm_up_command: Option<CommandInput>,
 
+    /// Wait for end of warm up by running the command with %id replaced by pack id
+    #[cfg_attr(
+        feature = "clap",
+        clap(long, global = true, conflicts_with = "warm_up_wait",)
+    )]
+    #[cfg_attr(feature = "merge", merge(strategy = conflate::option::overwrite_none))]
+    pub warm_up_wait_command: Option<CommandInput>,
+
     /// Duration (e.g. 10m) to wait after warm up
     #[cfg_attr(feature = "clap", clap(long, global = true, value_name = "DURATION"))]
     #[serde_as(as = "Option<DisplayFromStr>")]
@@ -748,7 +756,10 @@ impl<P: ProgressBars, S> Repository<P, S> {
     ///
     /// * If the command could not be parsed.
     /// * If the thread pool could not be created.
-    pub fn warm_up_wait(&self, packs: impl ExactSizeIterator<Item = PackId>) -> RusticResult<()> {
+    pub fn warm_up_wait(
+        &self,
+        packs: impl ExactSizeIterator<Item = PackId> + Clone,
+    ) -> RusticResult<()> {
         warm_up_wait(self, packs)
     }
 }
