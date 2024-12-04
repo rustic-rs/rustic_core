@@ -121,6 +121,7 @@ fn warm_up_command<P: ProgressBars>(
         if !status.success() {
             warn!("{ty:?} command was not successful for pack {pack:?}. {status}");
         }
+        p.inc(1);
     }
     p.finish();
     Ok(())
