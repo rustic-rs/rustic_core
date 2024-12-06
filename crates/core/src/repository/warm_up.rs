@@ -31,10 +31,13 @@ pub(super) mod constants {
 /// * If the thread pool could not be created.
 pub(crate) fn warm_up_wait<P: ProgressBars, S>(
     repo: &Repository<P, S>,
-    packs: impl ExactSizeIterator<Item = PackId>,
+    packs: impl ExactSizeIterator<Item = PackId> + Clone,
 ) -> RusticResult<()> {
-    warm_up(repo, packs)?;
-    if let Some(wait) = repo.opts.warm_up_wait {
+    warm_up(repo, packs.clone())?;
+
+    if let Some(warm_up_wait_cmd) = &repo.opts.warm_up_wait_command {
+        warm_up_command(packs, warm_up_wait_cmd, &repo.pb, &WarmUpType::WaitPack)?;
+    } else if let Some(wait) = repo.opts.warm_up_wait {
         let p = repo.pb.progress_spinner(format!("waiting {wait}..."));
         sleep(*wait);
         p.finish();
@@ -58,11 +61,17 @@ pub(crate) fn warm_up<P: ProgressBars, S>(
     packs: impl ExactSizeIterator<Item = PackId>,
 ) -> RusticResult<()> {
     if let Some(warm_up_cmd) = &repo.opts.warm_up_command {
-        warm_up_command(packs, warm_up_cmd, &repo.pb)?;
+        warm_up_command(packs, warm_up_cmd, &repo.pb, &WarmUpType::WarmUp)?;
     } else if repo.be.needs_warm_up() {
         warm_up_repo(repo, packs)?;
     }
     Ok(())
+}
+
+#[derive(Debug)]
+enum WarmUpType {
+    WarmUp,
+    WaitPack,
 }
 
 /// Warm up the repository using a command.
@@ -80,8 +89,12 @@ fn warm_up_command<P: ProgressBars>(
     packs: impl ExactSizeIterator<Item = PackId>,
     command: &CommandInput,
     pb: &P,
+    ty: &WarmUpType,
 ) -> RusticResult<()> {
-    let p = pb.progress_counter("warming up packs...");
+    let p = pb.progress_counter(match ty {
+        WarmUpType::WarmUp => "warming up packs...",
+        WarmUpType::WaitPack => "waiting for packs to be ready...",
+    });
     p.set_length(packs.len() as u64);
     for pack in packs {
         let args: Vec<_> = command
@@ -102,11 +115,13 @@ fn warm_up_command<P: ProgressBars>(
                     err,
                 )
                 .attach_context("command", command.to_string())
+                .attach_context("type", format!("{ty:?}"))
             })?;
 
         if !status.success() {
-            warn!("warm-up command was not successful for pack {pack:?}. {status}");
+            warn!("{ty:?} command was not successful for pack {pack:?}. {status}");
         }
+        p.inc(1);
     }
     p.finish();
     Ok(())
