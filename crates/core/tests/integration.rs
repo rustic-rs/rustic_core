@@ -456,11 +456,15 @@ fn test_ls_and_read(
 
     let data = repo.read_file_at(&file, 0, 21)?; // read full content
     assert_eq!(Bytes::from("This is a test file.\n"), &data);
-    let data2 = repo.read_file_at(&file, 0, 4096)?; // read beyond file end
-    assert_eq!(data2, &data);
+    assert_eq!(data, repo.read_file_at(&file, 0, 4096)?); // read beyond file end
     assert_eq!(Bytes::new(), repo.read_file_at(&file, 25, 1)?); // offset beyond file end
     assert_eq!(Bytes::from("test"), repo.read_file_at(&file, 10, 4)?); // read partial content
 
+    // test reading an empty file from the repository
+    let path: PathBuf = ["test", "0", "tests", "empty-file"].iter().collect();
+    let node = entries.get(&path).unwrap();
+    let file = repo.open_file(node)?;
+    assert_eq!(Bytes::new(), repo.read_file_at(&file, 0, 0)?); // empty files
     Ok(())
 }
 
