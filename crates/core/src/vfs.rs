@@ -455,17 +455,8 @@ impl Vfs {
 #[derive(Debug)]
 pub struct OpenFile {
     // The list of blobs
-    content: Vec<BlobInfo>,
-}
-
-// Information about the blob: 1) The id 2) The cumulated sizes of all blobs prior to this one, a.k.a the starting point of this blob.
-#[derive(Debug)]
-struct BlobInfo {
-    // [`Id`] of the blob
-    id: DataId,
-
-    // the start position of this blob within the file
-    starts_at: usize,
+    content: Vec<DataId>,
+    offsets: ContentOffset,
 }
 
 impl OpenFile {
@@ -488,26 +479,15 @@ impl OpenFile {
     ///
     /// * Panics if the `Node` has no content
     pub fn from_node<P, S: IndexedFull>(repo: &Repository<P, S>, node: &Node) -> Self {
-        let mut start = 0;
-        let mut content: Vec<_> = node
-            .content
-            .as_ref()
-            .unwrap()
-            .iter()
-            .map(|id| {
-                let starts_at = start;
-                start += repo.index().get_data(id).unwrap().data_length() as usize;
-                BlobInfo { id: *id, starts_at }
-            })
-            .collect();
+        let content: Vec<_> = node.content.as_ref().unwrap().clone();
 
-        // content is assumed to be partitioned, so we add a starts_at:MAX entry
-        content.push(BlobInfo {
-            id: DataId::default(),
-            starts_at: usize::MAX,
-        });
+        let offsets = ContentOffset::from_sizes(
+            content
+                .iter()
+                .map(|id| repo.index().get_data(id).unwrap().data_length() as usize),
+        );
 
-        Self { content }
+        Self { content, offsets }
     }
 
     /// Read the `OpenFile` at the given `offset` from the `repo`.
@@ -530,19 +510,16 @@ impl OpenFile {
     pub fn read_at<P, S: IndexedFull>(
         &self,
         repo: &Repository<P, S>,
-        mut offset: usize,
+        offset: usize,
         mut length: usize,
     ) -> RusticResult<Bytes> {
-        // find the start of relevant blobs => find the largest index such that self.content[i].starts_at <= offset, but
-        // self.content[i+1] > offset  (note that a last dummy element has been added)
-        let mut i = self.content.partition_point(|c| c.starts_at <= offset) - 1;
-
-        offset -= self.content[i].starts_at;
+        let (mut i, mut offset) = self.offsets.offset(offset);
 
         let mut result = BytesMut::with_capacity(length);
 
-        while length > 0 && i < self.content.len() - 1 {
-            let data = repo.get_blob_cached(&BlobId::from(*self.content[i].id), BlobType::Data)?;
+        // The case of empty node.content is also correctly handled here
+        while length > 0 && i < self.content.len() {
+            let data = repo.get_blob_cached(&BlobId::from(self.content[i]), BlobType::Data)?;
 
             if offset > data.len() {
                 // we cannot read behind the blob. This only happens if offset is too large to fit in the last blob
@@ -561,5 +538,68 @@ impl OpenFile {
         }
 
         Ok(result.into())
+    }
+}
+
+#[derive(Debug)]
+struct ContentOffset(Vec<usize>);
+
+impl ContentOffset {
+    fn from_sizes(sizes: impl IntoIterator<Item = usize>) -> Self {
+        let mut start = 0;
+        let mut offsets: Vec<_> = sizes
+            .into_iter()
+            .map(|size| {
+                let starts_at = start;
+                start += size;
+                starts_at
+            })
+            .collect();
+
+        if !offsets.is_empty() {
+            // offsets is assumed to be partitioned, so we add a starts_at:MAX entry
+            offsets.push(usize::MAX);
+        }
+        Self(offsets)
+    }
+
+    fn offset(&self, mut offset: usize) -> (usize, usize) {
+        if self.0.is_empty() {
+            return (0, 0);
+        }
+        // find the start of relevant blobs => find the largest index such that self.offsets[i] <= offset, but
+        // self.offsets[i+1] > offset  (note that a last dummy element with usize::MAX has been added to ensure we always have two partitions)
+        // If offsets is non-empty, then offsets[0] = 0, hence partition_point returns an index >=1.
+        let i = self.0.partition_point(|o| o <= &offset) - 1;
+        offset -= self.0[i];
+        (i, offset)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn content_offsets_empty_sizes() {
+        let offsets = ContentOffset::from_sizes([]);
+        assert_eq!(offsets.offset(0), (0, 0));
+        assert_eq!(offsets.offset(42), (0, 0));
+    }
+
+    #[test]
+    fn content_offsets_size() {
+        let offsets = ContentOffset::from_sizes([15]);
+        assert_eq!(offsets.offset(0), (0, 0));
+        assert_eq!(offsets.offset(5), (0, 5));
+        assert_eq!(offsets.offset(20), (0, 20));
+    }
+    #[test]
+    fn content_offsets_sizes() {
+        let offsets = ContentOffset::from_sizes([15, 24]);
+        assert_eq!(offsets.offset(0), (0, 0));
+        assert_eq!(offsets.offset(5), (0, 5));
+        assert_eq!(offsets.offset(20), (1, 5));
+        assert_eq!(offsets.offset(42), (1, 27));
     }
 }
