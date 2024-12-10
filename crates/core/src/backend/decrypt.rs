@@ -134,7 +134,11 @@ pub trait DecryptReadBackend: ReadBackend + Clone + 'static {
     ///
     /// * If the file could not be read.
     fn get_file<F: RepoFile>(&self, id: &Id) -> RusticResult<F> {
-        let data = self.read_encrypted_full(F::TYPE, id)?;
+        let data = if F::ENCRYPTED {
+            self.read_encrypted_full(F::TYPE, id)?
+        } else {
+            self.read_full(F::TYPE, id)?
+        };
         let deserialized = serde_json::from_slice(&data).map_err(|err| {
             RusticError::with_source(
                 ErrorKind::Internal,
@@ -262,7 +266,14 @@ pub trait DecryptWriteBackend: WriteBackend + Clone + 'static {
             .ask_report()
         })?;
 
-        self.hash_write_full(F::TYPE, &data)
+        if F::ENCRYPTED {
+            self.hash_write_full(F::TYPE, &data)
+        } else {
+            let id = hash(&data);
+
+            self.write_bytes(F::TYPE, &id, false, data.into())?;
+            Ok(id)
+        }
     }
 
     /// Saves the given file uncompressed.

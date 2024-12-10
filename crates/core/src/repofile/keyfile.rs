@@ -9,6 +9,7 @@ use crate::{
     crypto::{aespoly1305::Key, CryptoKey},
     error::{ErrorKind, RusticError, RusticResult},
     impl_repoid,
+    repofile::RepoFile,
 };
 
 /// [`KeyFileErrorKind`] describes the errors that can be returned for `KeyFile`s
@@ -73,6 +74,12 @@ pub struct KeyFile {
     /// The salt used with `scrypt`
     #[serde_as(as = "Base64")]
     salt: Vec<u8>,
+}
+
+impl RepoFile for KeyFile {
+    const TYPE: FileType = FileType::Key;
+    const ENCRYPTED: bool = false;
+    type Id = KeyId;
 }
 
 impl KeyFile {
@@ -386,15 +393,15 @@ pub(crate) fn find_key_in_backend<B: ReadBackend>(
     be: &B,
     passwd: &impl AsRef<[u8]>,
     hint: Option<&KeyId>,
-) -> RusticResult<Key> {
+) -> RusticResult<(Key, KeyId)> {
     if let Some(id) = hint {
-        key_from_backend(be, id, passwd)
+        Ok((key_from_backend(be, id, passwd)?, *id))
     } else {
         for id in be.list(FileType::Key)? {
             match key_from_backend(be, &id.into(), passwd) {
-                Ok(key) => return Ok(key),
+                Ok(key) => return Ok((key, KeyId(id))),
                 Err(err) if err.is_code("C001") => continue,
-                err => return err,
+                Err(err) => return Err(err),
             }
         }
 
