@@ -1363,6 +1363,19 @@ impl<P: ProgressBars, S: Open> Repository<P, S> {
         commands::repoinfo::collect_index_infos(self)
     }
 
+    /// Read a given [`RepoFile`]
+    ///
+    /// # Errors
+    ///
+    /// If the file cannot be read or processed
+    ///
+    /// # Returns
+    ///
+    /// The file
+    pub fn get_file<F: RepoFile>(&self, id: &F::Id) -> RusticResult<F> {
+        self.dbe().get_file(id)
+    }
+
     /// Read all files of a given [`RepoFile`]
     ///
     /// # Errors
