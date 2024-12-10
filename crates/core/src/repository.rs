@@ -756,7 +756,7 @@ impl<P: ProgressBars, S> Repository<P, S> {
     ///
     /// * If the command could not be parsed.
     /// * If the thread pool could not be created.
-    pub fn warm_up_wait(
+    pub(crate) fn warm_up_wait(
         &self,
         packs: impl ExactSizeIterator<Item = PackId> + Clone,
     ) -> RusticResult<()> {
