@@ -1605,7 +1605,7 @@ impl<P, S: IndexedFull> Repository<P, S> {
     ///
     // TODO: Document errors
     pub fn open_file(&self, node: &Node) -> RusticResult<OpenFile> {
-        Ok(OpenFile::from_node(self, node))
+        OpenFile::from_node(self, node)
     }
 
     /// Reads an opened file at the given position

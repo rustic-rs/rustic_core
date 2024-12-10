@@ -456,7 +456,7 @@ impl Vfs {
 pub struct OpenFile {
     // The list of blobs
     content: Vec<DataId>,
-    offsets: ContentOffset,
+    startpoints: ContentStartpoints,
 }
 
 impl OpenFile {
@@ -468,26 +468,32 @@ impl OpenFile {
     /// * `node` - The `Node` to create the `OpenFile` for
     ///
     /// # Errors
-    ///
-    // TODO: Document errors
+    /// - If the index for the needed data blobs cannot be read
     ///
     /// # Returns
     ///
     /// The created `OpenFile`
-    ///
-    /// # Panics
-    ///
-    /// * Panics if the `Node` has no content
-    pub fn from_node<P, S: IndexedFull>(repo: &Repository<P, S>, node: &Node) -> Self {
-        let content: Vec<_> = node.content.as_ref().unwrap().clone();
+    pub(crate) fn from_node<P, S: IndexedFull>(
+        repo: &Repository<P, S>,
+        node: &Node,
+    ) -> RusticResult<Self> {
+        let content: Vec<_> = node.content.clone().unwrap_or_default();
 
-        let offsets = ContentOffset::from_sizes(
-            content
-                .iter()
-                .map(|id| repo.index().get_data(id).unwrap().data_length() as usize),
-        );
+        let startpoints = ContentStartpoints::from_sizes(content.iter().map(|id| {
+            Ok(repo
+                .index()
+                .get_data(id)
+                .ok_or_else(|| {
+                    RusticError::new(ErrorKind::Vfs, "blob {blob} is not contained in index")
+                        .attach_context("blob", id.to_string())
+                })?
+                .data_length() as usize)
+        }))?;
 
-        Self { content, offsets }
+        Ok(Self {
+            content,
+            startpoints,
+        })
     }
 
     /// Read the `OpenFile` at the given `offset` from the `repo`.
@@ -500,7 +506,7 @@ impl OpenFile {
     ///
     /// # Errors
     ///
-    // TODO: Document errors
+    /// - if reading the needed blob(s) from the backend fails
     ///
     /// # Returns
     ///
@@ -513,7 +519,7 @@ impl OpenFile {
         offset: usize,
         mut length: usize,
     ) -> RusticResult<Bytes> {
-        let (mut i, mut offset) = self.offsets.offset(offset);
+        let (mut i, mut offset) = self.startpoints.compute_start(offset);
 
         let mut result = BytesMut::with_capacity(length);
 
@@ -527,13 +533,9 @@ impl OpenFile {
             }
 
             let to_copy = (data.len() - offset).min(length);
-
             result.extend_from_slice(&data[offset..offset + to_copy]);
-
             offset = 0;
-
             length -= to_copy;
-
             i += 1;
         }
 
@@ -541,29 +543,31 @@ impl OpenFile {
     }
 }
 
+// helper struct holding blob startpoints of the content
 #[derive(Debug)]
-struct ContentOffset(Vec<usize>);
+struct ContentStartpoints(Vec<usize>);
 
-impl ContentOffset {
-    fn from_sizes(sizes: impl IntoIterator<Item = usize>) -> Self {
+impl ContentStartpoints {
+    fn from_sizes(sizes: impl IntoIterator<Item = RusticResult<usize>>) -> RusticResult<Self> {
         let mut start = 0;
         let mut offsets: Vec<_> = sizes
             .into_iter()
-            .map(|size| {
+            .map(|size| -> RusticResult<_> {
                 let starts_at = start;
-                start += size;
-                starts_at
+                start += size?;
+                Ok(starts_at)
             })
-            .collect();
+            .collect::<RusticResult<_>>()?;
 
         if !offsets.is_empty() {
             // offsets is assumed to be partitioned, so we add a starts_at:MAX entry
             offsets.push(usize::MAX);
         }
-        Self(offsets)
+        Ok(Self(offsets))
     }
 
-    fn offset(&self, mut offset: usize) -> (usize, usize) {
+    // compute the correct blobid and effective offset from a file offset
+    fn compute_start(&self, mut offset: usize) -> (usize, usize) {
         if self.0.is_empty() {
             return (0, 0);
         }
@@ -580,26 +584,31 @@ impl ContentOffset {
 mod tests {
     use super::*;
 
+    // helper func
+    fn startpoints_from_ok_sizes(sizes: impl IntoIterator<Item = usize>) -> ContentStartpoints {
+        ContentStartpoints::from_sizes(sizes.into_iter().map(Ok)).unwrap()
+    }
+
     #[test]
     fn content_offsets_empty_sizes() {
-        let offsets = ContentOffset::from_sizes([]);
-        assert_eq!(offsets.offset(0), (0, 0));
-        assert_eq!(offsets.offset(42), (0, 0));
+        let offsets = startpoints_from_ok_sizes([]);
+        assert_eq!(offsets.compute_start(0), (0, 0));
+        assert_eq!(offsets.compute_start(42), (0, 0));
     }
 
     #[test]
     fn content_offsets_size() {
-        let offsets = ContentOffset::from_sizes([15]);
-        assert_eq!(offsets.offset(0), (0, 0));
-        assert_eq!(offsets.offset(5), (0, 5));
-        assert_eq!(offsets.offset(20), (0, 20));
+        let offsets = startpoints_from_ok_sizes([15]);
+        assert_eq!(offsets.compute_start(0), (0, 0));
+        assert_eq!(offsets.compute_start(5), (0, 5));
+        assert_eq!(offsets.compute_start(20), (0, 20));
     }
     #[test]
     fn content_offsets_sizes() {
-        let offsets = ContentOffset::from_sizes([15, 24]);
-        assert_eq!(offsets.offset(0), (0, 0));
-        assert_eq!(offsets.offset(5), (0, 5));
-        assert_eq!(offsets.offset(20), (1, 5));
-        assert_eq!(offsets.offset(42), (1, 27));
+        let offsets = startpoints_from_ok_sizes([15, 24]);
+        assert_eq!(offsets.compute_start(0), (0, 0));
+        assert_eq!(offsets.compute_start(5), (0, 5));
+        assert_eq!(offsets.compute_start(20), (1, 5));
+        assert_eq!(offsets.compute_start(42), (1, 27));
     }
 }
