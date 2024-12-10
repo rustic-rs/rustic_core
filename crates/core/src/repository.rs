@@ -520,13 +520,13 @@ impl<P, S> Repository<P, S> {
             }
         }
 
-        let key = find_key_in_backend(&self.be, &password, None)?;
+        let (key, key_id) = find_key_in_backend(&self.be, &password, None)?;
 
         info!("repository {}: password is correct.", self.name);
 
         let dbe = DecryptBackend::new(self.be.clone(), key);
         let config: ConfigFile = dbe.get_file(&config_id)?;
-        self.open_raw(key, config)
+        self.open_raw(key, key_id, config)
     }
 
     /// Initialize a new repository with given options using the password defined in `RepositoryOptions`
@@ -604,9 +604,9 @@ impl<P, S> Repository<P, S> {
             .attach_context("name", self.name));
         }
 
-        let (key, config) = commands::init::init(&self, pass, key_opts, config_opts)?;
+        let (key, key_id, config) = commands::init::init(&self, pass, key_opts, config_opts)?;
 
-        self.open_raw(key, config)
+        self.open_raw(key, key_id, config)
     }
 
     /// Initialize a new repository with given password and a ready [`ConfigFile`].
@@ -632,9 +632,9 @@ impl<P, S> Repository<P, S> {
         key_opts: &KeyOptions,
         config: ConfigFile,
     ) -> RusticResult<Repository<P, OpenStatus>> {
-        let key = commands::init::init_with_config(&self, password, key_opts, &config)?;
+        let (key, key_id) = commands::init::init_with_config(&self, password, key_opts, &config)?;
         info!("repository {} successfully created.", config.id);
-        self.open_raw(key, config)
+        self.open_raw(key, key_id, config)
     }
 
     /// Open the repository with given [`Key`] and [`ConfigFile`].
@@ -652,7 +652,12 @@ impl<P, S> Repository<P, S> {
     ///
     /// * If the config file has `is_hot` set to `true` but the repository is not hot
     /// * If the config file has `is_hot` set to `false` but the repository is hot
-    fn open_raw(mut self, key: Key, config: ConfigFile) -> RusticResult<Repository<P, OpenStatus>> {
+    fn open_raw(
+        mut self,
+        key: Key,
+        key_id: KeyId,
+        config: ConfigFile,
+    ) -> RusticResult<Repository<P, OpenStatus>> {
         match (config.is_hot == Some(true), self.be_hot.is_some()) {
             (true, false) => return Err(
                 RusticError::new(
@@ -684,7 +689,12 @@ impl<P, S> Repository<P, S> {
         dbe.set_zstd(config.zstd()?);
         dbe.set_extra_verify(config.extra_verify());
 
-        let open = OpenStatus { cache, dbe, config };
+        let open = OpenStatus {
+            cache,
+            dbe,
+            config,
+            key_id,
+        };
 
         Ok(Repository {
             name: self.name,
@@ -755,30 +765,13 @@ impl<P: ProgressBars, S> Repository<P, S> {
 
 /// A repository which is open, i.e. the password has been checked and the decryption key is available.
 pub trait Open {
-    /// Get the cache
-    fn cache(&self) -> Option<&Cache>;
-
-    /// Get the [`DecryptBackend`]
-    fn dbe(&self) -> &DecryptBackend<Key>;
-
-    /// Get the [`ConfigFile`]
-    fn config(&self) -> &ConfigFile;
+    /// Get the open status
+    fn open_status(&self) -> &OpenStatus;
 }
 
 impl<P, S: Open> Open for Repository<P, S> {
-    /// Get the cache
-    fn cache(&self) -> Option<&Cache> {
-        self.status.cache()
-    }
-
-    /// Get the [`DecryptBackend`]
-    fn dbe(&self) -> &DecryptBackend<Key> {
-        self.status.dbe()
-    }
-
-    /// Get the [`ConfigFile`]
-    fn config(&self) -> &ConfigFile {
-        self.status.config()
+    fn open_status(&self) -> &OpenStatus {
+        self.status.open_status()
     }
 }
 
@@ -786,27 +779,18 @@ impl<P, S: Open> Open for Repository<P, S> {
 #[derive(Debug)]
 pub struct OpenStatus {
     /// The cache
-    cache: Option<Cache>,
+    pub(crate) cache: Option<Cache>,
     /// The [`DecryptBackend`]
     dbe: DecryptBackend<Key>,
     /// The [`ConfigFile`]
     config: ConfigFile,
+    /// The [`KeyId`] of the used key
+    key_id: KeyId,
 }
 
 impl Open for OpenStatus {
-    /// Get the cache
-    fn cache(&self) -> Option<&Cache> {
-        self.cache.as_ref()
-    }
-
-    /// Get the [`DecryptBackend`]
-    fn dbe(&self) -> &DecryptBackend<Key> {
-        &self.dbe
-    }
-
-    /// Get the [`ConfigFile`]
-    fn config(&self) -> &ConfigFile {
-        &self.config
+    fn open_status(&self) -> &OpenStatus {
+        self
     }
 }
 
@@ -863,12 +847,26 @@ impl<P, S: Open> Repository<P, S> {
 
     /// Get the repository configuration
     pub fn config(&self) -> &ConfigFile {
-        self.status.config()
+        &self.open_status().config
     }
 
     // TODO: add documentation!
     pub(crate) fn dbe(&self) -> &DecryptBackend<Key> {
-        self.status.dbe()
+        &self.open_status().dbe
+    }
+
+    /// Get the [`KeyId`] of the key used to open the repository
+    pub fn key_id(&self) -> &KeyId {
+        &self.open_status().key_id
+    }
+
+    /// Delete the given key from the repository.
+    ///
+    /// # Errors
+    ///
+    /// * If the key could not be removed.
+    pub fn delete_key(&self, id: &KeyId) -> RusticResult<()> {
+        self.dbe().remove(FileType::Key, id, false)
     }
 }
 
@@ -1557,16 +1555,8 @@ impl<P, S: IndexedFull> IndexedFull for Repository<P, S> {
 }
 
 impl<T, S: Open> Open for IndexedStatus<T, S> {
-    fn cache(&self) -> Option<&Cache> {
-        self.open.cache()
-    }
-
-    fn dbe(&self) -> &DecryptBackend<Key> {
-        self.open.dbe()
-    }
-
-    fn config(&self) -> &ConfigFile {
-        self.open.config()
+    fn open_status(&self) -> &OpenStatus {
+        &self.open.open_status()
     }
 }
 
