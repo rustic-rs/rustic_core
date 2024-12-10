@@ -48,6 +48,8 @@
 //! All types that we want to attach to an error should implement `Display` and `Debug` to provide a good error message and a nice way
 //! to display the error.
 
+pub(crate) mod summary;
+
 use derive_more::derive::Display;
 use ecow::{EcoString, EcoVec};
 use std::{
