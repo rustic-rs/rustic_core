@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.0](https://github.com/rustic-rs/rustic_core/compare/rustic_core-v0.7.3...rustic_core-v0.8.0) - 2024-12-11
+
+### Added
+
+- *(warmup)* [**breaking**] Add warmup wait command (#379)
+
+### Fixed
+
+- [**breaking**] Don't panic when reading empty files (#381)
+
 ## [0.7.3](https://github.com/rustic-rs/rustic_core/compare/rustic_core-v0.7.2...rustic_core-v0.7.3) - 2024-12-06
 
 ### Fixed
