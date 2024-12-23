@@ -57,7 +57,7 @@ pub struct ParentOptions {
     /// Skip writing of snapshot if nothing changed w.r.t. the parent snapshot.
     #[cfg_attr(feature = "clap", clap(long))]
     #[cfg_attr(feature = "merge", merge(strategy = conflate::bool::overwrite_false))]
-    pub skip_identical_parent: bool,
+    pub skip_if_unchanged: bool,
 
     /// Use no parent, read all files
     #[cfg_attr(feature = "clap", clap(long, short, conflicts_with = "parent",))]
@@ -288,7 +288,7 @@ pub(crate) fn backup<P: ProgressBars, S: IndexedIds>(
                 &src,
                 path,
                 as_path.as_ref(),
-                opts.parent_opts.skip_identical_parent,
+                opts.parent_opts.skip_if_unchanged,
                 opts.no_scan,
                 &p,
             )?;
@@ -300,7 +300,7 @@ pub(crate) fn backup<P: ProgressBars, S: IndexedIds>(
                 &src,
                 path,
                 as_path.as_ref(),
-                opts.parent_opts.skip_identical_parent,
+                opts.parent_opts.skip_if_unchanged,
                 opts.no_scan,
                 &p,
             )?
@@ -315,7 +315,7 @@ pub(crate) fn backup<P: ProgressBars, S: IndexedIds>(
             &src,
             &backup_path[0],
             as_path.as_ref(),
-            opts.parent_opts.skip_identical_parent,
+            opts.parent_opts.skip_if_unchanged,
             opts.no_scan,
             &p,
         )?
