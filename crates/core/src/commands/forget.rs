@@ -253,6 +253,12 @@ pub struct KeepOptions {
     #[cfg_attr(feature = "merge", merge(strategy=conflate::bool::overwrite_false))]
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub keep_none: bool,
+
+    /// Delete unchanged follow-up snapshots (i.e. with identical tree)
+    #[cfg_attr(feature = "clap", clap(long))]
+    #[cfg_attr(feature = "merge", merge(strategy=conflate::bool::overwrite_false))]
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub delete_unchanged: bool,
 }
 
 /// Always return false
@@ -589,6 +595,10 @@ impl KeepOptions {
                     (true, vec!["snapshot"])
                 } else if sn.must_delete(now) {
                     (false, vec!["snapshot"])
+                } else if self.delete_unchanged
+                    && iter.peek().is_some_and(|sn_next| sn_next.tree == sn.tree)
+                {
+                    (false, vec!["unchanged"])
                 } else {
                     let reasons =
                         group_keep.matches(&sn, last.as_ref(), iter.peek().is_some(), latest_time);
