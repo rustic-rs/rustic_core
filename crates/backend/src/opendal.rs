@@ -6,7 +6,7 @@ use bytesize::ByteSize;
 use log::{error, trace};
 use opendal::{
     layers::{BlockingLayer, ConcurrentLimitLayer, LoggingLayer, RetryLayer, ThrottleLayer},
-    BlockingOperator, Metakey, Operator, Scheme,
+    BlockingOperator, Operator, Scheme,
 };
 use rayon::prelude::{IntoParallelIterator, ParallelIterator};
 use tokio::runtime::Runtime;
@@ -297,7 +297,6 @@ impl ReadBackend for OpenDALBackend {
             .operator
             .list_with(&path)
             .recursive(true)
-            .metakey(Metakey::ContentLength)
             .call()
             .map_err(|err|
                 RusticError::with_source(
