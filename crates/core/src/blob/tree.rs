@@ -1,9 +1,9 @@
 use std::{
+    borrow::Cow,
     cmp::Ordering,
     collections::{BTreeMap, BTreeSet, BinaryHeap},
-    ffi::{OsStr, OsString},
     mem,
-    path::{Component, Path, PathBuf, Prefix},
+    path::PathBuf,
     str::{self, Utf8Error},
 };
 
@@ -13,6 +13,7 @@ use ignore::overrides::{Override, OverrideBuilder};
 use ignore::Match;
 use serde::{Deserialize, Deserializer};
 use serde_derive::Serialize;
+use typed_path::{TypedPath, UnixComponent, UnixPath, UnixPathBuf};
 
 use crate::{
     backend::{
@@ -52,8 +53,8 @@ pub(super) mod constants {
     pub(super) const MAX_TREE_LOADER: usize = 4;
 }
 
-pub(crate) type TreeStreamItem = RusticResult<(PathBuf, Tree)>;
-type NodeStreamItem = RusticResult<(PathBuf, Node)>;
+pub(crate) type TreeStreamItem = RusticResult<(UnixPathBuf, Tree)>;
+type NodeStreamItem = RusticResult<(UnixPathBuf, Node)>;
 impl_blobid!(TreeId, BlobType::Tree);
 
 #[derive(Default, Serialize, Deserialize, Clone, Debug)]
@@ -170,9 +171,9 @@ impl Tree {
         be: &impl DecryptReadBackend,
         index: &impl ReadGlobalIndex,
         id: TreeId,
-        path: &Path,
+        path: &UnixPath,
     ) -> RusticResult<Node> {
-        let mut node = Node::new_node(OsStr::new(""), NodeType::Dir, Metadata::default());
+        let mut node = Node::new_node(&[], NodeType::Dir, Metadata::default());
         node.subtree = Some(id);
 
         for p in path.components() {
@@ -187,7 +188,7 @@ impl Tree {
             })? {
                 let id = node.subtree.ok_or_else(|| {
                     RusticError::new(ErrorKind::Internal, "Node `{node}` is not a directory.")
-                        .attach_context("node", p.to_string_lossy())
+                        .attach_context("node", String::from_utf8_lossy(p))
                         .ask_report()
                 })?;
                 let tree = Self::from_backend(be, index, id)?;
@@ -197,7 +198,7 @@ impl Tree {
                     .find(|node| node.name() == p)
                     .ok_or_else(|| {
                         RusticError::new(ErrorKind::Internal, "Node `{node}` not found in tree.")
-                            .attach_context("node", p.to_string_lossy())
+                            .attach_context("node", String::from_utf8_lossy(p))
                             .ask_report()
                     })?;
             }
@@ -210,14 +211,14 @@ impl Tree {
         be: &impl DecryptReadBackend,
         index: &impl ReadGlobalIndex,
         ids: impl IntoIterator<Item = TreeId>,
-        path: &Path,
+        path: &UnixPath,
     ) -> RusticResult<FindNode> {
         // helper function which is recursively called
         fn find_node_from_component(
             be: &impl DecryptReadBackend,
             index: &impl ReadGlobalIndex,
             tree_id: TreeId,
-            path_comp: &[OsString],
+            path_comp: &[&[u8]],
             results_cache: &mut [BTreeMap<TreeId, Option<usize>>],
             nodes: &mut BTreeMap<Node, usize>,
             idx: usize,
@@ -242,7 +243,7 @@ impl Tree {
                             ErrorKind::Internal,
                             "Subtree ID not found for node `{node}`",
                         )
-                        .attach_context("node", path_comp[idx].to_string_lossy())
+                        .attach_context("node", String::from_utf8_lossy(path_comp[idx]))
                         .ask_report()
                     })?;
 
@@ -308,19 +309,19 @@ impl Tree {
         be: &impl DecryptReadBackend,
         index: &impl ReadGlobalIndex,
         ids: impl IntoIterator<Item = TreeId>,
-        matches: &impl Fn(&Path, &Node) -> bool,
+        matches: &impl Fn(&UnixPath, &Node) -> bool,
     ) -> RusticResult<FindMatches> {
         // internal state used to save match information in find_matching_nodes
         #[derive(Default)]
         struct MatchInternalState {
             // we cache all results
-            cache: BTreeMap<(TreeId, PathBuf), Vec<(usize, usize)>>,
+            cache: BTreeMap<(TreeId, UnixPathBuf), Vec<(usize, usize)>>,
             nodes: BTreeMap<Node, usize>,
-            paths: BTreeMap<PathBuf, usize>,
+            paths: BTreeMap<UnixPathBuf, usize>,
         }
 
         impl MatchInternalState {
-            fn insert_result(&mut self, path: PathBuf, node: Node) -> (usize, usize) {
+            fn insert_result(&mut self, path: UnixPathBuf, node: Node) -> (usize, usize) {
                 let new_idx = self.nodes.len();
                 let node_idx = self.nodes.entry(node).or_insert(new_idx);
                 let new_idx = self.paths.len();
@@ -334,9 +335,9 @@ impl Tree {
             be: &impl DecryptReadBackend,
             index: &impl ReadGlobalIndex,
             tree_id: TreeId,
-            path: &Path,
+            path: &UnixPath,
             state: &mut MatchInternalState,
-            matches: &impl Fn(&Path, &Node) -> bool,
+            matches: &impl Fn(&UnixPath, &Node) -> bool,
         ) -> RusticResult<Vec<(usize, usize)>> {
             let mut result = Vec::new();
             if let Some(result) = state.cache.get(&(tree_id, path.to_path_buf())) {
@@ -352,7 +353,7 @@ impl Tree {
                             ErrorKind::Internal,
                             "Subtree ID not found for node `{node}`",
                         )
-                        .attach_context("node", node.name().to_string_lossy())
+                        .attach_context("node", String::from_utf8_lossy(&node.name()))
                         .ask_report()
                     })?;
 
@@ -372,7 +373,7 @@ impl Tree {
 
         let mut state = MatchInternalState::default();
 
-        let initial_path = PathBuf::new();
+        let initial_path = UnixPathBuf::new();
         let matches: Vec<_> = ids
             .into_iter()
             .map(|id| {
@@ -407,10 +408,10 @@ pub struct FindNode {
 }
 
 /// Results from `find_matching_nodes`
-#[derive(Debug, Serialize)]
+#[derive(Debug)] // TODO: Serialize!
 pub struct FindMatches {
     /// found matching paths
-    pub paths: Vec<PathBuf>,
+    pub paths: Vec<UnixPathBuf>,
     /// found matching nodes
     pub nodes: Vec<Node>,
     /// found paths/nodes for all given snapshots. (usize,usize) is the path / node index
@@ -427,21 +428,38 @@ pub struct FindMatches {
 ///
 /// * If the component is a current or parent directory.
 /// * If the component is not UTF-8 conform.
-pub(crate) fn comp_to_osstr(p: Component<'_>) -> TreeResult<Option<OsString>> {
-    let s = match p {
-        Component::RootDir => None,
-        Component::Prefix(p) => match p.kind() {
-            Prefix::Verbatim(p) | Prefix::DeviceNS(p) => Some(p.to_os_string()),
-            Prefix::VerbatimUNC(_, q) | Prefix::UNC(_, q) => Some(q.to_os_string()),
-            Prefix::VerbatimDisk(p) | Prefix::Disk(p) => Some(
-                OsStr::new(str::from_utf8(&[p]).map_err(TreeErrorKind::PathIsNotUtf8Conform)?)
-                    .to_os_string(),
-            ),
-        },
-        Component::Normal(p) => Some(p.to_os_string()),
+pub(crate) fn comp_to_osstr(comp: UnixComponent<'_>) -> TreeResult<Option<&[u8]>> {
+    let s = match comp {
+        UnixComponent::RootDir => None,
+        UnixComponent::Normal(p) => Some(p),
         _ => return Err(TreeErrorKind::ContainsCurrentOrParentDirectory),
     };
     Ok(s)
+}
+
+/// Converts a [`TypedPath`] to an [`Cow<UnixPath>`].
+///
+/// # Arguments
+///
+/// * `p` - The component to convert.
+///
+/// # Errors
+///
+/// * If the component is a current or parent directory.
+/// * If the component is not UTF-8 conform.
+pub(crate) fn typed_path_to_unix_path<'a>(p: &'a TypedPath<'_>) -> Cow<'a, UnixPath> {
+    match p {
+        TypedPath::Unix(path) => Cow::Borrowed(path),
+        TypedPath::Windows(path) => Cow::Owned(path.with_encoding()),
+        // TODO: Handle prefixes correctly!
+        /*
+        WindowsComponent::Prefix(p) => match p.kind() {
+            WindowsPrefix::Verbatim(p) | WindowsPrefix::DeviceNS(p) => Some(p),
+            WindowsPrefix::VerbatimUNC(_, q) | WindowsPrefix::UNC(_, q) => Some(q),
+            //WindowsPrefix::VerbatimDisk(p) | WindowsPrefix::Disk(p) => Some(&[p]),
+        },
+        */
+    }
 }
 
 impl IntoIterator for Tree {
@@ -513,7 +531,7 @@ where
     /// Inner iterator for the current subtree nodes
     inner: std::vec::IntoIter<Node>,
     /// The current path
-    path: PathBuf,
+    path: UnixPathBuf,
     /// The backend to read from
     be: BE,
     /// index
@@ -574,7 +592,7 @@ where
         Ok(Self {
             inner,
             open_iterators: Vec::new(),
-            path: PathBuf::new(),
+            path: UnixPathBuf::new(),
             be,
             index,
             overrides,
@@ -726,7 +744,10 @@ where
                     }
 
                     if let Some(overrides) = &self.overrides {
-                        if let Match::Ignore(_) = overrides.matched(&path, false) {
+                        if let Match::Ignore(_) =
+                            // TODO: use globset directly with UnixPath, see https://github.com/BurntSushi/ripgrep/issues/2954
+                            overrides.matched(PathBuf::try_from(&path).unwrap(), false)
+                        {
                             continue;
                         }
                     }
@@ -755,9 +776,9 @@ pub struct TreeStreamerOnce<P> {
     /// The visited tree IDs
     visited: BTreeSet<TreeId>,
     /// The queue to send tree IDs to
-    queue_in: Option<Sender<(PathBuf, TreeId, usize)>>,
+    queue_in: Option<Sender<(UnixPathBuf, TreeId, usize)>>,
     /// The queue to receive trees from
-    queue_out: Receiver<RusticResult<(PathBuf, Tree, usize)>>,
+    queue_out: Receiver<RusticResult<(UnixPathBuf, Tree, usize)>>,
     /// The progress indicator
     p: P,
     /// The number of trees that are not yet finished
@@ -820,7 +841,7 @@ impl<P: Progress> TreeStreamerOnce<P> {
 
         for (count, id) in ids.into_iter().enumerate() {
             if !streamer
-                .add_pending(PathBuf::new(), id, count)
+                .add_pending(UnixPathBuf::new(), id, count)
                 .map_err(|err| {
                     RusticError::with_source(
                         ErrorKind::Internal,
@@ -855,7 +876,7 @@ impl<P: Progress> TreeStreamerOnce<P> {
     /// # Errors
     ///
     /// * If sending the message fails.
-    fn add_pending(&mut self, path: PathBuf, id: TreeId, count: usize) -> TreeResult<bool> {
+    fn add_pending(&mut self, path: UnixPathBuf, id: TreeId, count: usize) -> TreeResult<bool> {
         if self.visited.insert(id) {
             self.queue_in
                 .as_ref()
@@ -911,7 +932,7 @@ impl<P: Progress> Iterator for TreeStreamerOnce<P> {
                                 "Failed to add tree ID `{tree_id}` to pending queue (`{count}`).",
                                 err,
                             )
-                            .attach_context("path", path.display().to_string())
+                            .attach_context("path", path.to_string_lossy().to_string())
                             .attach_context("tree_id", id.to_string())
                             .attach_context("count", count.to_string())
                             .ask_report()

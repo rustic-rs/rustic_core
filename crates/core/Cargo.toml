@@ -105,6 +105,7 @@ itertools = "0.13.0"
 quick_cache = "0.6.9"
 shell-words = "1.1.0"
 strum = { version = "0.26.3", features = ["derive"] }
+typed-path = "0.10.0"
 zstd = "0.13.2"
 
 [target.'cfg(not(windows))'.dependencies]
