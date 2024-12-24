@@ -3313,7 +3313,7 @@ dependencies = [
 
 [[package]]
 name = "rustic_backend"
-version = "0.5.2"
+version = "0.5.3"
 dependencies = [
  "aho-corasick",
  "anyhow",
@@ -3358,7 +3358,7 @@ version = "0.2.2"
 
 [[package]]
 name = "rustic_core"
-version = "0.7.3"
+version = "0.8.0"
 dependencies = [
  "aes256ctr_poly1305aes",
  "anyhow",
