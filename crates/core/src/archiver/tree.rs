@@ -1,9 +1,9 @@
-use std::{ffi::OsString, path::PathBuf};
-
 use crate::{
     backend::node::{Metadata, Node, NodeType},
     blob::tree::comp_to_osstr,
 };
+
+use typed_path::UnixPathBuf;
 
 /// `TreeIterator` turns an Iterator yielding items with paths and Nodes into an
 /// Iterator which ensures that all subdirectories are visited and closed.
@@ -18,7 +18,7 @@ pub(crate) struct TreeIterator<T, I> {
     /// The original Iterator.
     iter: I,
     /// The current path.
-    path: PathBuf,
+    path: UnixPathBuf,
     /// The current item.
     item: Option<T>,
 }
@@ -31,7 +31,7 @@ where
         let item = iter.next();
         Self {
             iter,
-            path: PathBuf::new(),
+            path: UnixPathBuf::new(),
             item,
         }
     }
@@ -49,32 +49,25 @@ where
 #[derive(Debug)]
 pub(crate) enum TreeType<T, U> {
     /// New tree to be inserted.
-    NewTree((PathBuf, Node, U)),
+    NewTree((UnixPathBuf, Node, U)),
     /// A pseudo item which indicates that a tree is finished.
     EndTree,
     /// Original item.
-    Other((PathBuf, Node, T)),
+    Other((UnixPathBuf, Node, T)),
 }
 
-impl<I, O> Iterator for TreeIterator<(PathBuf, Node, O), I>
+impl<I, O> Iterator for TreeIterator<(UnixPathBuf, Node, O), I>
 where
-    I: Iterator<Item = (PathBuf, Node, O)>,
+    I: Iterator<Item = (UnixPathBuf, Node, O)>,
 {
-    type Item = TreeType<O, OsString>;
+    type Item = TreeType<O, Vec<u8>>;
     fn next(&mut self) -> Option<Self::Item> {
         match &self.item {
             None => {
                 if self.path.pop() {
                     Some(TreeType::EndTree)
                 } else {
-                    // Check if we still have a path prefix open...
-                    match self.path.components().next() {
-                        Some(std::path::Component::Prefix(..)) => {
-                            self.path = PathBuf::new();
-                            Some(TreeType::EndTree)
-                        }
-                        _ => None,
-                    }
+                    None
                 }
             }
             Some((path, node, _)) => {
@@ -91,7 +84,7 @@ where
                                 if node.is_dir() && path == &self.path {
                                     let (path, node, _) = self.item.take().unwrap();
                                     self.item = self.iter.next();
-                                    let name = node.name();
+                                    let name = node.name().to_vec();
                                     return Some(TreeType::NewTree((path, node, name)));
                                 }
                                 // Use mode 755 for missing dirs, so they can be accessed
@@ -99,8 +92,12 @@ where
                                     mode: Some(0o755),
                                     ..Default::default()
                                 };
-                                let node = Node::new_node(&p, NodeType::Dir, meta);
-                                return Some(TreeType::NewTree((self.path.clone(), node, p)));
+                                let node = Node::new_node(p, NodeType::Dir, meta);
+                                return Some(TreeType::NewTree((
+                                    self.path.clone(),
+                                    node,
+                                    p.to_vec(),
+                                )));
                             }
                         }
                         // there wasn't any normal path component to process - return current item

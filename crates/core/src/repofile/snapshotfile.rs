@@ -17,6 +17,7 @@ use log::info;
 use path_dedot::ParseDot;
 use serde_derive::{Deserialize, Serialize};
 use serde_with::{serde_as, skip_serializing_none, DisplayFromStr};
+use typed_path::{UnixPath, UnixPathBuf};
 
 use crate::{
     backend::{decrypt::DecryptReadBackend, FileType, FindInBackend},
@@ -33,7 +34,7 @@ use crate::{
 #[non_exhaustive]
 pub enum SnapshotFileErrorKind {
     /// non-unicode path `{0:?}`
-    NonUnicodePath(PathBuf),
+    NonUnicodePath(UnixPathBuf),
     /// value `{0:?}` not allowed
     ValueNotAllowed(String),
     /// datetime out of range: `{0:?}`
@@ -1201,7 +1202,7 @@ impl StringList {
     /// # Errors
     ///
     /// * If a path is not valid unicode
-    pub(crate) fn set_paths<T: AsRef<Path>>(&mut self, paths: &[T]) -> SnapshotFileResult<()> {
+    pub(crate) fn set_paths<T: AsRef<UnixPath>>(&mut self, paths: &[T]) -> SnapshotFileResult<()> {
         self.0 = paths
             .iter()
             .map(|p| {
@@ -1303,6 +1304,16 @@ impl PathList {
     #[must_use]
     pub(crate) fn paths(&self) -> Vec<PathBuf> {
         self.0.clone()
+    }
+
+    /// Clone the internal `Vec<PathBuf>`.
+    #[must_use]
+    pub(crate) fn unix_paths(&self) -> Vec<UnixPathBuf> {
+        self.0
+            .iter()
+            .map(|p| p.clone().try_into())
+            .collect::<Result<_, _>>()
+            .unwrap()
     }
 
     /// Sanitize paths: Parse dots, absolutize if needed and merge paths.
