@@ -1,6 +1,7 @@
 //! `backup` subcommand
 use derive_setters::Setters;
 use log::info;
+use typed_path::UnixPathBuf;
 
 use std::path::PathBuf;
 
@@ -221,7 +222,7 @@ pub(crate) fn backup<P: ProgressBars, S: IndexedIds>(
         source.paths()
     };
 
-    let as_path = opts
+    let as_path: Option<UnixPathBuf> = opts
         .as_path
         .as_ref()
         .map(|p| -> RusticResult<_> {
@@ -234,7 +235,9 @@ pub(crate) fn backup<P: ProgressBars, S: IndexedIds>(
                     )
                     .attach_context("path", p.display().to_string())
                 })?
-                .to_path_buf())
+                .to_path_buf()
+                .try_into()
+                .unwrap()) // TODO: error handling
         })
         .transpose()?;
 
@@ -250,22 +253,31 @@ pub(crate) fn backup<P: ProgressBars, S: IndexedIds>(
                 )
                 .attach_context("paths", p.display().to_string())
             })?,
-        None => snap.paths.set_paths(&backup_path).map_err(|err| {
-            RusticError::with_source(
-                ErrorKind::Internal,
-                "Failed to set paths `{paths}` in snapshot.",
-                err,
-            )
-            .attach_context(
-                "paths",
-                backup_path
+        None => snap
+            .paths
+            .set_paths(
+                &backup_path
                     .iter()
-                    .map(|p| p.display().to_string())
-                    .collect::<Vec<_>>()
-                    .join(","),
+                    .map(|p| UnixPathBuf::try_from(p.clone()))
+                    .collect::<Result<Vec<_>, _>>()
+                    .unwrap(),
             )
-        })?,
-    }
+            .map_err(|err| {
+                RusticError::with_source(
+                    ErrorKind::Internal,
+                    "Failed to set paths `{paths}` in snapshot.",
+                    err,
+                )
+                .attach_context(
+                    "paths",
+                    backup_path
+                        .iter()
+                        .map(|p| p.display().to_string())
+                        .collect::<Vec<_>>()
+                        .join(","),
+                )
+            })?,
+    };
 
     let (parent_id, parent) = opts.parent_opts.get_parent(repo, &snap, backup_stdin);
     match parent_id {
@@ -286,10 +298,11 @@ pub(crate) fn backup<P: ProgressBars, S: IndexedIds>(
     let snap = if backup_stdin {
         let path = &backup_path[0];
         if let Some(command) = &opts.stdin_command {
-            let src = ChildStdoutSource::new(command, path.clone())?;
+            let unix_path: UnixPathBuf = path.clone().try_into().unwrap(); // todo: error handling
+            let src = ChildStdoutSource::new(command, unix_path.clone())?;
             let res = archiver.archive(
                 &src,
-                path,
+                &unix_path,
                 as_path.as_ref(),
                 opts.parent_opts.skip_if_unchanged,
                 opts.no_scan,
@@ -298,10 +311,11 @@ pub(crate) fn backup<P: ProgressBars, S: IndexedIds>(
             src.finish()?;
             res
         } else {
+            let path: UnixPathBuf = path.clone().try_into().unwrap(); // TODO: error handling
             let src = StdinSource::new(path.clone());
             archiver.archive(
                 &src,
-                path,
+                &path,
                 as_path.as_ref(),
                 opts.parent_opts.skip_if_unchanged,
                 opts.no_scan,
@@ -314,9 +328,10 @@ pub(crate) fn backup<P: ProgressBars, S: IndexedIds>(
             &opts.ignore_filter_opts,
             &backup_path,
         )?;
+        let backup_path: UnixPathBuf = backup_path[0].clone().try_into().unwrap();
         archiver.archive(
             &src,
-            &backup_path[0],
+            &backup_path,
             as_path.as_ref(),
             opts.parent_opts.skip_if_unchanged,
             opts.no_scan,

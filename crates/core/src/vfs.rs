@@ -1,14 +1,11 @@
 mod format;
 
-use std::{
-    collections::BTreeMap,
-    ffi::{OsStr, OsString},
-    path::{Component, Path, PathBuf},
-};
+use std::collections::BTreeMap;
 
 use bytes::{Bytes, BytesMut};
 use runtime_format::FormatArgs;
 use strum::EnumString;
+use typed_path::{TypedPath, UnixComponent, UnixPath, UnixPathBuf};
 
 use crate::{
     blob::{BlobId, DataId, tree::TreeId},
@@ -27,7 +24,7 @@ pub enum VfsErrorKind {
     /// Only normal paths allowed
     OnlyNormalPathsAreAllowed,
     /// Name `{0:?}` doesn't exist
-    NameDoesNotExist(OsString),
+    NameDoesNotExist(String),
 }
 
 pub(crate) type VfsResult<T> = Result<T, VfsErrorKind>;
@@ -56,22 +53,22 @@ pub enum Latest {
 /// A potentially virtual tree in the [`Vfs`]
 enum VfsTree {
     /// A symlink to the given link target
-    Link(OsString),
+    Link(Vec<u8>),
     /// A repository tree; id of the tree
     RusticTree(TreeId),
     /// A purely virtual tree containing subtrees
-    VirtualTree(BTreeMap<OsString, VfsTree>),
+    VirtualTree(BTreeMap<Vec<u8>, VfsTree>),
 }
 
 #[derive(Debug)]
 /// A resolved path within a [`Vfs`]
 enum VfsPath<'a> {
     /// Path is the given symlink
-    Link(&'a OsString),
+    Link(&'a [u8]),
     /// Path is within repository, give the tree [`Id`] and remaining path.
-    RusticPath(&'a TreeId, PathBuf),
+    RusticPath(&'a TreeId, UnixPathBuf),
     /// Path is the given virtual tree
-    VirtualTree(&'a BTreeMap<OsString, VfsTree>),
+    VirtualTree(&'a BTreeMap<Vec<u8>, VfsTree>),
 }
 
 impl VfsTree {
@@ -95,19 +92,19 @@ impl VfsTree {
     /// # Returns
     ///
     /// `Ok(())` if the tree was added successfully
-    fn add_tree(&mut self, path: &Path, new_tree: Self) -> VfsResult<()> {
+    fn add_tree(&mut self, path: &UnixPath, new_tree: Self) -> VfsResult<()> {
         let mut tree = self;
         let mut components = path.components();
-        let Some(Component::Normal(last)) = components.next_back() else {
+        let Some(UnixComponent::Normal(last)) = components.next_back() else {
             return Err(VfsErrorKind::OnlyNormalPathsAreAllowed);
         };
 
         for comp in components {
-            if let Component::Normal(name) = comp {
+            if let UnixComponent::Normal(name) = comp {
                 match tree {
                     Self::VirtualTree(virtual_tree) => {
                         tree = virtual_tree
-                            .entry(name.to_os_string())
+                            .entry(name.to_vec())
                             .or_insert(Self::VirtualTree(BTreeMap::new()));
                     }
                     _ => {
@@ -121,7 +118,7 @@ impl VfsTree {
             return Err(VfsErrorKind::DirectoryExistsAsNonVirtual);
         };
 
-        _ = virtual_tree.insert(last.to_os_string(), new_tree);
+        _ = virtual_tree.insert(last.to_vec(), new_tree);
         Ok(())
     }
 
@@ -138,21 +135,23 @@ impl VfsTree {
     /// # Returns
     ///
     /// If the path is within a real repository tree, this returns the [`VfsTree::RusticTree`] and the remaining path
-    fn get_path(&self, path: &Path) -> VfsResult<VfsPath<'_>> {
+    fn get_path(&self, path: &UnixPath) -> VfsResult<VfsPath<'_>> {
         let mut tree = self;
         let mut components = path.components();
         loop {
             match tree {
                 Self::RusticTree(id) => {
-                    let path: PathBuf = components.collect();
+                    let path = components.collect();
                     return Ok(VfsPath::RusticPath(id, path));
                 }
                 Self::VirtualTree(virtual_tree) => match components.next() {
-                    Some(Component::Normal(name)) => {
+                    Some(UnixComponent::Normal(name)) => {
                         if let Some(new_tree) = virtual_tree.get(name) {
                             tree = new_tree;
                         } else {
-                            return Err(VfsErrorKind::NameDoesNotExist(name.to_os_string()));
+                            return Err(VfsErrorKind::NameDoesNotExist(
+                                String::from_utf8_lossy(name).to_string(),
+                            ));
                         }
                     }
                     None => {
@@ -246,9 +245,9 @@ impl Vfs {
                 },
             )
             .to_string();
-            let path = Path::new(&path);
-            let filename = path.file_name().map(OsStr::to_os_string);
-            let parent_path = path.parent().map(Path::to_path_buf);
+            let path = UnixPath::new(&path).to_path_buf();
+            let filename = path.file_name().map(<[u8]>::to_vec);
+            let parent_path = path.parent().map(UnixPath::to_path_buf);
 
             // Save paths for latest entries, if requested
             if matches!(latest_option, Latest::AsLink) {
@@ -265,27 +264,27 @@ impl Vfs {
                     && last_tree == snap.tree
                 {
                     if let Some(name) = last_name {
-                        tree.add_tree(path, VfsTree::Link(name.clone()))
+                        tree.add_tree(&path, VfsTree::Link(name.clone()))
                             .map_err(|err| {
                                 RusticError::with_source(
                                     ErrorKind::Vfs,
                                     "Failed to add a link `{name}` to root tree at `{path}`",
                                     err,
                                 )
-                                .attach_context("path", path.display().to_string())
-                                .attach_context("name", name.to_string_lossy())
+                                .attach_context("path", path.to_string_lossy().to_string())
+                                .attach_context("name", String::from_utf8_lossy(&name))
                                 .ask_report()
                             })?;
                     }
                 } else {
-                    tree.add_tree(path, VfsTree::RusticTree(snap.tree))
+                    tree.add_tree(&path, VfsTree::RusticTree(snap.tree))
                         .map_err(|err| {
                             RusticError::with_source(
                                 ErrorKind::Vfs,
                                 "Failed to add repository tree `{tree_id}` to root tree at `{path}`",
                                 err,
                             )
-                            .attach_context("path", path.display().to_string())
+                            .attach_context("path", path.to_string_lossy().to_string())
                             .attach_context("tree_id", snap.tree.to_string())
                             .ask_report()
                         })?;
@@ -310,8 +309,8 @@ impl Vfs {
                                     "Failed to link latest `{target}` entry to root tree at `{path}`",
                                     err,
                                 )
-                                .attach_context("path", path.display().to_string())
-                                .attach_context("target", target.to_string_lossy())
+                                .attach_context("path", path.to_string_lossy().to_string())
+                                .attach_context("target", String::from_utf8_lossy(&target))
                                 .attach_context("latest", "link")
                                 .ask_report()
                             })?;
@@ -329,7 +328,7 @@ impl Vfs {
                                     "Failed to add latest subtree id `{id}` to root tree at `{path}`",
                                     err,
                                 )
-                                .attach_context("path", path.display().to_string())
+                                .attach_context("path", path.to_string_lossy().to_string())
                                 .attach_context("tree_id", subtree.to_string())
                                 .attach_context("latest", "dir")
                                 .ask_report()
@@ -360,7 +359,7 @@ impl Vfs {
     pub fn node_from_path<P, S: IndexedFull>(
         &self,
         repo: &Repository<P, S>,
-        path: &Path,
+        path: &UnixPath,
     ) -> RusticResult<Node> {
         let meta = Metadata::default();
         match self.tree.get_path(path).map_err(|err| {
@@ -378,7 +377,7 @@ impl Vfs {
             }
             VfsPath::Link(target) => Ok(Node::new(
                 String::new(),
-                NodeType::from_link(Path::new(target)),
+                NodeType::from_link(&TypedPath::derive(target)),
                 meta,
                 None,
                 None,
@@ -409,7 +408,7 @@ impl Vfs {
     pub fn dir_entries_from_path<P, S: IndexedFull>(
         &self,
         repo: &Repository<P, S>,
-        path: &Path,
+        path: &UnixPath,
     ) -> RusticResult<Vec<Node>> {
         let result = match self.tree.get_path(path).map_err(|err| {
             RusticError::with_source(
@@ -433,7 +432,7 @@ impl Vfs {
                 .iter()
                 .map(|(name, tree)| {
                     let node_type = match tree {
-                        VfsTree::Link(target) => NodeType::from_link(Path::new(target)),
+                        VfsTree::Link(target) => NodeType::from_link(&TypedPath::derive(target)),
                         _ => NodeType::Dir,
                     };
                     Node::new_node(name, node_type, Metadata::default())
@@ -444,7 +443,7 @@ impl Vfs {
                     ErrorKind::Vfs,
                     "No directory entries for symlink `{symlink}` found. Is the path valid unicode?",
                 )
-                .attach_context("symlink", str.to_string_lossy().to_string()));
+                .attach_context("symlink", String::from_utf8_lossy(str).to_string()));
             }
         };
         Ok(result)

@@ -1,17 +1,9 @@
-use std::{
-    cmp::Ordering,
-    ffi::{OsStr, OsString},
-    fmt::Debug,
-    path::Path,
-    str::FromStr,
-};
+use std::{borrow::Cow, cmp::Ordering, fmt::Debug};
 
 #[cfg(not(windows))]
 use std::fmt::Write;
 #[cfg(not(windows))]
 use std::num::ParseIntError;
-#[cfg(not(windows))]
-use std::os::unix::ffi::OsStrExt;
 
 use chrono::{DateTime, Local};
 use derive_more::Constructor;
@@ -23,6 +15,7 @@ use serde_with::{
     formats::Padded,
     serde_as, skip_serializing_none,
 };
+use typed_path::TypedPath;
 
 use crate::blob::{DataId, tree::TreeId};
 
@@ -171,15 +164,14 @@ pub enum NodeType {
 }
 
 impl NodeType {
-    #[cfg(not(windows))]
     /// Get a [`NodeType`] from a linktarget path
     #[must_use]
-    pub fn from_link(target: &Path) -> Self {
+    pub fn from_link(target: &TypedPath<'_>) -> Self {
         let (linktarget, linktarget_raw) = target.to_str().map_or_else(
             || {
                 (
-                    target.as_os_str().to_string_lossy().to_string(),
-                    Some(target.as_os_str().as_bytes().to_vec()),
+                    target.to_string_lossy().to_string(),
+                    Some(target.as_bytes().to_vec()),
                 )
             },
             |t| (t.to_string(), None),
@@ -190,57 +182,23 @@ impl NodeType {
         }
     }
 
-    #[cfg(windows)]
-    // Windows doesn't support non-unicode link targets, so we assume unicode here.
-    // TODO: Test and check this!
-    /// Get a [`NodeType`] from a linktarget path
-    #[must_use]
-    pub fn from_link(target: &Path) -> Self {
-        Self::Symlink {
-            linktarget: target.as_os_str().to_string_lossy().to_string(),
-            linktarget_raw: None,
-        }
-    }
-
     // Must be only called on NodeType::Symlink!
     /// Get the link path from a `NodeType::Symlink`.
     ///
     /// # Panics
     ///
     /// * If called on a non-symlink node
-    #[cfg(not(windows))]
     #[must_use]
-    pub fn to_link(&self) -> &Path {
-        match self {
+    pub fn to_link(&self) -> TypedPath<'_> {
+        TypedPath::derive(match self {
             Self::Symlink {
                 linktarget,
                 linktarget_raw,
-            } => linktarget_raw.as_ref().map_or_else(
-                || Path::new(linktarget),
-                |t| Path::new(OsStr::from_bytes(t)),
-            ),
+            } => linktarget_raw
+                .as_ref()
+                .map_or_else(|| linktarget.as_bytes(), |t| t),
             _ => panic!("called method to_link on non-symlink!"),
-        }
-    }
-
-    /// Convert a `NodeType::Symlink` to a `Path`.
-    ///
-    /// # Warning
-    ///
-    /// * Must be only called on `NodeType::Symlink`!
-    ///
-    /// # Panics
-    ///
-    /// * If called on a non-symlink node
-    /// * If the link target is not valid unicode
-    // TODO: Implement non-unicode link targets correctly for windows
-    #[cfg(windows)]
-    #[must_use]
-    pub fn to_link(&self) -> &Path {
-        match self {
-            Self::Symlink { linktarget, .. } => Path::new(linktarget),
-            _ => panic!("called method to_link on non-symlink!"),
-        }
+        })
     }
 }
 
@@ -314,7 +272,7 @@ impl Node {
     ///
     /// The created [`Node`]
     #[must_use]
-    pub fn new_node(name: &OsStr, node_type: NodeType, meta: Metadata) -> Self {
+    pub fn new_node(name: &[u8], node_type: NodeType, meta: Metadata) -> Self {
         Self {
             name: escape_filename(name),
             node_type,
@@ -360,8 +318,8 @@ impl Node {
     /// # Panics
     ///
     /// * If the name is not valid unicode
-    pub fn name(&self) -> OsString {
-        unescape_filename(&self.name).unwrap_or_else(|_| OsString::from_str(&self.name).unwrap())
+    pub fn name(&self) -> Cow<'_, [u8]> {
+        unescape_filename(&self.name).map_or(Cow::Borrowed(self.name.as_bytes()), Cow::Owned)
     }
 }
 
@@ -408,8 +366,8 @@ fn unescape_filename(s: &str) -> Result<OsString, core::convert::Infallible> {
 // stconv.Quote, see https://pkg.go.dev/strconv#Quote
 // However, so far there was no specification what Quote really does, so this
 // is some kind of try-and-error and maybe does not cover every case.
-fn escape_filename(name: &OsStr) -> String {
-    let mut input = name.as_bytes();
+fn escape_filename(name: &[u8]) -> String {
+    let mut input = name;
     let mut s = String::with_capacity(name.len());
 
     let push = |s: &mut String, p: &str| {
@@ -463,7 +421,7 @@ fn escape_filename(name: &OsStr) -> String {
 ///
 /// * `s` - The escaped filename
 // inspired by the enquote crate
-fn unescape_filename(s: &str) -> NodeResult<'_, OsString> {
+fn unescape_filename(s: &str) -> NodeResult<'_, Vec<u8>> {
     let mut chars = s.chars();
     let mut u = Vec::new();
     loop {
@@ -560,7 +518,7 @@ fn unescape_filename(s: &str) -> NodeResult<'_, OsString> {
         }
     }
 
-    Ok(OsStr::from_bytes(&u).to_os_string())
+    Ok(u)
 }
 
 #[cfg(not(windows))]
@@ -581,12 +539,12 @@ mod tests {
 
     use proptest::prelude::*;
     use rstest::rstest;
+    use typed_path::UnixPath;
 
     proptest! {
         #[test]
-        fn escape_unescape_is_identity(bytes in prop::collection::vec(prop::num::u8::ANY, 0..65536)) {
-            let name = OsStr::from_bytes(&bytes);
-            prop_assert_eq!(name, unescape_filename(&escape_filename(name)).unwrap());
+        fn escape_unescape_is_identity(name in prop::collection::vec(prop::num::u8::ANY, 0..65536)) {
+            prop_assert_eq!(unescape_filename(&escape_filename(&name)).unwrap(), name);
         }
     }
 
@@ -608,8 +566,7 @@ mod tests {
     #[case(b"\xc3\x9f", "\u{00df}")]
     #[case(b"\xe2\x9d\xa4", "\u{2764}")]
     #[case(b"\xf0\x9f\x92\xaf", "\u{01f4af}")]
-    fn escape_cases(#[case] input: &[u8], #[case] expected: &str) {
-        let name = OsStr::from_bytes(input);
+    fn escape_cases(#[case] name: &[u8], #[case] expected: &str) {
         assert_eq!(expected, escape_filename(name));
     }
 
@@ -633,16 +590,16 @@ mod tests {
     #[case(r#"\u2764"#, b"\xe2\x9d\xa4")]
     #[case(r#"\U0001f4af"#, b"\xf0\x9f\x92\xaf")]
     fn unescape_cases(#[case] input: &str, #[case] expected: &[u8]) {
-        let expected = OsStr::from_bytes(expected);
         assert_eq!(expected, unescape_filename(input).unwrap());
     }
 
     proptest! {
         #[test]
         fn from_link_to_link_is_identity(bytes in prop::collection::vec(prop::num::u8::ANY, 0..65536)) {
-            let path = Path::new(OsStr::from_bytes(&bytes));
-            let node = NodeType::from_link(path);
-            prop_assert_eq!(path, node.to_link());
-    }
+            let path = TypedPath::Unix(UnixPath::new(&bytes));
+            let node = NodeType::from_link(&path);
+            let link = node.to_link();
+            prop_assert_eq!(bytes, link.as_bytes());
+        }
     }
 }

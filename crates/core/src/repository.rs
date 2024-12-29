@@ -5,7 +5,7 @@ use std::{
     cmp::Ordering,
     fs::File,
     io::{BufRead, BufReader, Write},
-    path::{Path, PathBuf},
+    path::PathBuf,
     process::{Command, Stdio},
     sync::Arc,
 };
@@ -14,6 +14,7 @@ use bytes::Bytes;
 use derive_setters::Setters;
 use log::{debug, error, info};
 use serde_with::{DisplayFromStr, serde_as};
+use typed_path::{UnixPath, UnixPathBuf};
 
 use crate::{
     RepositoryBackends, RusticError,
@@ -1745,8 +1746,8 @@ impl<P, S: IndexedTree> Repository<P, S> {
     /// * If the path is not a directory.
     /// * If the path is not found.
     /// * If the path is not UTF-8 conform.
-    pub fn node_from_path(&self, root_tree: TreeId, path: &Path) -> RusticResult<Node> {
-        Tree::node_from_path(self.dbe(), self.index(), root_tree, Path::new(path))
+    pub fn node_from_path(&self, root_tree: TreeId, path: &UnixPath) -> RusticResult<Node> {
+        Tree::node_from_path(self.dbe(), self.index(), root_tree, path)
     }
 
     /// Get all [`Node`]s from given root trees and a path
@@ -1762,7 +1763,7 @@ impl<P, S: IndexedTree> Repository<P, S> {
     pub fn find_nodes_from_path(
         &self,
         ids: impl IntoIterator<Item = TreeId>,
-        path: &Path,
+        path: &UnixPath,
     ) -> RusticResult<FindNode> {
         Tree::find_nodes_from_path(self.dbe(), self.index(), ids, path)
     }
@@ -1780,7 +1781,7 @@ impl<P, S: IndexedTree> Repository<P, S> {
     pub fn find_matching_nodes(
         &self,
         ids: impl IntoIterator<Item = TreeId>,
-        matches: &impl Fn(&Path, &Node) -> bool,
+        matches: &impl Fn(&UnixPath, &Node) -> bool,
     ) -> RusticResult<FindMatches> {
         Tree::find_matching_nodes(self.dbe(), self.index(), ids, matches)
     }
@@ -1823,7 +1824,7 @@ impl<P: ProgressBars, S: IndexedTree> Repository<P, S> {
         let p = &self.pb.progress_counter("getting snapshot...");
         let snap = SnapshotFile::from_str(self.dbe(), id, filter, p)?;
 
-        Tree::node_from_path(self.dbe(), self.index(), snap.tree, Path::new(path))
+        Tree::node_from_path(self.dbe(), self.index(), snap.tree, UnixPath::new(path))
     }
 
     /// Get a [`Node`] from a [`SnapshotFile`] and a `path`
@@ -1843,7 +1844,7 @@ impl<P: ProgressBars, S: IndexedTree> Repository<P, S> {
         snap: &SnapshotFile,
         path: &str,
     ) -> RusticResult<Node> {
-        Tree::node_from_path(self.dbe(), self.index(), snap.tree, Path::new(path))
+        Tree::node_from_path(self.dbe(), self.index(), snap.tree, UnixPath::new(path))
     }
     /// Reads a raw tree from a "SNAP\[:PATH\]" syntax
     ///
@@ -1888,7 +1889,7 @@ impl<P: ProgressBars, S: IndexedTree> Repository<P, S> {
         &self,
         node: &Node,
         ls_opts: &LsOptions,
-    ) -> RusticResult<impl Iterator<Item = RusticResult<(PathBuf, Node)>> + Clone + '_> {
+    ) -> RusticResult<impl Iterator<Item = RusticResult<(UnixPathBuf, Node)>> + Clone + '_> {
         NodeStreamer::new_with_glob(self.dbe().clone(), self.index(), node, ls_opts)
     }
 
@@ -1908,7 +1909,7 @@ impl<P: ProgressBars, S: IndexedTree> Repository<P, S> {
         &self,
         restore_infos: RestorePlan,
         opts: &RestoreOptions,
-        node_streamer: impl Iterator<Item = RusticResult<(PathBuf, Node)>>,
+        node_streamer: impl Iterator<Item = RusticResult<(UnixPathBuf, Node)>>,
         dest: &LocalDestination,
     ) -> RusticResult<()> {
         restore_repository(restore_infos, self, *opts, node_streamer, dest)
@@ -2090,7 +2091,7 @@ impl<P: ProgressBars, S: IndexedFull> Repository<P, S> {
     pub fn prepare_restore(
         &self,
         opts: &RestoreOptions,
-        node_streamer: impl Iterator<Item = RusticResult<(PathBuf, Node)>>,
+        node_streamer: impl Iterator<Item = RusticResult<(UnixPathBuf, Node)>>,
         dest: &LocalDestination,
         dry_run: bool,
     ) -> RusticResult<RestorePlan> {

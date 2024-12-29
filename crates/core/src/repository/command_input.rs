@@ -53,7 +53,7 @@ pub enum CommandInputErrorKind {
         command: CommandInput,
 
         /// The path in which the command was tried to be executed
-        path: std::path::PathBuf,
+        path: String,
 
         /// The source of the error
         source: std::io::Error,

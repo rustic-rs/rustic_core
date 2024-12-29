@@ -23,6 +23,7 @@ use nix::{
     fcntl::{AT_FDCWD, AtFlags},
     unistd::{Gid, Group, Uid, User, fchownat},
 };
+use typed_path::UnixPath;
 
 #[cfg(not(windows))]
 use crate::backend::ignore::mapper::map_mode_from_go;
@@ -189,11 +190,20 @@ impl LocalDestination {
     ///
     /// * If the destination is a file, this will return the base path.
     /// * If the destination is a directory, this will return the base path joined with the item.
-    pub(crate) fn path(&self, item: impl AsRef<Path>) -> PathBuf {
+    #[allow(clippy::unnecessary_wraps)]
+    pub(crate) fn path(&self, item: impl AsRef<UnixPath>) -> LocalDestinationResult<PathBuf> {
         if self.is_file {
-            self.path.clone()
-        } else {
-            self.path.join(item)
+            return Ok(self.path.clone());
+        }
+        #[cfg(not(windows))]
+        {
+            let item = PathBuf::from(item.as_ref());
+            Ok(self.path.join(item))
+        }
+        #[cfg(windows)]
+        {
+            let item = PathBuf::try_from(item.as_ref())?;
+            Ok(self.path.join(item))
         }
     }
 
@@ -249,8 +259,8 @@ impl LocalDestination {
     /// # Notes
     ///
     /// This will create the directory structure recursively.
-    pub(crate) fn create_dir(&self, item: impl AsRef<Path>) -> LocalDestinationResult<()> {
-        let dirname = self.path.join(item);
+    pub(crate) fn create_dir(&self, item: impl AsRef<UnixPath>) -> LocalDestinationResult<()> {
+        let dirname = self.path(item)?;
         fs::create_dir_all(dirname).map_err(LocalDestinationErrorKind::DirectoryCreationFailed)?;
         Ok(())
     }
@@ -267,10 +277,10 @@ impl LocalDestination {
     /// * If the times could not be set
     pub(crate) fn set_times(
         &self,
-        item: impl AsRef<Path>,
+        item: impl AsRef<UnixPath>,
         meta: &Metadata,
     ) -> LocalDestinationResult<()> {
-        let filename = self.path(item);
+        let filename = self.path(item)?;
         if let Some(mtime) = meta.mtime {
             let atime = meta.atime.unwrap_or(mtime);
             set_symlink_file_times(
@@ -322,10 +332,10 @@ impl LocalDestination {
     #[allow(clippy::similar_names)]
     pub(crate) fn set_user_group(
         &self,
-        item: impl AsRef<Path>,
+        item: impl AsRef<UnixPath>,
         meta: &Metadata,
     ) -> LocalDestinationResult<()> {
-        let filename = self.path(item);
+        let filename = self.path(item)?;
 
         let user = meta.user.clone().and_then(uid_from_name);
         // use uid from user if valid, else from saved uid (if saved)
@@ -375,10 +385,10 @@ impl LocalDestination {
     #[allow(clippy::similar_names)]
     pub(crate) fn set_uid_gid(
         &self,
-        item: impl AsRef<Path>,
+        item: impl AsRef<UnixPath>,
         meta: &Metadata,
     ) -> LocalDestinationResult<()> {
-        let filename = self.path(item);
+        let filename = self.path(item)?;
 
         let uid = meta.uid.map(Uid::from_raw);
         let gid = meta.gid.map(Gid::from_raw);
@@ -423,14 +433,14 @@ impl LocalDestination {
     #[allow(clippy::similar_names)]
     pub(crate) fn set_permission(
         &self,
-        item: impl AsRef<Path>,
+        item: impl AsRef<UnixPath>,
         node: &Node,
     ) -> LocalDestinationResult<()> {
         if node.is_symlink() {
             return Ok(());
         }
 
-        let filename = self.path(item);
+        let filename = self.path(item)?;
 
         if let Some(mode) = node.meta.mode {
             let mode = map_mode_from_go(mode);
@@ -456,7 +466,7 @@ impl LocalDestination {
     #[allow(clippy::unused_self, clippy::unnecessary_wraps)]
     pub(crate) fn set_extended_attributes(
         &self,
-        _item: impl AsRef<Path>,
+        _item: impl AsRef<UnixPath>,
         _extended_attributes: &[ExtendedAttribute],
     ) -> LocalDestinationResult<()> {
         Ok(())
@@ -485,10 +495,10 @@ impl LocalDestination {
     /// * If the extended attributes could not be set.
     pub(crate) fn set_extended_attributes(
         &self,
-        item: impl AsRef<Path>,
+        item: impl AsRef<UnixPath>,
         extended_attributes: &[ExtendedAttribute],
     ) -> LocalDestinationResult<()> {
-        let filename = self.path(item);
+        let filename = self.path(item)?;
         let mut done = vec![false; extended_attributes.len()];
 
         for curr_name in xattr::list(&filename).map_err(|err| {
@@ -497,9 +507,11 @@ impl LocalDestination {
                 path: filename.clone(),
             }
         })? {
-            match extended_attributes.iter().enumerate().find(
-                |(_, ExtendedAttribute { name, .. })| name == curr_name.to_string_lossy().as_ref(),
-            ) {
+            match extended_attributes
+                .iter()
+                .enumerate()
+                .find(|(_, ExtendedAttribute { name, .. })| curr_name.to_string_lossy() == *name)
+            {
                 Some((index, ExtendedAttribute { name, value })) => {
                     let curr_value = xattr::get(&filename, name).map_err(|err| {
                         LocalDestinationErrorKind::GettingXattrFailed {
@@ -564,10 +576,10 @@ impl LocalDestination {
     /// If it doesn't exist, create a new (empty) one with given length.
     pub(crate) fn set_length(
         &self,
-        item: impl AsRef<Path>,
+        item: impl AsRef<UnixPath>,
         size: u64,
     ) -> LocalDestinationResult<()> {
-        let filename = self.path(item);
+        let filename = self.path(item)?;
         let dir = filename
             .parent()
             .ok_or_else(|| LocalDestinationErrorKind::FileDoesNotHaveParent(filename.clone()))?;
@@ -603,7 +615,7 @@ impl LocalDestination {
     #[allow(clippy::unused_self, clippy::unnecessary_wraps)]
     pub(crate) fn create_special(
         &self,
-        _item: impl AsRef<Path>,
+        _item: impl AsRef<UnixPath>,
         _node: &Node,
     ) -> LocalDestinationResult<()> {
         Ok(())
@@ -624,17 +636,18 @@ impl LocalDestination {
     /// * If the device could not be created.
     pub(crate) fn create_special(
         &self,
-        item: impl AsRef<Path>,
+        item: impl AsRef<UnixPath>,
         node: &Node,
     ) -> LocalDestinationResult<()> {
-        let filename = self.path(item);
+        let filename = self.path(item)?;
 
         match &node.node_type {
             NodeType::Symlink { .. } => {
-                let linktarget = node.node_type.to_link();
-                symlink(linktarget, &filename).map_err(|err| {
+                let linktarget: PathBuf =
+                    node.node_type.to_link().to_path_buf().try_into().unwrap(); // TODO: Error handling
+                symlink(linktarget.clone(), &filename).map_err(|err| {
                     LocalDestinationErrorKind::SymlinkingFailed {
-                        linktarget: linktarget.to_path_buf(),
+                        linktarget,
                         filename,
                         source: err,
                     }
@@ -721,11 +734,11 @@ impl LocalDestination {
     /// * If the length of the file could not be read.
     pub(crate) fn read_at(
         &self,
-        item: impl AsRef<Path>,
+        item: impl AsRef<UnixPath>,
         offset: u64,
         length: u64,
     ) -> LocalDestinationResult<Bytes> {
-        let filename = self.path(item);
+        let filename = self.path(item)?;
         let mut file =
             File::open(filename).map_err(LocalDestinationErrorKind::OpeningFileFailed)?;
         _ = file
@@ -757,8 +770,8 @@ impl LocalDestination {
     ///
     /// If a file exists and size matches, this returns a `File` open for reading.
     /// In all other cases, returns `None`
-    pub fn get_matching_file(&self, item: impl AsRef<Path>, size: u64) -> Option<File> {
-        let filename = self.path(item);
+    pub fn get_matching_file(&self, item: impl AsRef<UnixPath>, size: u64) -> Option<File> {
+        let filename = self.path(item).ok()?;
         fs::symlink_metadata(&filename).map_or_else(
             |_| None,
             |meta| {
@@ -790,11 +803,11 @@ impl LocalDestination {
     /// This will create the file if it doesn't exist.
     pub(crate) fn write_at(
         &self,
-        item: impl AsRef<Path>,
+        item: impl AsRef<UnixPath>,
         offset: u64,
         data: &[u8],
     ) -> LocalDestinationResult<()> {
-        let filename = self.path(item);
+        let filename = self.path(item)?;
         let mut file = OpenOptions::new()
             .create(true)
             .truncate(false)

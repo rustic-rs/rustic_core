@@ -1,8 +1,9 @@
 use std::{
     io::{Stdin, stdin},
     iter::{Once, once},
-    path::PathBuf,
 };
+
+use typed_path::UnixPathBuf;
 
 use crate::{
     backend::{ReadSource, ReadSourceEntry},
@@ -13,12 +14,12 @@ use crate::{
 #[derive(Debug, Clone)]
 pub struct StdinSource {
     /// The path of the stdin entry.
-    path: PathBuf,
+    path: UnixPathBuf,
 }
 
 impl StdinSource {
     /// Creates a new `StdinSource`.
-    pub const fn new(path: PathBuf) -> Self {
+    pub fn new(path: UnixPathBuf) -> Self {
         Self { path }
     }
 }

@@ -1,7 +1,4 @@
-use std::{
-    path::{Path, PathBuf},
-    str::FromStr,
-};
+use std::{path::PathBuf, str::FromStr};
 
 use anyhow::Result;
 use insta::Settings;
@@ -13,6 +10,7 @@ use rustic_core::{
     StringList,
     repofile::{PackId, SnapshotFile},
 };
+use typed_path::UnixPath;
 
 use super::{
     RepoOpen, TestSource, assert_with_win, insta_node_redaction, insta_snapshotfile_redaction,
@@ -52,7 +50,7 @@ fn test_backup_with_tar_gz_passes(
     // tree of first backup
     // re-read index
     let repo = repo.to_indexed_ids()?;
-    let tree = repo.node_from_path(first_snapshot.tree, Path::new("test/0/tests"))?;
+    let tree = repo.node_from_path(first_snapshot.tree, UnixPath::new("test/0/tests"))?;
     let tree: rustic_core::repofile::Tree = repo.get_tree(&tree.subtree.expect("Sub tree"))?;
 
     insta_node_redaction.bind(|| {
@@ -186,7 +184,7 @@ fn test_backup_dry_run_with_tar_gz_passes(
     // tree of first backup
     // re-read index
     let repo = repo.to_indexed_ids()?;
-    let tree = repo.node_from_path(first_snapshot.tree, Path::new("test/0/tests"))?;
+    let tree = repo.node_from_path(first_snapshot.tree, UnixPath::new("test/0/tests"))?;
     let tree = repo.get_tree(&tree.subtree.expect("Sub tree"))?;
 
     insta_node_redaction.bind(|| {

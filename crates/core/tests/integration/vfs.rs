@@ -7,6 +7,7 @@ use pretty_assertions::assert_eq;
 use rstest::rstest;
 
 use rustic_core::{BackupOptions, repofile::SnapshotFile, vfs::Vfs};
+use typed_path::UnixPath;
 
 use super::{
     RepoOpen, TestSource, assert_with_win, insta_node_redaction, set_up_repo, tar_gz_testdata,
@@ -34,15 +35,13 @@ fn test_vfs(
     let vfs = Vfs::from_dir_node(&node);
 
     // test reading a directory using vfs
-    let path: PathBuf = ["test", "0", "tests"].iter().collect();
-    let entries = vfs.dir_entries_from_path(&repo, &path)?;
+    let entries = vfs.dir_entries_from_path(&repo, UnixPath::new("test/0/tests/testfile"))?;
     insta_node_redaction.bind(|| {
         assert_with_win("vfs", &entries);
     });
 
     // test reading a file from the repository
-    let path: PathBuf = ["test", "0", "tests", "testfile"].iter().collect();
-    let node = vfs.node_from_path(&repo, &path)?;
+    let node = vfs.node_from_path(&repo, UnixPath::new("test/0/tests/testfile"))?;
     let file = repo.open_file(&node)?;
 
     let data = repo.read_file_at(&file, 0, 21)?; // read full content
@@ -52,8 +51,7 @@ fn test_vfs(
     assert_eq!(Bytes::from("test"), repo.read_file_at(&file, 10, 4)?); // read partial content
 
     // test reading an empty file from the repository
-    let path: PathBuf = ["test", "0", "tests", "empty-file"].iter().collect();
-    let node = vfs.node_from_path(&repo, &path)?;
+    let node = vfs.node_from_path(&repo, UnixPath::new("test/0/tests/empty-file"))?;
     let file = repo.open_file(&node)?;
     assert_eq!(Bytes::new(), repo.read_file_at(&file, 0, 0)?); // empty files
     Ok(())

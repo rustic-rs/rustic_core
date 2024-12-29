@@ -610,11 +610,15 @@ fn map_entry(
     with_atime: bool,
     ignore_devid: bool,
 ) -> IgnoreResult<ReadSourceEntry<OpenFile>> {
-    let name = entry.file_name();
+    use std::os::unix::ffi::OsStrExt;
+
+    use typed_path::{UnixPath, UnixPathBuf};
+
+    let name = entry.file_name().as_bytes();
     let m = entry
         .metadata()
         .map_err(|err| IgnoreErrorKind::AcquiringMetadataFailed {
-            name: name.to_string_lossy().to_string(),
+            name: String::from_utf8_lossy(name).to_string(),
             source: err,
         })?;
 
@@ -684,11 +688,14 @@ fn map_entry(
         Node::new_node(name, NodeType::Dir, meta)
     } else if m.is_symlink() {
         let path = entry.path();
-        let target = read_link(path).map_err(|err| IgnoreErrorKind::ErrorLink {
-            path: path.to_path_buf(),
-            source: err,
-        })?;
-        let node_type = NodeType::from_link(&target);
+        let target = read_link(path)
+            .map_err(|err| IgnoreErrorKind::ErrorLink {
+                path: path.to_path_buf(),
+                source: err,
+            })?
+            .into_os_string();
+        let target = target.as_encoded_bytes();
+        let node_type = NodeType::from_link(&UnixPath::new(target).to_typed_path());
         Node::new_node(name, node_type, meta)
     } else if filetype.is_block_device() {
         let node_type = NodeType::Dev { device: m.rdev() };
@@ -705,6 +712,7 @@ fn map_entry(
     };
     let path = entry.into_path();
     let open = Some(OpenFile(path.clone()));
+    let path: UnixPathBuf = path.try_into().unwrap(); // TODO: Error handling
     Ok(ReadSourceEntry { path, node, open })
 }
 
