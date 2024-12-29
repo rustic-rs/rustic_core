@@ -1,8 +1,8 @@
-use std::{collections::BTreeMap, ffi::OsStr};
+use std::collections::BTreeMap;
 use std::{path::PathBuf, str::FromStr};
 
 use anyhow::Result;
-use insta::Settings;
+use insta::{Settings, assert_debug_snapshot};
 use rstest::rstest;
 
 use rustic_core::{
@@ -10,9 +10,7 @@ use rustic_core::{
     repofile::{Metadata, Node, SnapshotFile},
 };
 
-use super::{
-    RepoOpen, TestSource, assert_with_win, insta_node_redaction, set_up_repo, tar_gz_testdata,
-};
+use super::{RepoOpen, TestSource, insta_node_redaction, set_up_repo, tar_gz_testdata};
 
 #[rstest]
 fn test_ls(
@@ -31,7 +29,7 @@ fn test_ls(
 
     // test non-existing entries
     let mut node = Node::new_node(
-        OsStr::new(""),
+        &[],
         rustic_core::repofile::NodeType::Dir,
         Metadata::default(),
     );
@@ -45,7 +43,7 @@ fn test_ls(
         .collect::<RusticResult<_>>()?;
 
     insta_node_redaction.bind(|| {
-        assert_with_win("ls", &entries);
+        assert_debug_snapshot!("ls", &entries);
     });
 
     Ok(())

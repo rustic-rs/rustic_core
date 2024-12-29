@@ -1120,6 +1120,7 @@ dependencies = [
  "rustic_backend",
  "rustic_core",
  "simplelog",
+ "typed-path",
 ]
 
 [[package]]
@@ -3351,6 +3352,7 @@ dependencies = [
  "tempfile",
  "thiserror 2.0.12",
  "toml",
+ "typed-path",
  "walkdir",
  "xattr",
  "zstd",
