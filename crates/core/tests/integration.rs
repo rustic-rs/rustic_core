@@ -23,12 +23,15 @@
 //! The tests that use the fixtures are defined as functions with the `#[rstest]` attribute.
 //! The fixtures are passed as arguments to the test functions.
 
+// don't warn about try_from paths conversion on unix
+#![allow(clippy::unnecessary_fallible_conversions)]
+
 use anyhow::Result;
 use bytes::Bytes;
 use flate2::read::GzDecoder;
 use globset::Glob;
 use insta::{
-    assert_ron_snapshot,
+    assert_debug_snapshot, assert_ron_snapshot,
     internals::{Content, ContentPath},
     Settings,
 };
@@ -44,8 +47,9 @@ use rustic_core::{
 use serde::Serialize;
 
 use rustic_testing::backend::in_memory_backend::InMemoryBackend;
+use typed_path::{UnixPath, UnixPathBuf};
 
-use std::{collections::BTreeMap, ffi::OsStr};
+use std::collections::BTreeMap;
 use std::{
     env,
     fs::File,
@@ -222,7 +226,7 @@ fn test_backup_with_tar_gz_passes(
     // tree of first backup
     // re-read index
     let repo = repo.to_indexed_ids()?;
-    let tree = repo.node_from_path(first_snapshot.tree, Path::new("test/0/tests"))?;
+    let tree = repo.node_from_path(first_snapshot.tree, UnixPath::new("test/0/tests"))?;
     let tree: rustic_core::repofile::Tree = repo.get_tree(&tree.subtree.expect("Sub tree"))?;
 
     insta_node_redaction.bind(|| {
@@ -352,7 +356,7 @@ fn test_backup_dry_run_with_tar_gz_passes(
     // tree of first backup
     // re-read index
     let repo = repo.to_indexed_ids()?;
-    let tree = repo.node_from_path(first_snapshot.tree, Path::new("test/0/tests"))?;
+    let tree = repo.node_from_path(first_snapshot.tree, UnixPath::new("test/0/tests"))?;
     let tree = repo.get_tree(&tree.subtree.expect("Sub tree"))?;
 
     insta_node_redaction.bind(|| {
@@ -431,7 +435,7 @@ fn test_ls_and_read(
 
     // test non-existing entries
     let mut node = Node::new_node(
-        OsStr::new(""),
+        &[],
         rustic_core::repofile::NodeType::Dir,
         Metadata::default(),
     );
@@ -445,12 +449,12 @@ fn test_ls_and_read(
         .collect::<RusticResult<_>>()?;
 
     insta_node_redaction.bind(|| {
-        assert_with_win("ls", &entries);
+        assert_debug_snapshot!("ls", &entries);
     });
 
     // test reading a file from the repository
     let repo = repo.to_indexed()?;
-    let path: PathBuf = ["test", "0", "tests", "testfile"].iter().collect();
+    let path: UnixPathBuf = ["test", "0", "tests", "testfile"].iter().collect();
     let node = entries.get(&path).unwrap();
     let file = repo.open_file(node)?;
 
@@ -461,7 +465,7 @@ fn test_ls_and_read(
     assert_eq!(Bytes::from("test"), repo.read_file_at(&file, 10, 4)?); // read partial content
 
     // test reading an empty file from the repository
-    let path: PathBuf = ["test", "0", "tests", "empty-file"].iter().collect();
+    let path: UnixPathBuf = ["test", "0", "tests", "empty-file"].iter().collect();
     let node = entries.get(&path).unwrap();
     let file = repo.open_file(node)?;
     assert_eq!(Bytes::new(), repo.read_file_at(&file, 0, 0)?); // empty files
@@ -483,34 +487,42 @@ fn test_find(tar_gz_testdata: Result<TestSource>, set_up_repo: Result<RepoOpen>)
     let repo = repo.to_indexed_ids()?;
 
     // test non-existing path
-    let not_found = repo.find_nodes_from_path(vec![snapshot.tree], Path::new("not_existing"))?;
+    let not_found =
+        repo.find_nodes_from_path(vec![snapshot.tree], UnixPath::new("not_existing"))?;
     assert_with_win("find-nodes-not-found", not_found);
     // test non-existing match
     let glob = Glob::new("not_existing")?.compile_matcher();
-    let not_found =
-        repo.find_matching_nodes(vec![snapshot.tree], &|path, _| glob.is_match(path))?;
-    assert_with_win("find-matching-nodes-not-found", not_found);
+    let not_found = repo.find_matching_nodes(vec![snapshot.tree], &|path, _| {
+        glob.is_match(PathBuf::try_from(path).unwrap())
+    })?;
+    assert_debug_snapshot!("find-matching-nodes-not-found", not_found);
 
     // test existing path
     let FindNode { matches, .. } =
-        repo.find_nodes_from_path(vec![snapshot.tree], Path::new("test/0/tests/testfile"))?;
+        repo.find_nodes_from_path(vec![snapshot.tree], UnixPath::new("test/0/tests/testfile"))?;
     assert_with_win("find-nodes-existing", matches);
     // test existing match
     let glob = Glob::new("testfile")?.compile_matcher();
-    let match_func = |path: &Path, _: &Node| {
-        glob.is_match(path) || path.file_name().is_some_and(|f| glob.is_match(f))
+    let match_func = |path: &UnixPath, _: &Node| {
+        glob.is_match(PathBuf::try_from(path).unwrap())
+            || path
+                .file_name()
+                .is_some_and(|f| glob.is_match(Path::new(&String::from_utf8(f.to_vec()).unwrap())))
     };
     let FindMatches { paths, matches, .. } =
         repo.find_matching_nodes(vec![snapshot.tree], &match_func)?;
-    assert_with_win("find-matching-existing", (paths, matches));
+    assert_debug_snapshot!("find-matching-existing", (paths, matches));
     // test existing match
     let glob = Glob::new("testfile*")?.compile_matcher();
-    let match_func = |path: &Path, _: &Node| {
-        glob.is_match(path) || path.file_name().is_some_and(|f| glob.is_match(f))
+    let match_func = |path: &UnixPath, _: &Node| {
+        glob.is_match(PathBuf::try_from(path).unwrap())
+            || path
+                .file_name()
+                .is_some_and(|f| glob.is_match(Path::new(&String::from_utf8(f.to_vec()).unwrap())))
     };
     let FindMatches { paths, matches, .. } =
         repo.find_matching_nodes(vec![snapshot.tree], &match_func)?;
-    assert_with_win("find-matching-wildcard-existing", (paths, matches));
+    assert_debug_snapshot!("find-matching-wildcard-existing", (paths, matches));
     Ok(())
 }
 

@@ -2,14 +2,9 @@
 
 use derive_setters::Setters;
 use log::{debug, error, info, trace, warn};
+use typed_path::{UnixPath, UnixPathBuf};
 
-use std::{
-    cmp::Ordering,
-    collections::BTreeMap,
-    num::NonZeroU32,
-    path::{Path, PathBuf},
-    sync::Mutex,
-};
+use std::{cmp::Ordering, collections::BTreeMap, num::NonZeroU32, path::Path, sync::Mutex};
 
 use chrono::{DateTime, Local, Utc};
 use ignore::{DirEntry, WalkBuilder};
@@ -38,7 +33,7 @@ pub(crate) mod constants {
 }
 
 type RestoreInfo = BTreeMap<(PackId, BlobLocation), Vec<FileLocation>>;
-type Filenames = Vec<PathBuf>;
+type Filenames = Vec<UnixPathBuf>;
 
 #[allow(clippy::struct_excessive_bools)]
 #[cfg_attr(feature = "clap", derive(clap::Parser))]
@@ -116,7 +111,7 @@ pub(crate) fn restore_repository<P: ProgressBars, S: IndexedTree>(
     file_infos: RestorePlan,
     repo: &Repository<P, S>,
     opts: RestoreOptions,
-    node_streamer: impl Iterator<Item = RusticResult<(PathBuf, Node)>>,
+    node_streamer: impl Iterator<Item = RusticResult<(UnixPathBuf, Node)>>,
     dest: &LocalDestination,
 ) -> RusticResult<()> {
     repo.warm_up_wait(file_infos.to_packs().into_iter())?;
@@ -151,12 +146,18 @@ pub(crate) fn restore_repository<P: ProgressBars, S: IndexedTree>(
 pub(crate) fn collect_and_prepare<P: ProgressBars, S: IndexedFull>(
     repo: &Repository<P, S>,
     opts: RestoreOptions,
-    mut node_streamer: impl Iterator<Item = RusticResult<(PathBuf, Node)>>,
+    mut node_streamer: impl Iterator<Item = RusticResult<(UnixPathBuf, Node)>>,
     dest: &LocalDestination,
     dry_run: bool,
 ) -> RusticResult<RestorePlan> {
     let p = repo.pb.progress_spinner("collecting file information...");
-    let dest_path = dest.path("");
+    let dest_path = dest.path("").map_err(|err| {
+        RusticError::with_source(
+            ErrorKind::InputOutput,
+            "Failed to use the destination directory.",
+            err,
+        )
+    })?;
 
     let mut stats = RestoreStats::default();
     let mut restore_infos = RestorePlan::default();
@@ -209,7 +210,7 @@ pub(crate) fn collect_and_prepare<P: ProgressBars, S: IndexedFull>(
         Ok(())
     };
 
-    let mut process_node = |path: &PathBuf, node: &Node, exists: bool| -> RusticResult<_> {
+    let mut process_node = |path: &UnixPathBuf, node: &Node, exists: bool| -> RusticResult<_> {
         match node.node_type {
             NodeType::Dir => {
                 if exists {
@@ -290,7 +291,15 @@ pub(crate) fn collect_and_prepare<P: ProgressBars, S: IndexedFull>(
                 next_dst = dst_iter.next();
             }
             (Some(destination), Some((path, node))) => {
-                match destination.path().cmp(&dest.path(path)) {
+                let dest_path = dest.path(path).map_err(|err| {
+                                RusticError::with_source(
+                                    ErrorKind::InputOutput,
+                                    "Failed to create the directory `{path}`. Please check the path and try again.",
+                                    err
+                                )
+                                .attach_context("path", path.display().to_string())
+                            })?;
+                match destination.path().cmp(&dest_path) {
                     Ordering::Less => {
                         process_existing(destination)?;
                         next_dst = dst_iter.next();
@@ -343,7 +352,7 @@ pub(crate) fn collect_and_prepare<P: ProgressBars, S: IndexedFull>(
 ///
 /// * If the restore failed.
 fn restore_metadata(
-    mut node_streamer: impl Iterator<Item = RusticResult<(PathBuf, Node)>>,
+    mut node_streamer: impl Iterator<Item = RusticResult<(UnixPathBuf, Node)>>,
     opts: RestoreOptions,
     dest: &LocalDestination,
 ) -> RusticResult<()> {
@@ -390,9 +399,10 @@ fn restore_metadata(
 pub(crate) fn set_metadata(
     dest: &LocalDestination,
     opts: RestoreOptions,
-    path: &PathBuf,
+    path: impl AsRef<UnixPath>,
     node: &Node,
 ) {
+    let path = path.as_ref();
     debug!("setting metadata for {:?}", path);
     dest.create_special(path, node)
         .unwrap_or_else(|_| warn!("restore {:?}: creating special file failed.", path));
@@ -664,7 +674,7 @@ impl RestorePlan {
         &mut self,
         dest: &LocalDestination,
         file: &Node,
-        name: PathBuf,
+        name: UnixPathBuf,
         repo: &Repository<P, S>,
         ignore_mtime: bool,
     ) -> RusticResult<AddFileResult> {
