@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.5.3](https://github.com/rustic-rs/rustic_core/compare/rustic_backend-v0.5.2...rustic_backend-v0.5.3) - 2024-12-30
+
+### Fixed
+
+- *(deps)* lock file maintenance rust dependencies (#389)
+
+### Other
+
+- Update opendal to 0.51.0 (#391)
+
 ## [0.5.2](https://github.com/rustic-rs/rustic_core/compare/rustic_backend-v0.5.1...rustic_backend-v0.5.2) - 2024-11-27
 
 ### Fixed
