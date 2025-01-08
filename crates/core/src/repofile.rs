@@ -1,6 +1,13 @@
-use std::ops::Deref;
+use std::{borrow::Cow, ops::Deref, str::FromStr};
 
-use serde::{Serialize, de::DeserializeOwned};
+use jiff::{
+    Timestamp, Zoned,
+    civil::Time,
+    fmt::temporal::{DateTimePrinter, Pieces},
+    tz::TimeZone,
+};
+use serde::{Deserialize, Deserializer, Serialize, de, de::DeserializeOwned};
+use serde_with::{DeserializeAs, SerializeAs};
 
 pub(crate) mod configfile;
 pub(crate) mod indexfile;
@@ -45,6 +52,99 @@ macro_rules! impl_repofile {
             type Id = $a;
         }
     };
+}
+
+/// helper struct for serializing and deserializing
+///
+/// This is used in order to stay compatible with the restic repository format.
+/// It can be directly used via `serde_as` or by using its methods for parsing and printing.
+#[derive(Debug, Clone, Copy)]
+pub struct RusticTime;
+
+impl RusticTime {
+    /// best-effort parsing of a string into a `Zoned`.
+    ///
+    /// # Errors
+    pub fn parse(
+        s: &str,
+        default_time: Time,
+        default_zone: TimeZone,
+    ) -> Result<Zoned, jiff::Error> {
+        if let Ok(zoned) = Zoned::from_str(s) {
+            return Ok(zoned);
+        }
+        let pieces = Pieces::parse(&s)?;
+        let time = pieces.time().unwrap_or(default_time);
+        let dt = pieces.date().to_datetime(time);
+        let zone = pieces.to_time_zone()?.unwrap_or_else(|| {
+            pieces
+                .to_numeric_offset()
+                .map_or_else(|| default_zone, TimeZone::fixed)
+        });
+        dt.to_zoned(zone)
+    }
+
+    /// Best-effort parsing of a string into a `Zoned`.
+    ///
+    /// Uses 00:00 if no time is given and the system timezone if no zone is given.
+    ///
+    /// # Errors
+    pub fn parse_system(s: &str) -> Result<Zoned, jiff::Error> {
+        Self::parse(s, Time::MIN, TimeZone::system())
+    }
+
+    /// Best-effort parsing of a string into a `Zoned`.
+    ///
+    /// Uses 00:00 if no time is given and UTC if no zone is given.
+    ///
+    /// # Errors
+    pub fn parse_utc(s: &str) -> Result<Zoned, jiff::Error> {
+        Self::parse(s, Time::MIN, TimeZone::UTC)
+    }
+
+    /// Display a `Zoned` in a restic-compatible way, i.e. with offset, but without timezone
+    #[must_use]
+    pub fn to_string(source: &Zoned) -> String {
+        DateTimePrinter::new().timestamp_with_offset_to_string(&source.timestamp(), source.offset())
+    }
+}
+
+impl SerializeAs<Zoned> for RusticTime {
+    fn serialize_as<S>(source: &Zoned, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        serializer.collect_str(&Self::to_string(source))
+    }
+}
+
+impl<'de> DeserializeAs<'de, Zoned> for RusticTime {
+    fn deserialize_as<D>(deserializer: D) -> Result<Zoned, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let s = <Cow<'de, str>>::deserialize(deserializer)?;
+        Self::parse_utc(&s).map_err(de::Error::custom)
+    }
+}
+
+impl SerializeAs<Timestamp> for RusticTime {
+    fn serialize_as<S>(source: &Timestamp, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        let offset = TimeZone::system().to_offset(*source);
+        serializer.collect_str(&source.display_with_offset(offset).to_string())
+    }
+}
+
+impl<'de> DeserializeAs<'de, Timestamp> for RusticTime {
+    fn deserialize_as<D>(deserializer: D) -> Result<Timestamp, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        Timestamp::deserialize(deserializer)
+    }
 }
 
 // Part of public API

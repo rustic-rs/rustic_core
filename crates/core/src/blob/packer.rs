@@ -5,9 +5,9 @@ use std::{
 };
 
 use bytes::{Bytes, BytesMut};
-use chrono::Local;
 use crossbeam_channel::{Receiver, Sender, bounded};
 use integer_sqrt::IntegerSquareRoot;
+use jiff::Zoned;
 use log::warn;
 use pariter::{IteratorExt, scope};
 
@@ -48,7 +48,7 @@ pub enum PackerErrorKind {
     /// Sending crossbeam data message failed: `data`: `{data:?}`, `index_pack`: `{index_pack:?}` : `{source}`
     SendingCrossbeamDataMessage {
         data: Bytes,
-        index_pack: IndexPack,
+        index_pack: Box<IndexPack>,
         source: crossbeam_channel::SendError<(Bytes, IndexPack)>,
     },
 }
@@ -751,7 +751,7 @@ impl<BE: DecryptWriteBackend> FileWriterHandle<BE> {
         index.id = id;
         self.be
             .write_bytes(FileType::Pack, &id, self.cacheable, file)?;
-        index.time = Some(Local::now());
+        index.time = Some(Zoned::now());
         Ok(index)
     }
 
@@ -826,7 +826,7 @@ impl Actor {
         self.sender.send(load.clone()).map_err(|err| {
             PackerErrorKind::SendingCrossbeamDataMessage {
                 data: load.0,
-                index_pack: load.1,
+                index_pack: Box::new(load.1),
                 source: err,
             }
         })?;

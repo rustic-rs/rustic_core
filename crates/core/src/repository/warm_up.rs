@@ -39,7 +39,12 @@ pub(crate) fn warm_up_wait<P: ProgressBars, S>(
         warm_up_command(packs, warm_up_wait_cmd, &repo.pb, &WarmUpType::WaitPack)?;
     } else if let Some(wait) = repo.opts.warm_up_wait {
         let p = repo.pb.progress_spinner(format!("waiting {wait}..."));
-        sleep(*wait);
+        sleep(
+            wait.try_into()
+                // ignore conversation errors, but print out warning
+                .inspect_err(|err| warn!("cannot wait for warm-up: {err}"))
+                .unwrap(),
+        );
         p.finish();
     }
     Ok(())

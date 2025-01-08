@@ -1,6 +1,7 @@
 //! `restore` subcommand
 
 use derive_setters::Setters;
+use jiff::Timestamp;
 use log::{debug, error, info, trace, warn};
 
 use std::{
@@ -11,7 +12,6 @@ use std::{
     sync::Mutex,
 };
 
-use chrono::{DateTime, Local, Utc};
 use ignore::{DirEntry, WalkBuilder};
 use itertools::Itertools;
 use rayon::ThreadPoolBuilder;
@@ -721,7 +721,7 @@ impl RestorePlan {
                 let mtime = meta
                     .modified()
                     .ok()
-                    .map(|t| DateTime::<Utc>::from(t).with_timezone(&Local));
+                    .and_then(|t| Timestamp::try_from(t).ok());
                 if meta.len() == file.meta.size && mtime == file.meta.mtime {
                     // File exists with fitting mtime => we suspect this file is ok!
                     debug!("file {} exists with suitable size and mtime, accepting it!",name.display());

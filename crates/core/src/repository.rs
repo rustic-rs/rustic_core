@@ -12,6 +12,7 @@ use std::{
 
 use bytes::Bytes;
 use derive_setters::Setters;
+use jiff::SignedDuration;
 use log::{debug, error, info};
 use serde_with::{DisplayFromStr, serde_as};
 
@@ -169,7 +170,7 @@ pub struct RepositoryOptions {
     #[cfg_attr(feature = "clap", clap(long, global = true, value_name = "DURATION"))]
     #[serde_as(as = "Option<DisplayFromStr>")]
     #[cfg_attr(feature = "merge", merge(strategy = conflate::option::overwrite_none))]
-    pub warm_up_wait: Option<humantime::Duration>,
+    pub warm_up_wait: Option<SignedDuration>,
 }
 
 impl RepositoryOptions {

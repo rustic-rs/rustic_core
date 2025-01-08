@@ -2,7 +2,7 @@
 
 use std::cmp::Ordering;
 
-use chrono::Local;
+use jiff::Zoned;
 
 use crate::{
     backend::{decrypt::DecryptWriteBackend, node::Node},
@@ -36,7 +36,7 @@ pub(crate) fn merge_snapshots<P: ProgressBars, S: IndexedTree>(
     cmp: &impl Fn(&Node, &Node) -> Ordering,
     mut snap: SnapshotFile,
 ) -> RusticResult<SnapshotFile> {
-    let now = Local::now();
+    let now = Zoned::now();
 
     let paths = snapshots
         .iter()
@@ -56,18 +56,16 @@ pub(crate) fn merge_snapshots<P: ProgressBars, S: IndexedTree>(
     // set snapshot time to time of latest snapshot to be merged
     snap.time = snapshots
         .iter()
-        .max_by_key(|sn| sn.time)
-        .map_or(now, |sn| sn.time);
+        .max_by(|sn1, sn2| sn1.time.cmp(&sn2.time))
+        .map_or_else(|| now.clone(), |sn| sn.time.clone());
 
     let mut summary = snap.summary.take().unwrap_or_default();
-    summary.backup_start = Local::now();
+    summary.backup_start = now.clone();
 
     let trees: Vec<TreeId> = snapshots.iter().map(|sn| sn.tree).collect();
     snap.tree = merge_trees(repo, &trees, cmp, &mut summary)?;
 
-    summary.finalize(now).map_err(|err| {
-        RusticError::with_source(ErrorKind::Internal, "Failed to finalize summary.", err)
-    })?;
+    summary.finalize(&now);
     snap.summary = Some(summary);
 
     snap.id = repo.dbe().save_file(&snap)?.into();

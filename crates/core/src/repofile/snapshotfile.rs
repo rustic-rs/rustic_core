@@ -6,17 +6,18 @@ use std::{
     str::FromStr,
 };
 
-use chrono::{DateTime, Duration, Local, OutOfRangeError};
-#[cfg(feature = "clap")]
-use clap::ValueHint;
 use derive_setters::Setters;
 use dunce::canonicalize;
 use gethostname::gethostname;
 use itertools::Itertools;
+use jiff::{Span, Unit, Zoned};
 use log::{info, warn};
 use path_dedot::ParseDot;
-use serde_derive::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize};
 use serde_with::{DisplayFromStr, serde_as, skip_serializing_none};
+
+#[cfg(feature = "clap")]
+use clap::ValueHint;
 
 use crate::{
     Id,
@@ -26,7 +27,7 @@ use crate::{
     id::{FindUniqueMultiple, FindUniqueResults, constants::HEX_LEN},
     impl_repofile,
     progress::Progress,
-    repofile::RepoFile,
+    repofile::{RepoFile, RusticTime},
 };
 
 /// [`SnapshotFileErrorKind`] describes the errors that can be returned for `SnapshotFile`s
@@ -37,8 +38,6 @@ pub enum SnapshotFileErrorKind {
     NonUnicodePath(PathBuf),
     /// value `{0:?}` not allowed
     ValueNotAllowed(String),
-    /// datetime out of range: `{0:?}`
-    OutOfRange(OutOfRangeError),
     /// removing dots from paths failed: `{0:?}`
     RemovingDotsFromPathFailed(std::io::Error),
     /// canonicalizing path failed: `{0:?}`
@@ -92,9 +91,10 @@ pub struct SnapshotOptions {
     pub description_from: Option<PathBuf>,
 
     /// Set the backup time manually (e.g. "2021-01-21 14:15:23+0000")
-    #[cfg_attr(feature = "clap", clap(long))]
+    #[cfg_attr(feature = "clap", clap(long,value_parser = RusticTime::parse_system))]
+    #[serde_as(as = "Option<RusticTime>")]
     #[cfg_attr(feature = "merge", merge(strategy = conflate::option::overwrite_none))]
-    pub time: Option<DateTime<Local>>,
+    pub time: Option<Zoned>,
 
     /// Mark snapshot as uneraseable
     #[cfg_attr(feature = "clap", clap(long, conflicts_with = "delete_after"))]
@@ -105,7 +105,7 @@ pub struct SnapshotOptions {
     #[cfg_attr(feature = "clap", clap(long, value_name = "DURATION"))]
     #[serde_as(as = "Option<DisplayFromStr>")]
     #[cfg_attr(feature = "merge", merge(strategy = conflate::option::overwrite_none))]
-    pub delete_after: Option<humantime::Duration>,
+    pub delete_after: Option<Span>,
 
     /// Set the host name manually
     #[cfg_attr(feature = "clap", clap(long, value_name = "NAME"))]
@@ -162,6 +162,7 @@ impl SnapshotOptions {
 ///
 /// This is an extended version of the summaryOutput structure of restic in
 /// restic/internal/ui/backup$/json.go
+#[serde_as]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(default)]
 #[non_exhaustive]
@@ -228,10 +229,12 @@ pub struct SnapshotSummary {
     /// # Note
     ///
     /// This may differ from the snapshot `time`.
-    pub backup_start: DateTime<Local>,
+    #[serde_as(as = "RusticTime")]
+    pub backup_start: Zoned,
 
     /// The time that the backup has been finished.
-    pub backup_end: DateTime<Local>,
+    #[serde_as(as = "RusticTime")]
+    pub backup_end: Zoned,
 
     /// Total duration of the backup in seconds, i.e. the time between `backup_start` and `backup_end`
     pub backup_duration: f64,
@@ -262,8 +265,8 @@ impl Default for SnapshotSummary {
             data_added_trees: Default::default(),
             data_added_trees_packed: Default::default(),
             command: String::default(),
-            backup_start: Local::now(),
-            backup_end: Local::now(),
+            backup_start: Zoned::now(),
+            backup_end: Zoned::now(),
             backup_duration: Default::default(),
             total_duration: Default::default(),
         }
@@ -280,23 +283,24 @@ impl SnapshotSummary {
     /// # Errors
     ///
     /// * If the time is not in the range of `Local::now()`
-    pub(crate) fn finalize(&mut self, snap_time: DateTime<Local>) -> SnapshotFileResult<()> {
-        let end_time = Local::now();
-        self.backup_duration = (end_time - self.backup_start)
-            .to_std()
-            .map_err(SnapshotFileErrorKind::OutOfRange)?
-            .as_secs_f64();
-        self.total_duration = (end_time - snap_time)
-            .to_std()
-            .map_err(SnapshotFileErrorKind::OutOfRange)?
-            .as_secs_f64();
+    pub(crate) fn finalize(&mut self, snap_time: &Zoned) {
+        let end_time = Zoned::now();
+        self.backup_duration = end_time
+            .since(&self.backup_start)
+            .and_then(|span| span.total(Unit::Second))
+            .inspect_err(|err| warn!("ignoring Datetime error: {err}"))
+            .unwrap_or_default();
+        self.total_duration = end_time
+            .since(snap_time)
+            .and_then(|span| span.total(Unit::Second))
+            .inspect_err(|err| warn!("ignoring Datetime error: {err}"))
+            .unwrap_or_default();
         self.backup_end = end_time;
-        Ok(())
     }
 }
 
 /// Options for deleting snapshots.
-#[derive(Serialize, Default, Deserialize, Debug, Clone, PartialEq, Eq, Copy)]
+#[derive(Serialize, Default, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub enum DeleteOption {
     /// No delete option set.
     #[default]
@@ -304,7 +308,7 @@ pub enum DeleteOption {
     /// This snapshot should be never deleted (remove-protection).
     Never,
     /// Remove this snapshot after the given timestamp, but prevent removing it before.
-    After(DateTime<Local>),
+    After(Zoned),
 }
 
 impl DeleteOption {
@@ -316,6 +320,7 @@ impl DeleteOption {
 
 impl_repofile!(SnapshotId, FileType::Snapshot, SnapshotFile);
 
+#[serde_as]
 #[skip_serializing_none]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 /// A [`SnapshotFile`] is the repository representation of the snapshot metadata saved in a repository.
@@ -328,7 +333,8 @@ impl_repofile!(SnapshotId, FileType::Snapshot, SnapshotFile);
 /// If you need another ordering, you have to implement that yourself.
 pub struct SnapshotFile {
     /// Timestamp of this snapshot
-    pub time: DateTime<Local>,
+    #[serde_as(as = "RusticTime")]
+    pub time: Zoned,
 
     /// Program identifier and its version that have been used to create this snapshot.
     #[serde(default, skip_serializing_if = "String::is_empty")]
@@ -392,7 +398,7 @@ pub struct SnapshotFile {
 impl Default for SnapshotFile {
     fn default() -> Self {
         Self {
-            time: Local::now(),
+            time: Zoned::now(),
             program_version: {
                 let project_version =
                     option_env!("PROJECT_VERSION").unwrap_or(env!("CARGO_PKG_VERSION"));
@@ -542,20 +548,11 @@ impl SnapshotFile {
                 .to_string()
         };
 
-        let time = opts.time.unwrap_or_else(Local::now);
+        let time = opts.time.clone().unwrap_or_else(Zoned::now);
 
         let delete = match (opts.delete_never, opts.delete_after) {
             (true, _) => DeleteOption::Never,
-            (_, Some(duration)) => DeleteOption::After(
-                time + Duration::from_std(*duration).map_err(|err| {
-                    RusticError::with_source(
-                        ErrorKind::InvalidInput,
-                        "Failed to convert duration `{duration}` to std::time::Duration. Please make sure the value is a valid duration string.",
-                        err,
-                    )
-                    .attach_context("duration", duration.to_string())
-                })?,
-            ),
+            (_, Some(duration)) => DeleteOption::After(time.saturating_add(duration)),
             (false, None) => DeleteOption::NotSet,
         };
 
@@ -1084,8 +1081,8 @@ impl SnapshotFile {
     ///
     /// * `now` - The current time
     #[must_use]
-    pub fn must_delete(&self, now: DateTime<Local>) -> bool {
-        matches!(self.delete,DeleteOption::After(time) if time < now)
+    pub fn must_delete(&self, now: &Zoned) -> bool {
+        matches!(&self.delete, DeleteOption::After(time) if time < now)
     }
 
     /// Returns whether a snapshot must be kept now
@@ -1094,8 +1091,8 @@ impl SnapshotFile {
     ///
     /// * `now` - The current time
     #[must_use]
-    pub fn must_keep(&self, now: DateTime<Local>) -> bool {
-        match self.delete {
+    pub fn must_keep(&self, now: &Zoned) -> bool {
+        match &self.delete {
             DeleteOption::Never => true,
             DeleteOption::After(time) if time >= now => true,
             _ => false,
@@ -1132,7 +1129,7 @@ impl SnapshotFile {
 
         if let Some(delete) = delete {
             if &self.delete != delete {
-                self.delete = *delete;
+                self.delete = delete.clone();
                 changed = true;
             }
         }
@@ -1599,6 +1596,7 @@ mod tests {
     };
     use anyhow::Result;
     use bytes::Bytes;
+    use jiff::{Timestamp, tz::TimeZone};
     use rstest::rstest;
 
     #[rstest]
@@ -1669,7 +1667,7 @@ mod tests {
     }
 
     fn fake_snapshot_file_with_id_time(
-        id_time_vec: Vec<(Id, DateTime<Local>)>,
+        id_time_vec: Vec<(Id, Zoned)>,
         key: &Key,
     ) -> HashMap<Id, Bytes> {
         let mut res = HashMap::new();
@@ -1702,16 +1700,22 @@ mod tests {
             vec![
                 (
                     id1,
-                    DateTime::from_timestamp(1_752_483_600, 0).unwrap().into(),
+                    Timestamp::from_second(1_752_483_600)
+                        .unwrap()
+                        .to_zoned(TimeZone::UTC),
                 ),
                 (
                     id2,
-                    DateTime::from_timestamp(1_752_483_700, 0).unwrap().into(),
+                    Timestamp::from_second(1_752_483_700)
+                        .unwrap()
+                        .to_zoned(TimeZone::UTC),
                 ),
+                // this is the latest
                 (
-                    // this is the latest
                     id3,
-                    DateTime::from_timestamp(1_752_483_800, 0).unwrap().into(),
+                    Timestamp::from_second(1_752_483_800)
+                        .unwrap()
+                        .to_zoned(TimeZone::UTC),
                 ),
             ],
             &key,
