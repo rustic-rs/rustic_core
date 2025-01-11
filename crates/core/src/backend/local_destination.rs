@@ -314,7 +314,7 @@ impl LocalDestination {
     #[allow(clippy::unused_self, clippy::unnecessary_wraps)]
     pub(crate) fn set_user_group(
         &self,
-        _item: impl AsRef<Path>,
+        _item: impl AsRef<UnixPath>,
         _meta: &Metadata,
     ) -> LocalDestinationResult<()> {
         // https://learn.microsoft.com/en-us/windows/win32/fileio/file-security-and-access-rights
@@ -370,7 +370,7 @@ impl LocalDestination {
     #[allow(clippy::unused_self, clippy::unnecessary_wraps)]
     pub(crate) fn set_uid_gid(
         &self,
-        _item: impl AsRef<Path>,
+        _item: impl AsRef<UnixPath>,
         _meta: &Metadata,
     ) -> LocalDestinationResult<()> {
         Ok(())
@@ -418,7 +418,7 @@ impl LocalDestination {
     #[allow(clippy::unused_self, clippy::unnecessary_wraps)]
     pub(crate) fn set_permission(
         &self,
-        _item: impl AsRef<Path>,
+        _item: impl AsRef<UnixPath>,
         _node: &Node,
     ) -> LocalDestinationResult<()> {
         Ok(())

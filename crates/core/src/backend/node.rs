@@ -1,6 +1,5 @@
 use std::{borrow::Cow, cmp::Ordering, fmt::Debug};
 
-#[cfg(not(windows))]
 use std::fmt::Write;
 #[cfg(not(windows))]
 use std::num::ParseIntError;
@@ -24,7 +23,6 @@ use crate::blob::{DataId, tree::TreeId};
 #[non_exhaustive]
 pub enum NodeErrorKind<'a> {
     /// Unexpected EOF while parsing filename: `{file_name}`
-    #[cfg(not(windows))]
     UnexpectedEOF {
         /// The filename
         file_name: String,
@@ -32,7 +30,6 @@ pub enum NodeErrorKind<'a> {
         chars: std::str::Chars<'a>,
     },
     /// Invalid unicode
-    #[cfg(not(windows))]
     InvalidUnicode {
         /// The filename
         file_name: String,
@@ -42,7 +39,6 @@ pub enum NodeErrorKind<'a> {
         chars: std::str::Chars<'a>,
     },
     /// Unrecognized Escape while parsing filename: `{file_name}`
-    #[cfg(not(windows))]
     UnrecognizedEscape {
         /// The filename
         file_name: String,
@@ -50,7 +46,6 @@ pub enum NodeErrorKind<'a> {
         chars: std::str::Chars<'a>,
     },
     /// Parsing hex chars {chars:?} failed for `{hex}` in filename: `{file_name}` : `{source}`
-    #[cfg(not(windows))]
     ParsingHexFailed {
         /// The filename
         file_name: String,
@@ -62,7 +57,6 @@ pub enum NodeErrorKind<'a> {
         source: ParseIntError,
     },
     /// Parsing unicode chars {chars:?} failed for `{target}` in filename: `{file_name}` : `{source}`
-    #[cfg(not(windows))]
     ParsingUnicodeFailed {
         /// The filename
         file_name: String,
