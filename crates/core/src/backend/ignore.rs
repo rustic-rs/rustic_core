@@ -499,12 +499,11 @@ fn map_entry(
         Node::new_node(name, NodeType::Dir, meta)
     } else if m.is_symlink() {
         let path = entry.path();
-        let target = read_link(path)
-            .map_err(|err| IgnoreErrorKind::ErrorLink {
-                path: path.to_path_buf(),
-                source: err,
-            })?
-            .as_encoded_bytes();
+        let target = read_link(path).map_err(|err| IgnoreErrorKind::ErrorLink {
+            path: path.to_path_buf(),
+            source: err,
+        })?;
+        let target = target.as_os_str().as_encoded_bytes();
         let node_type = NodeType::from_link(&target);
         Node::new_node(name, node_type, meta)
     } else {
@@ -688,13 +687,11 @@ fn map_entry(
         Node::new_node(name, NodeType::Dir, meta)
     } else if m.is_symlink() {
         let path = entry.path();
-        let target = read_link(path)
-            .map_err(|err| IgnoreErrorKind::ErrorLink {
-                path: path.to_path_buf(),
-                source: err,
-            })?
-            .into_os_string();
-        let target = target.as_encoded_bytes();
+        let target = read_link(path).map_err(|err| IgnoreErrorKind::ErrorLink {
+            path: path.to_path_buf(),
+            source: err,
+        })?;
+        let target = target.as_os_str().as_encoded_bytes();
         let node_type = NodeType::from_link(&UnixPath::new(target).to_typed_path());
         Node::new_node(name, node_type, meta)
     } else if filetype.is_block_device() {
