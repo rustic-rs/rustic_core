@@ -504,7 +504,7 @@ fn map_entry(
             source: err,
         })?;
         let target = target.as_os_str().as_encoded_bytes();
-        let node_type = NodeType::from_link(&target);
+        let node_type = NodeType::from_link(&UnixPath::new(target).to_typed_path());
         Node::new_node(name, node_type, meta)
     } else {
         Node::new_node(name, NodeType::File, meta)
