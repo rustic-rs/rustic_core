@@ -444,7 +444,7 @@ fn map_entry(
     with_atime: bool,
     _ignore_devid: bool,
 ) -> IgnoreResult<ReadSourceEntry<OpenFile>> {
-    let name = entry.file_name();
+    let name = entry.file_name().as_encoded_bytes();
     let m = entry
         .metadata()
         .map_err(|err| IgnoreErrorKind::FailedToGetMetadata { source: err })?;
@@ -498,10 +498,12 @@ fn map_entry(
         Node::new_node(name, NodeType::Dir, meta)
     } else if m.is_symlink() {
         let path = entry.path();
-        let target = read_link(path).map_err(|err| IgnoreErrorKind::ErrorLink {
-            path: path.to_path_buf(),
-            source: err,
-        })?;
+        let target = read_link(path)
+            .map_err(|err| IgnoreErrorKind::ErrorLink {
+                path: path.to_path_buf(),
+                source: err,
+            })?
+            .as_encoded_bytes();
         let node_type = NodeType::from_link(&target);
         Node::new_node(name, node_type, meta)
     } else {
@@ -510,6 +512,7 @@ fn map_entry(
 
     let path = entry.into_path();
     let open = Some(OpenFile(path.clone()));
+    let path: UnixPathBuf = path.try_into().unwrap(); // TODO: Error handling
     Ok(ReadSourceEntry { path, node, open })
 }
 
