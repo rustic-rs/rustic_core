@@ -338,25 +338,6 @@ pub fn last_modified_node(n1: &Node, n2: &Node) -> Ordering {
     n1.meta.mtime.cmp(&n2.meta.mtime)
 }
 
-// TODO: Should be probably called `_lossy`
-// TODO(Windows): This is not able to handle non-unicode filenames and
-// doesn't treat filenames which need and escape (like `\`, `"`, ...) correctly
-#[cfg(windows)]
-fn escape_filename(name: &OsStr) -> String {
-    name.to_string_lossy().to_string()
-}
-
-/// Unescape a filename
-///
-/// # Arguments
-///
-/// * `s` - The escaped filename
-#[cfg(windows)]
-fn unescape_filename(s: &str) -> Result<OsString, core::convert::Infallible> {
-    OsString::from_str(s)
-}
-
-#[cfg(not(windows))]
 /// Escape a filename
 ///
 /// # Arguments
@@ -414,7 +395,6 @@ fn escape_filename(name: &[u8]) -> String {
     s
 }
 
-#[cfg(not(windows))]
 /// Unescape a filename
 ///
 /// # Arguments

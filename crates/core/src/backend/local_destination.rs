@@ -103,6 +103,9 @@ pub enum LocalDestinationErrorKind {
         filename: PathBuf,
         source: std::io::Error,
     },
+    #[cfg(windows)]
+    /// Non-UTF8 filename is not allowed: `{0:?}`
+    Utf8Error(std::str::Utf8Error),
 }
 
 pub(crate) type LocalDestinationResult<T> = Result<T, LocalDestinationErrorKind>;
@@ -202,7 +205,9 @@ impl LocalDestination {
         }
         #[cfg(windows)]
         {
-            let item = PathBuf::try_from(item.as_ref())?;
+            // only utf8 items are allowed on windows
+            let item = std::str::from_utf8(item.as_ref().as_bytes())
+                .map_err(LocalDestinationErrorKind::Utf8Error)?;
             Ok(self.path.join(item))
         }
     }
