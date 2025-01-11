@@ -19,7 +19,6 @@ use typed_path::TypedPath;
 
 use crate::blob::{DataId, tree::TreeId};
 
-#[cfg(not(windows))]
 /// [`NodeErrorKind`] describes the errors that can be returned by an action utilizing a node in Backends
 #[derive(thiserror::Error, Debug, displaydoc::Display)]
 #[non_exhaustive]
@@ -76,7 +75,6 @@ pub enum NodeErrorKind<'a> {
     },
 }
 
-#[cfg(not(windows))]
 pub(crate) type NodeResult<'a, T> = Result<T, NodeErrorKind<'a>>;
 
 #[derive(
@@ -501,7 +499,6 @@ fn unescape_filename(s: &str) -> NodeResult<'_, Vec<u8>> {
     Ok(u)
 }
 
-#[cfg(not(windows))]
 #[inline]
 // Iterator#take cannot be used because it consumes the iterator
 fn take<I: Iterator<Item = char>>(iterator: &mut I, n: usize) -> String {
@@ -512,7 +509,6 @@ fn take<I: Iterator<Item = char>>(iterator: &mut I, n: usize) -> String {
     s
 }
 
-#[cfg(not(windows))]
 #[cfg(test)]
 mod tests {
     use super::*;

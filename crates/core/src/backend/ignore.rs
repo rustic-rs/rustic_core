@@ -20,6 +20,7 @@ use log::warn;
 #[cfg(not(windows))]
 use nix::unistd::{Gid, Group, Uid, User};
 use serde_with::{DisplayFromStr, serde_as};
+use typed_path::UnixPath;
 
 #[cfg(not(windows))]
 use crate::backend::node::ExtendedAttribute;
@@ -512,7 +513,7 @@ fn map_entry(
 
     let path = entry.into_path();
     let open = Some(OpenFile(path.clone()));
-    let path: UnixPathBuf = path.try_into().unwrap(); // TODO: Error handling
+    let path = UnixPath::new(path.as_os_str().as_encoded_bytes()).to_path_buf();
     Ok(ReadSourceEntry { path, node, open })
 }
 
@@ -613,11 +614,7 @@ fn map_entry(
     with_atime: bool,
     ignore_devid: bool,
 ) -> IgnoreResult<ReadSourceEntry<OpenFile>> {
-    use std::os::unix::ffi::OsStrExt;
-
-    use typed_path::{UnixPath, UnixPathBuf};
-
-    let name = entry.file_name().as_bytes();
+    let name = entry.file_name().as_encoded_bytes();
     let m = entry
         .metadata()
         .map_err(|err| IgnoreErrorKind::AcquiringMetadataFailed {
@@ -715,7 +712,7 @@ fn map_entry(
     };
     let path = entry.into_path();
     let open = Some(OpenFile(path.clone()));
-    let path: UnixPathBuf = path.try_into().unwrap(); // TODO: Error handling
+    let path = UnixPath::new(path.as_os_str().as_encoded_bytes()).to_path_buf();
     Ok(ReadSourceEntry { path, node, open })
 }
 
