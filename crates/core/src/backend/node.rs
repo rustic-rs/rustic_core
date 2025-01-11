@@ -1,7 +1,6 @@
 use std::{borrow::Cow, cmp::Ordering, fmt::Debug};
 
 use std::fmt::Write;
-#[cfg(not(windows))]
 use std::num::ParseIntError;
 
 use chrono::{DateTime, Local};
