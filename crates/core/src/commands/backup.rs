@@ -1,11 +1,10 @@
 //! `backup` subcommand
 use derive_setters::Setters;
 use log::info;
-use typed_path::UnixPathBuf;
+use typed_path::{UnixPath, UnixPathBuf};
 
 use std::path::PathBuf;
 
-use path_dedot::ParseDot;
 use serde_derive::{Deserialize, Serialize};
 use serde_with::{DisplayFromStr, serde_as};
 
@@ -222,24 +221,12 @@ pub(crate) fn backup<P: ProgressBars, S: IndexedIds>(
         source.paths()
     };
 
-    let as_path: Option<UnixPathBuf> = opts
-        .as_path
-        .as_ref()
-        .map(|p| -> RusticResult<_> {
-            Ok(p.parse_dot()
-                .map_err(|err| {
-                    RusticError::with_source(
-                        ErrorKind::InvalidInput,
-                        "Failed to parse dotted path `{path}`",
-                        err,
-                    )
-                    .attach_context("path", p.display().to_string())
-                })?
-                .to_path_buf()
-                .try_into()
-                .unwrap()) // TODO: error handling
-        })
-        .transpose()?;
+    let as_path = match &opts.as_path {
+        Some(p) => Some(p),
+        None if backup_path.len() == 1 => Some(&backup_path[0]),
+        None => None,
+    }
+    .map(|p| UnixPath::new(p.as_os_str().as_encoded_bytes()).normalize());
 
     match &as_path {
         Some(p) => snap
@@ -299,10 +286,9 @@ pub(crate) fn backup<P: ProgressBars, S: IndexedIds>(
         let path = &backup_path[0];
         if let Some(command) = &opts.stdin_command {
             let unix_path: UnixPathBuf = path.clone().try_into().unwrap(); // todo: error handling
-            let src = ChildStdoutSource::new(command, unix_path.clone())?;
+            let src = ChildStdoutSource::new(command, unix_path)?;
             let res = archiver.archive(
                 &src,
-                &unix_path,
                 as_path.as_ref(),
                 opts.parent_opts.skip_if_unchanged,
                 opts.no_scan,
@@ -312,10 +298,9 @@ pub(crate) fn backup<P: ProgressBars, S: IndexedIds>(
             res
         } else {
             let path: UnixPathBuf = path.clone().try_into().unwrap(); // TODO: error handling
-            let src = StdinSource::new(path.clone());
+            let src = StdinSource::new(path);
             archiver.archive(
                 &src,
-                &path,
                 as_path.as_ref(),
                 opts.parent_opts.skip_if_unchanged,
                 opts.no_scan,
@@ -328,10 +313,8 @@ pub(crate) fn backup<P: ProgressBars, S: IndexedIds>(
             &opts.ignore_filter_opts,
             &backup_path,
         )?;
-        let backup_path: UnixPathBuf = backup_path[0].clone().try_into().unwrap();
         archiver.archive(
             &src,
-            &backup_path,
             as_path.as_ref(),
             opts.parent_opts.skip_if_unchanged,
             opts.no_scan,
