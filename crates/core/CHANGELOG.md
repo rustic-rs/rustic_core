@@ -2,6 +2,29 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.7.3](https://github.com/rustic-rs/rustic_core/compare/rustic_core-v0.7.2...rustic_core-v0.7.3) - 2024-12-06
+
+### Fixed
+
+- *(chunker)* Don't underflow with wrong size_hint ([#378](https://github.com/rustic-rs/rustic_core/pull/378))
+
+## [0.7.2](https://github.com/rustic-rs/rustic_core/compare/rustic_core-v0.7.1...rustic_core-v0.7.2) - 2024-11-30
+
+### Added
+
+- Add a "minutely" timeline ([#374](https://github.com/rustic-rs/rustic_core/pull/374))
+
+### Fixed
+
+- clippy lints
+
+## [0.7.1](https://github.com/rustic-rs/rustic_core/compare/rustic_core-v0.7.0...rustic_core-v0.7.1) - 2024-11-27
+
+### Other
+
+- *(deps)* update dependencies
+- update README badges for rustic_core and rustic_backend to include MSRV
+
 ## [0.7.0](https://github.com/rustic-rs/rustic_core/compare/rustic_core-v0.6.1...rustic_core-v0.7.0) - 2024-11-24
 
 ### Other

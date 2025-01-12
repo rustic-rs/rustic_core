@@ -700,7 +700,7 @@ where
 }
 
 // TODO: This is not parallel at the moment...
-impl<'a, BE, I> Iterator for NodeStreamer<'a, BE, I>
+impl<BE, I> Iterator for NodeStreamer<'_, BE, I>
 where
     BE: DecryptReadBackend,
     I: ReadGlobalIndex,

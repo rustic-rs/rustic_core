@@ -130,6 +130,14 @@ pub struct KeepOptions {
     #[cfg_attr(feature = "merge", merge(strategy = conflate::option::overwrite_none))]
     pub keep_last: Option<i32>,
 
+    /// Keep the last N minutely snapshots (N == -1: keep all minutely snapshots)
+    #[cfg_attr(
+        feature = "clap", 
+        clap(long, short = 'M', value_name = "N",  allow_hyphen_values = true, value_parser = clap::value_parser!(i32).range(-1..))
+    )]
+    #[cfg_attr(feature = "merge", merge(strategy = conflate::option::overwrite_none))]
+    pub keep_minutely: Option<i32>,
+
     /// Keep the last N hourly snapshots (N == -1: keep all hourly snapshots)
     #[cfg_attr(
         feature = "clap", 
@@ -192,6 +200,12 @@ pub struct KeepOptions {
     #[cfg_attr(feature = "merge", merge(strategy = conflate::option::overwrite_none))]
     pub keep_within: Option<humantime::Duration>,
 
+    /// Keep minutely snapshots newer than DURATION relative to latest snapshot
+    #[cfg_attr(feature = "clap", clap(long, value_name = "DURATION"))]
+    #[serde_as(as = "Option<DisplayFromStr>")]
+    #[cfg_attr(feature = "merge", merge(strategy = conflate::option::overwrite_none))]
+    pub keep_within_minutely: Option<humantime::Duration>,
+
     /// Keep hourly snapshots newer than DURATION relative to latest snapshot
     #[cfg_attr(feature = "clap", clap(long, value_name = "DURATION"))]
     #[serde_as(as = "Option<DisplayFromStr>")]
@@ -239,6 +253,12 @@ pub struct KeepOptions {
     #[cfg_attr(feature = "merge", merge(strategy=conflate::bool::overwrite_false))]
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub keep_none: bool,
+
+    /// Delete unchanged follow-up snapshots (i.e. with identical tree)
+    #[cfg_attr(feature = "clap", clap(long))]
+    #[cfg_attr(feature = "merge", merge(strategy=conflate::bool::overwrite_false))]
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub delete_unchanged: bool,
 }
 
 /// Always return false
@@ -356,12 +376,31 @@ fn equal_hour(sn1: &SnapshotFile, sn2: &SnapshotFile) -> bool {
     t1.year() == t2.year() && t1.ordinal() == t2.ordinal() && t1.hour() == t2.hour()
 }
 
+/// Evaluate the minutes of the given snapshots
+///
+/// # Arguments
+///
+/// * `sn1` - The first snapshot
+/// * `sn2` - The second snapshot
+///
+/// # Returns
+///
+/// Whether the minutes of the snapshots are equal
+fn equal_minute(sn1: &SnapshotFile, sn2: &SnapshotFile) -> bool {
+    let (t1, t2) = (sn1.time, sn2.time);
+    t1.year() == t2.year()
+        && t1.ordinal() == t2.ordinal()
+        && t1.hour() == t2.hour()
+        && t1.minute() == t2.minute()
+}
+
 impl KeepOptions {
     /// Check if `KeepOptions` are valid, i.e. if at least one keep-* option is given.
     fn is_valid(&self) -> bool {
         !self.keep_tags.is_empty()
             || !self.keep_ids.is_empty()
             || self.keep_last.is_some()
+            || self.keep_minutely.is_some()
             || self.keep_hourly.is_some()
             || self.keep_daily.is_some()
             || self.keep_weekly.is_some()
@@ -370,6 +409,7 @@ impl KeepOptions {
             || self.keep_half_yearly.is_some()
             || self.keep_within.is_some()
             || self.keep_yearly.is_some()
+            || self.keep_within_minutely.is_some()
             || self.keep_within_hourly.is_some()
             || self.keep_within_daily.is_some()
             || self.keep_within_weekly.is_some()
@@ -392,6 +432,7 @@ impl KeepOptions {
     /// # Returns
     ///
     /// The list of reasons why the snapshot should be kept
+    #[allow(clippy::too_many_lines)]
     fn matches(
         &mut self,
         sn: &SnapshotFile,
@@ -422,13 +463,20 @@ impl KeepOptions {
             reason.push("tags");
         }
 
-        let keep_checks: [MatchParameters<'_>; 8] = [
+        let keep_checks: [MatchParameters<'_>; 9] = [
             (
                 always_false,
                 &mut self.keep_last,
                 "last",
                 self.keep_within,
                 "within",
+            ),
+            (
+                equal_minute,
+                &mut self.keep_minutely,
+                "minutely",
+                self.keep_within_minutely,
+                "within minutely",
             ),
             (
                 equal_hour,
@@ -547,6 +595,10 @@ impl KeepOptions {
                     (true, vec!["snapshot"])
                 } else if sn.must_delete(now) {
                     (false, vec!["snapshot"])
+                } else if self.delete_unchanged
+                    && iter.peek().is_some_and(|sn_next| sn_next.tree == sn.tree)
+                {
+                    (false, vec!["unchanged"])
                 } else {
                     let reasons =
                         group_keep.matches(&sn, last.as_ref(), iter.peek().is_some(), latest_time);

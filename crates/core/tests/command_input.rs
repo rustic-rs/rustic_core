@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 #[cfg(not(windows))]
 use std::fs::File;
 

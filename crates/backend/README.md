@@ -3,11 +3,18 @@
 </p>
 <p align="center"><b>Library for supporting various backends in rustic</b></p>
 <p align="center">
+<a href="https://crates.io/crates/rustic_backend"><img src="https://img.shields.io/crates/msrv/rustic_backend" /></a>
 <a href="https://crates.io/crates/rustic_backend"><img src="https://img.shields.io/crates/v/rustic_backend.svg" /></a>
 <a href="https://docs.rs/rustic_backend/"><img src="https://img.shields.io/docsrs/rustic_backend?style=flat&amp;labelColor=1c1d42&amp;color=4f396a&amp;logo=Rust&amp;logoColor=white" /></a>
 <a href="https://github.com/rustic-rs/rustic_core/blob/main/crates/backend/LICENSE-APACHE"><img src="https://img.shields.io/badge/license-Apache2.0/MIT-blue.svg" /></a>
 <a href="https://crates.io/crates/rustic_backend"><img src="https://img.shields.io/crates/d/rustic_backend.svg" /></a>
 <p>
+
+## News
+
+We temporarily disabled the `service-ftp` feature on the `opendal` backend due
+to build issues. We are working on a fix and will re-enable it as soon as
+possible.
 
 ## About
 

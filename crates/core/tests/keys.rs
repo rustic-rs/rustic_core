@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 use std::{fs::File, io::Read, sync::Arc};
 
 use anyhow::Result;
