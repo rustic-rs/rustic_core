@@ -117,6 +117,7 @@ pub(crate) mod progress;
 /// Structs which are saved in JSON or binary format in the repository
 pub mod repofile;
 pub(crate) mod repository;
+pub mod util;
 /// Virtual File System support - allows to act on the repository like on a file system
 pub mod vfs;
 
