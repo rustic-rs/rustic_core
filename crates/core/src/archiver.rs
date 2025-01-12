@@ -6,7 +6,7 @@ pub(crate) mod tree_archiver;
 use chrono::Local;
 use log::warn;
 use pariter::{IteratorExt, scope};
-use typed_path::{UnixPath, UnixPathBuf};
+use typed_path::UnixPathBuf;
 
 use crate::{
     Progress,
@@ -125,7 +125,6 @@ impl<'a, BE: DecryptFullBackend, I: ReadGlobalIndex> Archiver<'a, BE, I> {
     pub fn archive<R>(
         mut self,
         src: &R,
-        backup_path: &UnixPath,
         as_path: Option<&UnixPathBuf>,
         skip_identical_parent: bool,
         no_scan: bool,
@@ -156,9 +155,7 @@ impl<'a, BE: DecryptFullBackend, I: ReadGlobalIndex> Archiver<'a, BE, I> {
                 }
                 Ok(ReadSourceEntry { path, node, open }) => {
                     let snapshot_path = if let Some(as_path) = as_path {
-                        as_path
-                            .clone()
-                            .join(path.strip_prefix(backup_path).unwrap())
+                        as_path.clone().join(path)
                     } else {
                         path
                     };

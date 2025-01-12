@@ -66,6 +66,7 @@ pub(crate) type IgnoreResult<T> = Result<T, IgnoreErrorKind>;
 /// A [`LocalSource`] is a source from local paths which is used to be read from (i.e. to backup it).
 #[derive(Debug)]
 pub struct LocalSource {
+    base_path: PathBuf,
     /// The walk builder.
     builder: WalkBuilder,
     /// The save options to use.
@@ -310,7 +311,17 @@ impl LocalSource {
 
         let builder = walk_builder;
 
-        Ok(Self { builder, save_opts })
+        let base_path = if backup_paths.len() == 1 {
+            backup_paths[0].as_ref().to_path_buf()
+        } else {
+            PathBuf::new()
+        };
+
+        Ok(Self {
+            base_path,
+            builder,
+            save_opts,
+        })
     }
 }
 
@@ -375,6 +386,7 @@ impl ReadSource for LocalSource {
     /// An iterator over the entries of the local source.
     fn entries(&self) -> Self::Iter {
         LocalSourceWalker {
+            base_path: self.base_path.clone(),
             walker: self.builder.build(),
             save_opts: self.save_opts,
         }
@@ -384,6 +396,7 @@ impl ReadSource for LocalSource {
 // Walk doesn't implement Debug
 #[allow(missing_debug_implementations)]
 pub struct LocalSourceWalker {
+    base_path: PathBuf,
     /// The walk iterator.
     walker: Walk,
     /// The save options to use.
@@ -411,6 +424,7 @@ impl Iterator for LocalSourceWalker {
                     )
                     .ask_report()
                 })?,
+                &self.base_path,
                 self.save_opts.with_atime,
                 self.save_opts.ignore_devid,
             )
@@ -442,6 +456,7 @@ impl Iterator for LocalSourceWalker {
 #[allow(clippy::similar_names)]
 fn map_entry(
     entry: DirEntry,
+    base_path: &Path,
     with_atime: bool,
     _ignore_devid: bool,
 ) -> IgnoreResult<ReadSourceEntry<OpenFile>> {
@@ -512,6 +527,7 @@ fn map_entry(
 
     let path = entry.into_path();
     let open = Some(OpenFile(path.clone()));
+    let path = path.strip_prefix(base_path).unwrap();
     let path = UnixPath::new(path.as_os_str().as_encoded_bytes()).to_path_buf();
     Ok(ReadSourceEntry { path, node, open })
 }
@@ -610,6 +626,7 @@ fn list_extended_attributes(path: &Path) -> IgnoreResult<Vec<ExtendedAttribute>>
 #[allow(clippy::similar_names)]
 fn map_entry(
     entry: DirEntry,
+    base_path: &Path,
     with_atime: bool,
     ignore_devid: bool,
 ) -> IgnoreResult<ReadSourceEntry<OpenFile>> {
@@ -709,6 +726,7 @@ fn map_entry(
     };
     let path = entry.into_path();
     let open = Some(OpenFile(path.clone()));
+    let path = path.strip_prefix(base_path).unwrap();
     let path = UnixPath::new(path.as_os_str().as_encoded_bytes()).to_path_buf();
     Ok(ReadSourceEntry { path, node, open })
 }
