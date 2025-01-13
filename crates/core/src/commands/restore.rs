@@ -744,7 +744,7 @@ impl RestorePlan {
 
             let matches = open_file
                 .as_mut()
-                .map_or(false, |file| id.blob_matches_reader(usize_length, file));
+                .is_some_and(|file| id.blob_matches_reader(usize_length, file));
 
             let blob_location = self.r.entry((ie.pack, bl)).or_default();
             blob_location.push(FileLocation {
