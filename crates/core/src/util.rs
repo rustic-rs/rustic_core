@@ -1,4 +1,4 @@
-/// Utilities for handling paths on rustic_core
+/// Utilities for handling paths on ``rustic_core``
 use globset::GlobMatcher;
 use serde::{Serialize, Serializer};
 use typed_path::{UnixPath, UnixPathBuf};
