@@ -171,6 +171,12 @@ fn assert_with_win<T: Serialize>(test: &str, snap: T) {
     assert_ron_snapshot!(format!("{test}-nix"), snap);
 }
 
+// helper function
+// TODO: Use macro directly (need to refactor snapshot location)
+fn assert_ron<T: Serialize>(test: &str, snap: T) {
+    assert_ron_snapshot!(test, snap);
+}
+
 #[test]
 fn repo_with_commands() -> Result<()> {
     let be = InMemoryBackend::new();
