@@ -14,7 +14,7 @@ use rustic_core::{
 };
 use typed_path::UnixPath;
 
-use super::{RepoOpen, TestSource, assert_with_win, set_up_repo, tar_gz_testdata};
+use super::{RepoOpen, TestSource, assert_ron, set_up_repo, tar_gz_testdata};
 
 #[rstest]
 fn test_find(tar_gz_testdata: Result<TestSource>, set_up_repo: Result<RepoOpen>) -> Result<()> {
@@ -33,7 +33,7 @@ fn test_find(tar_gz_testdata: Result<TestSource>, set_up_repo: Result<RepoOpen>)
     // test non-existing path
     let not_found =
         repo.find_nodes_from_path(vec![snapshot.tree], UnixPath::new("not_existing"))?;
-    assert_with_win("find-nodes-not-found", not_found);
+    assert_ron("find-nodes-not-found", not_found);
     // test non-existing match
     let glob = Glob::new("not_existing")?.compile_matcher();
     let FindMatches { paths, matches, .. } =
@@ -44,7 +44,7 @@ fn test_find(tar_gz_testdata: Result<TestSource>, set_up_repo: Result<RepoOpen>)
     // test existing path
     let FindNode { matches, .. } =
         repo.find_nodes_from_path(vec![snapshot.tree], UnixPath::new("test/0/tests/testfile"))?;
-    assert_with_win("find-nodes-existing", matches);
+    assert_ron("find-nodes-existing", matches);
     // test existing match
     let glob = Glob::new("testfile")?.compile_matcher();
     let match_func = |path: &UnixPath, _: &Node| {
@@ -53,7 +53,7 @@ fn test_find(tar_gz_testdata: Result<TestSource>, set_up_repo: Result<RepoOpen>)
     let FindMatches { paths, matches, .. } =
         repo.find_matching_nodes(vec![snapshot.tree], &match_func)?;
     let paths: Vec<_> = paths.into_iter().map(SerializablePath).collect();
-    assert_with_win("find-matching-existing", (paths, matches));
+    assert_ron("find-matching-existing", (paths, matches));
     // test existing match
     let glob = Glob::new("testfile*")?.compile_matcher();
     let match_func = |path: &UnixPath, _: &Node| {
@@ -62,6 +62,6 @@ fn test_find(tar_gz_testdata: Result<TestSource>, set_up_repo: Result<RepoOpen>)
     let FindMatches { paths, matches, .. } =
         repo.find_matching_nodes(vec![snapshot.tree], &match_func)?;
     let paths: Vec<_> = paths.into_iter().map(SerializablePath).collect();
-    assert_with_win("find-matching-wildcard-existing", (paths, matches));
+    assert_ron("find-matching-wildcard-existing", (paths, matches));
     Ok(())
 }
