@@ -2,15 +2,19 @@ use std::collections::BTreeMap;
 use std::{path::PathBuf, str::FromStr};
 
 use anyhow::Result;
-use insta::{Settings, assert_debug_snapshot};
+use insta::Settings;
+use itertools::Itertools;
 use rstest::rstest;
 
 use rustic_core::{
     BackupOptions, LsOptions, RusticResult,
     repofile::{Metadata, Node, SnapshotFile},
+    util::SerializablePath,
 };
 
-use super::{RepoOpen, TestSource, insta_node_redaction, set_up_repo, tar_gz_testdata};
+use super::{
+    RepoOpen, TestSource, assert_with_win, insta_node_redaction, set_up_repo, tar_gz_testdata,
+};
 
 #[rstest]
 fn test_ls(
@@ -40,10 +44,11 @@ fn test_ls(
 
     let entries: BTreeMap<_, _> = repo
         .ls(&node, &LsOptions::default())?
+        .map_ok(|(path, node)| (SerializablePath(path), node))
         .collect::<RusticResult<_>>()?;
 
     insta_node_redaction.bind(|| {
-        assert_debug_snapshot!("ls", &entries);
+        assert_with_win("ls", &entries);
     });
 
     Ok(())

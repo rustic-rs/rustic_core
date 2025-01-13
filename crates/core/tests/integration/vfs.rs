@@ -35,7 +35,7 @@ fn test_vfs(
     let vfs = Vfs::from_dir_node(&node);
 
     // test reading a directory using vfs
-    let entries = vfs.dir_entries_from_path(&repo, UnixPath::new("test/0/tests/testfile"))?;
+    let entries = vfs.dir_entries_from_path(&repo, UnixPath::new("test/0/tests"))?;
     insta_node_redaction.bind(|| {
         assert_with_win("vfs", &entries);
     });

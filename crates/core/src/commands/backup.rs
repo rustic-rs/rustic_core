@@ -223,7 +223,7 @@ pub(crate) fn backup<P: ProgressBars, S: IndexedIds>(
 
     let as_path = match &opts.as_path {
         Some(p) => Some(p),
-        None if backup_path.len() == 1 => Some(&backup_path[0]),
+        None if !backup_stdin && backup_path.len() == 1 => Some(&backup_path[0]),
         None => None,
     }
     .map(|p| UnixPath::new(p.as_os_str().as_encoded_bytes()).normalize());
