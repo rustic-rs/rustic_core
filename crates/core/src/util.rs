@@ -1,4 +1,6 @@
 use globset::GlobMatcher;
+use serde::{Serialize, Serializer};
+use typed_path::{UnixPath, UnixPathBuf};
 
 /// Extend `globset::GlobMatcher` to allow mathing on unix paths (on every platform)
 pub trait GlobMatcherExt {
@@ -26,4 +28,17 @@ impl GlobMatcherExt for GlobMatcher {
         let path = Path::new(OsStr::new(string));
         self.is_match(path)
     }
+}
+
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+#[serde(transparent)]
+/// Like `UnixPathBuf` , but implements `Serialize`
+pub struct SerializablePath(#[serde(serialize_with = "serialize_unix_path")] pub UnixPathBuf);
+
+fn serialize_unix_path<S>(path: &UnixPath, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    let s = format!("{}", path.display());
+    serializer.serialize_str(&s)
 }

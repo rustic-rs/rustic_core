@@ -5,13 +5,12 @@ use std::{path::PathBuf, str::FromStr};
 
 use anyhow::Result;
 use globset::Glob;
-use insta::assert_debug_snapshot;
 use rstest::rstest;
 
 use rustic_core::{
     BackupOptions, FindMatches, FindNode,
     repofile::{Node, SnapshotFile},
-    util::GlobMatcherExt,
+    util::{GlobMatcherExt, SerializablePath},
 };
 use typed_path::UnixPath;
 
@@ -37,9 +36,10 @@ fn test_find(tar_gz_testdata: Result<TestSource>, set_up_repo: Result<RepoOpen>)
     assert_with_win("find-nodes-not-found", not_found);
     // test non-existing match
     let glob = Glob::new("not_existing")?.compile_matcher();
-    let not_found =
+    let FindMatches { paths, matches, .. } =
         repo.find_matching_nodes(vec![snapshot.tree], &|path, _| glob.is_unix_match(path))?;
-    assert_debug_snapshot!("find-matching-nodes-not-found", not_found);
+    assert!(paths.is_empty());
+    assert_eq!(matches, [[]]);
 
     // test existing path
     let FindNode { matches, .. } =
@@ -52,7 +52,8 @@ fn test_find(tar_gz_testdata: Result<TestSource>, set_up_repo: Result<RepoOpen>)
     };
     let FindMatches { paths, matches, .. } =
         repo.find_matching_nodes(vec![snapshot.tree], &match_func)?;
-    assert_debug_snapshot!("find-matching-existing", (paths, matches));
+    let paths: Vec<_> = paths.into_iter().map(SerializablePath).collect();
+    assert_with_win("find-matching-existing", (paths, matches));
     // test existing match
     let glob = Glob::new("testfile*")?.compile_matcher();
     let match_func = |path: &UnixPath, _: &Node| {
@@ -60,6 +61,7 @@ fn test_find(tar_gz_testdata: Result<TestSource>, set_up_repo: Result<RepoOpen>)
     };
     let FindMatches { paths, matches, .. } =
         repo.find_matching_nodes(vec![snapshot.tree], &match_func)?;
-    assert_debug_snapshot!("find-matching-wildcard-existing", (paths, matches));
+    let paths: Vec<_> = paths.into_iter().map(SerializablePath).collect();
+    assert_with_win("find-matching-wildcard-existing", (paths, matches));
     Ok(())
 }
