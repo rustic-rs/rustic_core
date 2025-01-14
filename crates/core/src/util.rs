@@ -1,7 +1,12 @@
 /// Utilities for handling paths on ``rustic_core``
+use std::borrow::Cow;
+
 use globset::GlobMatcher;
 use serde::{Serialize, Serializer};
-use typed_path::{UnixPath, UnixPathBuf};
+use typed_path::{
+    Component, TypedPath, UnixComponent, UnixPath, UnixPathBuf, WindowsComponent, WindowsPath,
+    WindowsPrefix,
+};
 
 /// Extend `globset::GlobMatcher` to allow mathing on unix paths (on every platform)
 pub trait GlobMatcherExt {
@@ -42,4 +47,89 @@ where
 {
     let s = format!("{}", path.display());
     serializer.serialize_str(&s)
+}
+
+/// Converts a [`TypedPath`] to an [`Cow<UnixPath>`].
+///
+/// # Arguments
+///
+/// * `path` - The path to convert.
+#[must_use]
+pub fn typed_path_to_unix_path<'a>(path: &'a TypedPath<'_>) -> Cow<'a, UnixPath> {
+    match path {
+        TypedPath::Unix(p) => Cow::Borrowed(p),
+        TypedPath::Windows(p) => Cow::Owned(windows_path_to_unix_path(p)),
+    }
+}
+
+/// Converts a [`WindowsPath`] to a [`UnixPathBuf`].
+///
+/// # Arguments
+///
+/// * `path` - The path to convert.
+#[must_use]
+pub fn windows_path_to_unix_path(path: &WindowsPath) -> UnixPathBuf {
+    let mut unix_path = UnixPathBuf::new();
+    let mut components = path.components();
+    if let Some(c) = components.next() {
+        match c {
+            WindowsComponent::Prefix(p) => {
+                unix_path.push(UnixComponent::RootDir);
+                match p.kind() {
+                    WindowsPrefix::Verbatim(p) | WindowsPrefix::DeviceNS(p) => {
+                        unix_path.push(p);
+                    }
+                    WindowsPrefix::VerbatimUNC(_, q) | WindowsPrefix::UNC(_, q) => {
+                        unix_path.push(q);
+                    }
+                    WindowsPrefix::VerbatimDisk(p) | WindowsPrefix::Disk(p) => {
+                        let c = vec![p];
+                        unix_path.push(&c);
+                    }
+                }
+                // remove RootDir from iterator
+                _ = components.next();
+            }
+            WindowsComponent::RootDir => {
+                unix_path.push(UnixComponent::RootDir);
+            }
+            c => {
+                unix_path.push(c.as_bytes());
+            }
+        }
+    }
+    for c in components {
+        match c {
+            WindowsComponent::RootDir => {
+                unix_path.push(UnixComponent::RootDir);
+            }
+            c => {
+                unix_path.push(c);
+            }
+        }
+    }
+    unix_path
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rstest::rstest;
+    #[rstest]
+    #[case("/", "/")]
+    #[case(r#"\"#, "/")]
+    #[case("/test/test2", "/test/test2")]
+    #[case(r#"\test\test2"#, "/test/test2")]
+    #[case(r#"C:\"#, "/C")]
+    #[case(r#"C:\dir"#, "/C/dir")]
+    #[case(r#"a\b\"#, "a/b")]
+    #[case(r#"a\b\c"#, "a/b/c")]
+    fn test_typed_path_to_unix_path(#[case] windows_path: &str, #[case] unix_path: &str) {
+        assert_eq!(
+            windows_path_to_unix_path(WindowsPath::new(windows_path))
+                .to_str()
+                .unwrap(),
+            UnixPath::new(unix_path).to_str().unwrap()
+        );
+    }
 }
