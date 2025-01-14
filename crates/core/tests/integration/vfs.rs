@@ -6,7 +6,10 @@ use insta::Settings;
 use pretty_assertions::assert_eq;
 use rstest::rstest;
 
-use rustic_core::{BackupOptions, repofile::SnapshotFile, vfs::Vfs};
+use rustic_core::{
+    BackupOptions, SnapshotOptions,
+    vfs::{IdenticalSnapshot, Latest, Vfs},
+};
 use typed_path::UnixPath;
 
 use super::{
@@ -26,7 +29,8 @@ fn test_vfs(
     // we use as_path to not depend on the actual tempdir
     let opts = BackupOptions::default().as_path(PathBuf::from_str("test")?);
     // backup test-data
-    let snapshot = repo.backup(&opts, paths, SnapshotFile::default())?;
+    let snap_opts = SnapshotOptions::default().label("label".to_string());
+    let snapshot = repo.backup(&opts, paths, snap_opts.to_snapshot()?)?;
 
     // re-read index
     let repo = repo.to_indexed()?;
@@ -54,5 +58,17 @@ fn test_vfs(
     let node = vfs.node_from_path(&repo, UnixPath::new("test/0/tests/empty-file"))?;
     let file = repo.open_file(&node)?;
     assert_eq!(Bytes::new(), repo.read_file_at(&file, 0, 0)?); // empty files
+
+    // create Vfs from snapshots
+    let vfs = Vfs::from_snapshots(
+        vec![snapshot],
+        "{label}/{time}",
+        "%Y",
+        Latest::AsDir,
+        IdenticalSnapshot::AsLink,
+    )?;
+    let entries_from_snapshots =
+        vfs.dir_entries_from_path(&repo, UnixPath::new("label/latest/test/0/tests"))?;
+    assert_eq!(entries_from_snapshots, entries);
     Ok(())
 }
