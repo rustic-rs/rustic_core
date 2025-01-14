@@ -1,5 +1,4 @@
 use std::{
-    borrow::Cow,
     cmp::Ordering,
     collections::{BTreeMap, BTreeSet, BinaryHeap},
     mem,
@@ -13,7 +12,7 @@ use ignore::Match;
 use ignore::overrides::{Override, OverrideBuilder};
 use serde::{Deserialize, Deserializer};
 use serde_derive::Serialize;
-use typed_path::{Component, TypedPath, UnixPath, UnixPathBuf, WindowsComponent, WindowsPrefix};
+use typed_path::{Component, UnixPath, UnixPathBuf};
 
 use crate::{
     backend::{
@@ -398,45 +397,6 @@ pub struct FindMatches {
     pub nodes: Vec<Node>,
     /// found paths/nodes for all given snapshots. (usize,usize) is the path / node index
     pub matches: Vec<Vec<(usize, usize)>>,
-}
-
-/// Converts a [`TypedPath`] to an [`Cow<UnixPath>`].
-///
-/// # Arguments
-///
-/// * `p` - The component to convert.
-///
-/// # Errors
-///
-/// * If the component is a current or parent directory.
-/// * If the component is not UTF-8 conform.
-pub(crate) fn typed_path_to_unix_path<'a>(p: &'a TypedPath<'_>) -> Cow<'a, UnixPath> {
-    match p {
-        TypedPath::Unix(path) => Cow::Borrowed(path),
-        TypedPath::Windows(path) => {
-            let mut unix_path = UnixPathBuf::new();
-            for c in path.with_windows_encoding().components() {
-                match c {
-                    WindowsComponent::Prefix(p) => match p.kind() {
-                        WindowsPrefix::Verbatim(p) | WindowsPrefix::DeviceNS(p) => {
-                            unix_path.push(p);
-                        }
-                        WindowsPrefix::VerbatimUNC(_, q) | WindowsPrefix::UNC(_, q) => {
-                            unix_path.push(q);
-                        }
-                        WindowsPrefix::VerbatimDisk(p) | WindowsPrefix::Disk(p) => {
-                            let c = vec![p];
-                            unix_path.push(&c);
-                        }
-                    },
-                    c => {
-                        unix_path.push(c);
-                    }
-                }
-            }
-            Cow::Owned(unix_path)
-        }
-    }
 }
 
 impl IntoIterator for Tree {
