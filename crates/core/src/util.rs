@@ -1,5 +1,6 @@
 /// Utilities for handling paths on ``rustic_core``
-use std::borrow::Cow;
+///
+use std::{borrow::Cow, ffi::OsStr, path::Path, str::Utf8Error};
 
 use globset::GlobMatcher;
 use serde::{Serialize, Serializer};
@@ -49,7 +50,96 @@ where
     serializer.serialize_str(&s)
 }
 
-/// Converts a [`TypedPath`] to an [`Cow<UnixPath>`].
+/// Converts a [`Path`] to a [`WindowsPath`].
+///
+/// # Arguments
+///
+/// * `path` - The path to convert.
+///
+/// # Errors
+///
+/// * If the path is non-unicode
+pub fn path_to_windows_path(path: &Path) -> Result<&WindowsPath, Utf8Error> {
+    let str = std::str::from_utf8(path.as_os_str().as_encoded_bytes())?;
+    Ok(WindowsPath::new(str))
+}
+
+/// Converts a [`Path`] to a [`Cow<UnixPath>`].
+///
+/// Note: On windows, this converts prefixes into unix paths, e.g. "C:\dir" into "/c/dir"
+///
+/// # Arguments
+///
+/// * `path` - The path to convert.
+///
+/// # Errors
+///
+/// * If the path is non-unicode and we are using windows
+pub fn path_to_unix_path(path: &Path) -> Result<Cow<'_, UnixPath>, Utf8Error> {
+    #[cfg(not(windows))]
+    {
+        let path = UnixPath::new(path.as_os_str().as_encoded_bytes());
+        Ok(Cow::Borrowed(path))
+    }
+    #[cfg(windows)]
+    {
+        let path = windows_path_to_unix_path(path_to_windows_path(path)?);
+        Ok(Cow::Owned(path))
+    }
+}
+
+/// Converts a [`TypedPath`] to a [`Cow<Path>`].
+///
+/// Note: On unix, this converts windows prefixes into unix paths, e.g. "C:\dir" into "/c/dir"
+///
+/// # Arguments
+///
+/// * `path` - The path to convert.
+///
+/// # Errors
+///
+/// * If the path is non-unicode and we are using windows
+pub fn typed_path_to_path<'a>(path: &'a TypedPath<'a>) -> Result<Cow<'a, Path>, Utf8Error> {
+    #[cfg(not(windows))]
+    {
+        let path = match typed_path_to_unix_path(path) {
+            Cow::Borrowed(path) => Cow::Borrowed(unix_path_to_path(path)?),
+            Cow::Owned(path) => Cow::Owned(unix_path_to_path(&path)?.to_path_buf()),
+        };
+        Ok(path)
+    }
+    #[cfg(windows)]
+    {
+        // only utf8 items are allowed on windows
+        let str = std::str::from_utf8(path.as_bytes())?;
+        Ok(Cow::Borrowed(Path::new(str)))
+    }
+}
+
+/// Converts a [`UnixPath`] to a [`Path`].
+///
+/// # Arguments
+///
+/// * `path` - The path to convert.
+///
+/// # Errors
+///
+/// * If the path is non-unicode and we are using windows
+pub fn unix_path_to_path(path: &UnixPath) -> Result<&Path, Utf8Error> {
+    #[cfg(not(windows))]
+    {
+        let osstr: &OsStr = path.as_ref();
+        Ok(Path::new(osstr))
+    }
+    #[cfg(windows)]
+    {
+        // only utf8 items are allowed on windows
+        let str = std::str::from_utf8(path.as_bytes())?;
+        Ok(Path::new(str))
+    }
+}
+
+/// Converts a [`TypedPath`] to a [`Cow<UnixPath>`].
 ///
 /// # Arguments
 ///
@@ -64,6 +154,8 @@ pub fn typed_path_to_unix_path<'a>(path: &'a TypedPath<'_>) -> Cow<'a, UnixPath>
 
 /// Converts a [`WindowsPath`] to a [`UnixPathBuf`].
 ///
+/// Note: This converts windows prefixes into unix paths, e.g. "C:\dir" into "/c/dir"
+///
 /// # Arguments
 ///
 /// * `path` - The path to convert.
@@ -77,13 +169,13 @@ pub fn windows_path_to_unix_path(path: &WindowsPath) -> UnixPathBuf {
                 unix_path.push(UnixComponent::RootDir);
                 match p.kind() {
                     WindowsPrefix::Verbatim(p) | WindowsPrefix::DeviceNS(p) => {
-                        unix_path.push(p);
+                        unix_path.push(p.to_ascii_lowercase());
                     }
                     WindowsPrefix::VerbatimUNC(_, q) | WindowsPrefix::UNC(_, q) => {
-                        unix_path.push(q);
+                        unix_path.push(q.to_ascii_lowercase());
                     }
                     WindowsPrefix::VerbatimDisk(p) | WindowsPrefix::Disk(p) => {
-                        let c = vec![p];
+                        let c = vec![p.to_ascii_lowercase()];
                         unix_path.push(&c);
                     }
                 }
@@ -120,11 +212,12 @@ mod tests {
     #[case(r#"\"#, "/")]
     #[case("/test/test2", "/test/test2")]
     #[case(r#"\test\test2"#, "/test/test2")]
-    #[case(r#"C:\"#, "/C")]
-    #[case(r#"C:\dir"#, "/C/dir")]
+    #[case(r#"C:\"#, "/c")]
+    #[case(r#"C:\dir"#, "/c/dir")]
+    #[case(r#"d:\"#, "/d")]
     #[case(r#"a\b\"#, "a/b")]
     #[case(r#"a\b\c"#, "a/b/c")]
-    fn test_typed_path_to_unix_path(#[case] windows_path: &str, #[case] unix_path: &str) {
+    fn test_windows_path_to_unix_path(#[case] windows_path: &str, #[case] unix_path: &str) {
         assert_eq!(
             windows_path_to_unix_path(WindowsPath::new(windows_path))
                 .to_str()

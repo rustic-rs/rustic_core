@@ -32,6 +32,7 @@ use crate::backend::node::NodeType;
 use crate::{
     backend::node::{ExtendedAttribute, Metadata, Node},
     error::{ErrorKind, RusticError, RusticResult},
+    util::{typed_path_to_path, unix_path_to_path},
 };
 
 /// [`LocalDestinationErrorKind`] describes the errors that can be returned by an action on the filesystem in Backends
@@ -103,9 +104,8 @@ pub enum LocalDestinationErrorKind {
         filename: PathBuf,
         source: std::io::Error,
     },
-    #[cfg(windows)]
     /// Non-UTF8 filename is not allowed: `{0:?}`
-    Utf8Error(std::str::Utf8Error),
+    Utf8Error(#[from] std::str::Utf8Error),
 }
 
 pub(crate) type LocalDestinationResult<T> = Result<T, LocalDestinationErrorKind>;
@@ -198,18 +198,8 @@ impl LocalDestination {
         if self.is_file {
             return Ok(self.path.clone());
         }
-        #[cfg(not(windows))]
-        {
-            let item = PathBuf::from(item.as_ref());
-            Ok(self.path.join(item))
-        }
-        #[cfg(windows)]
-        {
-            // only utf8 items are allowed on windows
-            let item = std::str::from_utf8(item.as_ref().as_bytes())
-                .map_err(LocalDestinationErrorKind::Utf8Error)?;
-            Ok(self.path.join(item))
-        }
+        let item = unix_path_to_path(item.as_ref())?;
+        Ok(self.path.join(item))
     }
 
     /// Remove the given directory (relative to the base path)
@@ -648,11 +638,12 @@ impl LocalDestination {
 
         match &node.node_type {
             NodeType::Symlink { .. } => {
-                let linktarget: PathBuf =
-                    node.node_type.to_link().to_path_buf().try_into().unwrap(); // TODO: Error handling
-                symlink(linktarget.clone(), &filename).map_err(|err| {
+                let linktarget = node.node_type.to_link();
+                let linktarget = typed_path_to_path(&linktarget)
+                    .map_err(LocalDestinationErrorKind::Utf8Error)?;
+                symlink(&linktarget, &filename).map_err(|err| {
                     LocalDestinationErrorKind::SymlinkingFailed {
-                        linktarget,
+                        linktarget: linktarget.to_path_buf(),
                         filename,
                         source: err,
                     }
