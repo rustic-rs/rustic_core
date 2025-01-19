@@ -31,6 +31,7 @@ use crate::{
         node::{Metadata, Node, NodeType},
     },
     error::{ErrorKind, RusticError, RusticResult},
+    util::path_to_unix_path,
 };
 
 /// [`IgnoreErrorKind`] describes the errors that can be returned by a Ignore action in Backends
@@ -59,6 +60,8 @@ pub enum IgnoreErrorKind {
     #[cfg(not(windows))]
     /// Error acquiring metadata for `{name}`: `{source:?}`
     AcquiringMetadataFailed { name: String, source: ignore::Error },
+    /// Non-UTF8 filename is not allowed: `{0:?}`
+    Utf8Error(#[from] std::str::Utf8Error),
 }
 
 pub(crate) type IgnoreResult<T> = Result<T, IgnoreErrorKind>;
@@ -530,9 +533,7 @@ fn map_entry(
     let path = entry.into_path();
     let open = Some(OpenFile(path.clone()));
     let path = path.strip_prefix(base_path).unwrap();
-    let path = WindowsPath::new(path.as_os_str().as_encoded_bytes())
-        .to_path_buf()
-        .with_encoding::<UnixEncoding>();
+    let path = path_to_unix_path(path)?.to_path_buf();
     Ok(ReadSourceEntry { path, node, open })
 }
 
@@ -731,7 +732,7 @@ fn map_entry(
     let path = entry.into_path();
     let open = Some(OpenFile(path.clone()));
     let path = path.strip_prefix(base_path).unwrap();
-    let path = UnixPath::new(path.as_os_str().as_encoded_bytes()).to_path_buf();
+    let path = path_to_unix_path(path)?.to_path_buf();
     Ok(ReadSourceEntry { path, node, open })
 }
 
