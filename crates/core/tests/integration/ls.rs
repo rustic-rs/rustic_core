@@ -6,12 +6,12 @@ use insta::Settings;
 use rstest::rstest;
 
 use rustic_core::{
-    repofile::{Metadata, Node, SnapshotFile},
     BackupOptions, LsOptions, RusticResult,
+    repofile::{Metadata, Node, SnapshotFile},
 };
 
 use super::{
-    assert_with_win, insta_node_redaction, set_up_repo, tar_gz_testdata, RepoOpen, TestSource,
+    RepoOpen, TestSource, assert_with_win, insta_node_redaction, set_up_repo, tar_gz_testdata,
 };
 
 #[rstest]

@@ -8,11 +8,11 @@ use globset::Glob;
 use rstest::rstest;
 
 use rustic_core::{
-    repofile::{Node, SnapshotFile},
     BackupOptions, FindMatches, FindNode,
+    repofile::{Node, SnapshotFile},
 };
 
-use super::{assert_with_win, set_up_repo, tar_gz_testdata, RepoOpen, TestSource};
+use super::{RepoOpen, TestSource, assert_with_win, set_up_repo, tar_gz_testdata};
 
 #[rstest]
 fn test_find(tar_gz_testdata: Result<TestSource>, set_up_repo: Result<RepoOpen>) -> Result<()> {

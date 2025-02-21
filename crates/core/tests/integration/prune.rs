@@ -4,10 +4,10 @@ use anyhow::Result;
 use rstest::rstest;
 
 use rustic_core::{
-    repofile::SnapshotFile, BackupOptions, CheckOptions, LimitOption, PathList, PruneOptions,
+    BackupOptions, CheckOptions, LimitOption, PathList, PruneOptions, repofile::SnapshotFile,
 };
 
-use super::{set_up_repo, tar_gz_testdata, RepoOpen, TestSource};
+use super::{RepoOpen, TestSource, set_up_repo, tar_gz_testdata};
 
 #[rstest]
 fn test_prune(

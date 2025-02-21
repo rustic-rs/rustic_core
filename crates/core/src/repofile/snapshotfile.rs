@@ -16,16 +16,16 @@ use itertools::Itertools;
 use log::info;
 use path_dedot::ParseDot;
 use serde_derive::{Deserialize, Serialize};
-use serde_with::{DisplayFromStr, serde_as, skip_serializing_none};
+use serde_with::{serde_as, skip_serializing_none, DisplayFromStr};
 
 use crate::{
-    Id,
-    backend::{FileType, FindInBackend, decrypt::DecryptReadBackend},
+    backend::{decrypt::DecryptReadBackend, FileType, FindInBackend},
     blob::tree::TreeId,
     error::{ErrorKind, RusticError, RusticResult},
     impl_repofile,
     progress::Progress,
     repofile::RepoFile,
+    Id,
 };
 
 /// [`SnapshotFileErrorKind`] describes the errors that can be returned for `SnapshotFile`s

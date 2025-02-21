@@ -38,14 +38,13 @@ use std::{env, fs::File, path::Path, sync::Arc};
 use anyhow::Result;
 use flate2::read::GzDecoder;
 use insta::{
-    assert_ron_snapshot,
+    Settings, assert_ron_snapshot,
     internals::{Content, ContentPath},
-    Settings,
 };
 use rstest::fixture;
 use serde::Serialize;
 use tar::Archive;
-use tempfile::{tempdir, TempDir};
+use tempfile::{TempDir, tempdir};
 // uncomment for logging output
 // use simplelog::{Config, SimpleLogger};
 
