@@ -4,7 +4,7 @@ version = "0.2.2"
 authors = ["the rustic-rs team"]
 categories = ["config"]
 documentation = "https://docs.rs/rustic_config"
-edition = "2021"
+edition = "2024"
 homepage = "https://rustic.cli.rs/"
 include = ["src/**/*", "LICENSE-*", "README.md"]
 keywords = ["backup", "restic", "deduplication", "encryption", "library"]
@@ -12,7 +12,7 @@ license = "Apache-2.0 OR MIT"
 publish = true
 readme = "README.md"
 repository = "https://github.com/rustic-rs/rustic_core"
-resolver = "2"
+resolver = "3"
 rust-version = { workspace = true }
 description = """
 rustic_config - library for configuration support in rustic-rs

@@ -16,16 +16,16 @@ use itertools::Itertools;
 use log::info;
 use path_dedot::ParseDot;
 use serde_derive::{Deserialize, Serialize};
-use serde_with::{serde_as, skip_serializing_none, DisplayFromStr};
+use serde_with::{DisplayFromStr, serde_as, skip_serializing_none};
 
 use crate::{
-    backend::{decrypt::DecryptReadBackend, FileType, FindInBackend},
+    Id,
+    backend::{FileType, FindInBackend, decrypt::DecryptReadBackend},
     blob::tree::TreeId,
     error::{ErrorKind, RusticError, RusticResult},
     impl_repofile,
     progress::Progress,
     repofile::RepoFile,
-    Id,
 };
 
 /// [`SnapshotFileErrorKind`] describes the errors that can be returned for `SnapshotFile`s
@@ -738,10 +738,10 @@ impl SnapshotFile {
         group
             .hostname
             .as_ref()
-            .map_or(true, |val| val == &self.hostname)
-            && group.label.as_ref().map_or(true, |val| val == &self.label)
-            && group.paths.as_ref().map_or(true, |val| val == &self.paths)
-            && group.tags.as_ref().map_or(true, |val| val == &self.tags)
+            .is_none_or(|val| val == &self.hostname)
+            && group.label.as_ref().is_none_or(|val| val == &self.label)
+            && group.paths.as_ref().is_none_or(|val| val == &self.paths)
+            && group.tags.as_ref().is_none_or(|val| val == &self.tags)
     }
 
     /// Get [`SnapshotFile`]s which match the filter grouped by the group criterion

@@ -6,10 +6,10 @@ members = [
   "crates/testing",
   "examples/*",
 ]
-resolver = "2"
+resolver = "3"
 
 [workspace.package]
-rust-version = "1.76.0"
+rust-version = "1.85.0"
 
 [workspace.dependencies]
 # Internal Dependencies
@@ -106,6 +106,7 @@ pedantic = { level = "warn", priority = -1 }
 nursery = { level = "warn", priority = -1 }
 # expect_used = "warn" # TODO!
 # unwrap_used = "warn" # TODO!
+literal_string_with_formatting_args = "allow"
 enum_glob_use = "warn"
 correctness = { level = "warn", priority = -1 }
 suspicious = { level = "warn", priority = -1 }
