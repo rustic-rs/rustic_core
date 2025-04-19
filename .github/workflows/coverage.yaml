@@ -7,9 +7,9 @@ concurrency:
 on:
   push:
     paths:
-      - '**.rs'
-      - '**.snap'
-      - '**.yml'
+      - "**.rs"
+      - "**.snap"
+      - "**.yml"
 jobs:
   test:
     name: Generate Coverage Report
@@ -20,20 +20,20 @@ jobs:
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
 
       - name: Install cargo-tarpaulin
-        uses: taiki-e/install-action@8484225d9734e230a8bf38421a4ffec1cc249372 # v2
+        uses: taiki-e/install-action@2dbeb927f58939d3aa13bf06ba0c0a34b76b9bfb # v2
         with:
           tool: cargo-tarpaulin
 
       # We run the coverage report on the workspace, but we configured in codecov to only look at parts of the workspace essentially
-      # 
+      #
       # This is because we have a workspace with multiple crates, and we want to generate coverage for all of them, but we only want to
       # report the coverage of rustic_backend and rustic_core crates (currently) as this is where the main logic is
       - name: Generate code coverage
-        env: 
+        env:
           RUST_BACKTRACE: "0"
         run: |
           cargo tarpaulin --verbose --all-features --workspace --timeout 120 --out xml
-      
+
       - name: Upload coverage reports to Codecov
         uses: codecov/codecov-action@1e68e06f1dbfde0e4cefc87efeba9e4643565303 # v5
         with:

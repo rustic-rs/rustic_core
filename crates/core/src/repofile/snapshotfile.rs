@@ -738,10 +738,10 @@ impl SnapshotFile {
         group
             .hostname
             .as_ref()
-            .map_or(true, |val| val == &self.hostname)
-            && group.label.as_ref().map_or(true, |val| val == &self.label)
-            && group.paths.as_ref().map_or(true, |val| val == &self.paths)
-            && group.tags.as_ref().map_or(true, |val| val == &self.tags)
+            .is_none_or(|val| val == &self.hostname)
+            && group.label.as_ref().is_none_or(|val| val == &self.label)
+            && group.paths.as_ref().is_none_or(|val| val == &self.paths)
+            && group.tags.as_ref().is_none_or(|val| val == &self.tags)
     }
 
     /// Get [`SnapshotFile`]s which match the filter grouped by the group criterion

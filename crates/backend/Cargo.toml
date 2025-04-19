@@ -12,7 +12,7 @@ license = "Apache-2.0 OR MIT"
 publish = true
 readme = "README.md"
 repository = "https://github.com/rustic-rs/rustic_core/tree/main/crates/backend"
-resolver = "2"
+resolver = "3"
 rust-version = { workspace = true }
 description = """
 rustic_backend - library for supporting various backends in rustic-rs

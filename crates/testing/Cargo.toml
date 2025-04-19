@@ -1,9 +1,10 @@
 [package]
 name = "rustic_testing"
 version = "0.3.2"
-edition = "2021"
+edition = "2024"
 license = "Apache-2.0 OR MIT"
 publish = true
+resolver = "3"
 rust-version = { workspace = true }
 description = """
 rustic_testuing - library for test support in rustic-rs

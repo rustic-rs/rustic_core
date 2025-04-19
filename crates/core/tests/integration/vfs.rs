@@ -6,10 +6,10 @@ use insta::Settings;
 use pretty_assertions::assert_eq;
 use rstest::rstest;
 
-use rustic_core::{repofile::SnapshotFile, vfs::Vfs, BackupOptions};
+use rustic_core::{BackupOptions, repofile::SnapshotFile, vfs::Vfs};
 
 use super::{
-    assert_with_win, insta_node_redaction, set_up_repo, tar_gz_testdata, RepoOpen, TestSource,
+    RepoOpen, TestSource, assert_with_win, insta_node_redaction, set_up_repo, tar_gz_testdata,
 };
 
 #[rstest]

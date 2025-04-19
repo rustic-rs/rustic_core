@@ -9,14 +9,14 @@ use pretty_assertions::assert_eq;
 use rstest::rstest;
 
 use rustic_core::{
-    repofile::{PackId, SnapshotFile},
     BackupOptions, CommandInput, ParentOptions, PathList, SnapshotGroupCriterion, SnapshotOptions,
     StringList,
+    repofile::{PackId, SnapshotFile},
 };
 
 use super::{
-    assert_with_win, insta_node_redaction, insta_snapshotfile_redaction, set_up_repo,
-    tar_gz_testdata, RepoOpen, TestSource,
+    RepoOpen, TestSource, assert_with_win, insta_node_redaction, insta_snapshotfile_redaction,
+    set_up_repo, tar_gz_testdata,
 };
 
 #[rstest]
