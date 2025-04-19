@@ -1,5 +1,8 @@
 //! Testing utilities for the `rustic` ecosystem.
 
+// formatting args are used for error messages
+#![allow(clippy::literal_string_with_formatting_args)]
+
 /// Backends to be used solely for testing.
 pub mod backend;
 

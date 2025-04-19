@@ -101,6 +101,8 @@ This crate exposes a few features for controlling dependency usage.
 
 // Workspace lints don't seem to work for this?
 #![allow(clippy::redundant_pub_crate)]
+// formatting args are used for error messages
+#![allow(clippy::literal_string_with_formatting_args)]
 
 pub(crate) mod archiver;
 pub(crate) mod backend;

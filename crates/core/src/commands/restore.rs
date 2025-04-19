@@ -393,24 +393,24 @@ pub(crate) fn set_metadata(
     path: &PathBuf,
     node: &Node,
 ) {
-    debug!("setting metadata for {:?}", path);
+    debug!("setting metadata for {path:?}");
     dest.create_special(path, node)
-        .unwrap_or_else(|_| warn!("restore {:?}: creating special file failed.", path));
+        .unwrap_or_else(|_| warn!("restore {path:?}: creating special file failed."));
     match (opts.no_ownership, opts.numeric_id) {
         (true, _) => {}
         (false, true) => dest
             .set_uid_gid(path, &node.meta)
-            .unwrap_or_else(|_| warn!("restore {:?}: setting UID/GID failed.", path)),
+            .unwrap_or_else(|_| warn!("restore {path:?}: setting UID/GID failed.")),
         (false, false) => dest
             .set_user_group(path, &node.meta)
-            .unwrap_or_else(|_| warn!("restore {:?}: setting User/Group failed.", path)),
+            .unwrap_or_else(|_| warn!("restore {path:?}: setting User/Group failed.")),
     }
     dest.set_permission(path, node)
-        .unwrap_or_else(|_| warn!("restore {:?}: chmod failed.", path));
+        .unwrap_or_else(|_| warn!("restore {path:?}: chmod failed."));
     dest.set_extended_attributes(path, &node.meta.extended_attributes)
-        .unwrap_or_else(|_| warn!("restore {:?}: setting extended attributes failed.", path));
+        .unwrap_or_else(|_| warn!("restore {path:?}: setting extended attributes failed."));
     dest.set_times(path, &node.meta)
-        .unwrap_or_else(|_| warn!("restore {:?}: setting file times failed.", path));
+        .unwrap_or_else(|_| warn!("restore {path:?}: setting file times failed."));
 }
 
 /// [`restore_contents`] restores all files contents as described by `file_infos`

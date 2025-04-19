@@ -9,8 +9,8 @@ use bytes::Bytes;
 use constants::DEFAULT_COMMAND;
 use log::{debug, info};
 use rand::{
-    distributions::{Alphanumeric, DistString},
-    thread_rng,
+    distr::{Alphanumeric, SampleString},
+    rng,
 };
 use semver::{BuildMetadata, Prerelease, Version, VersionReq};
 
@@ -175,8 +175,8 @@ impl RcloneBackend {
             check_clone_version(rclone_version_output.as_slice())?;
         }
 
-        let user = Alphanumeric.sample_string(&mut thread_rng(), 12);
-        let password = Alphanumeric.sample_string(&mut thread_rng(), 12);
+        let user = Alphanumeric.sample_string(&mut rng(), 12);
+        let password = Alphanumeric.sample_string(&mut rng(), 12);
 
         let mut rclone_command = rclone_command.map_or(DEFAULT_COMMAND.to_string(), Clone::clone);
         rclone_command.push(' ');
