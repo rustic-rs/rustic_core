@@ -817,7 +817,7 @@ mod tests {
                 assert!(test_size <= size && size <= test_size + u64::from(PACK_SIZE));
             }
             ReadSubsetOption::IdSubSet(_) => {}
-        };
+        }
 
         let ids: Vec<_> = packs.iter().map(|pack| (pack.id, pack.size)).collect();
         assert_ron_snapshot!(s, ids);

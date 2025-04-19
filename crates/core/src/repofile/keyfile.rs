@@ -393,7 +393,7 @@ pub(crate) fn find_key_in_backend<B: ReadBackend>(
         for id in be.list(FileType::Key)? {
             match key_from_backend(be, &id.into(), passwd) {
                 Ok(key) => return Ok(key),
-                Err(err) if err.is_code("C001") => continue,
+                Err(err) if err.is_code("C001") => {}
                 err => return err,
             }
         }

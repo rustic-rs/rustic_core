@@ -395,7 +395,7 @@ impl RusticError {
                 });
 
             _ = write!(fmt, "{guidance}");
-        };
+        }
 
         _ = write!(fmt, " (kind: related to {}", self.kind);
 

@@ -87,7 +87,7 @@ This crate exposes a few features for controlling dependency usage.
   features. *This feature is disabled by default*.
 
 - **clap** - Enables a dependency on the `clap` crate and enables parsing from
-    the commandline. *This feature is disabled by default*.
+  the commandline. *This feature is disabled by default*.
 
 - **merge** - Enables support for merging multiple values into one, which
   enables the `conflate` dependency. This is needed for parsing commandline
