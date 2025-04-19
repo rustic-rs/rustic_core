@@ -1,6 +1,6 @@
 use std::io::{self, Read};
 
-use rand::{thread_rng, Rng};
+use rand::{rng, Rng};
 use rustic_cdc::{Polynom, Polynom64, Rabin64, RollingHash64};
 
 use crate::error::{ErrorKind, RusticError, RusticResult};
@@ -179,7 +179,7 @@ impl<R: Read + Send> Iterator for ChunkIter<R> {
 /// * If no polynomial could be found in one million tries.
 pub fn random_poly() -> RusticResult<u64> {
     for _ in 0..constants::RAND_POLY_MAX_TRIES {
-        let mut poly: u64 = thread_rng().gen();
+        let mut poly: u64 = rng().random();
 
         // mask away bits above bit 53
         poly &= (1 << 54) - 1;

@@ -133,15 +133,15 @@ impl<'a, BE: DecryptWriteBackend, I: ReadGlobalIndex> TreeArchiver<'a, BE, I> {
         let filename = path.join(node.name());
         match parent {
             ParentResult::Matched(()) => {
-                debug!("unchanged file: {:?}", filename);
+                debug!("unchanged file: {filename:?}");
                 self.summary.files_unmodified += 1;
             }
             ParentResult::NotMatched => {
-                debug!("changed   file: {:?}", filename);
+                debug!("changed   file: {filename:?}");
                 self.summary.files_changed += 1;
             }
             ParentResult::NotFound => {
-                debug!("new       file: {:?}", filename);
+                debug!("new       file: {filename:?}");
                 self.summary.files_new += 1;
             }
         }
@@ -175,23 +175,23 @@ impl<'a, BE: DecryptWriteBackend, I: ReadGlobalIndex> TreeArchiver<'a, BE, I> {
             .ask_report()
         })?;
         let dirsize = chunk.len() as u64;
-        let dirsize_bytes = ByteSize(dirsize).to_string_as(true);
+        let dirsize_bytes = ByteSize(dirsize).display().iec().to_string();
 
         self.summary.total_dirs_processed += 1;
         self.summary.total_dirsize_processed += dirsize;
         match parent {
             ParentResult::Matched(p_id) if id == *p_id => {
-                debug!("unchanged tree: {:?}", path);
+                debug!("unchanged tree: {path:?}");
                 self.summary.dirs_unmodified += 1;
                 return Ok(id);
             }
             ParentResult::NotFound => {
-                debug!("new       tree: {:?} {}", path, dirsize_bytes);
+                debug!("new       tree: {path:?} {dirsize_bytes}");
                 self.summary.dirs_new += 1;
             }
             _ => {
                 // "Matched" trees where the subtree id does not match or unmatched trees
-                debug!("changed   tree: {:?} {}", path, dirsize_bytes);
+                debug!("changed   tree: {path:?} {dirsize_bytes}");
                 self.summary.dirs_changed += 1;
             }
         }

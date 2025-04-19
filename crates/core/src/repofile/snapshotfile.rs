@@ -1021,7 +1021,7 @@ impl FromStr for SnapshotGroupCriterion {
                 "label" => crit.label = true,
                 "paths" => crit.paths = true,
                 "tags" => crit.tags = true,
-                "" => continue,
+                "" => {}
                 v => return Err(SnapshotFileErrorKind::ValueNotAllowed(v.into())),
             }
         }

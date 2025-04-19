@@ -4,7 +4,7 @@ use std::{fmt, io::Read, ops::Deref, path::Path, str::FromStr};
 
 use binrw::{BinRead, BinWrite};
 use derive_more::{Constructor, Display};
-use rand::{thread_rng, RngCore};
+use rand::{rng, RngCore};
 use serde_derive::{Deserialize, Serialize};
 
 use crate::{
@@ -132,7 +132,7 @@ impl Id {
     /// Generate a random `Id`.
     #[must_use]
     pub fn random() -> Self {
-        Self::random_from_rng(&mut thread_rng())
+        Self::random_from_rng(&mut rng())
     }
 
     /// Convert to [`HexId`].

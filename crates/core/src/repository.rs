@@ -210,7 +210,7 @@ impl RepositoryOptions {
                 let process = match run_command {
                     Ok(process) => process,
                     Err(err) => {
-                        error!("password-command could not be executed: {}", err);
+                        error!("password-command could not be executed: {err}");
                         return Err(RusticError::with_source(
                             ErrorKind::Password,
                             "Password command `{command}` could not be executed",

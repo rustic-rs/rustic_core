@@ -262,7 +262,7 @@ pub(crate) fn backup<P: ProgressBars, S: IndexedIds>(
                     .join(","),
             )
         })?,
-    };
+    }
 
     let (parent_id, parent) = opts.parent_opts.get_parent(repo, &snap, backup_stdin);
     match parent_id {
@@ -273,7 +273,7 @@ pub(crate) fn backup<P: ProgressBars, S: IndexedIds>(
         None => {
             info!("using no parent");
         }
-    };
+    }
 
     let be = DryRunBackend::new(repo.dbe().clone(), opts.dry_run);
     info!("starting to backup {source} ...");

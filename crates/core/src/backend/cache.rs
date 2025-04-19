@@ -151,7 +151,7 @@ impl ReadBackend for CachedBackend {
                     "Error in cache backend reading {tpe:?},{id}: {}",
                     err.display_log()
                 ),
-            };
+            }
             // read full file, save to cache and return partial content
             match self.be.read_full(tpe, id) {
                 Ok(data) => {

@@ -1027,7 +1027,7 @@ pub(crate) fn merge_trees(
                 // use this node as new node
                 (node, num) = (new_node, new_num);
             }
-        };
+        }
     }
     let (id, size) = save(tree)?;
     if trees.contains(&id) {

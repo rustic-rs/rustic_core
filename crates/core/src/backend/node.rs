@@ -424,7 +424,7 @@ fn escape_filename(name: &OsStr) -> String {
                 '\t' => s.push_str("\\t"),
                 '\u{b}' => s.push_str("\\v"),
                 c => s.push(c),
-            };
+            }
         }
     };
 

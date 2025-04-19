@@ -153,7 +153,7 @@ impl VfsTree {
                             tree = new_tree;
                         } else {
                             return Err(VfsErrorKind::NameDoesNotExist(name.to_os_string()));
-                        };
+                        }
                     }
                     None => {
                         return Ok(VfsPath::VirtualTree(virtual_tree));
