@@ -754,7 +754,7 @@ pub mod mapper {
             // note that POSIX specifies regular files, whereas golang specifies irregular files
             S_IFREG => {}
             _ => go_mode |= GO_MODE_IRREG,
-        };
+        }
 
         if mode & S_ISUID > 0 {
             go_mode |= GO_MODE_SETUID;

@@ -1,5 +1,5 @@
 use chrono::{DateTime, Local};
-use rand::{thread_rng, RngCore};
+use rand::{rng, RngCore};
 use scrypt::Params;
 use serde_derive::{Deserialize, Serialize};
 use serde_with::{base64::Base64, serde_as, skip_serializing_none};
@@ -199,7 +199,7 @@ impl KeyFile {
         let masterkey = MasterKey::from_key(key);
         let params = Params::recommended();
         let mut salt = vec![0; 64];
-        thread_rng().fill_bytes(&mut salt);
+        rng().fill_bytes(&mut salt);
 
         let mut key = [0; 64];
         scrypt::scrypt(passwd.as_ref(), &salt, &params, &mut key).map_err(|err| {
@@ -393,7 +393,7 @@ pub(crate) fn find_key_in_backend<B: ReadBackend>(
         for id in be.list(FileType::Key)? {
             match key_from_backend(be, &id.into(), passwd) {
                 Ok(key) => return Ok(key),
-                Err(err) if err.is_code("C001") => continue,
+                Err(err) if err.is_code("C001") => {}
                 err => return err,
             }
         }

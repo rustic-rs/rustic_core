@@ -52,6 +52,9 @@ This crate exposes a few features for controlling dependency usage:
   default*.
 */
 
+// formatting args are used for error messages
+#![allow(clippy::literal_string_with_formatting_args)]
+
 pub mod choose;
 /// Local backend for Rustic.
 pub mod local;

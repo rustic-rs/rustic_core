@@ -11,7 +11,7 @@ use bytesize::ByteSize;
 use chrono::{Datelike, Local, NaiveDateTime, Timelike};
 use derive_setters::Setters;
 use log::{debug, error, warn};
-use rand::{prelude::SliceRandom, thread_rng, Rng};
+use rand::{prelude::SliceRandom, rng, Rng};
 use rayon::prelude::{IntoParallelIterator, ParallelIterator};
 use zstd::stream::decode_all;
 
@@ -50,7 +50,7 @@ pub enum ReadSubsetOption {
 
 impl ReadSubsetOption {
     fn apply(self, packs: impl IntoIterator<Item = IndexPack>) -> Vec<IndexPack> {
-        self.apply_with_rng(packs, &mut thread_rng())
+        self.apply_with_rng(packs, &mut rng())
     }
 
     fn apply_with_rng(
@@ -737,7 +737,7 @@ fn check_pack(
     if pack_blobs != blobs {
         error!("pack {id}: Header from pack file does not match the index");
         debug!("pack file header: {pack_blobs:?}");
-        debug!("index: {:?}", blobs);
+        debug!("index: {blobs:?}");
         return Ok(());
     }
     p.inc(u64::from(header_len) + 4);
@@ -786,7 +786,7 @@ mod tests {
                 id: PackId::from(Id::random_from_rng(rng)),
                 blobs: Vec::new(),
                 time: None,
-                size: Some(rng.gen_range(0..PACK_SIZE)),
+                size: Some(rng.random_range(0..PACK_SIZE)),
             })
             .collect()
     }
@@ -817,7 +817,7 @@ mod tests {
                 assert!(test_size <= size && size <= test_size + u64::from(PACK_SIZE));
             }
             ReadSubsetOption::IdSubSet(_) => {}
-        };
+        }
 
         let ids: Vec<_> = packs.iter().map(|pack| (pack.id, pack.size)).collect();
         assert_ron_snapshot!(s, ids);
@@ -865,7 +865,7 @@ mod tests {
     }
 
     fn test_read_subset_n_m() {
-        let test_packs = test_packs(&mut thread_rng());
+        let test_packs = test_packs(&mut rng());
         let mut all_packs: BTreeSet<_> = test_packs.iter().map(|pack| pack.id).collect();
 
         let mut run_with = |s: &str| {

@@ -55,7 +55,7 @@ pub(crate) fn init<P, S>(
     config_opts.apply(&mut config)?;
 
     let key = init_with_config(repo, pass, key_opts, &config)?;
-    info!("repository {} successfully created.", repo_id);
+    info!("repository {repo_id} successfully created.");
 
     Ok((key, config))
 }

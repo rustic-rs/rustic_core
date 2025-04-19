@@ -353,9 +353,7 @@ impl RusticError {
 
     /// Checks if the error has a specific error code.
     pub fn is_code(&self, code: &str) -> bool {
-        self.error_code
-            .as_ref()
-            .map_or(false, |c| c.as_str() == code)
+        self.error_code.as_ref().is_some_and(|c| c.as_str() == code)
     }
 
     /// Checks if the error is due to an incorrect password
@@ -397,7 +395,7 @@ impl RusticError {
                 });
 
             _ = write!(fmt, "{guidance}");
-        };
+        }
 
         _ = write!(fmt, " (kind: related to {}", self.kind);
 

@@ -205,7 +205,7 @@ impl ReadBackend for OpenDALBackend {
     /// This is `local:<path>`.
     fn location(&self) -> String {
         let mut location = "opendal:".to_string();
-        location.push_str(self.operator.info().name());
+        location.push_str(&self.operator.info().name());
         location
     }
 
@@ -448,7 +448,7 @@ impl WriteBackend for OpenDALBackend {
     ) -> RusticResult<()> {
         trace!("writing tpe: {:?}, id: {}", &tpe, &id);
         let filename = self.path(tpe, id);
-        self.operator.write(&filename, buf).map_err(|err| {
+        _ = self.operator.write(&filename, buf).map_err(|err| {
             RusticError::with_source(
                 ErrorKind::Backend,
                 "Writing file `{path}` failed in the backend. Please check if the given path is correct.",

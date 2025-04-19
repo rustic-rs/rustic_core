@@ -185,6 +185,6 @@ impl<BE: DecryptWriteBackend> Indexer<BE> {
     pub fn has(&self, id: &BlobId) -> bool {
         self.indexed
             .as_ref()
-            .map_or(false, |indexed| indexed.contains(id))
+            .is_some_and(|indexed| indexed.contains(id))
     }
 }

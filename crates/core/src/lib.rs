@@ -87,7 +87,7 @@ This crate exposes a few features for controlling dependency usage.
   features. *This feature is disabled by default*.
 
 - **clap** - Enables a dependency on the `clap` crate and enables parsing from
-    the commandline. *This feature is disabled by default*.
+  the commandline. *This feature is disabled by default*.
 
 - **merge** - Enables support for merging multiple values into one, which
   enables the `conflate` dependency. This is needed for parsing commandline
@@ -101,6 +101,8 @@ This crate exposes a few features for controlling dependency usage.
 
 // Workspace lints don't seem to work for this?
 #![allow(clippy::redundant_pub_crate)]
+// formatting args are used for error messages
+#![allow(clippy::literal_string_with_formatting_args)]
 
 pub(crate) mod archiver;
 pub(crate) mod backend;

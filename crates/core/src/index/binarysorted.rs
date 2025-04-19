@@ -127,7 +127,7 @@ impl IndexCollector {
                 EntriesVariants::None => {}
                 EntriesVariants::Ids(ids) => ids.par_sort_unstable(),
                 EntriesVariants::FullEntries(entries) => entries.par_sort_unstable_by_key(|e| e.id),
-            };
+            }
 
             let packs = tc.packs.into_iter().map(|(id, _)| id).collect();
             TypeIndex {
@@ -158,7 +158,7 @@ impl Extend<IndexPack> for IndexCollector {
                 EntriesVariants::None => {}
                 EntriesVariants::Ids(idents) => idents.reserve(len),
                 EntriesVariants::FullEntries(entries) => entries.reserve(len),
-            };
+            }
 
             for blob in &p.blobs {
                 let be = SortedEntry {
@@ -172,7 +172,7 @@ impl Extend<IndexPack> for IndexCollector {
                     EntriesVariants::None => {}
                     EntriesVariants::Ids(idents) => idents.push(blob.id),
                     EntriesVariants::FullEntries(entries) => entries.push(be),
-                };
+                }
             }
         }
     }

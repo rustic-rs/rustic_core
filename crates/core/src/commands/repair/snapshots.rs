@@ -224,7 +224,7 @@ pub(crate) fn repair_tree<BE: DecryptWriteBackend>(
 
             for mut node in tree {
                 match node.node_type {
-                    NodeType::File {} => {
+                    NodeType::File => {
                         let mut file_changed = false;
                         let mut new_content = Vec::new();
                         let mut new_size = 0;
@@ -250,7 +250,7 @@ pub(crate) fn repair_tree<BE: DecryptWriteBackend>(
                         node.content = Some(new_content);
                         node.meta.size = new_size;
                     }
-                    NodeType::Dir {} => {
+                    NodeType::Dir => {
                         let (c, tree_id) =
                             repair_tree(be, opts, index, packer, node.subtree, state, dry_run)?;
                         match c {

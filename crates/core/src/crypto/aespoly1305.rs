@@ -2,7 +2,7 @@ use aes256ctr_poly1305aes::{
     aead::{self, Aead, AeadInPlace},
     Aes256CtrPoly1305Aes,
 };
-use rand::{thread_rng, RngCore};
+use rand::{rng, RngCore};
 
 use crate::{
     crypto::CryptoKey,
@@ -30,7 +30,7 @@ impl Key {
     #[must_use]
     pub fn new() -> Self {
         let mut key = AeadKey::default();
-        thread_rng().fill_bytes(&mut key);
+        rng().fill_bytes(&mut key);
         Self(key)
     }
 
@@ -118,7 +118,7 @@ impl CryptoKey for Key {
     /// * If the data could not be encrypted.
     fn encrypt_data(&self, data: &[u8]) -> RusticResult<Vec<u8>> {
         let mut nonce = Nonce::default();
-        thread_rng().fill_bytes(&mut nonce);
+        rng().fill_bytes(&mut nonce);
 
         let mut res = Vec::with_capacity(data.len() + 32);
         res.extend_from_slice(&nonce);
