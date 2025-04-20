@@ -4,8 +4,9 @@ use std::{fmt, io::Read, ops::Deref, path::Path, str::FromStr};
 
 use binrw::{BinRead, BinWrite};
 use derive_more::{Constructor, Display};
-use rand::{rng, RngCore};
+use rand::{RngCore, rng};
 use serde_derive::{Deserialize, Serialize};
+use sub_array::SubArray;
 
 use crate::{
     crypto::hasher::hash,
@@ -194,7 +195,13 @@ impl Id {
     /// returns the first 4 bytes as u32 (interpreted as little endian)
     #[must_use]
     pub fn as_u32(&self) -> u32 {
-        u32::from_le_bytes([self.0[0], self.0[1], self.0[2], self.0[3]])
+        u32::from_le_bytes(*self.0.sub_array_ref(0))
+    }
+
+    /// returns the first bytes as usize (interpreted as little endian)
+    #[must_use]
+    pub fn as_usize(&self) -> usize {
+        usize::from_be_bytes(*self.0.sub_array_ref(0))
     }
 }
 

@@ -112,7 +112,7 @@ pub(crate) mod commands;
 pub(crate) mod crypto;
 pub(crate) mod error;
 pub(crate) mod id;
-pub(crate) mod index;
+pub mod index;
 pub(crate) mod progress;
 /// Structs which are saved in JSON or binary format in the repository
 pub mod repofile;
@@ -123,16 +123,16 @@ pub mod vfs;
 // rustic_core Public API
 pub use crate::{
     backend::{
+        ALL_FILE_TYPES, FileType, ReadBackend, ReadSource, ReadSourceEntry, ReadSourceOpen,
+        RepositoryBackends, WriteBackend,
         decrypt::{compression_level_range, max_compression_level},
         ignore::{LocalSource, LocalSourceFilterOptions, LocalSourceSaveOptions},
         local_destination::LocalDestination,
         node::last_modified_node,
-        FileType, ReadBackend, ReadSource, ReadSourceEntry, ReadSourceOpen, RepositoryBackends,
-        WriteBackend, ALL_FILE_TYPES,
     },
     blob::{
-        tree::{FindMatches, FindNode, TreeId, TreeStreamerOptions as LsOptions},
         BlobId, DataId, PackedId,
+        tree::{FindMatches, FindNode, TreeId, TreeStreamerOptions as LsOptions},
     },
     commands::{
         backup::{BackupOptions, ParentOptions},
@@ -153,8 +153,8 @@ pub use crate::{
         PathList, SnapshotGroup, SnapshotGroupCriterion, SnapshotOptions, StringList,
     },
     repository::{
-        command_input::{CommandInput, CommandInputErrorKind},
         FullIndex, IndexedFull, IndexedIds, IndexedStatus, IndexedTree, Open, OpenStatus,
         Repository, RepositoryOptions,
+        command_input::{CommandInput, CommandInputErrorKind},
     },
 };
