@@ -106,7 +106,7 @@ quick_cache = "0.6.13"
 shell-words = "1.1.0"
 strum = { version = "0.27.1", features = ["derive"] }
 zstd = "0.13.3"
-interpolation_search = "1.1.0"
+interpolation_search = "1.2.0"
 sub-array = "0.1.1"
 
 [target.'cfg(not(windows))'.dependencies]

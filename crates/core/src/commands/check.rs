@@ -11,26 +11,26 @@ use bytesize::ByteSize;
 use chrono::{Datelike, Local, NaiveDateTime, Timelike};
 use derive_setters::Setters;
 use log::{debug, error, warn};
-use rand::{prelude::SliceRandom, rng, Rng};
+use rand::{Rng, prelude::SliceRandom, rng};
 use rayon::prelude::{IntoParallelIterator, ParallelIterator};
 use zstd::stream::decode_all;
 
 use crate::{
-    backend::{cache::Cache, decrypt::DecryptReadBackend, node::NodeType, FileType, ReadBackend},
-    blob::{tree::TreeStreamerOnce, BlobId, BlobType},
+    ErrorKind, TreeId,
+    backend::{FileType, ReadBackend, cache::Cache, decrypt::DecryptReadBackend, node::NodeType},
+    blob::{BlobId, BlobType, tree::TreeStreamerOnce},
     crypto::hasher::hash,
     error::{RusticError, RusticResult},
     id::Id,
     index::{
-        binarysorted::{IndexCollector, IndexType},
         GlobalIndex, ReadGlobalIndex,
+        sorted::{IndexCollector, IndexType},
     },
     progress::{Progress, ProgressBars},
     repofile::{
-        packfile::PackId, IndexFile, IndexPack, PackHeader, PackHeaderLength, PackHeaderRef,
+        IndexFile, IndexPack, PackHeader, PackHeaderLength, PackHeaderRef, packfile::PackId,
     },
     repository::{Open, Repository},
-    ErrorKind, TreeId,
 };
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -530,16 +530,22 @@ fn check_packs(
 fn check_packs_list(be: &impl ReadBackend, mut packs: HashMap<PackId, u32>) -> RusticResult<()> {
     for (id, size) in be.list_with_size(FileType::Pack)? {
         match packs.remove(&PackId::from(id)) {
-            None => warn!("pack {id} not referenced in index. Can be a parallel backup job. To repair: 'rustic repair index'."),
+            None => warn!(
+                "pack {id} not referenced in index. Can be a parallel backup job. To repair: 'rustic repair index'."
+            ),
             Some(index_size) if index_size != size => {
-                error!("pack {id}: size computed by index: {index_size}, actual size: {size}. To repair: 'rustic repair index'.");
+                error!(
+                    "pack {id}: size computed by index: {index_size}, actual size: {size}. To repair: 'rustic repair index'."
+                );
             }
             _ => {} //everything ok
         }
     }
 
     for (id, _) in packs {
-        error!("pack {id} is referenced by the index but not present! To repair: 'rustic repair index'.",);
+        error!(
+            "pack {id} is referenced by the index but not present! To repair: 'rustic repair index'.",
+        );
     }
     Ok(())
 }
@@ -565,18 +571,24 @@ fn check_packs_list_hot(
                 if packs.contains_key(&PackId::from(id)) {
                     warn!("hot pack {id} is a data pack. This should not happen.");
                 } else {
-                    warn!("hot pack {id} not referenced in index. Can be a parallel backup job. To repair: 'rustic repair index'.");
+                    warn!(
+                        "hot pack {id} not referenced in index. Can be a parallel backup job. To repair: 'rustic repair index'."
+                    );
                 }
             }
             Some(index_size) if index_size != size => {
-                error!("hot pack {id}: size computed by index: {index_size}, actual size: {size}. To repair: 'rustic repair index'.");
+                error!(
+                    "hot pack {id}: size computed by index: {index_size}, actual size: {size}. To repair: 'rustic repair index'."
+                );
             }
             _ => {} //everything ok
         }
     }
 
     for (id, _) in treepacks {
-        error!("tree pack {id} is referenced by the index but not present in hot repo! To repair: 'rustic repair index'.",);
+        error!(
+            "tree pack {id} is referenced by the index but not present in hot repo! To repair: 'rustic repair index'.",
+        );
     }
     Ok(())
 }
@@ -714,7 +726,9 @@ fn check_pack(
         })?
         .to_u32();
     if pack_header_len != header_len {
-        error!("pack {id}: Header length in pack file doesn't match index. In pack: {pack_header_len}, calculated: {header_len}");
+        error!(
+            "pack {id}: Header length in pack file doesn't match index. In pack: {pack_header_len}, calculated: {header_len}"
+        );
         return Ok(());
     }
 
@@ -751,7 +765,9 @@ fn check_pack(
         if let Some(length) = blob.uncompressed_length {
             blob_data = decode_all(&*blob_data).unwrap();
             if blob_data.len() != length.get() as usize {
-                error!("pack {id}, blob {blob_id}: Actual uncompressed length does not fit saved uncompressed length");
+                error!(
+                    "pack {id}, blob {blob_id}: Actual uncompressed length does not fit saved uncompressed length"
+                );
                 return Ok(());
             }
         }
@@ -771,7 +787,7 @@ fn check_pack(
 mod tests {
     use super::*;
     use insta::assert_ron_snapshot;
-    use rand::{rngs::StdRng, Rng, SeedableRng};
+    use rand::{Rng, SeedableRng, rngs::StdRng};
     use rstest::{fixture, rstest};
 
     const PACK_SIZE: u32 = 100_000_000;

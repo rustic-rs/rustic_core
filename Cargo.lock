@@ -1891,9 +1891,9 @@ dependencies = [
 
 [[package]]
 name = "interpolation_search"
-version = "1.1.0"
+version = "1.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "611becb646c7fdbf5d57593cc39e8092b9b55ff5b9b1bff5bccac8903a55c20b"
+checksum = "a330316a19dfb70e3a8df597eb15e41dcd5d45372cfb98f6a6486f0bd751c8e5"
 
 [[package]]
 name = "ipnet"

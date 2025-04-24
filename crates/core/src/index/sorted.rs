@@ -1,5 +1,13 @@
+use interpolation_search::{InterpolationFactor, InterpolationSearch};
 use rayon::prelude::*;
 use std::num::NonZeroU32;
+
+impl InterpolationFactor for BlobId {
+    fn interpolation_factor(&self, a: &Self, b: &Self) -> f32 {
+        self.as_usize()
+            .interpolation_factor(&a.as_usize(), &b.as_usize())
+    }
+}
 
 use crate::{
     blob::{BlobId, BlobType, BlobTypeMap},
@@ -11,7 +19,7 @@ use crate::{
 };
 
 /// A sorted entry in the index.
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Default)]
 pub(crate) struct SortedEntry {
     /// The ID of the entry.
     id: BlobId,
@@ -250,16 +258,18 @@ impl ReadIndex for Index {
             return None;
         };
 
-        vec.binary_search_by_key(id, |e| e.id).ok().map(|index| {
-            let be = &vec[index];
-            IndexEntry::new(
-                blob_type,
-                self.0[blob_type].packs[be.pack_idx],
-                be.offset,
-                be.length,
-                be.uncompressed_length,
-            )
-        })
+        vec.interpolation_search_by_key(id, |entry| &entry.id)
+            .ok()
+            .map(|index| {
+                let be = &vec[index];
+                IndexEntry::new(
+                    blob_type,
+                    self.0[blob_type].packs[be.pack_idx],
+                    be.offset,
+                    be.length,
+                    be.uncompressed_length,
+                )
+            })
     }
 
     fn total_size(&self, blob_type: BlobType) -> u64 {
@@ -268,10 +278,10 @@ impl ReadIndex for Index {
 
     fn has(&self, blob_type: BlobType, id: &BlobId) -> bool {
         match &self.0[blob_type].entries {
-            EntriesVariants::FullEntries(entries) => {
-                entries.binary_search_by_key(id, |e| e.id).is_ok()
-            }
-            EntriesVariants::Ids(ids) => ids.binary_search(id).is_ok(),
+            EntriesVariants::FullEntries(entries) => entries
+                .interpolation_search_by_key(id, |entry| &entry.id)
+                .is_ok(),
+            EntriesVariants::Ids(ids) => ids.interpolation_search(id).is_ok(),
             // has() only gives results if index contains full entries or ids
             EntriesVariants::None => false,
         }
@@ -281,7 +291,7 @@ impl ReadIndex for Index {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{repofile::indexfile::IndexFile, RusticResult};
+    use crate::{RusticResult, repofile::indexfile::IndexFile};
 
     const JSON_INDEX: &str = r#"
 {"packs":[{"id":"217f145b63fbc10267f5a686186689ea3389bed0d6a54b50ffc84d71f99eb7fa",

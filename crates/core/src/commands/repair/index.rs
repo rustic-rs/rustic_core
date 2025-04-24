@@ -6,13 +6,13 @@ use std::collections::HashMap;
 
 use crate::{
     backend::{
-        decrypt::{DecryptReadBackend, DecryptWriteBackend},
         FileType, ReadBackend, WriteBackend,
+        decrypt::{DecryptReadBackend, DecryptWriteBackend},
     },
     error::{ErrorKind, RusticError, RusticResult},
-    index::{binarysorted::IndexCollector, indexer::Indexer, GlobalIndex},
+    index::{GlobalIndex, indexer::Indexer, sorted::IndexCollector},
     progress::{Progress, ProgressBars},
-    repofile::{packfile::PackId, IndexFile, IndexPack, PackHeader, PackHeaderRef},
+    repofile::{IndexFile, IndexPack, PackHeader, PackHeaderRef, packfile::PackId},
     repository::{Open, Repository},
 };
 
@@ -44,12 +44,10 @@ pub(crate) fn repair_index<P: ProgressBars, S: Open>(
     dry_run: bool,
 ) -> RusticResult<()> {
     if repo.config().append_only == Some(true) {
-        return Err(
-            RusticError::new(
-                ErrorKind::AppendOnly,
-                "Repairing the index is not allowed in append-only repositories. Please disable append-only mode first, if you know what you are doing. Aborting.",
-            )
-        );
+        return Err(RusticError::new(
+            ErrorKind::AppendOnly,
+            "Repairing the index is not allowed in append-only repositories. Please disable append-only mode first, if you know what you are doing. Aborting.",
+        ));
     }
 
     let be = repo.dbe();
@@ -151,7 +149,9 @@ impl PackChecker {
                 }
                 Some(size) => {
                     if index_size != size {
-                        info!("pack {id}: size computed by index: {index_size}, actual size: {size}, will re-read header");
+                        info!(
+                            "pack {id}: size computed by index: {index_size}, actual size: {size}, will re-read header"
+                        );
                     }
 
                     if index_size != size || read_all {

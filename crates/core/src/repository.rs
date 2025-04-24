@@ -13,58 +13,58 @@ use std::{
 use bytes::Bytes;
 use derive_setters::Setters;
 use log::{debug, error, info};
-use serde_with::{serde_as, DisplayFromStr};
+use serde_with::{DisplayFromStr, serde_as};
 
 use crate::{
+    RepositoryBackends, RusticError,
     backend::{
+        FileType, ReadBackend, WriteBackend,
         cache::{Cache, CachedBackend},
         decrypt::{DecryptBackend, DecryptReadBackend, DecryptWriteBackend},
         hotcold::HotColdBackend,
         local_destination::LocalDestination,
         node::Node,
         warm_up::WarmUpAccessBackend,
-        FileType, ReadBackend, WriteBackend,
     },
     blob::{
-        tree::{FindMatches, FindNode, NodeStreamer, TreeId, TreeStreamerOptions as LsOptions},
         BlobId, BlobType, PackedId,
+        tree::{FindMatches, FindNode, NodeStreamer, TreeId, TreeStreamerOptions as LsOptions},
     },
     commands::{
         self,
         backup::BackupOptions,
-        check::{check_repository, CheckOptions},
+        check::{CheckOptions, check_repository},
         config::ConfigOptions,
         copy::CopySnapshot,
         forget::{ForgetGroups, KeepOptions},
-        key::{add_current_key_to_repo, KeyOptions},
-        prune::{prune_repository, PruneOptions, PrunePlan},
+        key::{KeyOptions, add_current_key_to_repo},
+        prune::{PruneOptions, PrunePlan, prune_repository},
         repair::{
-            index::{index_checked_from_collector, repair_index, RepairIndexOptions},
-            snapshots::{repair_snapshots, RepairSnapshotsOptions},
+            index::{RepairIndexOptions, index_checked_from_collector, repair_index},
+            snapshots::{RepairSnapshotsOptions, repair_snapshots},
         },
         repoinfo::{IndexInfos, RepoFileInfos},
-        restore::{collect_and_prepare, restore_repository, RestoreOptions, RestorePlan},
+        restore::{RestoreOptions, RestorePlan, collect_and_prepare, restore_repository},
     },
     crypto::aespoly1305::Key,
     error::{ErrorKind, RusticResult},
     index::{
-        binarysorted::{IndexCollector, IndexType},
         GlobalIndex, IndexEntry, ReadGlobalIndex, ReadIndex,
+        sorted::{IndexCollector, IndexType},
     },
     progress::{NoProgressBars, Progress, ProgressBars},
     repofile::{
+        ConfigFile, KeyId, PathList, RepoFile, RepoId, SnapshotFile, SnapshotSummary, Tree,
         configfile::ConfigId,
         keyfile::find_key_in_backend,
         packfile::PackId,
         snapshotfile::{SnapshotGroup, SnapshotGroupCriterion, SnapshotId},
-        ConfigFile, KeyId, PathList, RepoFile, RepoId, SnapshotFile, SnapshotSummary, Tree,
     },
     repository::{
         command_input::CommandInput,
         warm_up::{warm_up, warm_up_wait},
     },
     vfs::OpenFile,
-    RepositoryBackends, RusticError,
 };
 
 #[cfg(feature = "clap")]
@@ -662,18 +662,18 @@ impl<P, S> Repository<P, S> {
     /// * If the config file has `is_hot` set to `false` but the repository is hot
     fn open_raw(mut self, key: Key, config: ConfigFile) -> RusticResult<Repository<P, OpenStatus>> {
         match (config.is_hot == Some(true), self.be_hot.is_some()) {
-            (true, false) => return Err(
-                RusticError::new(
+            (true, false) => {
+                return Err(RusticError::new(
                     ErrorKind::Repository,
                     "The given repository is a hot repository! Please use `--repo-hot` in combination with the normal repo. Aborting.",
-                )
-            ),
-            (false, true) => return Err(
-                RusticError::new(
+                ));
+            }
+            (false, true) => {
+                return Err(RusticError::new(
                     ErrorKind::Repository,
                     "The given repository is not a hot repository! Aborting.",
-                )
-            ),
+                ));
+            }
             _ => {}
         }
 
@@ -1114,12 +1114,10 @@ impl<P: ProgressBars, S: Open> Repository<P, S> {
     /// * If the files could not be deleted.
     pub fn delete_snapshots(&self, ids: &[SnapshotId]) -> RusticResult<()> {
         if self.config().append_only == Some(true) {
-            return Err(
-                RusticError::new(
-                    ErrorKind::Repository,
-                    "Repository is in append-only mode and snapshots cannot be deleted from it. Aborting.",
-                )
-            );
+            return Err(RusticError::new(
+                ErrorKind::Repository,
+                "Repository is in append-only mode and snapshots cannot be deleted from it. Aborting.",
+            ));
         }
         let p = self.pb.progress_counter("removing snapshots...");
         self.dbe().delete_list(true, ids.iter(), p)?;

@@ -7,7 +7,7 @@ use crate::{
     backend::{FileType, decrypt::DecryptReadBackend},
     blob::{BlobId, BlobType, DataId, tree::TreeId},
     error::{ErrorKind, RusticError, RusticResult},
-    index::binarysorted::{Index, IndexCollector, IndexType},
+    index::sorted::{Index, IndexCollector, IndexType},
     progress::Progress,
     repofile::{
         indexfile::{IndexBlob, IndexFile},
@@ -15,8 +15,8 @@ use crate::{
     },
 };
 
-pub mod binarysorted;
 pub(crate) mod indexer;
+pub mod sorted;
 
 /// An entry in the index
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Constructor)]
