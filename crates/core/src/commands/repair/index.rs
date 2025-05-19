@@ -44,12 +44,10 @@ pub(crate) fn repair_index<P: ProgressBars, S: Open>(
     dry_run: bool,
 ) -> RusticResult<()> {
     if repo.config().append_only == Some(true) {
-        return Err(
-            RusticError::new(
-                ErrorKind::AppendOnly,
-                "Repairing the index is not allowed in append-only repositories. Please disable append-only mode first, if you know what you are doing. Aborting.",
-            )
-        );
+        return Err(RusticError::new(
+            ErrorKind::AppendOnly,
+            "Repairing the index is not allowed in append-only repositories. Please disable append-only mode first, if you know what you are doing. Aborting.",
+        ));
     }
 
     let be = repo.dbe();
@@ -151,7 +149,9 @@ impl PackChecker {
                 }
                 Some(size) => {
                     if index_size != size {
-                        info!("pack {id}: size computed by index: {index_size}, actual size: {size}, will re-read header");
+                        info!(
+                            "pack {id}: size computed by index: {index_size}, actual size: {size}, will re-read header"
+                        );
                     }
 
                     if index_size != size || read_all {
@@ -161,6 +161,7 @@ impl PackChecker {
                             Some(PackHeaderRef::from_index_pack(&p).size()),
                             size,
                         ));
+                        changed = true;
                     } else {
                         new_index.add(p, to_delete);
                     }
