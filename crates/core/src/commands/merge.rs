@@ -7,12 +7,12 @@ use chrono::Local;
 use crate::{
     backend::{decrypt::DecryptWriteBackend, node::Node},
     blob::{
+        BlobId, BlobType,
         packer::Packer,
         tree::{self, Tree, TreeId},
-        BlobId, BlobType,
     },
     error::{ErrorKind, RusticError, RusticResult},
-    index::{indexer::Indexer, ReadIndex},
+    index::{ReadIndex, indexer::Indexer},
     progress::{Progress, ProgressBars},
     repofile::{PathList, SnapshotFile, SnapshotSummary},
     repository::{IndexedTree, Repository},

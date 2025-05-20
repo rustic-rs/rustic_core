@@ -3,14 +3,14 @@
 use chrono::{DateTime, Datelike, Duration, Local, Timelike};
 use derive_setters::Setters;
 use serde_derive::{Deserialize, Serialize};
-use serde_with::{serde_as, skip_serializing_none, DisplayFromStr};
+use serde_with::{DisplayFromStr, serde_as, skip_serializing_none};
 
 use crate::{
     error::{ErrorKind, RusticError, RusticResult},
     progress::ProgressBars,
     repofile::{
-        snapshotfile::{SnapshotGroup, SnapshotGroupCriterion, SnapshotId},
         SnapshotFile, StringList,
+        snapshotfile::{SnapshotGroup, SnapshotGroupCriterion, SnapshotId},
     },
     repository::{Open, Repository},
 };
@@ -628,7 +628,7 @@ mod tests {
     use anyhow::Result;
     use chrono::{Local, NaiveDateTime, TimeZone, Utc};
     use humantime::Duration;
-    use insta::{assert_ron_snapshot, Settings};
+    use insta::{Settings, assert_ron_snapshot};
     use rstest::{fixture, rstest};
     use serde_json;
 

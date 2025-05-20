@@ -11,7 +11,7 @@ use runtime_format::FormatArgs;
 use strum::EnumString;
 
 use crate::{
-    blob::{tree::TreeId, BlobId, DataId},
+    blob::{BlobId, DataId, tree::TreeId},
     error::{ErrorKind, RusticError, RusticResult},
     index::ReadIndex,
     repofile::{BlobType, Metadata, Node, NodeType, SnapshotFile},

@@ -5,15 +5,15 @@ use bytes::Bytes;
 use bytesize::ByteSize;
 use log::{error, trace};
 use opendal::{
-    layers::{BlockingLayer, ConcurrentLimitLayer, LoggingLayer, RetryLayer, ThrottleLayer},
     BlockingOperator, Operator, Scheme,
+    layers::{BlockingLayer, ConcurrentLimitLayer, LoggingLayer, RetryLayer, ThrottleLayer},
 };
 use rayon::prelude::{IntoParallelIterator, ParallelIterator};
 use tokio::runtime::Runtime;
 use typed_path::UnixPathBuf;
 
 use rustic_core::{
-    ErrorKind, FileType, Id, ReadBackend, RusticError, RusticResult, WriteBackend, ALL_FILE_TYPES,
+    ALL_FILE_TYPES, ErrorKind, FileType, Id, ReadBackend, RusticError, RusticResult, WriteBackend,
 };
 
 mod constants {

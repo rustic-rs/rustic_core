@@ -7,12 +7,12 @@ use crate::{
     archiver::{parent::ParentResult, tree::TreeType},
     backend::{decrypt::DecryptWriteBackend, node::Node},
     blob::{
+        BlobType,
         packer::Packer,
         tree::{Tree, TreeId},
-        BlobType,
     },
     error::{ErrorKind, RusticError, RusticResult},
-    index::{indexer::SharedIndexer, ReadGlobalIndex},
+    index::{ReadGlobalIndex, indexer::SharedIndexer},
     repofile::{configfile::ConfigFile, snapshotfile::SnapshotSummary},
 };
 
@@ -96,7 +96,7 @@ impl<'a, BE: DecryptWriteBackend, I: ReadGlobalIndex> TreeArchiver<'a, BE, I> {
     pub(crate) fn add(&mut self, item: TreeItem) -> RusticResult<()> {
         match item {
             TreeType::NewTree((path, node, parent)) => {
-                trace!("entering {path:?}");
+                trace!("entering {}", path.display());
                 // save current tree to the stack and start with an empty tree
                 let tree = std::mem::replace(&mut self.tree, Tree::new());
                 self.stack.push((path, node, parent, tree));
@@ -107,7 +107,7 @@ impl<'a, BE: DecryptWriteBackend, I: ReadGlobalIndex> TreeArchiver<'a, BE, I> {
                 })?;
 
                 // save tree
-                trace!("finishing {path:?}");
+                trace!("finishing {}", path.display());
                 let id = self.backup_tree(&path, &parent)?;
                 node.subtree = Some(id);
 
@@ -133,15 +133,15 @@ impl<'a, BE: DecryptWriteBackend, I: ReadGlobalIndex> TreeArchiver<'a, BE, I> {
         let filename = path.join(node.name());
         match parent {
             ParentResult::Matched(()) => {
-                debug!("unchanged file: {filename:?}");
+                debug!("unchanged file: {}", filename.display());
                 self.summary.files_unmodified += 1;
             }
             ParentResult::NotMatched => {
-                debug!("changed   file: {filename:?}");
+                debug!("changed   file: {}", filename.display());
                 self.summary.files_changed += 1;
             }
             ParentResult::NotFound => {
-                debug!("new       file: {filename:?}");
+                debug!("new       file: {}", filename.display());
                 self.summary.files_new += 1;
             }
         }
@@ -181,17 +181,17 @@ impl<'a, BE: DecryptWriteBackend, I: ReadGlobalIndex> TreeArchiver<'a, BE, I> {
         self.summary.total_dirsize_processed += dirsize;
         match parent {
             ParentResult::Matched(p_id) if id == *p_id => {
-                debug!("unchanged tree: {path:?}");
+                debug!("unchanged tree: {}", path.display());
                 self.summary.dirs_unmodified += 1;
                 return Ok(id);
             }
             ParentResult::NotFound => {
-                debug!("new       tree: {path:?} {dirsize_bytes}");
+                debug!("new       tree: {} {dirsize_bytes}", path.display());
                 self.summary.dirs_new += 1;
             }
             _ => {
                 // "Matched" trees where the subtree id does not match or unmatched trees
-                debug!("changed   tree: {path:?} {dirsize_bytes}");
+                debug!("changed   tree: {} {dirsize_bytes}", path.display());
                 self.summary.dirs_changed += 1;
             }
         }

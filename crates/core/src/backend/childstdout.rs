@@ -1,5 +1,5 @@
 use std::{
-    iter::{once, Once},
+    iter::{Once, once},
     path::PathBuf,
     process::{Child, ChildStdout, Command, Stdio},
     sync::Mutex,

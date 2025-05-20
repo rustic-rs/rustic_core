@@ -280,13 +280,15 @@ impl RcloneBackend {
         debug!("using REST backend with url {}.", url.as_ref());
         let rest = RestBackend::new(rest_url, options)?;
 
-        let handle = Some(std::thread::spawn(move || loop {
-            let mut line = String::new();
-            if stderr.read_line(&mut line).unwrap() == 0 {
-                break;
-            }
-            if !line.is_empty() {
-                info!("rclone output: {line}");
+        let handle = Some(std::thread::spawn(move || {
+            loop {
+                let mut line = String::new();
+                if stderr.read_line(&mut line).unwrap() == 0 {
+                    break;
+                }
+                if !line.is_empty() {
+                    info!("rclone output: {line}");
+                }
             }
         }));
 

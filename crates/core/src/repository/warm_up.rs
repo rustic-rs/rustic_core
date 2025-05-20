@@ -5,12 +5,12 @@ use log::{debug, error, warn};
 use rayon::ThreadPoolBuilder;
 
 use crate::{
+    CommandInput,
     backend::{FileType, ReadBackend},
     error::{ErrorKind, RusticError, RusticResult},
     progress::{Progress, ProgressBars},
     repofile::packfile::PackId,
     repository::Repository,
-    CommandInput,
 };
 
 pub(super) mod constants {

@@ -2,7 +2,7 @@ use serde_derive::{Deserialize, Serialize};
 use serde_with::skip_serializing_none;
 
 use crate::{
-    backend::{decrypt::DecryptReadBackend, FileType, ReadBackend, ALL_FILE_TYPES},
+    backend::{ALL_FILE_TYPES, FileType, ReadBackend, decrypt::DecryptReadBackend},
     blob::{BlobType, BlobTypeMap},
     error::RusticResult,
     index::IndexEntry,

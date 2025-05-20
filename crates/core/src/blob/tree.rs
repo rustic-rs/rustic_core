@@ -7,10 +7,10 @@ use std::{
     str::{self, Utf8Error},
 };
 
-use crossbeam_channel::{bounded, unbounded, Receiver, Sender};
+use crossbeam_channel::{Receiver, Sender, bounded, unbounded};
 use derive_setters::Setters;
-use ignore::overrides::{Override, OverrideBuilder};
 use ignore::Match;
+use ignore::overrides::{Override, OverrideBuilder};
 use serde::{Deserialize, Deserializer};
 use serde_derive::Serialize;
 
@@ -915,7 +915,7 @@ impl<P: Progress> Iterator for TreeStreamerOnce<P> {
                             .attach_context("tree_id", id.to_string())
                             .attach_context("count", count.to_string())
                             .ask_report()
-                        }))
+                        }));
                     }
                 }
             }

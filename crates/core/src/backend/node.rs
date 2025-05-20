@@ -18,12 +18,13 @@ use derive_more::Constructor;
 use serde_aux::prelude::*;
 use serde_derive::{Deserialize, Serialize};
 use serde_with::{
+    DefaultOnNull,
     base64::{Base64, Standard},
     formats::Padded,
-    serde_as, skip_serializing_none, DefaultOnNull,
+    serde_as, skip_serializing_none,
 };
 
-use crate::blob::{tree::TreeId, DataId};
+use crate::blob::{DataId, tree::TreeId};
 
 #[cfg(not(windows))]
 /// [`NodeErrorKind`] describes the errors that can be returned by an action utilizing a node in Backends
@@ -475,7 +476,7 @@ fn unescape_filename(s: &str) -> NodeResult<'_, OsString> {
                             return Err(NodeErrorKind::UnexpectedEOF {
                                 file_name: s.to_string(),
                                 chars,
-                            })
+                            });
                         }
                         Some(c) => match c {
                             '\\' => u.push(b'\\'),
@@ -546,7 +547,7 @@ fn unescape_filename(s: &str) -> NodeResult<'_, OsString> {
                                 return Err(NodeErrorKind::UnrecognizedEscape {
                                     file_name: s.to_string(),
                                     chars: chars.clone(),
-                                })
+                                });
                             }
                         },
                     }

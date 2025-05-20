@@ -4,7 +4,7 @@ use std::num::TryFromIntError;
 use std::os::unix::fs::{FileTypeExt, MetadataExt};
 
 use std::{
-    fs::{read_link, File},
+    fs::{File, read_link},
     path::{Path, PathBuf},
 };
 
@@ -15,19 +15,19 @@ use cached::proc_macro::cached;
 use chrono::TimeZone;
 use chrono::{DateTime, Local, Utc};
 use derive_setters::Setters;
-use ignore::{overrides::OverrideBuilder, DirEntry, Walk, WalkBuilder};
+use ignore::{DirEntry, Walk, WalkBuilder, overrides::OverrideBuilder};
 use log::warn;
 #[cfg(not(windows))]
 use nix::unistd::{Gid, Group, Uid, User};
-use serde_with::{serde_as, DisplayFromStr};
+use serde_with::{DisplayFromStr, serde_as};
 
 #[cfg(not(windows))]
 use crate::backend::node::ExtendedAttribute;
 
 use crate::{
     backend::{
-        node::{Metadata, Node, NodeType},
         ReadSource, ReadSourceEntry, ReadSourceOpen,
+        node::{Metadata, Node, NodeType},
     },
     error::{ErrorKind, RusticError, RusticResult},
 };

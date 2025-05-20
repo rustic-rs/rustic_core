@@ -1,6 +1,6 @@
 use std::ops::Deref;
 
-use serde::{de::DeserializeOwned, Serialize};
+use serde::{Serialize, de::DeserializeOwned};
 
 pub(crate) mod configfile;
 pub(crate) mod indexfile;
@@ -51,10 +51,10 @@ use crate::Id;
 pub use {
     crate::{
         backend::{
+            ALL_FILE_TYPES, FileType,
             node::{Metadata, Node, NodeType},
-            FileType, ALL_FILE_TYPES,
         },
-        blob::{tree::Tree, BlobType, ALL_BLOB_TYPES},
+        blob::{ALL_BLOB_TYPES, BlobType, tree::Tree},
     },
     configfile::ConfigFile,
     indexfile::{IndexBlob, IndexFile, IndexId, IndexPack},

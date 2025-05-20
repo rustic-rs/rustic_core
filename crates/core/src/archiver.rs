@@ -7,22 +7,22 @@ use std::path::{Path, PathBuf};
 
 use chrono::Local;
 use log::warn;
-use pariter::{scope, IteratorExt};
+use pariter::{IteratorExt, scope};
 
 use crate::{
+    Progress,
     archiver::{
         file_archiver::FileArchiver, parent::Parent, tree::TreeIterator,
         tree_archiver::TreeArchiver,
     },
-    backend::{decrypt::DecryptFullBackend, ReadSource, ReadSourceEntry},
+    backend::{ReadSource, ReadSourceEntry, decrypt::DecryptFullBackend},
     blob::BlobType,
     error::{ErrorKind, RusticError, RusticResult},
     index::{
-        indexer::{Indexer, SharedIndexer},
         ReadGlobalIndex,
+        indexer::{Indexer, SharedIndexer},
     },
     repofile::{configfile::ConfigFile, snapshotfile::SnapshotFile},
-    Progress,
 };
 
 #[derive(thiserror::Error, Debug, displaydoc::Display)]

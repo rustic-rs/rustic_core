@@ -468,9 +468,7 @@ impl Cache {
     ) -> RusticResult<Option<Bytes>> {
         trace!(
             "cache reading tpe: {:?}, id: {}, offset: {}",
-            &tpe,
-            &id,
-            &offset
+            &tpe, &id, &offset
         );
 
         let path = self.path(tpe, id);
@@ -486,7 +484,7 @@ impl Cache {
                 )
                 .attach_context("path", path.display().to_string())
                 .attach_context("tpe", tpe.to_string())
-                .attach_context("id", id.to_string()))
+                .attach_context("id", id.to_string()));
             }
         };
 

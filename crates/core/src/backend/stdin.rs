@@ -1,6 +1,6 @@
 use std::{
-    io::{stdin, Stdin},
-    iter::{once, Once},
+    io::{Stdin, stdin},
+    iter::{Once, once},
     path::PathBuf,
 };
 

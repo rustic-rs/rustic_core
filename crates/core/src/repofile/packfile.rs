@@ -1,10 +1,10 @@
 use std::num::NonZeroU32;
 
-use binrw::{io::Cursor, BinRead, BinWrite};
+use binrw::{BinRead, BinWrite, io::Cursor};
 use log::trace;
 
 use crate::{
-    backend::{decrypt::DecryptReadBackend, FileType},
+    backend::{FileType, decrypt::DecryptReadBackend},
     blob::BlobType,
     error::{ErrorKind, RusticError, RusticResult},
     id::Id,

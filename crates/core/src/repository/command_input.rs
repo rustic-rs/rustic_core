@@ -6,7 +6,7 @@ use std::{
 
 use log::{debug, error, trace, warn};
 use serde::{Deserialize, Serialize, Serializer};
-use serde_with::{serde_as, DisplayFromStr, PickFirst};
+use serde_with::{DisplayFromStr, PickFirst, serde_as};
 
 use crate::error::{ErrorKind, RusticError, RusticResult};
 

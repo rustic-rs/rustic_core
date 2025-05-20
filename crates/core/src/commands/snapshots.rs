@@ -1,14 +1,14 @@
 //! `smapshot` subcommand
 
 use crate::{
+    Progress,
     error::RusticResult,
     progress::ProgressBars,
     repofile::{
-        snapshotfile::{SnapshotGroup, SnapshotGroupCriterion},
         SnapshotFile,
+        snapshotfile::{SnapshotGroup, SnapshotGroupCriterion},
     },
     repository::{Open, Repository},
-    Progress,
 };
 
 /// Get the snapshots from the repository.

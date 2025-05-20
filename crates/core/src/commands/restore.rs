@@ -18,10 +18,10 @@ use rayon::ThreadPoolBuilder;
 
 use crate::{
     backend::{
+        FileType, ReadBackend,
         decrypt::DecryptReadBackend,
         local_destination::LocalDestination,
         node::{Node, NodeType},
-        FileType, ReadBackend,
     },
     error::{ErrorKind, RusticError, RusticResult},
     progress::{Progress, ProgressBars},
@@ -169,7 +169,7 @@ pub(crate) fn collect_and_prepare<P: ProgressBars, S: IndexedFull>(
             return Ok(());
         }
 
-        debug!("additional {:?}", entry.path());
+        debug!("additional {}", entry.path().display());
         if entry.file_type().unwrap().is_dir() {
             stats.dirs.additional += 1;
         } else {
@@ -177,10 +177,16 @@ pub(crate) fn collect_and_prepare<P: ProgressBars, S: IndexedFull>(
         }
         match (opts.delete, dry_run, entry.file_type().unwrap().is_dir()) {
             (true, true, true) => {
-                info!("would have removed the additional dir: {:?}", entry.path());
+                info!(
+                    "would have removed the additional dir: {}",
+                    entry.path().display()
+                );
             }
             (true, true, false) => {
-                info!("would have removed the additional file: {:?}", entry.path());
+                info!(
+                    "would have removed the additional file: {}",
+                    entry.path().display()
+                );
             }
             (true, false, true) => {
                 let path = entry.path();
@@ -191,14 +197,14 @@ pub(crate) fn collect_and_prepare<P: ProgressBars, S: IndexedFull>(
                             removed_dir = Some(path.to_path_buf());
                         }
                         Err(err) => {
-                            error!("error removing {path:?}: {err}");
+                            error!("error removing {}: {err}", path.display());
                         }
                     },
                 }
             }
             (true, false, false) => {
                 if let Err(err) = dest.remove_file(entry.path()) {
-                    error!("error removing {:?}: {err}", entry.path());
+                    error!("error removing {}: {err}", entry.path().display());
                 }
             }
             (false, _, _) => {
@@ -214,10 +220,10 @@ pub(crate) fn collect_and_prepare<P: ProgressBars, S: IndexedFull>(
             NodeType::Dir => {
                 if exists {
                     stats.dirs.modify += 1;
-                    trace!("existing dir {path:?}");
+                    trace!("existing dir {}", path.display());
                 } else {
                     stats.dirs.restore += 1;
-                    debug!("to restore: {path:?}");
+                    debug!("to restore: {}", path.display());
                     if !dry_run {
                         dest.create_dir(path)
                             .map_err(|err| {
@@ -241,21 +247,21 @@ pub(crate) fn collect_and_prepare<P: ProgressBars, S: IndexedFull>(
                     // and calling add_file. So we don't care about exists but trust add_file here.
                     (_, AddFileResult::Existing) => {
                         stats.files.unchanged += 1;
-                        trace!("identical file: {path:?}");
+                        trace!("identical file: {}", path.display());
                     }
                     (_, AddFileResult::Verified) => {
                         stats.files.verified += 1;
-                        trace!("verified identical file: {path:?}");
+                        trace!("verified identical file: {}", path.display());
                     }
                     // TODO: The differentiation between files to modify and files to create could be done only by add_file
                     // Currently, add_file never returns Modify, but always New, so we differentiate based on exists
                     (true, AddFileResult::Modify) => {
                         stats.files.modify += 1;
-                        debug!("to modify: {path:?}");
+                        debug!("to modify: {}", path.display());
                     }
                     (false, AddFileResult::Modify) => {
                         stats.files.restore += 1;
-                        debug!("to restore: {path:?}");
+                        debug!("to restore: {}", path.display());
                     }
                 }
             }
@@ -393,24 +399,29 @@ pub(crate) fn set_metadata(
     path: &PathBuf,
     node: &Node,
 ) {
-    debug!("setting metadata for {path:?}");
+    debug!("setting metadata for {}", path.display());
     dest.create_special(path, node)
-        .unwrap_or_else(|_| warn!("restore {path:?}: creating special file failed."));
+        .unwrap_or_else(|_| warn!("restore {}: creating special file failed.", path.display()));
     match (opts.no_ownership, opts.numeric_id) {
         (true, _) => {}
         (false, true) => dest
             .set_uid_gid(path, &node.meta)
-            .unwrap_or_else(|_| warn!("restore {path:?}: setting UID/GID failed.")),
+            .unwrap_or_else(|_| warn!("restore {}: setting UID/GID failed.", path.display())),
         (false, false) => dest
             .set_user_group(path, &node.meta)
-            .unwrap_or_else(|_| warn!("restore {path:?}: setting User/Group failed.")),
+            .unwrap_or_else(|_| warn!("restore {}: setting User/Group failed.", path.display())),
     }
     dest.set_permission(path, node)
-        .unwrap_or_else(|_| warn!("restore {path:?}: chmod failed."));
+        .unwrap_or_else(|_| warn!("restore {}: chmod failed.", path.display()));
     dest.set_extended_attributes(path, &node.meta.extended_attributes)
-        .unwrap_or_else(|_| warn!("restore {path:?}: setting extended attributes failed."));
+        .unwrap_or_else(|_| {
+            warn!(
+                "restore {}: setting extended attributes failed.",
+                path.display()
+            );
+        });
     dest.set_times(path, &node.meta)
-        .unwrap_or_else(|_| warn!("restore {path:?}: setting file times failed."));
+        .unwrap_or_else(|_| warn!("restore {}: setting file times failed.", path.display()));
 }
 
 /// [`restore_contents`] restores all files contents as described by `file_infos`
@@ -713,7 +724,7 @@ impl RestorePlan {
                     .map(|t| DateTime::<Utc>::from(t).with_timezone(&Local));
                 if meta.len() == file.meta.size && mtime == file.meta.mtime {
                     // File exists with fitting mtime => we suspect this file is ok!
-                    debug!("file {name:?} exists with suitable size and mtime, accepting it!");
+                    debug!("file {} exists with suitable size and mtime, accepting it!",name.display());
                     self.matched_size += file.meta.size;
                     return Ok(AddFileResult::Existing);
                 }
