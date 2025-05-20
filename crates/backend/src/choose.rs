@@ -7,7 +7,7 @@ use rustic_core::{ErrorKind, RepositoryBackends, RusticError, RusticResult, Writ
 
 use crate::{
     local::LocalBackend,
-    util::{location_to_type_and_path, BackendLocation},
+    util::{BackendLocation, location_to_type_and_path},
 };
 
 #[cfg(feature = "opendal")]

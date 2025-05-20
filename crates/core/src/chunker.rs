@@ -1,6 +1,6 @@
 use std::io::{self, Read};
 
-use rand::{rng, Rng};
+use rand::{Rng, rng};
 use rustic_cdc::{Polynom, Polynom64, Rabin64, RollingHash64};
 
 use crate::error::{ErrorKind, RusticError, RusticResult};
@@ -295,7 +295,7 @@ fn qp(p: i32, g: Polynom64) -> Polynom64 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::io::{repeat, Cursor};
+    use std::io::{Cursor, repeat};
 
     #[test]
     fn chunk_empty() {

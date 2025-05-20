@@ -6,18 +6,18 @@ use std::{
 
 use bytes::{Bytes, BytesMut};
 use chrono::Local;
-use crossbeam_channel::{bounded, Receiver, Sender};
+use crossbeam_channel::{Receiver, Sender, bounded};
 use integer_sqrt::IntegerSquareRoot;
 use log::warn;
-use pariter::{scope, IteratorExt};
+use pariter::{IteratorExt, scope};
 
 use crate::{
     backend::{
-        decrypt::{DecryptFullBackend, DecryptWriteBackend},
         FileType,
+        decrypt::{DecryptFullBackend, DecryptWriteBackend},
     },
     blob::{BlobId, BlobType},
-    crypto::{hasher::hash, CryptoKey},
+    crypto::{CryptoKey, hasher::hash},
     error::{ErrorKind, RusticError, RusticResult},
     index::indexer::SharedIndexer,
     repofile::{
@@ -53,7 +53,7 @@ pub enum PackerErrorKind {
     },
 }
 
-pub(crate) type PackerResult<T> = Result<T, PackerErrorKind>;
+pub(crate) type PackerResult<T> = Result<T, Box<PackerErrorKind>>;
 
 pub(super) mod constants {
     use std::time::Duration;

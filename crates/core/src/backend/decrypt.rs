@@ -1,19 +1,19 @@
 use std::{num::NonZeroU32, sync::Arc};
 
 use bytes::Bytes;
-use crossbeam_channel::{unbounded, Receiver};
+use crossbeam_channel::{Receiver, unbounded};
 use rayon::prelude::*;
 use zstd::stream::{copy_encode, decode_all, encode_all};
 
 pub use zstd::compression_level_range;
 
 use crate::{
+    Progress,
     backend::{FileType, ReadBackend, WriteBackend},
-    crypto::{hasher::hash, CryptoKey},
+    crypto::{CryptoKey, hasher::hash},
     error::{ErrorKind, RusticError, RusticResult},
     id::Id,
     repofile::{RepoFile, RepoId},
-    Progress,
 };
 
 /// The maximum compression level allowed by zstd
@@ -408,7 +408,7 @@ impl<C: CryptoKey> DecryptBackend<C> {
                 return Err(RusticError::new(
                     ErrorKind::Unsupported,
                     "Decryption not supported. The data is not in a supported format.",
-                ))?
+                ))?;
             }
         })
     }

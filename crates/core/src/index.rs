@@ -4,8 +4,8 @@ use bytes::Bytes;
 use derive_more::Constructor;
 
 use crate::{
-    backend::{decrypt::DecryptReadBackend, FileType},
-    blob::{tree::TreeId, BlobId, BlobType, DataId},
+    backend::{FileType, decrypt::DecryptReadBackend},
+    blob::{BlobId, BlobType, DataId, tree::TreeId},
     error::{ErrorKind, RusticError, RusticResult},
     index::binarysorted::{Index, IndexCollector, IndexType},
     progress::Progress,

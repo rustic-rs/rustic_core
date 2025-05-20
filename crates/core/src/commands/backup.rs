@@ -6,10 +6,11 @@ use std::path::PathBuf;
 
 use path_dedot::ParseDot;
 use serde_derive::{Deserialize, Serialize};
-use serde_with::{serde_as, DisplayFromStr};
+use serde_with::{DisplayFromStr, serde_as};
 
 use crate::{
-    archiver::{parent::Parent, Archiver},
+    CommandInput,
+    archiver::{Archiver, parent::Parent},
     backend::{
         childstdout::ChildStdoutSource,
         dry_run::DryRunBackend,
@@ -19,11 +20,10 @@ use crate::{
     error::{ErrorKind, RusticError, RusticResult},
     progress::ProgressBars,
     repofile::{
-        snapshotfile::{SnapshotGroup, SnapshotGroupCriterion, SnapshotId},
         PathList, SnapshotFile,
+        snapshotfile::{SnapshotGroup, SnapshotGroupCriterion, SnapshotId},
     },
     repository::{IndexedIds, IndexedTree, Repository},
-    CommandInput,
 };
 
 #[cfg(feature = "clap")]

@@ -4,7 +4,7 @@ use std::{fmt, io::Read, ops::Deref, path::Path, str::FromStr};
 
 use binrw::{BinRead, BinWrite};
 use derive_more::{Constructor, Display};
-use rand::{rng, RngCore};
+use rand::{RngCore, rng};
 use serde_derive::{Deserialize, Serialize};
 
 use crate::{

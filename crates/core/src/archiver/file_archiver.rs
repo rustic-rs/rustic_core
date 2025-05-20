@@ -9,18 +9,18 @@ use crate::{
         tree_archiver::TreeItem,
     },
     backend::{
+        ReadSourceOpen,
         decrypt::DecryptWriteBackend,
         node::{Node, NodeType},
-        ReadSourceOpen,
     },
     blob::{
-        packer::{Packer, PackerStats},
         BlobId, BlobType, DataId,
+        packer::{Packer, PackerStats},
     },
     chunker::ChunkIter,
     crypto::hasher::hash,
     error::{ErrorKind, RusticError, RusticResult},
-    index::{indexer::SharedIndexer, ReadGlobalIndex},
+    index::{ReadGlobalIndex, indexer::SharedIndexer},
     progress::Progress,
     repofile::configfile::ConfigFile,
 };

@@ -5,9 +5,9 @@ use backon::{BlockingRetryable, ExponentialBuilder};
 use bytes::Bytes;
 use log::{trace, warn};
 use reqwest::{
+    Url,
     blocking::{Client, ClientBuilder},
     header::{HeaderMap, HeaderValue},
-    Url,
 };
 use serde::Deserialize;
 

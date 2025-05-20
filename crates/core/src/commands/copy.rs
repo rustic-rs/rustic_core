@@ -5,9 +5,9 @@ use rayon::prelude::{IntoParallelRefIterator, ParallelBridge, ParallelIterator};
 
 use crate::{
     backend::{decrypt::DecryptWriteBackend, node::NodeType},
-    blob::{packer::Packer, tree::TreeStreamerOnce, BlobId, BlobType},
+    blob::{BlobId, BlobType, packer::Packer, tree::TreeStreamerOnce},
     error::RusticResult,
-    index::{indexer::Indexer, ReadIndex},
+    index::{ReadIndex, indexer::Indexer},
     progress::{Progress, ProgressBars},
     repofile::SnapshotFile,
     repository::{IndexedFull, IndexedIds, IndexedTree, Open, Repository},

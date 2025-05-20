@@ -6,13 +6,13 @@ use crate::{
     backend::WriteBackend,
     chunker::random_poly,
     commands::{
-        config::{save_config, ConfigOptions},
-        key::{init_key, KeyOptions},
+        config::{ConfigOptions, save_config},
+        key::{KeyOptions, init_key},
     },
     crypto::aespoly1305::Key,
     error::RusticResult,
     id::Id,
-    repofile::{configfile::RepositoryId, ConfigFile},
+    repofile::{ConfigFile, configfile::RepositoryId},
     repository::Repository,
 };
 

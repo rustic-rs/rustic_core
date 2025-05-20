@@ -3,8 +3,8 @@ use std::path::Path;
 use bytes::Bytes;
 
 use crate::{
-    backend::{decrypt::DecryptReadBackend, FileType, FindInBackend},
-    blob::{tree::Tree, BlobId, BlobType},
+    backend::{FileType, FindInBackend, decrypt::DecryptReadBackend},
+    blob::{BlobId, BlobType, tree::Tree},
     error::{ErrorKind, RusticError, RusticResult},
     index::ReadIndex,
     progress::ProgressBars,

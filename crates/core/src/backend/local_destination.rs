@@ -1,5 +1,5 @@
 #[cfg(not(windows))]
-use std::os::unix::fs::{symlink, PermissionsExt};
+use std::os::unix::fs::{PermissionsExt, symlink};
 
 use std::{
     fs::{self, File, OpenOptions},
@@ -11,17 +11,17 @@ use std::{
 use bytes::Bytes;
 #[allow(unused_imports)]
 use cached::proc_macro::cached;
-use filetime::{set_symlink_file_times, FileTime};
+use filetime::{FileTime, set_symlink_file_times};
 #[cfg(not(windows))]
 use log::warn;
 #[cfg(not(windows))]
 use nix::errno::Errno;
 #[cfg(not(windows))]
-use nix::sys::stat::{mknod, Mode, SFlag};
+use nix::sys::stat::{Mode, SFlag, mknod};
 #[cfg(not(windows))]
 use nix::{
     fcntl::AtFlags,
-    unistd::{fchownat, Gid, Group, Uid, User},
+    unistd::{Gid, Group, Uid, User, fchownat},
 };
 
 #[cfg(not(windows))]
@@ -520,7 +520,10 @@ impl LocalDestination {
                 }
                 None => {
                     if let Err(err) = xattr::remove(&filename, &curr_name) {
-                        warn!("error removing xattr {curr_name:?} on {filename:?}: {err}");
+                        warn!(
+                            "error removing xattr {curr_name:?} on {}: {err}",
+                            filename.display()
+                        );
                     }
                 }
             }
