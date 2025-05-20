@@ -21,25 +21,25 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     backend::{
+        FileType, ReadBackend,
         decrypt::{DecryptReadBackend, DecryptWriteBackend},
         node::NodeType,
-        FileType, ReadBackend,
     },
     blob::{
+        BlobId, BlobType, BlobTypeMap, Initialize,
         packer::{PackSizer, Repacker},
         tree::TreeStreamerOnce,
-        BlobId, BlobType, BlobTypeMap, Initialize,
     },
     error::{ErrorKind, RusticError, RusticResult},
     index::{
+        GlobalIndex, ReadGlobalIndex, ReadIndex,
         binarysorted::{IndexCollector, IndexType},
         indexer::Indexer,
-        GlobalIndex, ReadGlobalIndex, ReadIndex,
     },
     progress::{Progress, ProgressBars},
     repofile::{
-        indexfile::IndexId, packfile::PackId, HeaderEntry, IndexBlob, IndexFile, IndexPack,
-        SnapshotFile, SnapshotId,
+        HeaderEntry, IndexBlob, IndexFile, IndexPack, SnapshotFile, SnapshotId, indexfile::IndexId,
+        packfile::PackId,
     },
     repository::{Open, Repository},
 };
@@ -957,7 +957,10 @@ impl PrunePlan {
                                     pack.set_todo(PackToDo::Delete, &pi, status, &mut self.stats);
                                 }
                                 None => {
-                                    warn!("pack to delete {}: no time set, this should not happen! Keeping this pack.", pack.id);
+                                    warn!(
+                                        "pack to delete {}: no time set, this should not happen! Keeping this pack.",
+                                        pack.id
+                                    );
                                     _ = status.insert(PackStatus::TimeNotSet);
                                     pack.set_todo(
                                         PackToDo::KeepMarkedAndCorrect,

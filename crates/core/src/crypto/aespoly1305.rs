@@ -1,8 +1,8 @@
 use aes256ctr_poly1305aes::{
-    aead::{self, Aead, AeadInPlace},
     Aes256CtrPoly1305Aes,
+    aead::{self, Aead, AeadInPlace},
 };
-use rand::{rng, RngCore};
+use rand::{RngCore, rng};
 
 use crate::{
     crypto::CryptoKey,

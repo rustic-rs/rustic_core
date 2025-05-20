@@ -6,13 +6,13 @@ use std::collections::HashMap;
 
 use crate::{
     backend::{
-        decrypt::{DecryptReadBackend, DecryptWriteBackend},
         FileType, ReadBackend, WriteBackend,
+        decrypt::{DecryptReadBackend, DecryptWriteBackend},
     },
     error::{ErrorKind, RusticError, RusticResult},
-    index::{binarysorted::IndexCollector, indexer::Indexer, GlobalIndex},
+    index::{GlobalIndex, binarysorted::IndexCollector, indexer::Indexer},
     progress::{Progress, ProgressBars},
-    repofile::{packfile::PackId, IndexFile, IndexPack, PackHeader, PackHeaderRef},
+    repofile::{IndexFile, IndexPack, PackHeader, PackHeaderRef, packfile::PackId},
     repository::{Open, Repository},
 };
 

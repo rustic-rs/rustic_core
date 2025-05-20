@@ -3,8 +3,8 @@ use zstd::decode_all;
 
 use crate::{
     backend::{
-        decrypt::{DecryptFullBackend, DecryptReadBackend, DecryptWriteBackend},
         FileType, ReadBackend, WriteBackend,
+        decrypt::{DecryptFullBackend, DecryptReadBackend, DecryptWriteBackend},
     },
     error::{ErrorKind, RusticError, RusticResult},
     id::Id,

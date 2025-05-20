@@ -2,7 +2,7 @@
 use derive_setters::Setters;
 
 use crate::{
-    backend::{decrypt::DecryptWriteBackend, FileType, WriteBackend},
+    backend::{FileType, WriteBackend, decrypt::DecryptWriteBackend},
     crypto::{aespoly1305::Key, hasher::hash},
     error::{ErrorKind, RusticError, RusticResult},
     repofile::{KeyFile, KeyId},

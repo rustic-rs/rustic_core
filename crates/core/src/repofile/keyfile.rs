@@ -1,12 +1,12 @@
 use chrono::{DateTime, Local};
-use rand::{rng, RngCore};
+use rand::{RngCore, rng};
 use scrypt::Params;
 use serde_derive::{Deserialize, Serialize};
 use serde_with::{base64::Base64, serde_as, skip_serializing_none};
 
 use crate::{
     backend::{FileType, ReadBackend},
-    crypto::{aespoly1305::Key, CryptoKey},
+    crypto::{CryptoKey, aespoly1305::Key},
     error::{ErrorKind, RusticError, RusticResult},
     impl_repoid,
 };

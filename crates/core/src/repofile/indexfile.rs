@@ -8,7 +8,7 @@ use crate::{
     backend::FileType,
     blob::{BlobId, BlobType},
     impl_repoid,
-    repofile::{packfile::PackHeaderRef, RepoFile},
+    repofile::{RepoFile, packfile::PackHeaderRef},
 };
 
 use super::packfile::PackId;

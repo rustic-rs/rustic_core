@@ -11,8 +11,8 @@ use log::{debug, error, trace, warn};
 use walkdir::WalkDir;
 
 use rustic_core::{
-    CommandInput, ErrorKind, FileType, Id, ReadBackend, RusticError, RusticResult, WriteBackend,
-    ALL_FILE_TYPES,
+    ALL_FILE_TYPES, CommandInput, ErrorKind, FileType, Id, ReadBackend, RusticError, RusticResult,
+    WriteBackend,
 };
 
 /// A local backend.
@@ -426,7 +426,7 @@ impl WriteBackend for LocalBackend {
     ///
     /// * If the directory could not be created.
     fn create(&self) -> RusticResult<()> {
-        trace!("creating repo at {:?}", self.path);
+        trace!("creating repo at {}", self.path.display());
         fs::create_dir_all(&self.path).map_err(|err| {
             RusticError::with_source(
                 ErrorKind::InputOutput,

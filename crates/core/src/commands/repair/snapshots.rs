@@ -10,14 +10,14 @@ use crate::{
         node::NodeType,
     },
     blob::{
+        BlobId, BlobType,
         packer::Packer,
         tree::{Tree, TreeId},
-        BlobId, BlobType,
     },
     error::{ErrorKind, RusticError, RusticResult},
-    index::{indexer::Indexer, ReadGlobalIndex, ReadIndex},
+    index::{ReadGlobalIndex, ReadIndex, indexer::Indexer},
     progress::ProgressBars,
-    repofile::{snapshotfile::SnapshotId, SnapshotFile, StringList},
+    repofile::{SnapshotFile, StringList, snapshotfile::SnapshotId},
     repository::{IndexedFull, IndexedTree, Repository},
 };
 
@@ -98,12 +98,10 @@ pub(crate) fn repair_snapshots<P: ProgressBars, S: IndexedFull>(
     let config_file = repo.config();
 
     if opts.delete && config_file.append_only == Some(true) {
-        return Err(
-            RusticError::new(
-                ErrorKind::AppendOnly,
-                "Removing snapshots is not allowed in append-only repositories. Please disable append-only mode first, if you know what you are doing. Aborting.",
-            )
-        );
+        return Err(RusticError::new(
+            ErrorKind::AppendOnly,
+            "Removing snapshots is not allowed in append-only repositories. Please disable append-only mode first, if you know what you are doing. Aborting.",
+        ));
     }
 
     let mut state = RepairState::default();

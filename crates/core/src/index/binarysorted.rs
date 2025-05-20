@@ -281,7 +281,7 @@ impl ReadIndex for Index {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{repofile::indexfile::IndexFile, RusticResult};
+    use crate::{RusticResult, repofile::indexfile::IndexFile};
 
     const JSON_INDEX: &str = r#"
 {"packs":[{"id":"217f145b63fbc10267f5a686186689ea3389bed0d6a54b50ffc84d71f99eb7fa",

@@ -6,7 +6,7 @@ use std::{
 use log::warn;
 
 use crate::{
-    archiver::{tree::TreeType, TreeStackEmptyError},
+    archiver::{TreeStackEmptyError, tree::TreeType},
     backend::{decrypt::DecryptReadBackend, node::Node},
     blob::tree::{Tree, TreeId},
     index::ReadGlobalIndex,
