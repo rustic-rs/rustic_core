@@ -680,11 +680,13 @@ impl SnapshotFile {
                 let _ = snaps.insert(id, snap);
             }
         }
-        // sort back to original order
+        // sort back to original order + handle duplicates
         Ok(ids
             .iter()
-            .filter_map(|id| snaps.remove_entry(&SnapshotId::from(*id)))
-            .map(Self::set_id)
+            .filter_map(|id| {
+                let id = SnapshotId::from(*id);
+                snaps.get(&id).map(|sn| Self::set_id((id, sn.clone())))
+            })
             .collect())
     }
 

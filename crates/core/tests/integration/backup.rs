@@ -100,7 +100,7 @@ fn test_backup_with_tar_gz_passes(
     let mut all_snapshots = repo.get_all_snapshots()?;
     all_snapshots.sort_unstable();
     assert_eq!(
-        vec![first_snapshot, second_snapshot, third_snapshot],
+        vec![first_snapshot.clone(), second_snapshot, third_snapshot],
         all_snapshots
     );
 
@@ -115,9 +115,11 @@ fn test_backup_with_tar_gz_passes(
     let snaps = repo.get_snapshots(&ids)?;
     assert_eq!(snaps, all_snapshots);
 
-    // reverse order
+    // reverse order and add duplicate snapshot - test if update_snapshots works as expected
     all_snapshots.reverse();
+    all_snapshots.push(first_snapshot.clone());
     ids.reverse();
+    ids.push(first_snapshot.id.to_string());
     let snaps = repo.update_snapshots(snaps, &ids)?;
     assert_eq!(snaps, all_snapshots);
 
