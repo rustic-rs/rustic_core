@@ -1,41 +1,17 @@
 /// Utilities for handling paths on ``rustic_core``
 ///
-use std::{borrow::Cow, ffi::OsStr, path::Path, str::Utf8Error};
+use std::{
+    borrow::Cow,
+    ffi::OsStr,
+    path::{Path, PathBuf},
+    str::Utf8Error,
+};
 
-use globset::GlobMatcher;
 use serde::{Serialize, Serializer};
 use typed_path::{
     Component, TypedPath, UnixComponent, UnixPath, UnixPathBuf, WindowsComponent, WindowsPath,
     WindowsPrefix,
 };
-
-/// Extend `globset::GlobMatcher` to allow mathing on unix paths (on every platform)
-pub trait GlobMatcherExt {
-    /// Match on unix paths, i.e. paths which are available as `&[u8]`
-    fn is_unix_match(&self, path: impl AsRef<[u8]>) -> bool;
-}
-
-impl GlobMatcherExt for GlobMatcher {
-    // This is a hacky implementation, espeically for windows where we convert lossily
-    // into an utf8 string and match on the windows path given by that string.
-    // Note: `GlobMatcher` internally converts into a `&[u8]` to perform the matching
-    // TODO: Use https://github.com/BurntSushi/ripgrep/pull/2955 once it is available.
-    #[cfg(not(windows))]
-    fn is_unix_match(&self, path: impl AsRef<[u8]>) -> bool {
-        use std::{ffi::OsStr, os::unix::ffi::OsStrExt, path::PathBuf};
-
-        let path = PathBuf::from(OsStr::from_bytes(path.as_ref()));
-        self.is_match(&path)
-    }
-    #[cfg(windows)]
-    fn is_unix_match(&self, path: impl AsRef<[u8]>) -> bool {
-        use std::{ffi::OsStr, path::Path};
-
-        let string: &str = &String::from_utf8_lossy(path.as_ref());
-        let path = Path::new(OsStr::new(string));
-        self.is_match(path)
-    }
-}
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Serialize)]
 #[serde(transparent)]
@@ -137,6 +113,23 @@ pub fn unix_path_to_path(path: &UnixPath) -> Result<&Path, Utf8Error> {
         let str = std::str::from_utf8(path.as_bytes())?;
         Ok(Path::new(str))
     }
+}
+
+/// Converts a [`[u8]`] to a [`PathBuf`].
+// This is a hacky implementation, espeically for windows where we convert lossily
+// into an utf8 string and match on the windows path given by that string.
+// Note: `GlobMatcher` internally converts into a `&[u8]` to perform the matching
+// TODO: Use https://github.com/BurntSushi/ripgrep/pull/2955 once it is available.
+#[cfg(not(windows))]
+pub fn u8_to_path(path: impl AsRef<[u8]>) -> PathBuf {
+    use std::{ffi::OsStr, os::unix::ffi::OsStrExt};
+    Path::new(OsStr::from_bytes(path.as_ref())).to_path_buf()
+}
+#[cfg(windows)]
+pub fn u8_to_path(&self, path: impl AsRef<[u8]>) -> PathBuf {
+    use std::ffi::OsStr;
+    let string: &str = &String::from_utf8_lossy(path.as_ref());
+    Path::new(OsStr::new(string)).to_path_buf()
 }
 
 /// Converts a [`TypedPath`] to a [`Cow<UnixPath>`].

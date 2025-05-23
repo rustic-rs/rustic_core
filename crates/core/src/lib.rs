@@ -160,3 +160,6 @@ pub use crate::{
         command_input::{CommandInput, CommandInputErrorKind},
     },
 };
+
+// re-exports
+pub use typed_path;
