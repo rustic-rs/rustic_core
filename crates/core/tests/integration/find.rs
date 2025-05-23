@@ -10,7 +10,7 @@ use rstest::rstest;
 use rustic_core::{
     BackupOptions, FindMatches, FindNode,
     repofile::{Node, SnapshotFile},
-    util::{GlobMatcherExt, SerializablePath},
+    util::{SerializablePath, u8_to_path},
 };
 use typed_path::UnixPath;
 
@@ -36,8 +36,10 @@ fn test_find(tar_gz_testdata: Result<TestSource>, set_up_repo: Result<RepoOpen>)
     assert_ron("find-nodes-not-found", not_found);
     // test non-existing match
     let glob = Glob::new("not_existing")?.compile_matcher();
-    let FindMatches { paths, matches, .. } =
-        repo.find_matching_nodes(vec![snapshot.tree], &|path, _| glob.is_unix_match(path))?;
+    let FindMatches { paths, matches, .. } = repo
+        .find_matching_nodes(vec![snapshot.tree], &|path, _| {
+            glob.is_match(u8_to_path(path))
+        })?;
     assert!(paths.is_empty());
     assert_eq!(matches, [[]]);
 
@@ -48,7 +50,10 @@ fn test_find(tar_gz_testdata: Result<TestSource>, set_up_repo: Result<RepoOpen>)
     // test existing match
     let glob = Glob::new("testfile")?.compile_matcher();
     let match_func = |path: &UnixPath, _: &Node| {
-        glob.is_unix_match(path) || path.file_name().is_some_and(|f| glob.is_unix_match(f))
+        glob.is_match(u8_to_path(path))
+            || path
+                .file_name()
+                .is_some_and(|f| glob.is_match(u8_to_path(f)))
     };
     let FindMatches { paths, matches, .. } =
         repo.find_matching_nodes(vec![snapshot.tree], &match_func)?;
@@ -57,7 +62,10 @@ fn test_find(tar_gz_testdata: Result<TestSource>, set_up_repo: Result<RepoOpen>)
     // test existing match
     let glob = Glob::new("testfile*")?.compile_matcher();
     let match_func = |path: &UnixPath, _: &Node| {
-        glob.is_unix_match(path) || path.file_name().is_some_and(|f| glob.is_unix_match(f))
+        glob.is_match(u8_to_path(path))
+            || path
+                .file_name()
+                .is_some_and(|f| glob.is_match(u8_to_path(f)))
     };
     let FindMatches { paths, matches, .. } =
         repo.find_matching_nodes(vec![snapshot.tree], &match_func)?;
