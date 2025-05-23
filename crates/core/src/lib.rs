@@ -117,6 +117,8 @@ pub(crate) mod progress;
 /// Structs which are saved in JSON or binary format in the repository
 pub mod repofile;
 pub(crate) mod repository;
+/// Utils for using unix paths
+pub mod util;
 /// Virtual File System support - allows to act on the repository like on a file system
 pub mod vfs;
 
@@ -158,3 +160,6 @@ pub use crate::{
         command_input::{CommandInput, CommandInputErrorKind},
     },
 };
+
+// re-exports
+pub use typed_path;
