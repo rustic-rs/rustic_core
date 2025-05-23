@@ -161,6 +161,7 @@ impl PackChecker {
                             Some(PackHeaderRef::from_index_pack(&p).size()),
                             size,
                         ));
+                        changed = true;
                     } else {
                         new_index.add(p, to_delete);
                     }
