@@ -28,11 +28,11 @@ use typed_path::UnixPath;
 #[cfg(not(windows))]
 use crate::backend::ignore::mapper::map_mode_from_go;
 #[cfg(not(windows))]
-use crate::backend::node::NodeType;
+use crate::{backend::node::NodeType, util::typed_path_to_path};
 use crate::{
     backend::node::{ExtendedAttribute, Metadata, Node},
     error::{ErrorKind, RusticError, RusticResult},
-    util::{typed_path_to_path, unix_path_to_path},
+    util::unix_path_to_path,
 };
 
 /// [`LocalDestinationErrorKind`] describes the errors that can be returned by an action on the filesystem in Backends

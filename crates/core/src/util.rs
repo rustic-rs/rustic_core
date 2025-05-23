@@ -2,7 +2,6 @@
 ///
 use std::{
     borrow::Cow,
-    ffi::OsStr,
     path::{Path, PathBuf},
     str::Utf8Error,
 };
@@ -104,6 +103,7 @@ pub fn typed_path_to_path<'a>(path: &'a TypedPath<'a>) -> Result<Cow<'a, Path>, 
 pub fn unix_path_to_path(path: &UnixPath) -> Result<&Path, Utf8Error> {
     #[cfg(not(windows))]
     {
+        use std::ffi::OsStr;
         let osstr: &OsStr = path.as_ref();
         Ok(Path::new(osstr))
     }
@@ -126,7 +126,7 @@ pub fn u8_to_path(path: impl AsRef<[u8]>) -> PathBuf {
     Path::new(OsStr::from_bytes(path.as_ref())).to_path_buf()
 }
 #[cfg(windows)]
-pub fn u8_to_path(&self, path: impl AsRef<[u8]>) -> PathBuf {
+pub fn u8_to_path(path: impl AsRef<[u8]>) -> PathBuf {
     use std::ffi::OsStr;
     let string: &str = &String::from_utf8_lossy(path.as_ref());
     Path::new(OsStr::new(string)).to_path_buf()

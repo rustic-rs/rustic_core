@@ -463,8 +463,6 @@ fn map_entry(
     with_atime: bool,
     _ignore_devid: bool,
 ) -> IgnoreResult<ReadSourceEntry<OpenFile>> {
-    use typed_path::{UnixEncoding, WindowsPath};
-
     let name = entry.file_name().as_encoded_bytes();
     let m = entry
         .metadata()
