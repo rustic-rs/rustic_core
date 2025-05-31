@@ -11,7 +11,7 @@ use crate::{
     },
     blob::{
         BlobId, BlobType,
-        packer::Packer,
+        repopacker::RepositoryPacker,
         tree::{Tree, TreeId},
     },
     error::{ErrorKind, RusticError, RusticResult},
@@ -106,8 +106,8 @@ pub(crate) fn repair_snapshots<P: ProgressBars, S: IndexedFull>(
 
     let mut state = RepairState::default();
 
-    let indexer = Indexer::new(be.clone()).into_shared();
-    let mut packer = Packer::new(
+    let indexer = Indexer::new().into_shared();
+    let mut packer = RepositoryPacker::new(
         be.clone(),
         BlobType::Tree,
         indexer.clone(),
@@ -154,7 +154,10 @@ pub(crate) fn repair_snapshots<P: ProgressBars, S: IndexedFull>(
 
     if !dry_run {
         _ = packer.finalize()?;
-        indexer.write().unwrap().finalize()?;
+        let mut indexer = indexer.write().unwrap();
+        if let Some(file) = indexer.finalize() {
+            _ = be.save_file(&file)?;
+        }
     }
 
     if opts.delete {
@@ -195,7 +198,7 @@ pub(crate) fn repair_tree<BE: DecryptWriteBackend>(
     be: &impl DecryptFullBackend,
     opts: &RepairSnapshotsOptions,
     index: &impl ReadGlobalIndex,
-    packer: &mut Packer<BE>,
+    packer: &mut RepositoryPacker<BE>,
     id: Option<TreeId>,
     state: &mut RepairState,
     dry_run: bool,

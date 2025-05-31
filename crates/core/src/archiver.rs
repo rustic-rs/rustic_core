@@ -49,7 +49,7 @@ pub struct Archiver<'a, BE: DecryptFullBackend, I: ReadGlobalIndex> {
     parent: Parent,
 
     /// The `SharedIndexer` is used to index the data.
-    indexer: SharedIndexer<BE>,
+    indexer: SharedIndexer,
 
     /// The backend to write to.
     be: BE,
@@ -83,7 +83,7 @@ impl<'a, BE: DecryptFullBackend, I: ReadGlobalIndex> Archiver<'a, BE, I> {
         parent: Parent,
         mut snap: SnapshotFile,
     ) -> RusticResult<Self> {
-        let indexer = Indexer::new(be.clone()).into_shared();
+        let indexer = Indexer::new().into_shared();
         let mut summary = snap.summary.take().unwrap_or_default();
         summary.backup_start = Local::now();
 
@@ -217,7 +217,10 @@ impl<'a, BE: DecryptFullBackend, I: ReadGlobalIndex> Archiver<'a, BE, I> {
         stats.apply(&mut summary, BlobType::Data);
         self.snap.tree = id;
 
-        self.indexer.write().unwrap().finalize()?;
+        let res = self.indexer.write().unwrap().finalize();
+        if let Some(file) = res {
+            _ = self.be.save_file(&file)?;
+        }
 
         summary.finalize(self.snap.time).map_err(|err| {
             RusticError::with_source(

@@ -13,10 +13,7 @@ use crate::{
         decrypt::DecryptWriteBackend,
         node::{Node, NodeType},
     },
-    blob::{
-        BlobId, BlobType, DataId,
-        packer::{Packer, PackerStats},
-    },
+    blob::{BlobId, BlobType, DataId, packer::PackerStats, repopacker::RepositoryPacker},
     chunker::ChunkIter,
     crypto::hasher::hash,
     error::{ErrorKind, RusticError, RusticResult},
@@ -35,7 +32,7 @@ use crate::{
 #[derive(Clone)]
 pub(crate) struct FileArchiver<'a, BE: DecryptWriteBackend, I: ReadGlobalIndex> {
     index: &'a I,
-    data_packer: Packer<BE>,
+    data_packer: RepositoryPacker<BE>,
     rabin: Rabin64,
 }
 
@@ -61,12 +58,12 @@ impl<'a, BE: DecryptWriteBackend, I: ReadGlobalIndex> FileArchiver<'a, BE, I> {
     pub(crate) fn new(
         be: BE,
         index: &'a I,
-        indexer: SharedIndexer<BE>,
+        indexer: SharedIndexer,
         config: &ConfigFile,
     ) -> RusticResult<Self> {
         let poly = config.poly()?;
 
-        let data_packer = Packer::new(
+        let data_packer = RepositoryPacker::new(
             be,
             BlobType::Data,
             indexer,

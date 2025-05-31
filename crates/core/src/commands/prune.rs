@@ -26,8 +26,7 @@ use crate::{
         node::NodeType,
     },
     blob::{
-        BlobId, BlobType, BlobTypeMap, Initialize,
-        packer::{PackSizer, Repacker},
+        BlobId, BlobType, BlobTypeMap, Initialize, packer::PackSizer, repopacker::Repacker,
         tree::TreeStreamerOnce,
     },
     error::{ErrorKind, RusticError, RusticResult},
@@ -35,6 +34,7 @@ use crate::{
         GlobalIndex, ReadGlobalIndex, ReadIndex,
         binarysorted::{IndexCollector, IndexType},
         indexer::Indexer,
+        repoindexer::RepositoryIndexer,
     },
     progress::{Progress, ProgressBars},
     repofile::{
@@ -1247,7 +1247,7 @@ pub(crate) fn prune_repository<P: ProgressBars, S: Open>(
     let be = repo.dbe();
     let pb = &repo.pb;
 
-    let indexer = Indexer::new_unindexed(be.clone()).into_shared();
+    let indexer = Indexer::new_unindexed().into_shared();
 
     // Calculate an approximation of sizes after pruning.
     // The size actually is:
@@ -1281,6 +1281,8 @@ pub(crate) fn prune_repository<P: ProgressBars, S: Open>(
         size_after_prune[BlobType::Data],
     )?;
 
+    let indexer = RepositoryIndexer::new(be.clone(), indexer);
+
     // mark unreferenced packs for deletion
     if !prune_plan.existing_packs.is_empty() {
         if opts.instant_delete {
@@ -1297,7 +1299,7 @@ pub(crate) fn prune_repository<P: ProgressBars, S: Open>(
                     time: Some(Local::now()),
                     blobs: Vec::new(),
                 };
-                indexer.write().unwrap().add_remove(pack)?;
+                indexer.add_remove(pack)?;
                 p.inc(1);
             }
             p.finish();
@@ -1365,7 +1367,7 @@ pub(crate) fn prune_repository<P: ProgressBars, S: Open>(
                 PackToDo::Keep => {
                     // keep pack: add to new index
                     let pack = pack.into_index_pack();
-                    indexer.write().unwrap().add(pack)?;
+                    indexer.add(pack)?;
                 }
                 PackToDo::Repack => {
                     // TODO: repack in parallel
@@ -1391,7 +1393,7 @@ pub(crate) fn prune_repository<P: ProgressBars, S: Open>(
                     } else {
                         // mark pack for removal
                         let pack = pack.into_index_pack_with_time(prune_plan.time);
-                        indexer.write().unwrap().add_remove(pack)?;
+                        indexer.add_remove(pack)?;
                     }
                 }
                 PackToDo::MarkDelete => {
@@ -1400,7 +1402,7 @@ pub(crate) fn prune_repository<P: ProgressBars, S: Open>(
                     } else {
                         // mark pack for removal
                         let pack = pack.into_index_pack_with_time(prune_plan.time);
-                        indexer.write().unwrap().add_remove(pack)?;
+                        indexer.add_remove(pack)?;
                     }
                 }
                 PackToDo::KeepMarked | PackToDo::KeepMarkedAndCorrect => {
@@ -1411,13 +1413,13 @@ pub(crate) fn prune_repository<P: ProgressBars, S: Open>(
                         // Note the timestamp shouldn't be None here, however if it is not not set, use the current time to heal the entry!
                         let time = pack.time.unwrap_or(prune_plan.time);
                         let pack = pack.into_index_pack_with_time(time);
-                        indexer.write().unwrap().add_remove(pack)?;
+                        indexer.add_remove(pack)?;
                     }
                 }
                 PackToDo::Recover => {
                     // recover pack: add to new index in section packs
                     let pack = pack.into_index_pack_with_time(prune_plan.time);
-                    indexer.write().unwrap().add(pack)?;
+                    indexer.add(pack)?;
                 }
                 PackToDo::Delete => delete_pack(pack),
             }
@@ -1425,7 +1427,7 @@ pub(crate) fn prune_repository<P: ProgressBars, S: Open>(
         })?;
     _ = tree_repacker.finalize()?;
     _ = data_repacker.finalize()?;
-    indexer.write().unwrap().finalize()?;
+    indexer.finalize()?;
     p.finish();
 
     // remove old index files first as they may reference pack files which are removed soon.

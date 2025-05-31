@@ -8,7 +8,7 @@ use crate::{
     backend::{decrypt::DecryptWriteBackend, node::Node},
     blob::{
         BlobType,
-        packer::Packer,
+        repopacker::RepositoryPacker,
         tree::{Tree, TreeId},
     },
     error::{ErrorKind, RusticError, RusticResult},
@@ -34,7 +34,7 @@ pub(crate) struct TreeArchiver<'a, BE: DecryptWriteBackend, I: ReadGlobalIndex> 
     /// The index to read from.
     index: &'a I,
     /// The packer to write to.
-    tree_packer: Packer<BE>,
+    tree_packer: RepositoryPacker<BE>,
     /// The summary of the snapshot.
     summary: SnapshotSummary,
 }
@@ -62,11 +62,11 @@ impl<'a, BE: DecryptWriteBackend, I: ReadGlobalIndex> TreeArchiver<'a, BE, I> {
     pub(crate) fn new(
         be: BE,
         index: &'a I,
-        indexer: SharedIndexer<BE>,
+        indexer: SharedIndexer,
         config: &ConfigFile,
         summary: SnapshotSummary,
     ) -> RusticResult<Self> {
-        let tree_packer = Packer::new(
+        let tree_packer = RepositoryPacker::new(
             be,
             BlobType::Tree,
             indexer,

@@ -29,7 +29,7 @@ const fn default_predicate(x: u64) -> bool {
 }
 
 /// `ChunkIter` is an iterator that chunks data.
-pub(crate) struct ChunkIter<R: Read + Send> {
+pub(crate) struct ChunkIter<R> {
     /// The buffer used for reading.
     buf: Vec<u8>,
 
@@ -58,7 +58,7 @@ pub(crate) struct ChunkIter<R: Read + Send> {
     finished: bool,
 }
 
-impl<R: Read + Send> ChunkIter<R> {
+impl<R: Read> ChunkIter<R> {
     /// Creates a new `ChunkIter`.
     ///
     /// # Arguments
@@ -81,7 +81,7 @@ impl<R: Read + Send> ChunkIter<R> {
     }
 }
 
-impl<R: Read + Send> Iterator for ChunkIter<R> {
+impl<R: Read> Iterator for ChunkIter<R> {
     type Item = RusticResult<Vec<u8>>;
 
     fn next(&mut self) -> Option<Self::Item> {

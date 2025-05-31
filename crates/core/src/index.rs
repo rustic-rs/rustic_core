@@ -17,6 +17,7 @@ use crate::{
 
 pub(crate) mod binarysorted;
 pub(crate) mod indexer;
+pub(crate) mod repoindexer;
 
 /// An entry in the index
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Constructor)]
