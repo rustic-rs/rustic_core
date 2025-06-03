@@ -156,11 +156,10 @@ impl<BE: DecryptWriteBackend> RepositoryPacker<BE> {
                     // check again if id is already contained
                     // TODO: We may still save duplicate blobs - the indexer is only updated when the packfile write has completed
                     .filter(|res| {
-                        let res = res.as_ref().map_or_else(
+                        res.as_ref().map_or_else(
                             |_| true,
                             |(_, id, _, _, _)| !indexer.write().unwrap().has(id),
-                        );
-                        res
+                        )
                     })
                     .try_for_each(|item: RusticResult<_>| -> RusticResult<()> {
                         let (data, id, data_len, ul, size_limit) = item?;
