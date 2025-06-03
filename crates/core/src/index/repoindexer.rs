@@ -81,10 +81,7 @@ impl<BE: DecryptWriteBackend> RepositoryIndexer<BE> {
     }
 
     pub fn finalize(&self) -> RusticResult<()> {
-        let res = {
-            let mut raw_indexer = self.raw_indexer.write().unwrap();
-            raw_indexer.finalize()
-        };
+        let res = self.raw_indexer.write().unwrap().finalize();
 
         if let Some(file) = res {
             let _ = self.be.save_file(&file)?;
@@ -92,12 +89,12 @@ impl<BE: DecryptWriteBackend> RepositoryIndexer<BE> {
         Ok(())
     }
 
-    /// Returns whether the given id is indexed.
+    /// Returns whether the given id is indexed. If not, mark it as indexed
     ///
     /// # Arguments
     ///
     /// * `id` - The id to check.
     pub fn has(&self, id: &BlobId) -> bool {
-        self.raw_indexer.read().unwrap().has(id)
+        self.raw_indexer.write().unwrap().has(id)
     }
 }

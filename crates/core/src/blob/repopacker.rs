@@ -130,14 +130,13 @@ impl<BE: DecryptWriteBackend> RepositoryPacker<BE> {
             finish: finish_rx,
         };
 
-        let repo_packer = repository_packer.clone();
         let _join_handle = std::thread::spawn(move || {
             scope(|scope| {
                 let status = rx
                     .into_iter()
                     .readahead_scoped(scope)
                     // early check if id is already contained
-                    .filter(|(_, id, _)| !indexer.read().unwrap().has(id))
+                    .filter(|(_, id, _)| !indexer.write().unwrap().has(id))
                     .filter(|(_, id, _)| !packer.read().unwrap().has(id))
                     .readahead_scoped(scope)
                     .parallel_map_scoped(
@@ -157,14 +156,29 @@ impl<BE: DecryptWriteBackend> RepositoryPacker<BE> {
                     // check again if id is already contained
                     // TODO: We may still save duplicate blobs - the indexer is only updated when the packfile write has completed
                     .filter(|res| {
-                        res.as_ref().map_or_else(
+                        let res = res.as_ref().map_or_else(
                             |_| true,
-                            |(_, id, _, _, _)| !indexer.read().unwrap().has(id),
-                        )
+                            |(_, id, _, _, _)| !indexer.write().unwrap().has(id),
+                        );
+                        res
                     })
                     .try_for_each(|item: RusticResult<_>| -> RusticResult<()> {
                         let (data, id, data_len, ul, size_limit) = item?;
-                        repo_packer.add_raw(&data, &id, data_len, ul, size_limit)?;
+                        let res = {
+                            let mut raw_packer = packer.write().unwrap();
+                            raw_packer.add(&data, &id, data_len, ul)?;
+
+                            raw_packer.save_if_needed(size_limit)?
+                        };
+                        if let Some((file, index)) = res {
+                            file_writer.send((file, index)).map_err(|err| {
+                                RusticError::with_source(
+                                    ErrorKind::Internal,
+                                    "Failed to send packfile to file writer.",
+                                    err,
+                                )
+                            })?;
+                        }
 
                         Ok(())
                     })
@@ -263,7 +277,7 @@ impl<BE: DecryptWriteBackend> RepositoryPacker<BE> {
         size_limit: Option<u32>,
     ) -> RusticResult<()> {
         // only add if this blob is not present
-        if !self.indexer.read().unwrap().has(id) {
+        if !self.indexer.write().unwrap().has(id) {
             let mut raw_packer = self.packer.write().unwrap();
             raw_packer.add(data, id, data_len, uncompressed_length)?;
 

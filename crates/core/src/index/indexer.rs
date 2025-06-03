@@ -169,14 +169,14 @@ impl Indexer {
         self.file.add(pack, delete);
     }
 
-    /// Returns whether the given id is indexed.
+    /// Returns whether the given id is indexed. If not, mark it as indexed
     ///
     /// # Arguments
     ///
     /// * `id` - The id to check.
-    pub fn has(&self, id: &BlobId) -> bool {
+    pub fn has(&mut self, id: &BlobId) -> bool {
         self.indexed
-            .as_ref()
-            .is_some_and(|indexed| indexed.contains(id))
+            .as_mut()
+            .is_some_and(|indexed| !indexed.insert(*id))
     }
 }
