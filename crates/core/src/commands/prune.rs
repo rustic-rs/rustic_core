@@ -34,7 +34,6 @@ use crate::{
         GlobalIndex, ReadGlobalIndex, ReadIndex,
         binarysorted::{IndexCollector, IndexType},
         indexer::Indexer,
-        repoindexer::RepositoryIndexer,
     },
     progress::{Progress, ProgressBars},
     repofile::{
@@ -1247,7 +1246,7 @@ pub(crate) fn prune_repository<P: ProgressBars, S: Open>(
     let be = repo.dbe();
     let pb = &repo.pb;
 
-    let indexer = Indexer::new_unindexed().into_shared();
+    let mut indexer = Indexer::new_unindexed();
 
     // Calculate an approximation of sizes after pruning.
     // The size actually is:
@@ -1265,24 +1264,6 @@ pub(crate) fn prune_repository<P: ProgressBars, S: Open>(
                 * u64::from(HeaderEntry::ENTRY_LEN_COMPRESSED)
     });
 
-    let tree_repacker = Repacker::new(
-        be.clone(),
-        BlobType::Tree,
-        indexer.clone(),
-        repo.config(),
-        size_after_prune[BlobType::Tree],
-    )?;
-
-    let data_repacker = Repacker::new(
-        be.clone(),
-        BlobType::Data,
-        indexer.clone(),
-        repo.config(),
-        size_after_prune[BlobType::Data],
-    )?;
-
-    let indexer = RepositoryIndexer::new(be.clone(), indexer);
-
     // mark unreferenced packs for deletion
     if !prune_plan.existing_packs.is_empty() {
         if opts.instant_delete {
@@ -1299,7 +1280,10 @@ pub(crate) fn prune_repository<P: ProgressBars, S: Open>(
                     time: Some(Local::now()),
                     blobs: Vec::new(),
                 };
-                indexer.add_remove(pack)?;
+                indexer.add_remove(pack);
+                if let Some(file) = indexer.save_if_needed() {
+                    _ = be.save_file(&file)?;
+                }
                 p.inc(1);
             }
             p.finish();
@@ -1323,8 +1307,25 @@ pub(crate) fn prune_repository<P: ProgressBars, S: Open>(
     p.set_length(prune_plan.stats.size_sum().repack - prune_plan.stats.size_sum().repackrm);
 
     let mut indexes_remove = Vec::new();
+    let indexer = indexer.into_shared();
     let tree_packs_remove = Arc::new(Mutex::new(Vec::new()));
     let data_packs_remove = Arc::new(Mutex::new(Vec::new()));
+
+    let tree_repacker = Repacker::new(
+        be.clone(),
+        BlobType::Tree,
+        indexer.clone(),
+        repo.config(),
+        size_after_prune[BlobType::Tree],
+    )?;
+
+    let data_repacker = Repacker::new(
+        be.clone(),
+        BlobType::Data,
+        indexer.clone(),
+        repo.config(),
+        size_after_prune[BlobType::Data],
+    )?;
 
     let delete_pack = |pack: PrunePack| {
         // delete pack
@@ -1355,7 +1356,7 @@ pub(crate) fn prune_repository<P: ProgressBars, S: Open>(
     packs
         .into_par_iter()
         .try_for_each(|pack| -> RusticResult<_> {
-            match pack.to_do {
+            let to_index = match pack.to_do {
                 PackToDo::Undecided => {
                     return Err(RusticError::new(
                         ErrorKind::Internal,
@@ -1367,7 +1368,7 @@ pub(crate) fn prune_repository<P: ProgressBars, S: Open>(
                 PackToDo::Keep => {
                     // keep pack: add to new index
                     let pack = pack.into_index_pack();
-                    indexer.add(pack)?;
+                    Some((pack, true))
                 }
                 PackToDo::Repack => {
                     // TODO: repack in parallel
@@ -1390,44 +1391,63 @@ pub(crate) fn prune_repository<P: ProgressBars, S: Open>(
                     }
                     if opts.instant_delete {
                         delete_pack(pack);
+                        None
                     } else {
                         // mark pack for removal
                         let pack = pack.into_index_pack_with_time(prune_plan.time);
-                        indexer.add_remove(pack)?;
+                        Some((pack, true))
                     }
                 }
                 PackToDo::MarkDelete => {
                     if opts.instant_delete {
                         delete_pack(pack);
+                        None
                     } else {
                         // mark pack for removal
                         let pack = pack.into_index_pack_with_time(prune_plan.time);
-                        indexer.add_remove(pack)?;
+                        Some((pack, true))
                     }
                 }
                 PackToDo::KeepMarked | PackToDo::KeepMarkedAndCorrect => {
                     if opts.instant_delete {
                         delete_pack(pack);
+                        None
                     } else {
                         // keep pack: add to new index; keep the timestamp.
                         // Note the timestamp shouldn't be None here, however if it is not not set, use the current time to heal the entry!
                         let time = pack.time.unwrap_or(prune_plan.time);
                         let pack = pack.into_index_pack_with_time(time);
-                        indexer.add_remove(pack)?;
+                        Some((pack, true))
                     }
                 }
                 PackToDo::Recover => {
                     // recover pack: add to new index in section packs
                     let pack = pack.into_index_pack_with_time(prune_plan.time);
-                    indexer.add(pack)?;
+                    Some((pack, false))
                 }
-                PackToDo::Delete => delete_pack(pack),
+                PackToDo::Delete => {
+                    delete_pack(pack);
+                    None
+                }
+            };
+            if let Some((pack, delete)) = to_index {
+                let res = {
+                    let mut indexer = indexer.write().unwrap();
+                    indexer.add_with(pack, delete);
+                    indexer.save_if_needed()
+                };
+                if let Some(file) = res {
+                    _ = be.save_file(&file)?;
+                }
             }
             Ok(())
         })?;
     _ = tree_repacker.finalize()?;
     _ = data_repacker.finalize()?;
-    indexer.finalize()?;
+    let res = indexer.write().unwrap().finalize();
+    if let Some(file) = res {
+        _ = be.save_file(&file)?;
+    }
     p.finish();
 
     // remove old index files first as they may reference pack files which are removed soon.
