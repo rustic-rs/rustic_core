@@ -305,9 +305,6 @@ impl<C: CryptoKey> Packer<C> {
         data_len: u64,
         uncompressed_length: Option<NonZeroU32>,
     ) -> RusticResult<()> {
-        if self.has(id) {
-            return Ok(());
-        }
         self.stats.blobs += 1;
 
         self.stats.data += data_len;
@@ -473,9 +470,5 @@ impl<C: CryptoKey> Packer<C> {
         self.size = 0;
 
         Ok(Some((file, index)))
-    }
-
-    pub fn has(&self, id: &BlobId) -> bool {
-        self.index.blobs.iter().any(|b| &b.id == id)
     }
 }

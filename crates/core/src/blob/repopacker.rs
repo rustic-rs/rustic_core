@@ -135,10 +135,8 @@ impl<BE: DecryptWriteBackend> RepositoryPacker<BE> {
                 let status = rx
                     .into_iter()
                     .readahead_scoped(scope)
-                    // early check if id is already contained
+                    // early check if id is already contained and reserve, if not
                     .filter(|(_, id, _)| !indexer.write().unwrap().has(id))
-                    .filter(|(_, id, _)| !packer.read().unwrap().has(id))
-                    .readahead_scoped(scope)
                     .parallel_map_scoped(
                         scope,
                         |(data, id, size_limit): (Bytes, BlobId, Option<u32>)| {
@@ -153,14 +151,6 @@ impl<BE: DecryptWriteBackend> RepositoryPacker<BE> {
                         },
                     )
                     .readahead_scoped(scope)
-                    // check again if id is already contained
-                    // TODO: We may still save duplicate blobs - the indexer is only updated when the packfile write has completed
-                    .filter(|res| {
-                        res.as_ref().map_or_else(
-                            |_| true,
-                            |(_, id, _, _, _)| !indexer.write().unwrap().has(id),
-                        )
-                    })
                     .try_for_each(|item: RusticResult<_>| -> RusticResult<()> {
                         let (data, id, data_len, ul, size_limit) = item?;
                         let res = {
