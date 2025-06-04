@@ -169,14 +169,25 @@ impl Indexer {
         self.file.add(pack, delete);
     }
 
-    /// Returns whether the given id is indexed. If not, mark it as indexed
-    ///
+    /// Returns whether the given id is indexed.
+    ///     
     /// # Arguments
     ///
     /// * `id` - The id to check.
     pub fn has(&mut self, id: &BlobId) -> bool {
         self.indexed
             .as_mut()
-            .is_some_and(|indexed| !indexed.insert(*id))
+            .is_some_and(|indexed| indexed.contains(id))
+    }
+
+    /// Reserve an id for saving in the index. Returns whether the id was newly reseved, i.e. was not already present.
+    ///
+    /// # Arguments
+    ///
+    /// * `id` - The id to check.
+    pub fn reserve(&mut self, id: &BlobId) -> bool {
+        self.indexed
+            .as_mut()
+            .is_some_and(|indexed| indexed.insert(*id))
     }
 }

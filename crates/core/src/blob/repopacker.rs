@@ -136,7 +136,7 @@ impl<BE: DecryptWriteBackend> RepositoryPacker<BE> {
                     .into_iter()
                     .readahead_scoped(scope)
                     // early check if id is already contained and reserve, if not
-                    .filter(|(_, id, _)| !indexer.write().unwrap().has(id))
+                    .filter(|(_, id, _)| indexer.write().unwrap().reserve(id))
                     .parallel_map_scoped(
                         scope,
                         |(data, id, size_limit): (Bytes, BlobId, Option<u32>)| {
@@ -266,7 +266,7 @@ impl<BE: DecryptWriteBackend> RepositoryPacker<BE> {
         size_limit: Option<u32>,
     ) -> RusticResult<()> {
         // only add if this blob is not present
-        if !self.indexer.write().unwrap().has(id) {
+        if self.indexer.write().unwrap().reserve(id) {
             let mut raw_packer = self.packer.write().unwrap();
             raw_packer.add(data, id, data_len, uncompressed_length)?;
 
