@@ -1327,12 +1327,13 @@ pub(crate) fn prune_repository<P: ProgressBars, S: Open>(
         size_after_prune[BlobType::Data],
     )?;
 
-    let delete_pack = |pack: PrunePack| {
+    let delete_pack = |pack: PrunePack| -> Option<_> {
         // delete pack
         match pack.blob_type {
             BlobType::Data => data_packs_remove.lock().unwrap().push(pack.id),
             BlobType::Tree => tree_packs_remove.lock().unwrap().push(pack.id),
         }
+        None
     };
 
     let used_ids = Arc::new(Mutex::new(prune_plan.used_ids));
@@ -1368,7 +1369,7 @@ pub(crate) fn prune_repository<P: ProgressBars, S: Open>(
                 PackToDo::Keep => {
                     // keep pack: add to new index
                     let pack = pack.into_index_pack();
-                    Some((pack, true))
+                    Some((pack, false))
                 }
                 PackToDo::Repack => {
                     // TODO: repack in parallel
@@ -1390,8 +1391,7 @@ pub(crate) fn prune_repository<P: ProgressBars, S: Open>(
                         p.inc(u64::from(blob.length));
                     }
                     if opts.instant_delete {
-                        delete_pack(pack);
-                        None
+                        delete_pack(pack)
                     } else {
                         // mark pack for removal
                         let pack = pack.into_index_pack_with_time(prune_plan.time);
@@ -1400,8 +1400,7 @@ pub(crate) fn prune_repository<P: ProgressBars, S: Open>(
                 }
                 PackToDo::MarkDelete => {
                     if opts.instant_delete {
-                        delete_pack(pack);
-                        None
+                        delete_pack(pack)
                     } else {
                         // mark pack for removal
                         let pack = pack.into_index_pack_with_time(prune_plan.time);
@@ -1410,8 +1409,7 @@ pub(crate) fn prune_repository<P: ProgressBars, S: Open>(
                 }
                 PackToDo::KeepMarked | PackToDo::KeepMarkedAndCorrect => {
                     if opts.instant_delete {
-                        delete_pack(pack);
-                        None
+                        delete_pack(pack)
                     } else {
                         // keep pack: add to new index; keep the timestamp.
                         // Note the timestamp shouldn't be None here, however if it is not not set, use the current time to heal the entry!
@@ -1425,10 +1423,7 @@ pub(crate) fn prune_repository<P: ProgressBars, S: Open>(
                     let pack = pack.into_index_pack_with_time(prune_plan.time);
                     Some((pack, false))
                 }
-                PackToDo::Delete => {
-                    delete_pack(pack);
-                    None
-                }
+                PackToDo::Delete => delete_pack(pack),
             };
             if let Some((pack, delete)) = to_index {
                 let res = {
