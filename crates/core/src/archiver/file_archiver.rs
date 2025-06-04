@@ -13,10 +13,7 @@ use crate::{
         decrypt::DecryptWriteBackend,
         node::{Node, NodeType},
     },
-    blob::{
-        BlobId, BlobType, DataId, pack_sizer::DefaultPackSizer, packer::PackerStats,
-        repopacker::RepositoryPacker,
-    },
+    blob::{BlobId, BlobType, DataId, packer::PackerStats, repopacker::RepositoryPacker},
     chunker::ChunkIter,
     crypto::hasher::hash,
     error::{ErrorKind, RusticError, RusticResult},
@@ -33,13 +30,13 @@ use crate::{
 /// * `BE` - The backend type.
 /// * `I` - The index to read from.
 #[derive(Clone)]
-pub(crate) struct FileArchiver<'a, BE: DecryptWriteBackend, I: ReadGlobalIndex> {
+pub(crate) struct FileArchiver<'a, I: ReadGlobalIndex> {
     index: &'a I,
-    data_packer: RepositoryPacker<BE, DefaultPackSizer>,
+    data_packer: RepositoryPacker,
     rabin: Rabin64,
 }
 
-impl<'a, BE: DecryptWriteBackend, I: ReadGlobalIndex> FileArchiver<'a, BE, I> {
+impl<'a, I: ReadGlobalIndex> FileArchiver<'a, I> {
     /// Creates a new `FileArchiver`.
     ///
     /// # Type Parameters
@@ -58,7 +55,7 @@ impl<'a, BE: DecryptWriteBackend, I: ReadGlobalIndex> FileArchiver<'a, BE, I> {
     ///
     /// * If sending the message to the raw packer fails.
     /// * If converting the data length to u64 fails
-    pub(crate) fn new(
+    pub(crate) fn new<BE: DecryptWriteBackend>(
         be: BE,
         index: &'a I,
         indexer: SharedIndexer,

@@ -40,10 +40,10 @@ pub struct TreeStackEmptyError;
 #[allow(clippy::struct_field_names)]
 pub struct Archiver<'a, BE: DecryptFullBackend, I: ReadGlobalIndex> {
     /// The `FileArchiver` is responsible for archiving files.
-    file_archiver: FileArchiver<'a, BE, I>,
+    file_archiver: FileArchiver<'a, I>,
 
     /// The `TreeArchiver` is responsible for archiving trees.
-    tree_archiver: TreeArchiver<'a, BE, I>,
+    tree_archiver: TreeArchiver<'a, I>,
 
     /// The parent snapshot to use.
     parent: Parent,

@@ -8,7 +8,6 @@ use crate::{
     backend::{decrypt::DecryptWriteBackend, node::Node},
     blob::{
         BlobType,
-        pack_sizer::DefaultPackSizer,
         repopacker::RepositoryPacker,
         tree::{Tree, TreeId},
     },
@@ -27,7 +26,7 @@ pub(crate) type TreeItem = TreeType<(ParentResult<()>, u64), ParentResult<TreeId
 /// * `I` - The index to read from.
 ///
 // TODO: Add documentation
-pub(crate) struct TreeArchiver<'a, BE: DecryptWriteBackend, I: ReadGlobalIndex> {
+pub(crate) struct TreeArchiver<'a, I: ReadGlobalIndex> {
     /// The current tree.
     tree: Tree,
     /// The stack of trees.
@@ -35,12 +34,12 @@ pub(crate) struct TreeArchiver<'a, BE: DecryptWriteBackend, I: ReadGlobalIndex> 
     /// The index to read from.
     index: &'a I,
     /// The packer to write to.
-    tree_packer: RepositoryPacker<BE, DefaultPackSizer>,
+    tree_packer: RepositoryPacker,
     /// The summary of the snapshot.
     summary: SnapshotSummary,
 }
 
-impl<'a, BE: DecryptWriteBackend, I: ReadGlobalIndex> TreeArchiver<'a, BE, I> {
+impl<'a, I: ReadGlobalIndex> TreeArchiver<'a, I> {
     /// Creates a new `TreeArchiver`.
     ///
     /// # Type Parameters
@@ -60,7 +59,7 @@ impl<'a, BE: DecryptWriteBackend, I: ReadGlobalIndex> TreeArchiver<'a, BE, I> {
     ///
     /// * If sending the message to the raw packer fails.
     /// * If converting the data length to u64 fails
-    pub(crate) fn new(
+    pub(crate) fn new<BE: DecryptWriteBackend>(
         be: BE,
         index: &'a I,
         indexer: SharedIndexer,

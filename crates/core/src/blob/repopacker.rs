@@ -1,7 +1,4 @@
-use std::{
-    num::NonZeroU32,
-    sync::{Arc, RwLock},
-};
+use std::num::NonZeroU32;
 
 use bytes::Bytes;
 use chrono::Local;
@@ -29,6 +26,8 @@ use super::{
     packer::{Packer, PackerStats},
 };
 
+type RawSender = Sender<RusticResult<(Vec<u8>, BlobId, u64, Option<NonZeroU32>)>>;
+
 /// The `Packer` is responsible for packing blobs into pack files.
 ///
 /// # Type Parameters
@@ -37,24 +36,20 @@ use super::{
 #[allow(missing_debug_implementations)]
 #[allow(clippy::struct_field_names)]
 #[derive(Clone)]
-pub struct RepositoryPacker<BE: DecryptWriteBackend, S> {
-    /// The raw packer wrapped in an `Arc` and `RwLock`.
-    // This is a hack: raw_packer and indexer are only used in the add_raw() method.
-    // TODO: Refactor as actor, like the other add() methods
-    packer: Arc<RwLock<Packer<BE::Key, S>>>,
+pub struct RepositoryPacker {
     /// The shared indexer containing the backend.
     indexer: SharedIndexer,
-    /// The actor to write the pack file
-    file_writer: Actor,
-    /// The sender to send blobs to the raw packer.
+    /// The sender to send blobs to the packer.
     sender: Sender<(Bytes, BlobId)>,
+    /// The sender to send raw blobs to the packer.
+    raw_sender: RawSender,
     /// The receiver to receive the status from the raw packer.
     finish: Receiver<RusticResult<PackerStats>>,
 }
 
-impl<BE: DecryptWriteBackend> RepositoryPacker<BE, DefaultPackSizer> {
+impl RepositoryPacker {
     #[allow(clippy::unnecessary_wraps)]
-    pub fn new_with_default_sizer(
+    pub fn new_with_default_sizer<BE: DecryptWriteBackend>(
         be: BE,
         blob_type: BlobType,
         indexer: SharedIndexer,
@@ -66,7 +61,7 @@ impl<BE: DecryptWriteBackend> RepositoryPacker<BE, DefaultPackSizer> {
     }
 }
 
-impl<BE: DecryptWriteBackend, S: PackSizer + Send + Sync + 'static> RepositoryPacker<BE, S> {
+impl RepositoryPacker {
     /// Creates a new `Packer`.
     ///
     /// # Type Parameters
@@ -86,13 +81,13 @@ impl<BE: DecryptWriteBackend, S: PackSizer + Send + Sync + 'static> RepositoryPa
     /// * If sending the message to the raw packer fails.
     /// * If converting the data length to u64 fails
     #[allow(clippy::unnecessary_wraps)]
-    pub fn new(
+    pub fn new<BE: DecryptWriteBackend, S: PackSizer + Send + Sync + 'static>(
         be: BE,
         blob_type: BlobType,
         indexer: SharedIndexer,
         pack_sizer: S,
     ) -> RusticResult<Self> {
-        let packer = Arc::new(RwLock::new(Packer::new(*be.key(), pack_sizer, blob_type)));
+        let mut packer = Packer::new(*be.key(), pack_sizer, blob_type);
 
         let file_writer = Actor::new(
             FileWriterHandle {
@@ -105,19 +100,18 @@ impl<BE: DecryptWriteBackend, S: PackSizer + Send + Sync + 'static> RepositoryPa
         );
 
         let (tx, rx) = bounded(0);
+        let (tx_raw, rx_raw) = bounded(0);
         let (finish_tx, finish_rx) = bounded::<RusticResult<PackerStats>>(0);
         let repository_packer = Self {
-            packer: packer.clone(),
             indexer: indexer.clone(),
-            file_writer: file_writer.clone(),
             sender: tx,
+            raw_sender: tx_raw.clone(),
             finish: finish_rx,
         };
 
         let _join_handle = std::thread::spawn(move || {
             scope(|scope| {
-                let status = rx
-                    .into_iter()
+                rx.into_iter()
                     .readahead_scoped(scope)
                     // early check if id is already contained and reserve, if not
                     .filter(|(_, id)| indexer.reserve(id))
@@ -126,24 +120,31 @@ impl<BE: DecryptWriteBackend, S: PackSizer + Send + Sync + 'static> RepositoryPa
                         Ok((data, id, u64::from(data_len), uncompressed_length))
                     })
                     .readahead_scoped(scope)
+                    .for_each(|item: RusticResult<_>| tx_raw.send(item).unwrap());
+            })
+            .unwrap();
+        });
+
+        let _join_handle_raw = std::thread::spawn(move || {
+            scope(|scope| {
+                let status = rx_raw
+                    .into_iter()
+                    .readahead_scoped(scope)
                     .try_for_each(|item: RusticResult<_>| -> RusticResult<()> {
                         let (data, id, data_len, ul) = item?;
-                        let res = {
-                            let mut raw_packer = packer.write().unwrap();
-                            raw_packer.add(&data, &id, data_len, ul)?;
-                            raw_packer.save_if_needed()?
-                        };
-                        if let Some((file, index)) = res {
+                        packer.add(&data, &id, data_len, ul)?;
+                        if let Some((file, index)) = packer.save_if_needed()? {
                             file_writer.send((file, index))?;
                         }
 
                         Ok(())
                     })
                     .and_then(|()| {
-                        let (res, stats) = packer.write().unwrap().finalize()?;
+                        let (res, stats) = packer.finalize()?;
                         if let Some((file, index)) = res {
                             file_writer.send((file, index))?;
                         }
+                        file_writer.finalize()?;
                         Ok(stats)
                     });
                 _ = finish_tx.send(status);
@@ -193,25 +194,25 @@ impl<BE: DecryptWriteBackend, S: PackSizer + Send + Sync + 'static> RepositoryPa
     /// * If sending the message to the raw packer fails.
     fn add_raw(
         &self,
-        data: &[u8],
-        id: &BlobId,
+        data: Vec<u8>,
+        id: BlobId,
         data_len: u64,
         uncompressed_length: Option<NonZeroU32>,
     ) -> RusticResult<()> {
         // only add if this blob is not present
-        if self.indexer.reserve(id) {
-            let mut raw_packer = self.packer.write().unwrap();
-            raw_packer.add(data, id, data_len, uncompressed_length)?;
-
-            if let Some((file, index)) = raw_packer.save_if_needed()? {
-                self.file_writer.send((file, index)).map_err(|err| {
+        if self.indexer.reserve(&id) {
+            // compute size limit based on total size and size bounds
+            self.raw_sender
+                .send(Ok((data, id, data_len, uncompressed_length)))
+                .map_err(|err| {
                     RusticError::with_source(
                         ErrorKind::Internal,
-                        "Failed to send packfile to file writer.",
+                        "Failed to add blob `{id}` to packfile.",
                         err,
                     )
+                    .attach_context("id", id.to_string())
+                    .ask_report()
                 })?;
-            }
         }
         Ok(())
     }
@@ -222,15 +223,13 @@ impl<BE: DecryptWriteBackend, S: PackSizer + Send + Sync + 'static> RepositoryPa
     ///
     /// * If the channel could not be dropped
     pub fn finalize(self) -> RusticResult<PackerStats> {
-        // cancel channel
+        // cancel channels
         drop(self.sender);
-        // wait for items in channel to be processed
-        let res = self
-            .finish
+        drop(self.raw_sender);
+        // wait for items in channels to be processed
+        self.finish
             .recv()
-            .expect("Should be able to receive from channel to finalize packer.");
-        self.file_writer.finalize()?;
-        res
+            .expect("Should be able to receive from channel to finalize packer.")
     }
 }
 
@@ -364,7 +363,7 @@ where
     /// The backend to read from.
     be: BE,
     /// The packer to write to.
-    packer: RepositoryPacker<BE, FixedPackSizer>,
+    packer: RepositoryPacker,
     /// The size limit of the pack file.
     size_limit: u32,
 }
@@ -425,7 +424,7 @@ impl<BE: DecryptFullBackend> Repacker<BE> {
         )?;
 
         self.packer
-            .add_raw(&data, &blob.id, 0, blob.uncompressed_length)
+            .add_raw(data.to_vec(), blob.id, 0, blob.uncompressed_length)
             .map_err(|err| {
                 err.overwrite_kind(ErrorKind::Internal)
                     .prepend_guidance_line(
