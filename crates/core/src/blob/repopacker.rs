@@ -29,32 +29,6 @@ use super::{
     packer::{Packer, PackerStats},
 };
 
-/// [`PackerErrorKind`] describes the errors that can be returned for a Packer
-#[derive(thiserror::Error, Debug, displaydoc::Display)]
-#[non_exhaustive]
-pub enum PackerErrorKind {
-    /// Conversion from `{from}` to `{to}` failed: `{source}`
-    Conversion {
-        to: &'static str,
-        from: &'static str,
-        source: std::num::TryFromIntError,
-    },
-    /// Sending crossbeam message failed: `id`: `{id:?}`, `data`: `{data:?}` : `{source}`
-    SendingCrossbeamMessage {
-        id: BlobId,
-        data: Bytes,
-        source: crossbeam_channel::SendError<(Bytes, BlobId)>,
-    },
-    /// Sending crossbeam data message failed: `data`: `{data:?}`, `index_pack`: `{index_pack:?}` : `{source}`
-    SendingCrossbeamDataMessage {
-        data: Bytes,
-        index_pack: IndexPack,
-        source: crossbeam_channel::SendError<(Bytes, IndexPack)>,
-    },
-}
-
-pub(crate) type PackerResult<T> = Result<T, Box<PackerErrorKind>>;
-
 /// The `Packer` is responsible for packing blobs into pack files.
 ///
 /// # Type Parameters
@@ -160,13 +134,7 @@ impl<BE: DecryptWriteBackend, S: PackSizer + Send + Sync + 'static> RepositoryPa
                             raw_packer.save_if_needed()?
                         };
                         if let Some((file, index)) = res {
-                            file_writer.send((file, index)).map_err(|err| {
-                                RusticError::with_source(
-                                    ErrorKind::Internal,
-                                    "Failed to send packfile to file writer.",
-                                    err,
-                                )
-                            })?;
+                            file_writer.send((file, index))?;
                         }
 
                         Ok(())
@@ -174,13 +142,7 @@ impl<BE: DecryptWriteBackend, S: PackSizer + Send + Sync + 'static> RepositoryPa
                     .and_then(|()| {
                         let (res, stats) = packer.write().unwrap().finalize()?;
                         if let Some((file, index)) = res {
-                            file_writer.send((file, index)).map_err(|err| {
-                                RusticError::with_source(
-                                    ErrorKind::Internal,
-                                    "Failed to send packfile to file writer.",
-                                    err,
-                                )
-                            })?;
+                            file_writer.send((file, index))?;
                         }
                         Ok(stats)
                     });
@@ -365,13 +327,13 @@ impl Actor {
     /// # Errors
     ///
     /// If sending the message to the actor fails.
-    fn send(&self, load: (Bytes, IndexPack)) -> PackerResult<()> {
-        self.sender.send(load.clone()).map_err(|err| {
-            PackerErrorKind::SendingCrossbeamDataMessage {
-                data: load.0,
-                index_pack: load.1,
-                source: err,
-            }
+    fn send(&self, load: (Bytes, IndexPack)) -> RusticResult<()> {
+        self.sender.send(load).map_err(|err| {
+            RusticError::with_source(
+                ErrorKind::Internal,
+                "Failed to send packfile to file writer.",
+                err,
+            )
         })?;
         Ok(())
     }
