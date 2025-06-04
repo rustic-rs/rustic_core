@@ -148,10 +148,8 @@ impl<C: CryptoKey, S: PackSizer> Packer<C, S> {
     /// # Errors
     ///
     /// * If the packfile could not be saved
-    pub fn finalize(&mut self) -> RusticResult<(Option<(Bytes, IndexPack)>, PackerStats)> {
-        let stats = std::mem::take(&mut self.stats);
-
-        Ok((self.save()?, stats))
+    pub fn finalize(mut self) -> RusticResult<(Option<(Bytes, IndexPack)>, PackerStats)> {
+        Ok((self.save()?, self.stats))
     }
 
     /// Writes the given data to the packfile.

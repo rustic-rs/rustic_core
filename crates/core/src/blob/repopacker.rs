@@ -294,9 +294,8 @@ impl Actor {
         let (finish_tx, finish_rx) = bounded::<RusticResult<()>>(0);
 
         let _join_handle = std::thread::spawn(move || {
-            scope(|scope| {
-                let status = rx
-                    .into_iter()
+            let status = scope(|scope| -> RusticResult<_> {
+                rx.into_iter()
                     .readahead_scoped(scope)
                     .map(|(file, index): (Bytes, IndexPack)| {
                         let id = hash(&file);
@@ -305,10 +304,11 @@ impl Actor {
                     .readahead_scoped(scope)
                     .map(|load| fwh.process(load))
                     .readahead_scoped(scope)
-                    .try_for_each(|index| fwh.index(index?));
-                _ = finish_tx.send(status);
+                    .try_for_each(|index| fwh.index(index?))
             })
             .unwrap();
+            drop(fwh);
+            _ = finish_tx.send(status);
         });
 
         Self {

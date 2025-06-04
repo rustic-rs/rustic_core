@@ -84,7 +84,7 @@ impl Indexer {
     /// # Errors
     ///
     /// * If the index file could not be serialized.
-    pub fn finalize(&mut self) -> Option<IndexFile> {
+    pub fn finalize(mut self) -> Option<IndexFile> {
         self.save()
     }
 
@@ -209,12 +209,14 @@ impl SharedIndexer {
     }
 
     pub fn finalize_and_check_save<E>(
-        &self,
+        self,
         writer: impl Fn(&IndexFile) -> Result<(), E>,
     ) -> Result<(), E> {
-        let mut indexer = self.0.write().unwrap();
-        let res = indexer.finalize();
-        drop(indexer);
+        let res = Arc::try_unwrap(self.0)
+            .expect("indexer still in use")
+            .into_inner()
+            .unwrap()
+            .finalize();
 
         res.as_ref().map_or(Ok(()), writer)
     }
