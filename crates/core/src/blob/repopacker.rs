@@ -146,7 +146,7 @@ impl<BE: DecryptWriteBackend, S: PackSizer + Send + Sync + 'static> RepositoryPa
                     .into_iter()
                     .readahead_scoped(scope)
                     // early check if id is already contained and reserve, if not
-                    .filter(|(_, id)| indexer.write().unwrap().reserve(id))
+                    .filter(|(_, id)| indexer.reserve(id))
                     .parallel_map_scoped(scope, |(data, id): (Bytes, BlobId)| {
                         let (data, data_len, uncompressed_length) = be.process_data(&data)?;
                         Ok((data, id, u64::from(data_len), uncompressed_length))
@@ -237,7 +237,7 @@ impl<BE: DecryptWriteBackend, S: PackSizer + Send + Sync + 'static> RepositoryPa
         uncompressed_length: Option<NonZeroU32>,
     ) -> RusticResult<()> {
         // only add if this blob is not present
-        if self.indexer.write().unwrap().reserve(id) {
+        if self.indexer.reserve(id) {
             let mut raw_packer = self.packer.write().unwrap();
             raw_packer.add(data, id, data_len, uncompressed_length)?;
 
@@ -298,16 +298,8 @@ impl<BE: DecryptWriteBackend> FileWriterHandle<BE> {
     }
 
     fn index(&self, index: IndexPack) -> RusticResult<()> {
-        let res = {
-            let mut indexer = self.indexer.write().unwrap();
-
-            indexer.add(index);
-            indexer.save_if_needed()
-        };
-        if let Some(file) = res {
-            let _ = self.be.save_file(&file)?;
-        }
-        Ok(())
+        self.indexer
+            .add_and_check_save(index, false, |file| self.be.save_file_no_id(file))
     }
 }
 

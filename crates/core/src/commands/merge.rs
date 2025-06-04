@@ -136,10 +136,7 @@ pub(crate) fn merge_trees<P: ProgressBars, S: IndexedTree>(
     let p = repo.pb.progress_spinner("merging snapshots...");
     let tree_merged = tree::merge_trees(be, index, trees, cmp, &save, summary)?;
     let stats = packer.finalize()?;
-    let res = indexer.write().unwrap().finalize();
-    if let Some(file) = res {
-        let _ = be.save_file(&file)?;
-    }
+    indexer.finalize_and_check_save(|file| be.save_file_no_id(file))?;
     p.finish();
 
     stats.apply(summary, BlobType::Tree);

@@ -128,10 +128,7 @@ pub(crate) fn copy<'a, Q, R: IndexedFull, P: ProgressBars, S: IndexedIds>(
 
     _ = data_packer.finalize()?;
     _ = tree_packer.finalize()?;
-    let res = indexer.write().unwrap().finalize();
-    if let Some(file) = res {
-        let _ = be_dest.save_file(&file)?;
-    }
+    indexer.finalize_and_check_save(|file| be_dest.save_file_no_id(file))?;
 
     let p = pb.progress_counter("saving snapshots...");
     be_dest.save_list(snaps.iter(), p)?;

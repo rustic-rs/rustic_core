@@ -217,10 +217,11 @@ impl<'a, BE: DecryptFullBackend, I: ReadGlobalIndex> Archiver<'a, BE, I> {
         stats.apply(&mut summary, BlobType::Data);
         self.snap.tree = id;
 
-        let res = self.indexer.write().unwrap().finalize();
-        if let Some(file) = res {
-            _ = self.be.save_file(&file)?;
-        }
+        self.indexer
+            .finalize_and_check_save(|file| -> RusticResult<_> {
+                _ = self.be.save_file(file)?;
+                Ok(())
+            })?;
 
         summary.finalize(self.snap.time).map_err(|err| {
             RusticError::with_source(

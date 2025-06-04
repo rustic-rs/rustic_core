@@ -20,8 +20,6 @@ pub(super) mod constants {
     pub(super) const MAX_AGE: Duration = Duration::from_secs(300);
 }
 
-pub(crate) type SharedIndexer = Arc<RwLock<Indexer>>;
-
 /// The `Indexer` is responsible for indexing blobs.
 #[derive(Debug)]
 pub struct Indexer {
@@ -78,7 +76,7 @@ impl Indexer {
     ///
     /// * `BE` - The backend type.
     pub fn into_shared(self) -> SharedIndexer {
-        Arc::new(RwLock::new(self))
+        SharedIndexer(Arc::new(RwLock::new(self)))
     }
 
     /// Finalizes the `Indexer`.
@@ -189,5 +187,39 @@ impl Indexer {
         self.indexed
             .as_mut()
             .is_some_and(|indexed| indexed.insert(*id))
+    }
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct SharedIndexer(Arc<RwLock<Indexer>>);
+
+impl SharedIndexer {
+    pub fn add_and_check_save<E>(
+        &self,
+        pack: IndexPack,
+        delete: bool,
+        writer: impl Fn(&IndexFile) -> Result<(), E>,
+    ) -> Result<(), E> {
+        let mut indexer = self.0.write().unwrap();
+        indexer.add_with(pack, delete);
+        let res = indexer.save_if_needed();
+        drop(indexer);
+
+        res.as_ref().map_or(Ok(()), writer)
+    }
+
+    pub fn finalize_and_check_save<E>(
+        &self,
+        writer: impl Fn(&IndexFile) -> Result<(), E>,
+    ) -> Result<(), E> {
+        let mut indexer = self.0.write().unwrap();
+        let res = indexer.finalize();
+        drop(indexer);
+
+        res.as_ref().map_or(Ok(()), writer)
+    }
+
+    pub fn reserve(&self, id: &BlobId) -> bool {
+        self.0.write().unwrap().reserve(id)
     }
 }

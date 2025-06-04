@@ -155,10 +155,7 @@ pub(crate) fn repair_snapshots<P: ProgressBars, S: IndexedFull>(
 
     if !dry_run {
         _ = packer.finalize()?;
-        let mut indexer = indexer.write().unwrap();
-        if let Some(file) = indexer.finalize() {
-            _ = be.save_file(&file)?;
-        }
+        indexer.finalize_and_check_save(|file| be.save_file_no_id(file))?;
     }
 
     if opts.delete {

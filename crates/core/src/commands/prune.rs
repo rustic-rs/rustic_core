@@ -1428,23 +1428,13 @@ pub(crate) fn prune_repository<P: ProgressBars, S: Open>(
                 PackToDo::Delete => delete_pack(pack),
             };
             if let Some((pack, delete)) = to_index {
-                let res = {
-                    let mut indexer = indexer.write().unwrap();
-                    indexer.add_with(pack, delete);
-                    indexer.save_if_needed()
-                };
-                if let Some(file) = res {
-                    _ = be.save_file(&file)?;
-                }
+                indexer.add_and_check_save(pack, delete, |file| be.save_file_no_id(file))?;
             }
             Ok(())
         })?;
     _ = tree_repacker.finalize()?;
     _ = data_repacker.finalize()?;
-    let res = indexer.write().unwrap().finalize();
-    if let Some(file) = res {
-        _ = be.save_file(&file)?;
-    }
+    indexer.finalize_and_check_save(|file| be.save_file_no_id(file))?;
     p.finish();
 
     // remove old index files first as they may reference pack files which are removed soon.
