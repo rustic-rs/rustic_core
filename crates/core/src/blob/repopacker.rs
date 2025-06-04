@@ -302,9 +302,12 @@ impl<BE: DecryptWriteBackend> RepositoryPacker<BE> {
         // cancel channel
         drop(self.sender);
         // wait for items in channel to be processed
-        self.finish
+        let res = self
+            .finish
             .recv()
-            .expect("Should be able to receive from channel to finalize packer.")
+            .expect("Should be able to receive from channel to finalize packer.");
+        self.file_writer.finalize()?;
+        res
     }
 }
 
