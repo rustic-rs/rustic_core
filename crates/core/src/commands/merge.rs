@@ -104,7 +104,7 @@ pub(crate) fn merge_trees<P: ProgressBars, S: IndexedTree>(
     let be = repo.dbe();
     let index = repo.index();
     let indexer = Indexer::new().into_shared();
-    let packer = RepositoryPacker::new(
+    let packer = RepositoryPacker::new_with_default_sizer(
         repo.dbe().clone(),
         BlobType::Tree,
         indexer.clone(),

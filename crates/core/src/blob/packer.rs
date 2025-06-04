@@ -4,7 +4,6 @@ use std::{
 };
 
 use bytes::{Bytes, BytesMut};
-use integer_sqrt::IntegerSquareRoot;
 use log::warn;
 
 use crate::{
@@ -12,12 +11,13 @@ use crate::{
     crypto::CryptoKey,
     error::{ErrorKind, RusticError, RusticResult},
     repofile::{
-        configfile::ConfigFile,
         indexfile::IndexPack,
         packfile::{PackHeaderLength, PackHeaderRef},
         snapshotfile::SnapshotSummary,
     },
 };
+
+use super::pack_sizer::PackSizer;
 
 /// [`PackerErrorKind`] describes the errors that can be returned for a Packer
 #[derive(thiserror::Error, Debug, displaydoc::Display)]
@@ -46,112 +46,6 @@ pub(super) mod constants {
     pub(super) const MAX_COUNT: u32 = 10_000;
     /// The maximum age of a pack
     pub(super) const MAX_AGE: Duration = Duration::from_secs(300);
-}
-
-/// The pack sizer is responsible for computing the size of the pack file.
-#[derive(Debug, Clone, Copy)]
-pub struct PackSizer {
-    /// The default size of a pack file.
-    default_size: u32,
-    /// The grow factor of a pack file.
-    grow_factor: u32,
-    /// The size limit of a pack file.
-    size_limit: u32,
-    /// The current size of a pack file.
-    current_size: u64,
-    /// The minimum pack size tolerance in percent before a repack is triggered.
-    min_packsize_tolerate_percent: u32,
-    /// The maximum pack size tolerance in percent before a repack is triggered.
-    max_packsize_tolerate_percent: u32,
-}
-
-impl PackSizer {
-    /// Creates a new `PackSizer` from a config file.
-    ///
-    /// # Arguments
-    ///
-    /// * `config` - The config file.
-    /// * `blob_type` - The blob type.
-    /// * `current_size` - The current size of the pack file.
-    ///
-    /// # Returns
-    ///
-    /// A new `PackSizer`.
-    #[must_use]
-    pub fn from_config(config: &ConfigFile, blob_type: BlobType, current_size: u64) -> Self {
-        let (default_size, grow_factor, size_limit) = config.packsize(blob_type);
-        let (min_packsize_tolerate_percent, max_packsize_tolerate_percent) =
-            config.packsize_ok_percents();
-        Self {
-            default_size,
-            grow_factor,
-            size_limit,
-            current_size,
-            min_packsize_tolerate_percent,
-            max_packsize_tolerate_percent,
-        }
-    }
-
-    /// Computes the size of the pack file.
-    #[must_use]
-    // The cast actually shouldn't pose any problems.
-    // `current_size` is `u64`, the maximum value is `2^64-1`.
-    // `isqrt(2^64-1) = 2^32-1` which fits into a `u32`. (@aawsome)
-    #[allow(clippy::cast_possible_truncation)]
-    pub fn pack_size(&self) -> u32 {
-        (self.current_size.integer_sqrt() as u32 * self.grow_factor + self.default_size)
-            .min(self.size_limit)
-            .min(constants::MAX_SIZE)
-    }
-
-    /// Evaluates whether the given size is not too small or too large
-    ///
-    /// # Arguments
-    ///
-    /// * `size` - The size to check
-    #[must_use]
-    pub fn size_ok(&self, size: u32) -> bool {
-        !self.is_too_small(size) && !self.is_too_large(size)
-    }
-
-    /// Evaluates whether the given size is too small
-    ///
-    /// # Arguments
-    ///
-    /// * `size` - The size to check
-    #[must_use]
-    pub fn is_too_small(&self, size: u32) -> bool {
-        let target_size = self.pack_size();
-        // Note: we cast to u64 so that no overflow can occur in the multiplications
-        u64::from(size) * 100
-            < u64::from(target_size) * u64::from(self.min_packsize_tolerate_percent)
-    }
-
-    /// Evaluates whether the given size is too large
-    ///
-    /// # Arguments
-    ///
-    /// * `size` - The size to check
-    #[must_use]
-    pub fn is_too_large(&self, size: u32) -> bool {
-        let target_size = self.pack_size();
-        // Note: we cast to u64 so that no overflow can occur in the multiplications
-        u64::from(size) * 100
-            > u64::from(target_size) * u64::from(self.max_packsize_tolerate_percent)
-    }
-
-    /// Adds the given size to the current size.
-    ///
-    /// # Arguments
-    ///
-    /// * `added` - The size to add
-    ///
-    /// # Panics
-    ///
-    /// * If the size is too large
-    fn add_size(&mut self, added: u32) {
-        self.current_size += u64::from(added);
-    }
 }
 
 // TODO: add documentation!
@@ -200,8 +94,8 @@ impl PackerStats {
 ///
 /// * `BE` - The backend type.
 #[allow(missing_debug_implementations, clippy::module_name_repetitions)]
-pub(crate) struct Packer<C> {
-    /// the
+pub(crate) struct Packer<C, S> {
+    /// the key to encrypt data
     key: C,
     /// The blob type to pack.
     blob_type: BlobType,
@@ -216,12 +110,12 @@ pub(crate) struct Packer<C> {
     /// The index of the pack
     index: IndexPack,
     /// The pack sizer
-    pub pack_sizer: PackSizer,
+    pub pack_sizer: S,
     /// The packer stats
     pub stats: PackerStats,
 }
 
-impl<C: CryptoKey> Packer<C> {
+impl<C: CryptoKey, S: PackSizer> Packer<C, S> {
     /// Creates a new `RawPacker`.
     ///
     /// # Type Parameters
@@ -235,9 +129,7 @@ impl<C: CryptoKey> Packer<C> {
     /// * `indexer` - The indexer to write to.
     /// * `config` - The config file.
     /// * `total_size` - The total size of the pack file.
-    pub fn new(key: C, blob_type: BlobType, config: &ConfigFile, total_size: u64) -> Self {
-        let pack_sizer = PackSizer::from_config(config, blob_type, total_size);
-
+    pub fn new(key: C, pack_sizer: S, blob_type: BlobType) -> Self {
         Self {
             key,
             blob_type,
@@ -340,12 +232,12 @@ impl<C: CryptoKey> Packer<C> {
         Ok(())
     }
 
-    pub fn needs_save(&self, size_limit: Option<u32>) -> bool {
+    pub fn needs_save(&self) -> bool {
         if self.size == 0 {
             return false;
         }
 
-        let size_limit = size_limit.unwrap_or_else(|| self.pack_sizer.pack_size());
+        let size_limit = self.pack_sizer.pack_size().min(constants::MAX_SIZE);
 
         // check if PackFile needs to be saved
         let elapsed = self.created.elapsed().unwrap_or_else(|err| {
@@ -433,11 +325,8 @@ impl<C: CryptoKey> Packer<C> {
     ///
     /// * If converting the header length to u32 fails
     /// * If the header could not be written
-    pub fn save_if_needed(
-        &mut self,
-        size_limit: Option<u32>,
-    ) -> RusticResult<Option<(Bytes, IndexPack)>> {
-        if !self.needs_save(size_limit) {
+    pub fn save_if_needed(&mut self) -> RusticResult<Option<(Bytes, IndexPack)>> {
+        if !self.needs_save() {
             return Ok(None);
         }
 

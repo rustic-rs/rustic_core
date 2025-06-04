@@ -1,3 +1,4 @@
+pub(crate) mod pack_sizer;
 pub(crate) mod packer;
 pub(crate) mod repopacker;
 pub(crate) mod tree;

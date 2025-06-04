@@ -60,14 +60,14 @@ pub(crate) fn copy<'a, Q, R: IndexedFull, P: ProgressBars, S: IndexedIds>(
     let index_dest = repo_dest.index();
     let indexer = Indexer::new().into_shared();
 
-    let data_packer = RepositoryPacker::new(
+    let data_packer = RepositoryPacker::new_with_default_sizer(
         be_dest.clone(),
         BlobType::Data,
         indexer.clone(),
         repo_dest.config(),
         index_dest.total_size(BlobType::Data),
     )?;
-    let tree_packer = RepositoryPacker::new(
+    let tree_packer = RepositoryPacker::new_with_default_sizer(
         be_dest.clone(),
         BlobType::Tree,
         indexer.clone(),

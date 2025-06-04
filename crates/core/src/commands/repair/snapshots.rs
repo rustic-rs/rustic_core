@@ -11,6 +11,7 @@ use crate::{
     },
     blob::{
         BlobId, BlobType,
+        pack_sizer::DefaultPackSizer,
         repopacker::RepositoryPacker,
         tree::{Tree, TreeId},
     },
@@ -107,7 +108,7 @@ pub(crate) fn repair_snapshots<P: ProgressBars, S: IndexedFull>(
     let mut state = RepairState::default();
 
     let indexer = Indexer::new().into_shared();
-    let mut packer = RepositoryPacker::new(
+    let mut packer = RepositoryPacker::new_with_default_sizer(
         be.clone(),
         BlobType::Tree,
         indexer.clone(),
@@ -198,7 +199,7 @@ pub(crate) fn repair_tree<BE: DecryptWriteBackend>(
     be: &impl DecryptFullBackend,
     opts: &RepairSnapshotsOptions,
     index: &impl ReadGlobalIndex,
-    packer: &mut RepositoryPacker<BE>,
+    packer: &mut RepositoryPacker<BE, DefaultPackSizer>,
     id: Option<TreeId>,
     state: &mut RepairState,
     dry_run: bool,

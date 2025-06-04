@@ -8,6 +8,7 @@ use crate::{
     backend::{decrypt::DecryptWriteBackend, node::Node},
     blob::{
         BlobType,
+        pack_sizer::DefaultPackSizer,
         repopacker::RepositoryPacker,
         tree::{Tree, TreeId},
     },
@@ -34,7 +35,7 @@ pub(crate) struct TreeArchiver<'a, BE: DecryptWriteBackend, I: ReadGlobalIndex> 
     /// The index to read from.
     index: &'a I,
     /// The packer to write to.
-    tree_packer: RepositoryPacker<BE>,
+    tree_packer: RepositoryPacker<BE, DefaultPackSizer>,
     /// The summary of the snapshot.
     summary: SnapshotSummary,
 }
@@ -66,7 +67,7 @@ impl<'a, BE: DecryptWriteBackend, I: ReadGlobalIndex> TreeArchiver<'a, BE, I> {
         config: &ConfigFile,
         summary: SnapshotSummary,
     ) -> RusticResult<Self> {
-        let tree_packer = RepositoryPacker::new(
+        let tree_packer = RepositoryPacker::new_with_default_sizer(
             be,
             BlobType::Tree,
             indexer,

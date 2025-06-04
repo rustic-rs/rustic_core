@@ -26,7 +26,9 @@ use crate::{
         node::NodeType,
     },
     blob::{
-        BlobId, BlobType, BlobTypeMap, Initialize, packer::PackSizer, repopacker::Repacker,
+        BlobId, BlobType, BlobTypeMap, Initialize,
+        pack_sizer::{DefaultPackSizer, PackSizer},
+        repopacker::Repacker,
         tree::TreeStreamerOnce,
     },
     error::{ErrorKind, RusticError, RusticResult},
@@ -747,7 +749,7 @@ impl PrunePlan {
             .repack_cacheable_only
             .unwrap_or_else(|| repo.config().is_hot == Some(true));
         let pack_sizer =
-            total_size.map(|tpe, size| PackSizer::from_config(repo.config(), tpe, size));
+            total_size.map(|tpe, size| DefaultPackSizer::from_config(repo.config(), tpe, size));
 
         pruner.decide_packs(
             Duration::from_std(*opts.keep_pack).map_err(|err| {
@@ -846,7 +848,7 @@ impl PrunePlan {
         repack_cacheable_only: bool,
         repack_uncompressed: bool,
         repack_all: bool,
-        pack_sizer: &BlobTypeMap<PackSizer>,
+        pack_sizer: &BlobTypeMap<DefaultPackSizer>,
     ) -> RusticResult<()> {
         // first process all marked packs then the unmarked ones:
         // - first processed packs are more likely to have all blobs seen as unused
@@ -1007,7 +1009,7 @@ impl PrunePlan {
         max_unused: &LimitOption,
         repack_uncompressed: bool,
         no_resize: bool,
-        pack_sizer: &BlobTypeMap<PackSizer>,
+        pack_sizer: &BlobTypeMap<DefaultPackSizer>,
     ) {
         let max_unused = match (repack_uncompressed, max_unused) {
             (true, _) => 0,
