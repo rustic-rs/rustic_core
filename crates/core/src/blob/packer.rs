@@ -353,6 +353,7 @@ impl<C: CryptoKey, S: PackSizer> Packer<C, S> {
         // prepare everything for write to the backend
         let file = std::mem::take(&mut self.file).into();
         let index = std::mem::take(&mut self.index);
+        self.pack_sizer.add_size(self.size);
 
         self.size = 0;
 

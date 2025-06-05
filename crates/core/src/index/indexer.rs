@@ -186,7 +186,7 @@ impl Indexer {
     pub fn reserve(&mut self, id: &BlobId) -> bool {
         self.indexed
             .as_mut()
-            .is_some_and(|indexed| indexed.insert(*id))
+            .is_none_or(|indexed| indexed.insert(*id))
     }
 }
 

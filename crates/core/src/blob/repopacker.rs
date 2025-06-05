@@ -424,7 +424,12 @@ impl<BE: DecryptFullBackend> Repacker<BE> {
         )?;
 
         self.packer
-            .add_raw(data.to_vec(), blob.id, 0, blob.uncompressed_length)
+            .add_raw(
+                data.to_vec(),
+                blob.id,
+                blob.length.into(),
+                blob.uncompressed_length,
+            )
             .map_err(|err| {
                 err.overwrite_kind(ErrorKind::Internal)
                     .prepend_guidance_line(
