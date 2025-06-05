@@ -22,10 +22,7 @@ pub(crate) type TreeItem = TreeType<(ParentResult<()>, u64), ParentResult<TreeId
 ///
 /// # Type Parameters
 ///
-/// * `BE` - The backend type.
 /// * `I` - The index to read from.
-///
-// TODO: Add documentation
 pub(crate) struct TreeArchiver<'a, I: ReadGlobalIndex> {
     /// The current tree.
     tree: Tree,
@@ -54,11 +51,6 @@ impl<'a, I: ReadGlobalIndex> TreeArchiver<'a, I> {
     /// * `indexer` - The indexer to write to.
     /// * `config` - The config file.
     /// * `summary` - The summary of the snapshot.
-    ///
-    /// # Errors
-    ///
-    /// * If sending the message to the raw packer fails.
-    /// * If converting the data length to u64 fails
     pub(crate) fn new<BE: DecryptWriteBackend>(
         be: BE,
         index: &'a I,

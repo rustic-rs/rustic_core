@@ -3,6 +3,7 @@ use crate::repofile::ConfigFile;
 
 use integer_sqrt::IntegerSquareRoot;
 
+/// The pack sizer is responsible for computing the size of the pack file.
 pub trait PackSizer {
     /// Computes the size of the pack file.
     #[must_use]
@@ -43,14 +44,10 @@ pub trait PackSizer {
     /// # Arguments
     ///
     /// * `added` - The size to add
-    ///
-    /// # Panics
-    ///
-    /// * If the size is too large
     fn add_size(&mut self, _added: u32) {}
 }
 
-/// The pack sizer is responsible for computing the size of the pack file.
+/// The default pack sizer computes packs depending on a default size, a grow factor amd a size limit.
 #[derive(Debug, Clone, Copy)]
 pub struct DefaultPackSizer {
     /// The default size of a pack file.
@@ -68,7 +65,7 @@ pub struct DefaultPackSizer {
 }
 
 impl DefaultPackSizer {
-    /// Creates a new `PackSizer` from a config file.
+    /// Creates a new `DefaultPackSizer` from a config file.
     ///
     /// # Arguments
     ///
@@ -78,7 +75,7 @@ impl DefaultPackSizer {
     ///
     /// # Returns
     ///
-    /// A new `PackSizer`.
+    /// A new `DefaultPackSizer`.
     #[must_use]
     pub fn from_config(config: &ConfigFile, blob_type: BlobType, current_size: u64) -> Self {
         let (default_size, grow_factor, size_limit) = config.packsize(blob_type);
@@ -121,7 +118,7 @@ impl PackSizer for DefaultPackSizer {
     }
 }
 
-/// The pack sizer is responsible for computing the size of the pack file.
+/// A pack sizer which uses a fixed pack size
 #[derive(Debug, Clone, Copy)]
 pub struct FixedPackSizer(pub u32);
 

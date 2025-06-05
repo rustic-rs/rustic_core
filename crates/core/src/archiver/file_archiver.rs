@@ -27,7 +27,6 @@ use crate::{
 ///
 /// # Type Parameters
 ///
-/// * `BE` - The backend type.
 /// * `I` - The index to read from.
 #[derive(Clone)]
 pub(crate) struct FileArchiver<'a, I: ReadGlobalIndex> {
@@ -50,11 +49,6 @@ impl<'a, I: ReadGlobalIndex> FileArchiver<'a, I> {
     /// * `index` - The index to read from.
     /// * `indexer` - The indexer to write to.
     /// * `config` - The config file.
-    ///
-    /// # Errors
-    ///
-    /// * If sending the message to the raw packer fails.
-    /// * If converting the data length to u64 fails
     pub(crate) fn new<BE: DecryptWriteBackend>(
         be: BE,
         index: &'a I,

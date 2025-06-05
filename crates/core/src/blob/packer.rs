@@ -230,6 +230,7 @@ impl<C: CryptoKey, S: PackSizer> Packer<C, S> {
         Ok(())
     }
 
+    /// Determines if the current pack should be saved.
     pub fn needs_save(&self) -> bool {
         if self.size == 0 {
             return false;
@@ -313,16 +314,7 @@ impl<C: CryptoKey, S: PackSizer> Packer<C, S> {
 
         Ok(())
     }
-    /// Saves the packfile
-    ///
-    /// # Errors
-    ///
-    /// If the header could not be written
-    ///
-    /// # Errors
-    ///
-    /// * If converting the header length to u32 fails
-    /// * If the header could not be written
+    /// Saves the packfile if conditions for saving are fulfilled
     pub fn save_if_needed(&mut self) -> RusticResult<Option<(Bytes, IndexPack)>> {
         if !self.needs_save() {
             return Ok(None);
@@ -336,11 +328,6 @@ impl<C: CryptoKey, S: PackSizer> Packer<C, S> {
     /// # Errors
     ///
     /// If the header could not be written
-    ///
-    /// # Errors
-    ///
-    /// * If converting the header length to u32 fails
-    /// * If the header could not be written
     pub fn save(&mut self) -> RusticResult<Option<(Bytes, IndexPack)>> {
         self.created = SystemTime::now();
         self.count = 0;
