@@ -1,11 +1,11 @@
 use std::collections::HashMap;
 
 use rustic_core::{
-    repofile::{KeyFile, KeyId},
     KeyOptions,
+    repofile::{KeyFile, KeyId},
 };
 
-use super::{set_up_repo, RepoOpen};
+use super::{RepoOpen, set_up_repo};
 use anyhow::Result;
 use rstest::rstest;
 
