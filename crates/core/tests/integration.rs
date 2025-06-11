@@ -22,10 +22,10 @@
 //! The fixtures are defined as functions with the `#[fixture]` attribute.
 //! The tests that use the fixtures are defined as functions with the `#[rstest]` attribute.
 //! The fixtures are passed as arguments to the test functions.
-
 mod integration {
     mod backup;
     mod find;
+    mod key;
     mod ls;
     mod prune;
     mod restore;

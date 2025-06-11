@@ -133,8 +133,12 @@ pub trait DecryptReadBackend: ReadBackend + Clone + 'static {
     /// # Errors
     ///
     /// * If the file could not be read.
-    fn get_file<F: RepoFile>(&self, id: &Id) -> RusticResult<F> {
-        let data = self.read_encrypted_full(F::TYPE, id)?;
+    fn get_file<F: RepoFile>(&self, id: &F::Id) -> RusticResult<F> {
+        let data = if F::ENCRYPTED {
+            self.read_encrypted_full(F::TYPE, id)?
+        } else {
+            self.read_full(F::TYPE, id)?
+        };
         let deserialized = serde_json::from_slice(&data).map_err(|err| {
             RusticError::with_source(
                 ErrorKind::Internal,
@@ -159,6 +163,7 @@ pub trait DecryptReadBackend: ReadBackend + Clone + 'static {
     /// If the files could not be read.
     fn stream_all<F: RepoFile>(&self, p: &impl Progress) -> StreamResult<F::Id, F> {
         let list = self.list(F::TYPE)?;
+        let list: Vec<_> = list.into_iter().map(F::Id::from).collect();
         self.stream_list(&list, p)
     }
 
@@ -174,13 +179,17 @@ pub trait DecryptReadBackend: ReadBackend + Clone + 'static {
     /// # Errors
     ///
     /// If the files could not be read.
-    fn stream_list<F: RepoFile>(&self, list: &[Id], p: &impl Progress) -> StreamResult<F::Id, F> {
+    fn stream_list<F: RepoFile>(
+        &self,
+        list: &[F::Id],
+        p: &impl Progress,
+    ) -> StreamResult<F::Id, F> {
         p.set_length(list.len() as u64);
         let (tx, rx) = unbounded();
 
         list.into_par_iter()
             .for_each_with((self, p, tx), |(be, p, tx), id| {
-                let file = be.get_file::<F>(id).map(|file| (F::Id::from(*id), file));
+                let file = be.get_file::<F>(id).map(|file| (*id, file));
                 p.inc(1);
                 tx.send(file).unwrap();
             });
@@ -262,7 +271,14 @@ pub trait DecryptWriteBackend: WriteBackend + Clone + 'static {
             .ask_report()
         })?;
 
-        self.hash_write_full(F::TYPE, &data)
+        if F::ENCRYPTED {
+            self.hash_write_full(F::TYPE, &data)
+        } else {
+            let id = hash(&data);
+
+            self.write_bytes(F::TYPE, &id, false, data.into())?;
+            Ok(id)
+        }
     }
 
     /// Saves the given file uncompressed.
