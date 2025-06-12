@@ -135,7 +135,7 @@ impl<'a, I: ReadGlobalIndex> FileArchiver<'a, I> {
     // TODO: add documentation!
     fn backup_reader(
         &self,
-        r: impl Read + Send + 'static,
+        r: impl Read,
         node: Node,
         p: &impl Progress,
     ) -> RusticResult<(Node, u64)> {
