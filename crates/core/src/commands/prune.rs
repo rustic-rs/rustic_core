@@ -39,7 +39,7 @@ use crate::{
     },
     progress::{Progress, ProgressBars},
     repofile::{
-        HeaderEntry, IndexBlob, IndexFile, IndexPack, SnapshotFile, SnapshotId, indexfile::IndexId,
+        HeaderEntry, IndexFile, IndexPack, SnapshotFile, SnapshotId, indexfile::IndexId,
         packfile::PackId,
     },
     repository::{Open, Repository},
@@ -237,16 +237,18 @@ pub enum PackStatus {
     TooSmall,
     HasUnusedBlobs,
     HasUsedBlobs,
+    HasPadding,
     Marked,
 }
 
-#[derive(Debug, Clone, Copy, Serialize)]
+#[derive(Debug, Default, Clone, Copy, Serialize)]
 pub struct DebugDetailedStats {
     pub packs: u64,
     pub unused_blobs: u64,
     pub unused_size: u64,
     pub used_blobs: u64,
     pub used_size: u64,
+    pub padding_size: u64,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq, PartialOrd, Ord)]
@@ -269,18 +271,13 @@ impl DebugStats {
                 blob_type,
                 status,
             })
-            .or_insert(DebugDetailedStats {
-                packs: 0,
-                unused_blobs: 0,
-                unused_size: 0,
-                used_blobs: 0,
-                used_size: 0,
-            });
+            .or_default();
         details.packs += 1;
         details.unused_blobs += u64::from(pi.unused_blobs);
         details.unused_size += u64::from(pi.unused_size);
         details.used_blobs += u64::from(pi.used_blobs);
         details.used_size += u64::from(pi.used_size);
+        details.padding_size += u64::from(pi.padding_size);
     }
 }
 
@@ -405,7 +402,7 @@ struct PruneIndex {
 impl PruneIndex {
     // TODO: add documentation!
     fn len(&self) -> usize {
-        self.packs.iter().map(|p| p.blobs.len()).sum()
+        self.packs.iter().map(|p| p.index.blobs.len()).sum()
     }
 }
 
@@ -439,8 +436,6 @@ impl Default for PackToDo {
 /// A pack which is to be pruned
 #[derive(Debug)]
 struct PrunePack {
-    /// The id of the pack
-    id: PackId,
     /// The type of the pack
     blob_type: BlobType,
     /// The size of the pack
@@ -449,10 +444,8 @@ struct PrunePack {
     delete_mark: bool,
     /// The task to be executed on the pack
     to_do: PackToDo,
-    /// The time the pack was created
-    time: Option<DateTime<Local>>,
-    /// The blobs in the pack
-    blobs: Vec<IndexBlob>,
+    /// the pack as saved in the index
+    index: IndexPack,
 }
 
 impl PrunePack {
@@ -463,14 +456,14 @@ impl PrunePack {
     /// * `p` - The `IndexPack` to create the `PrunePack` from
     /// * `delete_mark` - Whether the pack is marked for deletion
     fn from_index_pack(p: IndexPack, delete_mark: bool) -> Self {
+        let blob_type = p.blob_type();
+        let size = p.pack_size();
         Self {
-            id: p.id,
-            blob_type: p.blob_type(),
-            size: p.pack_size(),
+            index: p,
+            blob_type,
+            size,
             delete_mark,
             to_do: PackToDo::Undecided,
-            time: p.time,
-            blobs: p.blobs,
         }
     }
 
@@ -494,12 +487,7 @@ impl PrunePack {
 
     /// Convert the `PrunePack` into an `IndexPack`
     fn into_index_pack(self) -> IndexPack {
-        IndexPack {
-            id: self.id,
-            time: self.time,
-            size: None,
-            blobs: self.blobs,
-        }
+        self.index
     }
 
     /// Convert the `PrunePack` into an `IndexPack` with the given time
@@ -508,12 +496,9 @@ impl PrunePack {
     ///
     /// * `time` - The time to set
     fn into_index_pack_with_time(self, time: DateTime<Local>) -> IndexPack {
-        IndexPack {
-            id: self.id,
-            time: Some(time),
-            size: None,
-            blobs: self.blobs,
-        }
+        let mut index_pack = self.into_index_pack();
+        index_pack.time = Some(time);
+        index_pack
     }
 
     /// Set the task to be executed on the pack
@@ -568,7 +553,8 @@ impl PrunePack {
 
     /// Returns whether the pack is compressed
     fn is_compressed(&self) -> bool {
-        self.blobs
+        self.index
+            .blobs
             .iter()
             .all(|blob| blob.uncompressed_length.is_some())
     }
@@ -577,6 +563,8 @@ impl PrunePack {
 /// Reasons why a pack should be repacked
 #[derive(PartialEq, Eq, Debug)]
 enum RepackReason {
+    /// We repack-all was selected
+    RepackAll,
     /// The pack is partly used
     PartlyUsed,
     /// The pack is to be compressed
@@ -658,7 +646,7 @@ impl PrunePlan {
             let mut modified = false;
             index.packs.retain(|p| {
                 !p.delete_mark || {
-                    let duplicate = processed_packs.contains(&p.id);
+                    let duplicate = processed_packs.contains(&p.index.id);
                     modified |= duplicate;
                     !duplicate
                 }
@@ -794,7 +782,7 @@ impl PrunePlan {
             .index_files
             .iter()
             .flat_map(|index| &index.packs)
-            .flat_map(|pack| &pack.blobs)
+            .flat_map(|pack| &pack.index.blobs)
         {
             if let Some(count) = self.used_ids.get_mut(&blob.id) {
                 // note that duplicates are only counted up to 255. If there are more
@@ -871,11 +859,15 @@ impl PrunePlan {
                     let mut status = EnumSet::empty();
 
                     // Various checks to determine if packs need to be kept
-                    let too_young = pack.time > Some(self.time - keep_pack);
+                    let too_young = pack.index.time > Some(self.time - keep_pack);
                     if too_young && !pack.delete_mark {
                         _ = status.insert(PackStatus::TooYoung);
                     }
                     let keep_uncacheable = repack_cacheable_only && !pack.blob_type.is_cacheable();
+                    let has_padding = pi.padding_size != 0;
+                    if has_padding {
+                        _ = status.insert(PackStatus::HasPadding);
+                    }
 
                     let to_compress = repack_uncompressed && !pack.is_compressed();
                     if to_compress {
@@ -906,22 +898,16 @@ impl PrunePlan {
                             _ = status.insert(PackStatus::HasUsedBlobs);
                             if too_young || keep_uncacheable {
                                 pack.set_todo(PackToDo::Keep, &pi, status, &mut self.stats);
-                            } else if to_compress || repack_all {
-                                self.repack_candidates.push((
-                                    pi,
-                                    status,
-                                    RepackReason::ToCompress,
-                                    index_num,
-                                    pack_num,
-                                ));
-                            } else if size_mismatch {
-                                self.repack_candidates.push((
-                                    pi,
-                                    status,
-                                    RepackReason::SizeMismatch,
-                                    index_num,
-                                    pack_num,
-                                ));
+                            } else if to_compress || repack_all | size_mismatch {
+                                let reason = if to_compress {
+                                    RepackReason::ToCompress
+                                } else if repack_all {
+                                    RepackReason::RepackAll
+                                } else {
+                                    RepackReason::SizeMismatch
+                                };
+                                self.repack_candidates
+                                    .push((pi, status, reason, index_num, pack_num));
                             } else {
                                 pack.set_todo(PackToDo::Keep, &pi, status, &mut self.stats);
                             }
@@ -933,8 +919,8 @@ impl PrunePlan {
                             status
                                 .insert_all(PackStatus::HasUsedBlobs | PackStatus::HasUnusedBlobs);
 
-                            if too_young || keep_uncacheable {
-                                // keep packs which are too young and non-cacheable packs if requested
+                            if too_young || keep_uncacheable || has_padding {
+                                // keep packs which have padding, are too young and non-cacheable packs if requested
                                 pack.set_todo(PackToDo::Keep, &pi, status, &mut self.stats);
                             } else {
                                 // other partly used pack => candidate for repacking
@@ -949,7 +935,7 @@ impl PrunePlan {
                         }
                         (true, 0, _) => {
                             _ = status.insert(PackStatus::Marked);
-                            match pack.time {
+                            match pack.index.time {
                                 // unneeded and marked pack => check if we can remove it.
                                 Some(local_date_time)
                                     if self.time - local_date_time >= keep_delete =>
@@ -960,7 +946,7 @@ impl PrunePlan {
                                 None => {
                                     warn!(
                                         "pack to delete {}: no time set, this should not happen! Keeping this pack.",
-                                        pack.id
+                                        pack.index.id
                                     );
                                     _ = status.insert(PackStatus::TimeNotSet);
                                     pack.set_todo(
@@ -1081,7 +1067,7 @@ impl PrunePlan {
     /// * If a pack does not exist
     fn check_existing_packs(&mut self) -> RusticResult<()> {
         for pack in self.index_files.iter().flat_map(|index| &index.packs) {
-            let existing_size = self.existing_packs.remove(&pack.id);
+            let existing_size = self.existing_packs.remove(&pack.index.id);
 
             // TODO: Unused Packs which don't exist (i.e. only existing in index)
             let check_size = || {
@@ -1091,12 +1077,12 @@ impl PrunePlan {
                         ErrorKind::Internal,
                         "Pack size `{size_in_pack_real}` of id `{pack_id}` does not match the expected size `{size_in_index_expected}` in the index file. ",
                     )
-                    .attach_context("pack_id", pack.id.to_string())
+                    .attach_context("pack_id", pack.index.id.to_string())
                     .attach_context("size_in_index_expected", pack.size.to_string())
                     .attach_context("size_in_pack_real", size.to_string())
                     .ask_report()),
                     None => Err(RusticError::new(ErrorKind::Internal, "Pack `{pack_id}` does not exist.")
-                        .attach_context("pack_id", pack.id.to_string())
+                        .attach_context("pack_id", pack.index.id.to_string())
                         .ask_report()),
                 }
             };
@@ -1107,11 +1093,11 @@ impl PrunePlan {
                         ErrorKind::Internal,
                         "Pack `{pack_id}` got no decision what to do with it!",
                     )
-                    .attach_context("pack_id", pack.id.to_string())
+                    .attach_context("pack_id", pack.index.id.to_string())
                     .ask_report());
                 }
                 PackToDo::Keep | PackToDo::Recover => {
-                    for blob in &pack.blobs {
+                    for blob in &pack.index.blobs {
                         _ = self.used_ids.remove(&blob.id);
                     }
                     check_size()?;
@@ -1176,7 +1162,7 @@ impl PrunePlan {
             .iter()
             .flat_map(|index| &index.packs)
             .filter(|pack| pack.to_do == PackToDo::Repack)
-            .map(|pack| pack.id)
+            .map(|pack| pack.index.id)
             .collect()
     }
 
@@ -1332,8 +1318,8 @@ pub(crate) fn prune_repository<P: ProgressBars, S: Open>(
     let delete_pack = |pack: PrunePack| -> Option<_> {
         // delete pack
         match pack.blob_type {
-            BlobType::Data => data_packs_remove.lock().unwrap().push(pack.id),
-            BlobType::Tree => tree_packs_remove.lock().unwrap().push(pack.id),
+            BlobType::Data => data_packs_remove.lock().unwrap().push(pack.index.id),
+            BlobType::Tree => tree_packs_remove.lock().unwrap().push(pack.index.id),
         }
         None
     };
@@ -1365,7 +1351,7 @@ pub(crate) fn prune_repository<P: ProgressBars, S: Open>(
                         ErrorKind::Internal,
                         "Pack `{pack_id}` got no decision what to do with it!",
                     )
-                    .attach_context("pack_id", pack.id.to_string())
+                    .attach_context("pack_id", pack.index.id.to_string())
                     .ask_report());
                 }
                 PackToDo::Keep => {
@@ -1375,7 +1361,7 @@ pub(crate) fn prune_repository<P: ProgressBars, S: Open>(
                 }
                 PackToDo::Repack => {
                     // TODO: repack in parallel
-                    for blob in &pack.blobs {
+                    for blob in &pack.index.blobs {
                         if used_ids.lock().unwrap().remove(&blob.id).is_none() {
                             // don't save duplicate blobs
                             continue;
@@ -1386,9 +1372,9 @@ pub(crate) fn prune_repository<P: ProgressBars, S: Open>(
                             BlobType::Tree => &tree_repacker,
                         };
                         if opts.fast_repack {
-                            repacker.add_fast(&pack.id, blob)?;
+                            repacker.add_fast(&pack.index.id, blob)?;
                         } else {
-                            repacker.add(&pack.id, blob)?;
+                            repacker.add(&pack.index.id, blob)?;
                         }
                         p.inc(u64::from(blob.length));
                     }
@@ -1415,7 +1401,7 @@ pub(crate) fn prune_repository<P: ProgressBars, S: Open>(
                     } else {
                         // keep pack: add to new index; keep the timestamp.
                         // Note the timestamp shouldn't be None here, however if it is not not set, use the current time to heal the entry!
-                        let time = pack.time.unwrap_or(prune_plan.time);
+                        let time = pack.index.time.unwrap_or(prune_plan.time);
                         let pack = pack.into_index_pack_with_time(time);
                         Some((pack, true))
                     }
@@ -1473,6 +1459,8 @@ struct PackInfo {
     used_size: u32,
     /// The size of the unused blobs in the pack
     unused_size: u32,
+    // The size of an unused blob (also contained in unused_size) which may be a padding blob ; zero if there is no padding blob detected
+    padding_size: u32,
 }
 
 impl PartialOrd<Self> for PackInfo {
@@ -1508,6 +1496,7 @@ impl PackInfo {
             unused_blobs: 0,
             used_size: 0,
             unused_size: 0,
+            padding_size: 0,
         };
 
         // We search all blobs in the pack for needed ones. We do this by already marking
@@ -1516,7 +1505,7 @@ impl PackInfo {
         // Note that by this processing, we are also able to handle duplicate blobs within a pack
         // correctly.
         // If we found a needed blob, we stop and process the information that the pack is actually needed.
-        let first_needed = pack.blobs.iter().position(|blob| {
+        let first_needed = pack.index.blobs.iter().position(|blob| {
             match used_ids.get_mut(&blob.id) {
                 None | Some(0) => {
                     pi.unused_size += blob.length;
@@ -1542,7 +1531,7 @@ impl PackInfo {
         if let Some(first_needed) = first_needed {
             // The pack is actually needed.
             // We reprocess the blobs up to the first needed one and mark all blobs which are genarally needed as used.
-            for blob in &pack.blobs[..first_needed] {
+            for blob in &pack.index.blobs[..first_needed] {
                 match used_ids.get_mut(&blob.id) {
                     None | Some(0) => {} // already correctly marked
                     Some(count) => {
@@ -1556,9 +1545,12 @@ impl PackInfo {
                 }
             }
             // Then we process the remaining blobs and mark all blobs which are generally needed as used in this blob
-            for blob in &pack.blobs[first_needed + 1..] {
+            for (num, blob) in pack.index.blobs[first_needed + 1..].iter().enumerate() {
                 match used_ids.get_mut(&blob.id) {
                     None | Some(0) => {
+                        if pi.unused_size == 0 && num == pack.index.blobs.len() - 1 {
+                            pi.padding_size = blob.length;
+                        }
                         pi.unused_size += blob.length;
                         pi.unused_blobs += 1;
                     }

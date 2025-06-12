@@ -47,6 +47,14 @@ pub struct RepositoryPacker {
 }
 
 impl RepositoryPacker {
+    fn padding_from_config(blob_type: BlobType, config: &ConfigFile) -> bool {
+        if blob_type == BlobType::Data {
+            config.use_pack_padding()
+        } else {
+            false
+        }
+    }
+
     #[allow(clippy::unnecessary_wraps)]
     pub fn new_with_default_sizer<BE: DecryptWriteBackend>(
         be: BE,
@@ -56,11 +64,10 @@ impl RepositoryPacker {
         total_size: u64,
     ) -> RusticResult<Self> {
         let pack_sizer = DefaultPackSizer::from_config(config, BlobType::Data, total_size);
-        Self::new(be, blob_type, indexer, pack_sizer)
+        let add_padding = Self::padding_from_config(blob_type, config);
+        Self::new(be, blob_type, indexer, pack_sizer, add_padding)
     }
-}
 
-impl RepositoryPacker {
     /// Creates a new `Packer`.
     ///
     /// # Type Parameters
@@ -85,8 +92,9 @@ impl RepositoryPacker {
         blob_type: BlobType,
         indexer: SharedIndexer,
         pack_sizer: S,
+        add_padding: bool,
     ) -> RusticResult<Self> {
-        let mut packer = Packer::new(*be.key(), pack_sizer, blob_type);
+        let mut packer = Packer::new(*be.key(), pack_sizer, blob_type, add_padding);
 
         let file_writer = FileWriter::new(
             FileWriterHandle {
@@ -396,7 +404,9 @@ impl<BE: DecryptFullBackend> Repacker<BE> {
     ) -> RusticResult<Self> {
         let size_limit = DefaultPackSizer::from_config(config, blob_type, total_size).pack_size();
         let repo_sizer = FixedPackSizer(size_limit);
-        let packer = RepositoryPacker::new(be.clone(), blob_type, indexer, repo_sizer)?;
+        let add_padding = RepositoryPacker::padding_from_config(blob_type, config);
+        let packer =
+            RepositoryPacker::new(be.clone(), blob_type, indexer, repo_sizer, add_padding)?;
         Ok(Self {
             be,
             packer,

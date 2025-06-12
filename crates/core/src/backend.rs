@@ -441,7 +441,7 @@ impl<O> ReadSourceEntry<O> {
 /// This trait is implemented by all backends that can read data and open from a source.
 pub trait ReadSourceOpen {
     /// The Reader used for this source
-    type Reader: Read + Send + 'static;
+    type Reader: Read;
 
     /// Opens the source.
     ///
@@ -456,7 +456,7 @@ pub trait ReadSourceOpen {
 }
 
 /// blanket implementation for readers
-impl<T: Read + Send + 'static> ReadSourceOpen for T {
+impl<T: Read> ReadSourceOpen for T {
     type Reader = T;
     fn open(self) -> RusticResult<Self::Reader> {
         Ok(self)

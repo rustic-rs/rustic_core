@@ -8,7 +8,7 @@ use log::warn;
 
 use crate::{
     blob::{BlobId, BlobType},
-    crypto::CryptoKey,
+    crypto::{CryptoKey, hasher::hash},
     error::{ErrorKind, RusticError, RusticResult},
     repofile::{
         indexfile::IndexPack,
@@ -113,6 +113,8 @@ pub(crate) struct Packer<C, S> {
     pub pack_sizer: S,
     /// The packer stats
     pub stats: PackerStats,
+    /// add a padding blob to stealthen the packsize
+    add_padding: bool,
 }
 
 impl<C: CryptoKey, S: PackSizer> Packer<C, S> {
@@ -129,7 +131,7 @@ impl<C: CryptoKey, S: PackSizer> Packer<C, S> {
     /// * `indexer` - The indexer to write to.
     /// * `config` - The config file.
     /// * `total_size` - The total size of the pack file.
-    pub fn new(key: C, pack_sizer: S, blob_type: BlobType) -> Self {
+    pub fn new(key: C, pack_sizer: S, blob_type: BlobType, add_padding: bool) -> Self {
         Self {
             key,
             blob_type,
@@ -140,6 +142,7 @@ impl<C: CryptoKey, S: PackSizer> Packer<C, S> {
             index: IndexPack::default(),
             pack_sizer,
             stats: PackerStats::default(),
+            add_padding,
         }
     }
 
@@ -336,6 +339,9 @@ impl<C: CryptoKey, S: PackSizer> Packer<C, S> {
             return Ok(None);
         }
 
+        if self.add_padding {
+            self.add_padding_blob()?;
+        }
         self.write_header()?;
         // prepare everything for write to the backend
         let file = std::mem::take(&mut self.file).into();
@@ -345,5 +351,22 @@ impl<C: CryptoKey, S: PackSizer> Packer<C, S> {
         self.size = 0;
 
         Ok(Some((file, index)))
+    }
+
+    // Add a padding blob
+    fn add_padding_blob(&mut self) -> RusticResult<()> {
+        // TODO: calculate reasonable padding size!
+        pub(super) const KB: usize = 1024;
+        pub(super) const MB: usize = 1024 * KB;
+        pub(super) const MIN_SIZE: usize = 512 * KB;
+        pub(super) const MAX_SIZE: usize = 8 * MB;
+
+        // !!TODO!! -> change to reasonable padding!
+        let padding_size = 400;
+        let data = vec![0; padding_size];
+        let id = BlobId(hash(&data));
+        let data = self.key.encrypt_data(&data)?;
+        let padding_size = u64::try_from(padding_size).expect("padding_size should fit into u64");
+        self.add(&data, &id, padding_size, None)
     }
 }
