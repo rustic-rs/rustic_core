@@ -21,7 +21,10 @@ use crate::{
     error::{ErrorKind, RusticError, RusticResult},
     repofile::{
         PathList, SnapshotFile,
-        snapshotfile::{SnapshotGroup, SnapshotGroupCriterion, SnapshotId},
+        snapshotfile::{
+            SnapshotId,
+            grouping::{SnapshotGroup, SnapshotGroupCriterion},
+        },
     },
     repository::{IndexedIds, IndexedTree, Repository},
 };
@@ -105,7 +108,7 @@ impl ParentOptions {
             // get suitable snapshot group from snapshot and opts.group_by. This is used to filter snapshots for the parent detection
             SnapshotFile::latest(
                 repo.dbe(),
-                |snap| snap.has_group(&group),
+                |snap| group.matches(snap),
                 &repo.progress_counter(""),
             )
             .ok()
@@ -115,7 +118,7 @@ impl ParentOptions {
             SnapshotFile::from_strs(
                 repo.dbe(),
                 &self.parents,
-                |snap| snap.has_group(&group),
+                |snap| group.matches(snap),
                 &repo.progress_counter(""),
             )
             .unwrap_or_default()

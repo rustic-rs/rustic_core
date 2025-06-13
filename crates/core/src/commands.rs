@@ -15,4 +15,3 @@ pub mod repair;
 pub mod repoinfo;
 pub mod restore;
 pub mod rewrite;
-pub mod snapshots;

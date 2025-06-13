@@ -9,8 +9,8 @@ use pretty_assertions::assert_eq;
 use rstest::rstest;
 
 use rustic_core::{
-    BackupOptions, CommandInput, ParentOptions, PathList, SnapshotGroupCriterion, SnapshotOptions,
-    StringList,
+    BackupOptions, CommandInput, Grouped, ParentOptions, PathList, SnapshotGroupCriterion,
+    SnapshotOptions, StringList,
     repofile::{PackId, SnapshotFile},
 };
 
@@ -126,16 +126,16 @@ fn test_backup_with_tar_gz_passes(
 
     // get snapshot group
     let group_by = SnapshotGroupCriterion::new().tags(true);
-    let mut groups = repo.get_snapshot_group(&[], group_by, |_| true)?;
+    let mut snapshots = repo.get_all_snapshots()?;
 
-    // sort groups to get unique result
-    for (_, snaps) in &mut groups {
-        snaps.sort();
-    }
-    groups.sort_by_key(|(group, _)| group.tags.clone());
+    // sort to get unique result
+    snapshots.sort();
 
     insta_snapshotfile_redaction.bind(|| {
-        assert_with_win("backup-tar-groups", &groups);
+        assert_with_win(
+            "backup-tar-groups",
+            Grouped::from_items(snapshots, group_by).groups,
+        );
     });
 
     // filter snapshots by tag

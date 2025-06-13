@@ -42,7 +42,6 @@ use crate::{
         check::{CheckOptions, CheckResults, check_repository},
         config::ConfigOptions,
         copy::CopySnapshot,
-        forget::{ForgetGroups, KeepOptions},
         key::{KeyOptions, add_current_key_to_repo},
         prune::{PruneOptions, PrunePlan, prune_repository},
         repair::{
@@ -65,7 +64,7 @@ use crate::{
         configfile::ConfigId,
         keyfile::{MasterKey, find_key_in_backend},
         packfile::PackId,
-        snapshotfile::{SnapshotGroup, SnapshotGroupCriterion, SnapshotId},
+        snapshotfile::SnapshotId,
     },
     repository::{
         command_input::CommandInput,
@@ -685,31 +684,6 @@ impl<S: Open> Repository<S> {
         self.dbe().remove(FileType::Key, id, false)
     }
 
-    /// Get grouped snapshots.
-    ///
-    /// # Arguments
-    ///
-    /// * `ids` - The ids of the snapshots to group. If empty, all snapshots are grouped.
-    /// * `group_by` - The criterion to group by
-    /// * `filter` - The filter to use
-    ///
-    /// # Errors
-    ///
-    // TODO: Document errors
-    ///
-    /// # Returns
-    ///
-    /// If `ids` are given, this will try to resolve the ids (or `latest` with respect to the given filter) and return a single group
-    /// If `ids` is empty, return and group all snapshots respecting the filter.
-    pub fn get_snapshot_group(
-        &self,
-        ids: &[String],
-        group_by: SnapshotGroupCriterion,
-        filter: impl FnMut(&SnapshotFile) -> bool + Send + Sync,
-    ) -> RusticResult<Vec<(SnapshotGroup, Vec<SnapshotFile>)>> {
-        commands::snapshots::get_snapshot_group(self, ids, group_by, filter)
-    }
-
     /// Get a single snapshot
     ///
     /// # Arguments
@@ -879,30 +853,6 @@ impl<S: Open> Repository<S> {
         let result = SnapshotFile::update_from_backend(self.dbe(), current, filter, &p);
         p.finish();
         result
-    }
-
-    /// Get snapshots to forget depending on the given [`KeepOptions`]
-    ///
-    /// # Arguments
-    ///
-    /// * `keep` - The keep options to use
-    /// * `group_by` - The criterion to group by
-    /// * `filter` - The filter to use
-    ///
-    /// # Errors
-    ///
-    /// * If keep options are not valid
-    ///
-    /// # Returns
-    ///
-    /// The groups of snapshots to forget
-    pub fn get_forget_snapshots(
-        &self,
-        keep: &KeepOptions,
-        group_by: SnapshotGroupCriterion,
-        filter: impl FnMut(&SnapshotFile) -> bool + Send + Sync,
-    ) -> RusticResult<ForgetGroups> {
-        commands::forget::get_forget_snapshots(self, keep, group_by, filter)
     }
 
     /// Get snapshots which are not already present and should be present.
