@@ -883,20 +883,19 @@ impl<P, S: Open> Repository<P, S> {
         &self.open_status().key_id
     }
 
-    /// Delete the key with id starting with the given string from the repository.
+    /// Delete the key with the given id
     ///
     /// # Errors
     ///
     /// * If the key could not be removed.
-    pub fn delete_key(&self, id: &str) -> RusticResult<()> {
-        let id = self.dbe().find_id(FileType::Key, id)?;
-        if self.key_id() == &KeyId::from(id) {
+    pub fn delete_key(&self, id: &KeyId) -> RusticResult<()> {
+        if self.key_id() == id {
             return Err(RusticError::new(
                 ErrorKind::Repository,
                 "Cannot remove the currently used key",
             ));
         }
-        self.dbe().remove(FileType::Key, &id, false)
+        self.dbe().remove(FileType::Key, id, false)
     }
 }
 
