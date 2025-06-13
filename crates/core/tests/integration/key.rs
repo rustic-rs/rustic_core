@@ -36,10 +36,10 @@ fn test_key_commands(set_up_repo: Result<RepoOpen>) -> Result<()> {
     assert!(keyfile2.created.is_some());
 
     // try to remove the used repository key - which should fail
-    assert!(repo.delete_key(&key_id.to_string()).is_err());
+    assert!(repo.delete_key(key_id).is_err());
 
     // try to remove the added key
-    repo.delete_key(&key_id2.to_string())?;
+    repo.delete_key(&key_id2)?;
 
     // we should have just a single key now
     let keys: Vec<KeyId> = repo.list()?.collect();
