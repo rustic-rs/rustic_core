@@ -714,17 +714,33 @@ impl<P, S> Repository<P, S> {
         })
     }
 
-    /// List all file [`Id`]s of the given [`FileType`] which are present in the repository
-    ///
-    /// # Arguments
-    ///
-    /// * `tpe` - The type of the files to list
+    /// List all file [`Id`]s of a [`FileType`] which are present in the repository
     ///
     /// # Errors
     ///
     // TODO: Document errors
     pub fn list<T: RepoId>(&self) -> RusticResult<impl Iterator<Item = T>> {
         Ok(self.be.list(T::TYPE)?.into_iter().map(Into::into))
+    }
+
+    /// Searches for matching ids of a [`FileType`] which are present in the repository
+    ///
+    /// # Arguments
+    ///
+    /// * `ids` - The list of (parts of the) ids of the snapshots
+    ///
+    /// # Errors
+    ///
+    // TODO: Document errors
+    pub fn find_ids<I: RepoId, T: AsRef<str>>(
+        &self,
+        ids: &[T],
+    ) -> RusticResult<impl Iterator<Item = I>> {
+        Ok(self
+            .be
+            .find_ids(FileType::Snapshot, ids)?
+            .into_iter()
+            .map(I::from))
     }
 }
 
@@ -1395,6 +1411,29 @@ impl<P: ProgressBars, S: Open> Repository<P, S> {
         Ok(self
             .dbe()
             .stream_all::<F>(&self.pb.progress_hidden())?
+            .into_iter())
+    }
+
+    /// Read the files [`RepoFile`] of a given list of IDs.
+    ///
+    /// # Errors
+    ///
+    // TODO: Document errors
+    ///
+    /// # Returns
+    ///
+    /// An iterator over the resulting files of the given type
+    ///
+    /// # Note
+    ///
+    /// The result is not sorted and may come in random order!
+    pub fn stream_files_list<F: RepoFile>(
+        &self,
+        list: &[F::Id],
+    ) -> RusticResult<impl Iterator<Item = RusticResult<(F::Id, F)>>> {
+        Ok(self
+            .dbe()
+            .stream_list::<F>(list, &self.pb.progress_hidden())?
             .into_iter())
     }
 

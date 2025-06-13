@@ -43,7 +43,7 @@ impl_repoid!(KeyId, FileType::Key);
 /// They are usually stored in the repository under `/keys/<ID>`
 #[serde_as]
 #[skip_serializing_none]
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, PartialEq, Eq)]
 pub struct KeyFile {
     /// Hostname where the key was created
     pub hostname: Option<String>,
