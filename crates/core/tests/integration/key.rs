@@ -35,6 +35,16 @@ fn test_key_commands(set_up_repo: Result<RepoOpen>) -> Result<()> {
     assert_eq!(keyfile2.username, Some("my_user".to_string()));
     assert!(keyfile2.created.is_some());
 
+    // try to find the second key by string
+    let found_ids: Vec<KeyId> = repo.find_ids(&[key_id2.to_string()])?.collect();
+    assert_eq!(found_ids, &[key_id2]);
+    let found_keys: Vec<KeyFile> = repo
+        .stream_files_list::<KeyFile>(&found_ids)?
+        .map(|item| item.unwrap().1)
+        .collect();
+    assert_eq!(found_keys.len(), 1);
+    assert_eq!(&found_keys[0], keyfile2);
+
     // try to remove the used repository key - which should fail
     assert!(repo.delete_key(&key_id.to_string()).is_err());
 
