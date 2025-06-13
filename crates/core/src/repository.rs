@@ -736,11 +736,7 @@ impl<P, S> Repository<P, S> {
         &self,
         ids: &[T],
     ) -> RusticResult<impl Iterator<Item = I>> {
-        Ok(self
-            .be
-            .find_ids(FileType::Snapshot, ids)?
-            .into_iter()
-            .map(I::from))
+        Ok(self.be.find_ids(I::TYPE, ids)?.into_iter().map(I::from))
     }
 }
 
