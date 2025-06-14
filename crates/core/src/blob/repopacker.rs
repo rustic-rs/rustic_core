@@ -10,7 +10,11 @@ use crate::{
         FileType,
         decrypt::{DecryptFullBackend, DecryptWriteBackend},
     },
-    blob::{BlobId, BlobType},
+    blob::{
+        BlobId, BlobType,
+        pack_sizer::{DefaultPackSizer, FixedPackSizer, PackSizer},
+        packer::{Packer, PackerStats},
+    },
     crypto::hasher::hash,
     error::{ErrorKind, RusticError, RusticResult},
     index::indexer::SharedIndexer,
@@ -19,11 +23,6 @@ use crate::{
         indexfile::{IndexBlob, IndexPack},
         packfile::PackId,
     },
-};
-
-use super::{
-    pack_sizer::{DefaultPackSizer, FixedPackSizer, PackSizer},
-    packer::{Packer, PackerStats},
 };
 
 type RawSender = Sender<RusticResult<(Vec<u8>, BlobId, u64, Option<NonZeroU32>)>>;

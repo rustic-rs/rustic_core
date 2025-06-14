@@ -1,5 +1,4 @@
-use super::BlobType;
-use crate::repofile::ConfigFile;
+use crate::{blob::BlobType, repofile::ConfigFile};
 
 use integer_sqrt::IntegerSquareRoot;
 
