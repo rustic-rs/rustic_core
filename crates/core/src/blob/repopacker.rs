@@ -88,7 +88,7 @@ impl RepositoryPacker {
     ) -> RusticResult<Self> {
         let mut packer = Packer::new(*be.key(), pack_sizer, blob_type);
 
-        let file_writer = Actor::new(
+        let file_writer = FileWriter::new(
             FileWriterHandle {
                 be: be.clone(),
                 indexer: indexer.clone(),
@@ -232,7 +232,8 @@ impl RepositoryPacker {
     }
 }
 
-// TODO: add documentation
+/// The handle for the [`FileWriter`] actor, repsonsible for writing pack files and indexing them using an indexer.
+///
 /// # Type Parameters
 ///
 /// * `BE` - The backend type.
@@ -247,7 +248,6 @@ pub(crate) struct FileWriterHandle<BE: DecryptWriteBackend> {
 }
 
 impl<BE: DecryptWriteBackend> FileWriterHandle<BE> {
-    // TODO: add documentation
     fn process(&self, load: (Bytes, PackId, IndexPack)) -> RusticResult<IndexPack> {
         let (file, id, mut index) = load;
         index.id = id;
@@ -263,16 +263,18 @@ impl<BE: DecryptWriteBackend> FileWriterHandle<BE> {
     }
 }
 
-// TODO: add documentation
+/// An actor which is repsonsible for writing pack files and indexing them using an indexer.
+///
+/// This actor is repsonsible for the communication, the actual work is done by [`FileWriterHandle`]
 #[derive(Clone)]
-pub(crate) struct Actor {
+pub(crate) struct FileWriter {
     /// The sender to send blobs to the raw packer.
     sender: Sender<(Bytes, IndexPack)>,
     /// The receiver to receive the status from the raw packer.
     finish: Receiver<RusticResult<()>>,
 }
 
-impl Actor {
+impl FileWriter {
     /// Creates a new `Actor`.
     ///
     /// # Type Parameters
