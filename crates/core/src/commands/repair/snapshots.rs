@@ -11,7 +11,7 @@ use crate::{
     },
     blob::{
         BlobId, BlobType,
-        packer::Packer,
+        repopacker::RepositoryPacker,
         tree::{Tree, TreeId},
     },
     error::{ErrorKind, RusticError, RusticResult},
@@ -106,8 +106,8 @@ pub(crate) fn repair_snapshots<P: ProgressBars, S: IndexedFull>(
 
     let mut state = RepairState::default();
 
-    let indexer = Indexer::new(be.clone()).into_shared();
-    let mut packer = Packer::new(
+    let indexer = Indexer::new().into_shared();
+    let mut packer = RepositoryPacker::new_with_default_sizer(
         be.clone(),
         BlobType::Tree,
         indexer.clone(),
@@ -154,7 +154,7 @@ pub(crate) fn repair_snapshots<P: ProgressBars, S: IndexedFull>(
 
     if !dry_run {
         _ = packer.finalize()?;
-        indexer.write().unwrap().finalize()?;
+        indexer.finalize_and_check_save(|file| be.save_file_no_id(file))?;
     }
 
     if opts.delete {
@@ -191,11 +191,11 @@ pub(crate) fn repair_snapshots<P: ProgressBars, S: IndexedFull>(
 /// # Returns
 ///
 /// A tuple containing the change status and the id of the repaired tree
-pub(crate) fn repair_tree<BE: DecryptWriteBackend>(
+pub(crate) fn repair_tree(
     be: &impl DecryptFullBackend,
     opts: &RepairSnapshotsOptions,
     index: &impl ReadGlobalIndex,
-    packer: &mut Packer<BE>,
+    packer: &mut RepositoryPacker,
     id: Option<TreeId>,
     state: &mut RepairState,
     dry_run: bool,
