@@ -671,8 +671,8 @@ impl SnapshotFile {
         let mut snaps: BTreeMap<_, _> = current.into_iter().map(|snap| (snap.id, snap)).collect();
         let missing_ids: Vec<_> = ids
             .iter()
-            .filter(|id| !snaps.contains_key(&SnapshotId::from(**id)))
-            .copied()
+            .map(|id| SnapshotId::from(*id))
+            .filter(|id| !snaps.contains_key(id))
             .collect();
         for res in be.stream_list::<Self>(&missing_ids, p)? {
             let (id, snap) = res?;
