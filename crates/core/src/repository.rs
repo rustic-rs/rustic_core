@@ -784,6 +784,11 @@ impl<P: ProgressBars, S> Repository<P, S> {
     ) -> RusticResult<()> {
         warm_up_wait(self, packs)
     }
+
+    /// The progress bars used for the repository
+    pub fn progress_bars(&self) -> &P {
+        &self.pb
+    }
 }
 
 /// A repository which is open, i.e. the password has been checked and the decryption key is available.
