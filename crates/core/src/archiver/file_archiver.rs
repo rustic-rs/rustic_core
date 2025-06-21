@@ -13,10 +13,7 @@ use crate::{
         decrypt::DecryptWriteBackend,
         node::{Node, NodeType},
     },
-    blob::{
-        BlobId, BlobType, DataId,
-        packer::{Packer, PackerStats},
-    },
+    blob::{BlobId, BlobType, DataId, packer::PackerStats, repopacker::RepositoryPacker},
     chunker::ChunkIter,
     crypto::hasher::hash,
     error::{ErrorKind, RusticError, RusticResult},
@@ -30,16 +27,15 @@ use crate::{
 ///
 /// # Type Parameters
 ///
-/// * `BE` - The backend type.
 /// * `I` - The index to read from.
 #[derive(Clone)]
-pub(crate) struct FileArchiver<'a, BE: DecryptWriteBackend, I: ReadGlobalIndex> {
+pub(crate) struct FileArchiver<'a, I: ReadGlobalIndex> {
     index: &'a I,
-    data_packer: Packer<BE>,
+    data_packer: RepositoryPacker,
     rabin: Rabin64,
 }
 
-impl<'a, BE: DecryptWriteBackend, I: ReadGlobalIndex> FileArchiver<'a, BE, I> {
+impl<'a, I: ReadGlobalIndex> FileArchiver<'a, I> {
     /// Creates a new `FileArchiver`.
     ///
     /// # Type Parameters
@@ -53,20 +49,15 @@ impl<'a, BE: DecryptWriteBackend, I: ReadGlobalIndex> FileArchiver<'a, BE, I> {
     /// * `index` - The index to read from.
     /// * `indexer` - The indexer to write to.
     /// * `config` - The config file.
-    ///
-    /// # Errors
-    ///
-    /// * If sending the message to the raw packer fails.
-    /// * If converting the data length to u64 fails
-    pub(crate) fn new(
+    pub(crate) fn new<BE: DecryptWriteBackend>(
         be: BE,
         index: &'a I,
-        indexer: SharedIndexer<BE>,
+        indexer: SharedIndexer,
         config: &ConfigFile,
     ) -> RusticResult<Self> {
         let poly = config.poly()?;
 
-        let data_packer = Packer::new(
+        let data_packer = RepositoryPacker::new_with_default_sizer(
             be,
             BlobType::Data,
             indexer,

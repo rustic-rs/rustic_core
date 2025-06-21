@@ -27,7 +27,8 @@ use crate::{
     },
     blob::{
         BlobId, BlobType, BlobTypeMap, Initialize,
-        packer::{PackSizer, Repacker},
+        pack_sizer::{DefaultPackSizer, PackSizer},
+        repopacker::Repacker,
         tree::TreeStreamerOnce,
     },
     error::{ErrorKind, RusticError, RusticResult},
@@ -748,7 +749,7 @@ impl PrunePlan {
             .repack_cacheable_only
             .unwrap_or_else(|| repo.config().is_hot == Some(true));
         let pack_sizer =
-            total_size.map(|tpe, size| PackSizer::from_config(repo.config(), tpe, size));
+            total_size.map(|tpe, size| DefaultPackSizer::from_config(repo.config(), tpe, size));
 
         pruner.decide_packs(
             Duration::from_std(*opts.keep_pack).map_err(|err| {
@@ -847,7 +848,7 @@ impl PrunePlan {
         repack_cacheable_only: bool,
         repack_uncompressed: bool,
         repack_all: bool,
-        pack_sizer: &BlobTypeMap<PackSizer>,
+        pack_sizer: &BlobTypeMap<DefaultPackSizer>,
     ) -> RusticResult<()> {
         // first process all marked packs then the unmarked ones:
         // - first processed packs are more likely to have all blobs seen as unused
@@ -1008,7 +1009,7 @@ impl PrunePlan {
         max_unused: &LimitOption,
         repack_uncompressed: bool,
         no_resize: bool,
-        pack_sizer: &BlobTypeMap<PackSizer>,
+        pack_sizer: &BlobTypeMap<DefaultPackSizer>,
     ) {
         let max_unused = match (repack_uncompressed, max_unused) {
             (true, _) => 0,
@@ -1247,7 +1248,7 @@ pub(crate) fn prune_repository<P: ProgressBars, S: Open>(
     let be = repo.dbe();
     let pb = &repo.pb;
 
-    let indexer = Indexer::new_unindexed(be.clone()).into_shared();
+    let mut indexer = Indexer::new_unindexed();
 
     // Calculate an approximation of sizes after pruning.
     // The size actually is:
@@ -1265,22 +1266,6 @@ pub(crate) fn prune_repository<P: ProgressBars, S: Open>(
                 * u64::from(HeaderEntry::ENTRY_LEN_COMPRESSED)
     });
 
-    let tree_repacker = Repacker::new(
-        be.clone(),
-        BlobType::Tree,
-        indexer.clone(),
-        repo.config(),
-        size_after_prune[BlobType::Tree],
-    )?;
-
-    let data_repacker = Repacker::new(
-        be.clone(),
-        BlobType::Data,
-        indexer.clone(),
-        repo.config(),
-        size_after_prune[BlobType::Data],
-    )?;
-
     // mark unreferenced packs for deletion
     if !prune_plan.existing_packs.is_empty() {
         if opts.instant_delete {
@@ -1297,7 +1282,10 @@ pub(crate) fn prune_repository<P: ProgressBars, S: Open>(
                     time: Some(Local::now()),
                     blobs: Vec::new(),
                 };
-                indexer.write().unwrap().add_remove(pack)?;
+                indexer.add_remove(pack);
+                if let Some(file) = indexer.save_if_needed() {
+                    _ = be.save_file(&file)?;
+                }
                 p.inc(1);
             }
             p.finish();
@@ -1321,15 +1309,33 @@ pub(crate) fn prune_repository<P: ProgressBars, S: Open>(
     p.set_length(prune_plan.stats.size_sum().repack - prune_plan.stats.size_sum().repackrm);
 
     let mut indexes_remove = Vec::new();
+    let indexer = indexer.into_shared();
     let tree_packs_remove = Arc::new(Mutex::new(Vec::new()));
     let data_packs_remove = Arc::new(Mutex::new(Vec::new()));
 
-    let delete_pack = |pack: PrunePack| {
+    let tree_repacker = Repacker::new(
+        be.clone(),
+        BlobType::Tree,
+        indexer.clone(),
+        repo.config(),
+        size_after_prune[BlobType::Tree],
+    )?;
+
+    let data_repacker = Repacker::new(
+        be.clone(),
+        BlobType::Data,
+        indexer.clone(),
+        repo.config(),
+        size_after_prune[BlobType::Data],
+    )?;
+
+    let delete_pack = |pack: PrunePack| -> Option<_> {
         // delete pack
         match pack.blob_type {
             BlobType::Data => data_packs_remove.lock().unwrap().push(pack.id),
             BlobType::Tree => tree_packs_remove.lock().unwrap().push(pack.id),
         }
+        None
     };
 
     let used_ids = Arc::new(Mutex::new(prune_plan.used_ids));
@@ -1353,7 +1359,7 @@ pub(crate) fn prune_repository<P: ProgressBars, S: Open>(
     packs
         .into_par_iter()
         .try_for_each(|pack| -> RusticResult<_> {
-            match pack.to_do {
+            let to_index = match pack.to_do {
                 PackToDo::Undecided => {
                     return Err(RusticError::new(
                         ErrorKind::Internal,
@@ -1365,7 +1371,7 @@ pub(crate) fn prune_repository<P: ProgressBars, S: Open>(
                 PackToDo::Keep => {
                     // keep pack: add to new index
                     let pack = pack.into_index_pack();
-                    indexer.write().unwrap().add(pack)?;
+                    Some((pack, false))
                 }
                 PackToDo::Repack => {
                     // TODO: repack in parallel
@@ -1387,45 +1393,48 @@ pub(crate) fn prune_repository<P: ProgressBars, S: Open>(
                         p.inc(u64::from(blob.length));
                     }
                     if opts.instant_delete {
-                        delete_pack(pack);
+                        delete_pack(pack)
                     } else {
                         // mark pack for removal
                         let pack = pack.into_index_pack_with_time(prune_plan.time);
-                        indexer.write().unwrap().add_remove(pack)?;
+                        Some((pack, true))
                     }
                 }
                 PackToDo::MarkDelete => {
                     if opts.instant_delete {
-                        delete_pack(pack);
+                        delete_pack(pack)
                     } else {
                         // mark pack for removal
                         let pack = pack.into_index_pack_with_time(prune_plan.time);
-                        indexer.write().unwrap().add_remove(pack)?;
+                        Some((pack, true))
                     }
                 }
                 PackToDo::KeepMarked | PackToDo::KeepMarkedAndCorrect => {
                     if opts.instant_delete {
-                        delete_pack(pack);
+                        delete_pack(pack)
                     } else {
                         // keep pack: add to new index; keep the timestamp.
                         // Note the timestamp shouldn't be None here, however if it is not not set, use the current time to heal the entry!
                         let time = pack.time.unwrap_or(prune_plan.time);
                         let pack = pack.into_index_pack_with_time(time);
-                        indexer.write().unwrap().add_remove(pack)?;
+                        Some((pack, true))
                     }
                 }
                 PackToDo::Recover => {
                     // recover pack: add to new index in section packs
                     let pack = pack.into_index_pack_with_time(prune_plan.time);
-                    indexer.write().unwrap().add(pack)?;
+                    Some((pack, false))
                 }
                 PackToDo::Delete => delete_pack(pack),
+            };
+            if let Some((pack, delete)) = to_index {
+                indexer.add_and_check_save(pack, delete, |file| be.save_file_no_id(file))?;
             }
             Ok(())
         })?;
     _ = tree_repacker.finalize()?;
     _ = data_repacker.finalize()?;
-    indexer.write().unwrap().finalize()?;
+    indexer.finalize_and_check_save(|file| be.save_file_no_id(file))?;
     p.finish();
 
     // remove old index files first as they may reference pack files which are removed soon.
