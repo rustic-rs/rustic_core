@@ -93,12 +93,16 @@ impl Tree {
         self.nodes.push(node);
     }
 
-    /// Serializes the tree.
+    /// Serializes the tree in JSON format like restic does.
     ///
     /// # Returns
     ///
-    /// A tuple of the serialized tree as `Vec<u8>` and the tree's ID
-    pub(crate) fn serialize(&self) -> TreeResult<(Vec<u8>, TreeId)> {
+    /// A tuple of the serialized tree as `Vec<u8>` and the tree's ID, i.e. the hash of the serialized tree.
+    ///
+    /// # Errors
+    ///
+    /// * If the tree could not be serialized. This should never happen.
+    pub fn serialize(&self) -> TreeResult<(Vec<u8>, TreeId)> {
         let mut chunk = serde_json::to_vec(&self).map_err(TreeErrorKind::SerializingTreeFailed)?;
         // # COMPATIBILITY
         //
