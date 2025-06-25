@@ -1,9 +1,10 @@
 use std::{
     iter::{Once, once},
-    path::PathBuf,
     process::{Child, ChildStdout, Command, Stdio},
     sync::Mutex,
 };
+
+use typed_path::UnixPathBuf;
 
 use crate::{
     backend::{ReadSource, ReadSourceEntry},
@@ -15,7 +16,7 @@ use crate::{
 #[derive(Debug)]
 pub struct ChildStdoutSource {
     /// The path of the stdin entry.
-    path: PathBuf,
+    path: UnixPathBuf,
     /// The child process
     ///
     /// # Note
@@ -30,14 +31,14 @@ pub struct ChildStdoutSource {
 
 impl ChildStdoutSource {
     /// Creates a new `ChildSource`.
-    pub fn new(cmd: &CommandInput, path: PathBuf) -> RusticResult<Self> {
+    pub fn new(cmd: &CommandInput, path: UnixPathBuf) -> RusticResult<Self> {
         let process = Command::new(cmd.command())
             .args(cmd.args())
             .stdout(Stdio::piped())
             .spawn()
             .map_err(|err| CommandInputErrorKind::ProcessExecutionFailed {
                 command: cmd.clone(),
-                path: path.clone(),
+                path: path.to_string_lossy().to_string(),
                 source: err,
             });
 
