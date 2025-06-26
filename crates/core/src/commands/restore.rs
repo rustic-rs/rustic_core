@@ -534,7 +534,7 @@ fn restore_contents<P: ProgressBars, S: Open>(
                     let read_data = match &from_file {
                         Some((file_idx, offset_file, length_file)) => {
                             // read from existing file
-                            dest.read_at(&filenames[*file_idx], *offset_file, *length_file)
+                            dest.read_at(&filenames[*file_idx], *offset_file, (*length_file).into())
                                 .unwrap()
                         }
                         None => {
@@ -546,12 +546,14 @@ fn restore_contents<P: ProgressBars, S: Open>(
 
                     // save into needed files in parallel
                     for (bl, group) in &name_dests.into_iter().chunk_by(|item| item.0.clone()) {
-                        let size = bl.data_length();
+                        let size = bl.data_length().into();
                         let data = if from_file.is_some() {
                             read_data.clone()
                         } else {
-                            let start = usize::try_from(bl.offset - offset).unwrap();
-                            let end = usize::try_from(bl.offset + bl.length - offset).unwrap();
+                            let start = usize::try_from(bl.offset - offset)
+                                .expect("convert from u32 to usize should not fail!");
+                            let end = usize::try_from(bl.offset + bl.length - offset)
+                                .expect("convert from u32 to usize should not fail!");
                             be.read_encrypted_from_partial(
                                 &read_data[start..end],
                                 bl.uncompressed_length,
@@ -621,7 +623,7 @@ struct BlobLocation {
 
 impl BlobLocation {
     /// Get the length of the data contained in this blob
-    fn data_length(&self) -> u64 {
+    fn data_length(&self) -> u32 {
         self.uncompressed_length
             .map_or(
                 self.length - 32, // crypto overhead
@@ -743,15 +745,9 @@ impl RestorePlan {
                 uncompressed_length: ie.uncompressed_length,
             };
             let length = bl.data_length();
-
-            let usize_length = usize::try_from(length).map_err(|err| {
-                RusticError::with_source(
-                    ErrorKind::Internal,
-                    "Failed to convert the length `{length}`  to usize. Please try again.",
-                    err,
-                )
-                .attach_context("length", length.to_string())
-            })?;
+            let usize_length =
+                usize::try_from(length).expect("convert from u32 to usize should not fail!");
+            let length: u64 = length.into();
 
             let matches = open_file
                 .as_mut()
