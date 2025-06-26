@@ -742,14 +742,11 @@ impl RestorePlan {
                 length: ie.length,
                 uncompressed_length: ie.uncompressed_length,
             };
-            let length = bl.data_length();
-            let usize_length =
-                usize::try_from(length).expect("convert from u32 to usize should not fail!");
-            let length: u64 = length.into();
+            let length: u64 = bl.data_length().into();
 
             let matches = open_file
                 .as_mut()
-                .is_some_and(|file| id.blob_matches_reader(usize_length, file));
+                .is_some_and(|file| id.blob_matches_reader(length, file));
 
             let blob_location = self.r.entry((ie.pack, bl)).or_default();
             blob_location.push(FileLocation {
