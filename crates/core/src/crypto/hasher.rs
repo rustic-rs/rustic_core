@@ -55,13 +55,14 @@ pub fn hash_reader(mut reader: impl Read) -> Result<Id> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use quickcheck_macros::quickcheck;
+    use proptest::prelude::*;
 
-    #[quickcheck]
-    #[allow(clippy::needless_pass_by_value)]
-    fn hash_reader_is_identical_to_hash(bytes: Vec<u8>) -> bool {
-        let hash1 = hash(&bytes);
-        let hash2 = hash_reader(&*bytes).unwrap();
-        hash1 == hash2
+    proptest! {
+        #[test]
+        fn hash_reader_is_identical_to_hash(bytes in prop::collection::vec(prop::num::u8::ANY, 0..65536))  {
+            let hash1 = hash(&bytes);
+            let hash2 = hash_reader(&*bytes).unwrap();
+            prop_assert_eq!(hash1, hash2);
+        }
     }
 }

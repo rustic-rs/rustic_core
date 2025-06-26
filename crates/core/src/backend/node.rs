@@ -579,16 +579,14 @@ fn take<I: Iterator<Item = char>>(iterator: &mut I, n: usize) -> String {
 mod tests {
     use super::*;
 
-    use quickcheck_macros::quickcheck;
+    use proptest::prelude::*;
     use rstest::rstest;
 
-    #[quickcheck]
-    #[allow(clippy::needless_pass_by_value)]
-    fn escape_unescape_is_identity(bytes: Vec<u8>) -> bool {
-        let name = OsStr::from_bytes(&bytes);
-        name == match unescape_filename(&escape_filename(name)) {
-            Ok(s) => s,
-            Err(_) => return false,
+    proptest! {
+        #[test]
+        fn escape_unescape_is_identity(bytes in prop::collection::vec(prop::num::u8::ANY, 0..65536)) {
+            let name = OsStr::from_bytes(&bytes);
+            prop_assert_eq!(name, unescape_filename(&escape_filename(name)).unwrap());
         }
     }
 
@@ -639,10 +637,12 @@ mod tests {
         assert_eq!(expected, unescape_filename(input).unwrap());
     }
 
-    #[quickcheck]
-    #[allow(clippy::needless_pass_by_value)]
-    fn from_link_to_link_is_identity(bytes: Vec<u8>) -> bool {
-        let path = Path::new(OsStr::from_bytes(&bytes));
-        path == NodeType::from_link(path).to_link()
+    proptest! {
+        #[test]
+        fn from_link_to_link_is_identity(bytes in prop::collection::vec(prop::num::u8::ANY, 0..65536)) {
+            let path = Path::new(OsStr::from_bytes(&bytes));
+            let node = NodeType::from_link(path);
+            prop_assert_eq!(path, node.to_link());
+    }
     }
 }
