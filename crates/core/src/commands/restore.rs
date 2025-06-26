@@ -624,12 +624,10 @@ struct BlobLocation {
 impl BlobLocation {
     /// Get the length of the data contained in this blob
     fn data_length(&self) -> u32 {
-        self.uncompressed_length
-            .map_or(
-                self.length - 32, // crypto overhead
-                NonZeroU32::get,
-            )
-            .into()
+        self.uncompressed_length.map_or(
+            self.length - 32, // crypto overhead
+            NonZeroU32::get,
+        )
     }
 }
 
