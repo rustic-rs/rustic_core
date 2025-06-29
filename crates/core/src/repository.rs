@@ -795,11 +795,16 @@ impl<P: ProgressBars, S> Repository<P, S> {
 pub trait Open {
     /// Get the open status
     fn open_status(&self) -> &OpenStatus;
+    /// Get the mutable open status
+    fn open_status_mut(&mut self) -> &mut OpenStatus;
 }
 
 impl<P, S: Open> Open for Repository<P, S> {
     fn open_status(&self) -> &OpenStatus {
         self.status.open_status()
+    }
+    fn open_status_mut(&mut self) -> &mut OpenStatus {
+        self.status.open_status_mut()
     }
 }
 
@@ -818,6 +823,9 @@ pub struct OpenStatus {
 
 impl Open for OpenStatus {
     fn open_status(&self) -> &OpenStatus {
+        self
+    }
+    fn open_status_mut(&mut self) -> &mut OpenStatus {
         self
     }
 }
@@ -869,13 +877,18 @@ impl<P, S: Open> Repository<P, S> {
     /// * If the min pack size tolerance percent is wrong
     /// * If the max pack size tolerance percent is wrong
     /// * If the file could not be serialized to json.
-    pub fn apply_config(&self, opts: &ConfigOptions) -> RusticResult<bool> {
+    pub fn apply_config(&mut self, opts: &ConfigOptions) -> RusticResult<bool> {
         commands::config::apply_config(self, opts)
     }
 
     /// Get the repository configuration
     pub fn config(&self) -> &ConfigFile {
         &self.open_status().config
+    }
+
+    /// Set the repository configuration
+    pub(crate) fn set_config(&mut self, config: ConfigFile) {
+        self.open_status_mut().config = config;
     }
 
     // TODO: add documentation!
@@ -1625,6 +1638,9 @@ impl<P, S: IndexedFull> IndexedFull for Repository<P, S> {
 impl<T, S: Open> Open for IndexedStatus<T, S> {
     fn open_status(&self) -> &OpenStatus {
         self.open.open_status()
+    }
+    fn open_status_mut(&mut self) -> &mut OpenStatus {
+        self.open.open_status_mut()
     }
 }
 

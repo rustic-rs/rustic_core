@@ -23,6 +23,7 @@
 //! The tests that use the fixtures are defined as functions with the `#[rstest]` attribute.
 //! The fixtures are passed as arguments to the test functions.
 mod integration {
+    mod append_only;
     mod backup;
     mod find;
     mod key;
