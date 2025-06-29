@@ -6,6 +6,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.3](https://github.com/rustic-rs/rustic_core/compare/rustic_testing-v0.3.2...rustic_testing-v0.3.3) - 2025-06-29
+
+### Other
+
+- update to 2024 edition and fix clippy lints (#399)
+- update dependencies and fix clippy lints / remove opendal::ftp support (#405)
+
 ## [0.3.2](https://github.com/rustic-rs/rustic_core/compare/rustic_testing-v0.3.1...rustic_testing-v0.3.2) - 2024-11-27
 
 ### Other
