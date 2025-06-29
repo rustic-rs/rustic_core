@@ -126,8 +126,7 @@ globset = "0.4.16"
 insta = { version = "1.42.2", features = ["redactions", "ron"] }
 mockall = "0.13"
 pretty_assertions = "1.4.1"
-quickcheck = "1.0.3"
-quickcheck_macros = "1.0.0"
+proptest = { version = "1.7.0", default-features = false, features = ["std"] }
 rstest = { workspace = true }
 rustdoc-json = "0.9.5"
 # We need to have rustic_backend here, because the doc-tests in lib.rs of rustic_core
