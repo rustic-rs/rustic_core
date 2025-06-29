@@ -36,14 +36,20 @@ fn test_append_only(
     let prune_plan = repo.prune_plan(&prune_options)?;
     assert!(repo.prune(&prune_options, prune_plan).is_err());
 
+    // modifying config should fail
+    let config_opts = ConfigOptions::default().set_extra_verify(false);
+    assert!(repo.apply_config(&config_opts).is_err());
+
     // disable append-only-mode
     let config_opts = ConfigOptions::default().set_append_only(false);
     assert!(repo.apply_config(&config_opts)?);
 
-    // deleting and pruning should now work
+    // operations should now work
     repo.delete_snapshots(&[snap.id])?;
     let prune_plan = repo.prune_plan(&prune_options)?;
     repo.prune(&prune_options, prune_plan)?;
+    let config_opts = ConfigOptions::default().set_extra_verify(false);
+    _ = repo.apply_config(&config_opts)?;
 
     Ok(())
 }
