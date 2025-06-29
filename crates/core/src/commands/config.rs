@@ -40,7 +40,7 @@ pub(crate) fn apply_config<P, S: Open>(
     repo: &Repository<P, S>,
     opts: &ConfigOptions,
 ) -> RusticResult<bool> {
-    if repo.config().append_only == Some(true) {
+    if repo.config().append_only == Some(true) && opts.set_append_only != Some(false) {
         return Err(RusticError::new(
             ErrorKind::AppendOnly,
             "Changing config is not allowed in append-only repositories. Please disable append-only mode first, if you know what you are doing. Aborting.",
