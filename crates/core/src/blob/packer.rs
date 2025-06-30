@@ -11,8 +11,9 @@ use crate::{
     crypto::{CryptoKey, hasher::hash},
     error::{ErrorKind, RusticError, RusticResult},
     repofile::{
+        HeaderEntry,
         indexfile::IndexPack,
-        packfile::{PackHeaderLength, PackHeaderRef},
+        packfile::{self, PackHeaderLength, PackHeaderRef},
         snapshotfile::SnapshotSummary,
     },
 };
@@ -165,7 +166,7 @@ impl<C: CryptoKey, S: PackSizer> Packer<C, S> {
     ///
     /// The number of bytes written.
     fn write_data(&mut self, data: &[u8]) -> PackerResult<u32> {
-        let len = data
+        let len: u32 = data
             .len()
             .try_into()
             .map_err(|err| PackerErrorKind::Conversion {
@@ -173,6 +174,8 @@ impl<C: CryptoKey, S: PackSizer> Packer<C, S> {
                 from: "usize",
                 source: err,
             })?;
+        let data_len_packed: u64 = len.into();
+        self.stats.data_packed += data_len_packed;
         self.file.extend_from_slice(data);
         self.size += len;
         Ok(len)
@@ -199,19 +202,7 @@ impl<C: CryptoKey, S: PackSizer> Packer<C, S> {
         uncompressed_length: Option<NonZeroU32>,
     ) -> RusticResult<()> {
         self.stats.blobs += 1;
-
         self.stats.data += data_len;
-
-        let data_len_packed: u64 = data.len().try_into().map_err(|err| {
-            RusticError::with_source(
-                ErrorKind::Internal,
-                "Failed to convert data length `{length}` to u64.",
-                err,
-            )
-            .attach_context("length", data.len().to_string())
-        })?;
-
-        self.stats.data_packed += data_len_packed;
 
         let offset = self.size;
 
@@ -222,7 +213,6 @@ impl<C: CryptoKey, S: PackSizer> Packer<C, S> {
                 err,
             )
             .attach_context("id", id.to_string())
-            .attach_context("data_length_packed", data_len_packed.to_string())
         })?;
 
         self.index
@@ -356,17 +346,27 @@ impl<C: CryptoKey, S: PackSizer> Packer<C, S> {
     // Add a padding blob
     fn add_padding_blob(&mut self) -> RusticResult<()> {
         // TODO: calculate reasonable padding size!
-        pub(super) const KB: usize = 1024;
-        pub(super) const MB: usize = 1024 * KB;
-        pub(super) const MIN_SIZE: usize = 512 * KB;
-        pub(super) const MAX_SIZE: usize = 8 * MB;
+        pub(super) const KB: u32 = 1024;
+        pub(super) const MAX_PADDING: u32 = 64 * KB;
 
-        // !!TODO!! -> change to reasonable padding!
-        let padding_size = 400;
-        let data = vec![0; padding_size];
+        let size = PackHeaderRef::from_index_pack(&self.index).pack_size()
+            + HeaderEntry::ENTRY_LEN
+            + packfile::constants::COMP_OVERHEAD;
+
+        let padding_size = MAX_PADDING - size % MAX_PADDING;
+        let data = vec![
+            0;
+            padding_size
+                .try_into()
+                .expect("u32 should convert to usize")
+        ];
         let id = BlobId(hash(&data));
         let data = self.key.encrypt_data(&data)?;
-        let padding_size = u64::try_from(padding_size).expect("padding_size should fit into u64");
-        self.add(&data, &id, padding_size, None)
+        let padding_size = padding_size.into();
+        self.add(&data, &id, padding_size, None)?;
+        // correct stats - padding should not contribute to blobs and data_added
+        self.stats.blobs -= 1;
+        self.stats.data -= padding_size;
+        Ok(())
     }
 }
