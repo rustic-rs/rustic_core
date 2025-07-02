@@ -345,15 +345,18 @@ impl<C: CryptoKey, S: PackSizer> Packer<C, S> {
 
     // Add a padding blob
     fn add_padding_blob(&mut self) -> RusticResult<()> {
-        // TODO: calculate reasonable padding size!
         pub(super) const KB: u32 = 1024;
         pub(super) const MAX_PADDING: u32 = 64 * KB;
 
+        // compute current size including the HeaderEntry and crypt overhead of the padding blob to-add
         let size = PackHeaderRef::from_index_pack(&self.index).pack_size()
             + HeaderEntry::ENTRY_LEN
             + packfile::constants::COMP_OVERHEAD;
 
-        let padding_size = MAX_PADDING - size % MAX_PADDING;
+        // compute padding size. Note that we don't add zero-sized blobs here, i.e. padding_size is in 1..=MAX_PADDING.
+        let padding_size = MAX_PADDING - 1 - (size - 1) % MAX_PADDING;
+
+        // write padding blob
         let data = vec![
             0;
             padding_size
@@ -364,6 +367,7 @@ impl<C: CryptoKey, S: PackSizer> Packer<C, S> {
         let data = self.key.encrypt_data(&data)?;
         let padding_size = padding_size.into();
         self.add(&data, &id, padding_size, None)?;
+
         // correct stats - padding should not contribute to blobs and data_added
         self.stats.blobs -= 1;
         self.stats.data -= padding_size;
