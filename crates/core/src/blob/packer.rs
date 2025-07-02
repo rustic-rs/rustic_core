@@ -47,6 +47,8 @@ pub(super) mod constants {
     pub(super) const MAX_COUNT: u32 = 10_000;
     /// The maximum age of a pack
     pub(super) const MAX_AGE: Duration = Duration::from_secs(300);
+    /// The maximum size used for padding
+    pub(super) const MAX_PADDING: u32 = 64 * KB;
 }
 
 // TODO: add documentation!
@@ -353,8 +355,7 @@ impl<C: CryptoKey, S: PackSizer> Packer<C, S> {
             + HeaderEntry::ENTRY_LEN
             + packfile::constants::COMP_OVERHEAD;
 
-        // compute padding size. Note that we don't add zero-sized blobs here, i.e. padding_size is in 1..=MAX_PADDING.
-        let padding_size = MAX_PADDING - 1 - (size - 1) % MAX_PADDING;
+        let padding_size = padding_size(size);
 
         // write padding blob
         let data = vec![
@@ -372,5 +373,35 @@ impl<C: CryptoKey, S: PackSizer> Packer<C, S> {
         self.stats.blobs -= 1;
         self.stats.data -= padding_size;
         Ok(())
+    }
+}
+
+fn padding_size(size: u32) -> u32 {
+    // compute padding size. Note that we don't add zero-sized blobs here, i.e. padding_size is in 1..=MAX_PADDING.
+    let padding = constants::MAX_PADDING - size % constants::MAX_PADDING;
+    if padding == 0 {
+        constants::MAX_PADDING
+    } else {
+        padding
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_padding_size() {
+        assert_eq!(padding_size(1), constants::MAX_PADDING - 1);
+        assert_eq!(padding_size(constants::MAX_PADDING - 1), 1);
+        assert_eq!(padding_size(constants::MAX_PADDING), constants::MAX_PADDING);
+        assert_eq!(
+            padding_size(constants::MAX_PADDING + 1),
+            constants::MAX_PADDING - 1
+        );
+        assert_eq!(
+            padding_size(3 * constants::MAX_PADDING + 5),
+            constants::MAX_PADDING - 5
+        );
     }
 }
