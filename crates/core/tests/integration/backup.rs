@@ -9,8 +9,8 @@ use pretty_assertions::assert_eq;
 use rstest::rstest;
 
 use rustic_core::{
-    BackupOptions, CommandInput, ParentOptions, PathList, SnapshotGroupCriterion, SnapshotOptions,
-    StringList,
+    BackupOptions, CommandInput, ConfigOptions, ParentOptions, PathList, SnapshotGroupCriterion,
+    SnapshotOptions, StringList,
     repofile::{PackId, SnapshotFile},
 };
 
@@ -153,7 +153,11 @@ fn test_backup_dry_run_with_tar_gz_passes(
     insta_node_redaction: Settings,
 ) -> Result<()> {
     // Fixtures
-    let (source, repo) = (tar_gz_testdata?, set_up_repo?.to_indexed_ids()?);
+    let (source, mut repo) = (tar_gz_testdata?, set_up_repo?.to_indexed_ids()?);
+
+    // here, we additionally test without pack padding
+    let opts = ConfigOptions::default().set_use_pack_padding(false);
+    assert!(repo.apply_config(&opts)?);
 
     let paths = &source.path_list();
 
