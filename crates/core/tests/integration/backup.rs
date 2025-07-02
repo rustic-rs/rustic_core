@@ -30,9 +30,12 @@ fn test_backup_with_tar_gz_passes(
     // SimpleLogger::init(log::LevelFilter::Debug, Config::default())?;
 
     // Fixtures
-    let (source, repo) = (tar_gz_testdata?, set_up_repo?.to_indexed_ids()?);
-
+    let (source, mut repo) = (tar_gz_testdata?, set_up_repo?.to_indexed_ids()?);
     let paths = &source.path_list();
+
+    // we don't use padding in this test as we want to compare packsize with insta!
+    let opts = ConfigOptions::default().set_use_pack_padding(false);
+    assert!(repo.apply_config(&opts)?);
 
     // we use as_path to not depend on the actual tempdir
     let opts = BackupOptions::default().as_path(PathBuf::from_str("test")?);
@@ -153,13 +156,10 @@ fn test_backup_dry_run_with_tar_gz_passes(
     insta_node_redaction: Settings,
 ) -> Result<()> {
     // Fixtures
-    let (source, mut repo) = (tar_gz_testdata?, set_up_repo?.to_indexed_ids()?);
-
-    // here, we additionally test without pack padding
-    let opts = ConfigOptions::default().set_use_pack_padding(false);
-    assert!(repo.apply_config(&opts)?);
-
+    let (source, repo) = (tar_gz_testdata?, set_up_repo?.to_indexed_ids()?);
     let paths = &source.path_list();
+
+    // Note: padding is enabled (automatically) for this test!
 
     // we use as_path to not depend on the actual tempdir
     let opts = BackupOptions::default()
@@ -226,8 +226,12 @@ fn test_backup_stdin_command(
     insta_snapshotfile_redaction: Settings,
 ) -> Result<()> {
     // Fixtures
-    let repo = set_up_repo?.to_indexed_ids()?;
+    let mut repo = set_up_repo?.to_indexed_ids()?;
     let paths = PathList::from_string("-")?;
+
+    // we don't use padding in this test as we want to compare packsize with insta!
+    let opts = ConfigOptions::default().set_use_pack_padding(false);
+    assert!(repo.apply_config(&opts)?);
 
     let cmd: CommandInput = "echo test".parse()?;
     let opts = BackupOptions::default()
