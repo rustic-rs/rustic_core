@@ -141,14 +141,7 @@ impl<'a, I: ReadGlobalIndex> FileArchiver<'a, I> {
     ) -> RusticResult<(Node, u64)> {
         let chunks: Vec<_> = ChunkIter::new(
             r,
-            usize::try_from(node.meta.size).map_err(|err| {
-                RusticError::with_source(
-                    ErrorKind::Internal,
-                    "Failed to convert node size `{size}` to usize",
-                    err,
-                )
-                .attach_context("size", node.meta.size.to_string())
-            })?,
+            usize::try_from(node.meta.size).unwrap_or(usize::MAX),
             self.rabin.clone(),
         )
         .map(|chunk| {
