@@ -30,7 +30,7 @@ SnapshotFile(
     data_added: "[data_added]",
     data_added_packed: "[data_added_packed]",
     data_added_files: 5,
-    data_added_files_packed: 46,
+    data_added_files_packed: 123,
     data_added_trees: "[data_added_trees]",
     data_added_trees_packed: "[data_added_trees_packed]",
     command: "[command]",

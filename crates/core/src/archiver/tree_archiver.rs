@@ -8,7 +8,7 @@ use crate::{
     backend::{decrypt::DecryptWriteBackend, node::Node},
     blob::{
         BlobType,
-        packer::Packer,
+        repopacker::RepositoryPacker,
         tree::{Tree, TreeId},
     },
     error::{ErrorKind, RusticError, RusticResult},
@@ -22,11 +22,8 @@ pub(crate) type TreeItem = TreeType<(ParentResult<()>, u64), ParentResult<TreeId
 ///
 /// # Type Parameters
 ///
-/// * `BE` - The backend type.
 /// * `I` - The index to read from.
-///
-// TODO: Add documentation
-pub(crate) struct TreeArchiver<'a, BE: DecryptWriteBackend, I: ReadGlobalIndex> {
+pub(crate) struct TreeArchiver<'a, I: ReadGlobalIndex> {
     /// The current tree.
     tree: Tree,
     /// The stack of trees.
@@ -34,12 +31,12 @@ pub(crate) struct TreeArchiver<'a, BE: DecryptWriteBackend, I: ReadGlobalIndex> 
     /// The index to read from.
     index: &'a I,
     /// The packer to write to.
-    tree_packer: Packer<BE>,
+    tree_packer: RepositoryPacker,
     /// The summary of the snapshot.
     summary: SnapshotSummary,
 }
 
-impl<'a, BE: DecryptWriteBackend, I: ReadGlobalIndex> TreeArchiver<'a, BE, I> {
+impl<'a, I: ReadGlobalIndex> TreeArchiver<'a, I> {
     /// Creates a new `TreeArchiver`.
     ///
     /// # Type Parameters
@@ -54,19 +51,14 @@ impl<'a, BE: DecryptWriteBackend, I: ReadGlobalIndex> TreeArchiver<'a, BE, I> {
     /// * `indexer` - The indexer to write to.
     /// * `config` - The config file.
     /// * `summary` - The summary of the snapshot.
-    ///
-    /// # Errors
-    ///
-    /// * If sending the message to the raw packer fails.
-    /// * If converting the data length to u64 fails
-    pub(crate) fn new(
+    pub(crate) fn new<BE: DecryptWriteBackend>(
         be: BE,
         index: &'a I,
-        indexer: SharedIndexer<BE>,
+        indexer: SharedIndexer,
         config: &ConfigFile,
         summary: SnapshotSummary,
     ) -> RusticResult<Self> {
-        let tree_packer = Packer::new(
+        let tree_packer = RepositoryPacker::new_with_default_sizer(
             be,
             BlobType::Tree,
             indexer,
