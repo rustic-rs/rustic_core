@@ -183,7 +183,7 @@ impl PruneOptions {
 }
 
 /// Enum to specify a size limit
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Default)]
 #[non_exhaustive]
 pub enum LimitOption {
     /// Size in bytes
@@ -191,6 +191,7 @@ pub enum LimitOption {
     /// Size in percentage of repository size
     Percentage(u64),
     /// No limit
+    #[default]
     Unlimited,
 }
 
@@ -574,8 +575,27 @@ enum RepackReason {
 }
 
 /// A plan what should be repacked or removed by a `prune` run
-#[derive(Debug)]
+#[derive(Debug, Default)]
+#[allow(clippy::struct_excessive_bools)]
 pub struct PrunePlan {
+    /// The how long to keep packs before considering repacking them
+    keep_pack: Duration,
+    /// The how long to keep pack marked for deletion before relly removing them
+    keep_delete: Duration,
+    /// indicates whether to only repack cacheable packs (i.e. tree packs)
+    repack_cacheable_only: bool,
+    /// indicates whether to repack uncompressed packs
+    repack_uncompressed: bool,
+    /// indicates whether to use padding for data packs
+    use_padding: bool,
+    /// indicates whether to repack all packs
+    repack_all: bool,
+    /// limit packs to repack
+    max_repack: LimitOption,
+    /// limit maximum unused size after repacking
+    max_unused: LimitOption,
+    /// indicates whether not to resize packs with non-fitting sizes
+    no_resize: bool,
     /// The time the plan was created
     time: DateTime<Local>,
     /// The ids of the blobs which are used
@@ -659,9 +679,8 @@ impl PrunePlan {
             time: Local::now(),
             used_ids,
             existing_packs,
-            repack_candidates: Vec::new(),
             index_files,
-            stats: PruneStats::default(),
+            ..Default::default()
         }
     }
 
@@ -733,42 +752,40 @@ impl PrunePlan {
         let mut pruner = Self::new(used_ids, existing_packs, index_files);
         pruner.count_used_blobs();
         pruner.check()?;
-        let repack_cacheable_only = opts
+
+        pruner.keep_pack = Duration::from_std(*opts.keep_pack).map_err(|err| {
+            RusticError::with_source(
+                ErrorKind::Internal,
+                "Failed to convert keep_pack duration `{keep_pack}` to std::time::Duration.",
+                err,
+            )
+            .attach_context("keep_pack", opts.keep_pack.to_string())
+        })?;
+
+        pruner.keep_delete = Duration::from_std(*opts.keep_delete).map_err(|err| {
+            RusticError::with_source(
+                ErrorKind::Internal,
+                "Failed to convert keep_delete duration `{keep_delete}` to std::time::Duration.",
+                err,
+            )
+            .attach_context("keep_delete", opts.keep_delete.to_string())
+        })?;
+
+        pruner.repack_cacheable_only = opts
             .repack_cacheable_only
             .unwrap_or_else(|| repo.config().is_hot == Some(true));
+        pruner.repack_uncompressed = opts.repack_uncompressed;
+        pruner.repack_all = opts.repack_all;
+        pruner.use_padding = repo.config().use_pack_padding();
+        pruner.max_repack = opts.max_repack;
+        pruner.max_unused = opts.max_unused;
+        pruner.no_resize = opts.no_resize;
+
         let pack_sizer =
             total_size.map(|tpe, size| DefaultPackSizer::from_config(repo.config(), tpe, size));
 
-        pruner.decide_packs(
-            Duration::from_std(*opts.keep_pack).map_err(|err| {
-                RusticError::with_source(
-                    ErrorKind::Internal,
-                    "Failed to convert keep_pack duration `{keep_pack}` to std::time::Duration.",
-                    err,
-                )
-                .attach_context("keep_pack", opts.keep_pack.to_string())
-            })?,
-            Duration::from_std(*opts.keep_delete).map_err(|err| {
-                RusticError::with_source(
-                    ErrorKind::Internal,
-                    "Failed to convert keep_delete duration `{keep_delete}` to std::time::Duration.",
-                    err,
-                )
-                .attach_context("keep_delete", opts.keep_delete.to_string())
-            })?,
-            repack_cacheable_only,
-            opts.repack_uncompressed,
-            opts.repack_all,
-            &pack_sizer,
-        )?;
-
-        pruner.decide_repack(
-            &opts.max_repack,
-            &opts.max_unused,
-            opts.repack_uncompressed || opts.repack_all,
-            opts.no_resize,
-            &pack_sizer,
-        );
+        pruner.decide_packs(&pack_sizer)?;
+        pruner.decide_repack(&pack_sizer);
 
         pruner.check_existing_packs()?;
         pruner.filter_index_files(opts.instant_delete);
@@ -829,15 +846,7 @@ impl PrunePlan {
     // TODO: add errors!
     #[allow(clippy::too_many_lines)]
     #[allow(clippy::unnecessary_wraps)]
-    fn decide_packs(
-        &mut self,
-        keep_pack: Duration,
-        keep_delete: Duration,
-        repack_cacheable_only: bool,
-        repack_uncompressed: bool,
-        repack_all: bool,
-        pack_sizer: &BlobTypeMap<DefaultPackSizer>,
-    ) -> RusticResult<()> {
+    fn decide_packs(&mut self, pack_sizer: &BlobTypeMap<DefaultPackSizer>) -> RusticResult<()> {
         // first process all marked packs then the unmarked ones:
         // - first processed packs are more likely to have all blobs seen as unused
         // - if marked packs have used blob but these blobs are all present in
@@ -859,17 +868,18 @@ impl PrunePlan {
                     let mut status = EnumSet::empty();
 
                     // Various checks to determine if packs need to be kept
-                    let too_young = pack.index.time > Some(self.time - keep_pack);
+                    let too_young = pack.index.time > Some(self.time - self.keep_pack);
                     if too_young && !pack.delete_mark {
                         _ = status.insert(PackStatus::TooYoung);
                     }
-                    let keep_uncacheable = repack_cacheable_only && !pack.blob_type.is_cacheable();
-                    let has_padding = pi.padding_size != 0;
+                    let keep_uncacheable =
+                        self.repack_cacheable_only && !pack.blob_type.is_cacheable();
+                    let has_padding = self.use_padding && pi.padding_size != 0;
                     if has_padding {
                         _ = status.insert(PackStatus::HasPadding);
                     }
 
-                    let to_compress = repack_uncompressed && !pack.is_compressed();
+                    let to_compress = self.repack_uncompressed && !pack.is_compressed();
                     if to_compress {
                         _ = status.insert(PackStatus::NotCompressed);
                     }
@@ -898,10 +908,10 @@ impl PrunePlan {
                             _ = status.insert(PackStatus::HasUsedBlobs);
                             if too_young || keep_uncacheable {
                                 pack.set_todo(PackToDo::Keep, &pi, status, &mut self.stats);
-                            } else if to_compress || repack_all | size_mismatch {
+                            } else if to_compress || self.repack_all | size_mismatch {
                                 let reason = if to_compress {
                                     RepackReason::ToCompress
-                                } else if repack_all {
+                                } else if self.repack_all {
                                     RepackReason::RepackAll
                                 } else {
                                     RepackReason::SizeMismatch
@@ -938,7 +948,7 @@ impl PrunePlan {
                             match pack.index.time {
                                 // unneeded and marked pack => check if we can remove it.
                                 Some(local_date_time)
-                                    if self.time - local_date_time >= keep_delete =>
+                                    if self.time - local_date_time >= self.keep_delete =>
                                 {
                                     _ = status.insert(PackStatus::TooYoung);
                                     pack.set_todo(PackToDo::Delete, &pi, status, &mut self.stats);
@@ -989,15 +999,8 @@ impl PrunePlan {
     /// # Errors
     ///
     // TODO: add errors!
-    fn decide_repack(
-        &mut self,
-        max_repack: &LimitOption,
-        max_unused: &LimitOption,
-        repack_uncompressed: bool,
-        no_resize: bool,
-        pack_sizer: &BlobTypeMap<DefaultPackSizer>,
-    ) {
-        let max_unused = match (repack_uncompressed, max_unused) {
+    fn decide_repack(&mut self, pack_sizer: &BlobTypeMap<DefaultPackSizer>) {
+        let max_unused = match (self.repack_uncompressed | self.repack_all, self.max_unused) {
             (true, _) => 0,
             (false, LimitOption::Unlimited) => u64::MAX,
             (false, LimitOption::Size(size)) => size.as_u64(),
@@ -1007,7 +1010,7 @@ impl PrunePlan {
             (false, LimitOption::Percentage(p)) => (p * self.stats.size_sum().used) / (100 - p),
         };
 
-        let max_repack = match max_repack {
+        let max_repack = match self.max_repack {
             LimitOption::Unlimited => u64::MAX,
             LimitOption::Size(size) => size.as_u64(),
             LimitOption::Percentage(p) => (p * self.stats.size_sum().total()) / 100,
@@ -1029,7 +1032,7 @@ impl PrunePlan {
                 || (self.stats.size_sum().unused_after_prune() < max_unused
                     && repack_reason == RepackReason::PartlyUsed
                     && blob_type == BlobType::Data)
-                || (repack_reason == RepackReason::SizeMismatch && no_resize)
+                || (repack_reason == RepackReason::SizeMismatch && self.no_resize)
             {
                 pack.set_todo(PackToDo::Keep, &pi, status, &mut self.stats);
             } else if repack_reason == RepackReason::SizeMismatch {
