@@ -8,7 +8,7 @@ use rand::{RngCore, rng};
 use serde_derive::{Deserialize, Serialize};
 
 use crate::{
-    crypto::hasher::hash,
+    crypto::hasher::hash_reader,
     error::{ErrorKind, RusticError, RusticResult},
 };
 
@@ -185,10 +185,10 @@ impl Id {
     /// # Returns
     ///
     /// `true` if the SHA256 matches, `false` otherwise
-    pub fn blob_matches_reader(&self, length: usize, r: &mut impl Read) -> bool {
+    pub fn blob_matches_reader(&self, length: u64, r: &mut impl Read) -> bool {
         // check if SHA256 matches
-        let mut vec = vec![0; length];
-        r.read_exact(&mut vec).is_ok() && self == &hash(&vec)
+        let r = r.take(length);
+        hash_reader(r).is_ok_and(|id| self == &id)
     }
 
     /// returns the first 4 bytes as u32 (interpreted as little endian)

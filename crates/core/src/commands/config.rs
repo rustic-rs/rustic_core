@@ -37,10 +37,10 @@ use crate::{
 ///
 /// Whether the config was changed
 pub(crate) fn apply_config<P, S: Open>(
-    repo: &Repository<P, S>,
+    repo: &mut Repository<P, S>,
     opts: &ConfigOptions,
 ) -> RusticResult<bool> {
-    if repo.config().append_only == Some(true) {
+    if repo.config().append_only == Some(true) && opts.set_append_only != Some(false) {
         return Err(RusticError::new(
             ErrorKind::AppendOnly,
             "Changing config is not allowed in append-only repositories. Please disable append-only mode first, if you know what you are doing. Aborting.",
@@ -52,6 +52,7 @@ pub(crate) fn apply_config<P, S: Open>(
     if &new_config == repo.config() {
         Ok(false)
     } else {
+        repo.set_config(new_config.clone());
         save_config(repo, new_config, *repo.dbe().key())?;
         Ok(true)
     }

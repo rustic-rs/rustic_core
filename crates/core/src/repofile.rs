@@ -8,16 +8,18 @@ pub(crate) mod keyfile;
 pub(crate) mod packfile;
 pub(crate) mod snapshotfile;
 
-/// Marker trait for repository files which are stored as encrypted JSON
+/// Marker trait for repository files which are stored as JSON
 pub trait RepoFile: Serialize + DeserializeOwned + Sized + Send + Sync + 'static {
     /// The [`FileType`] associated with the repository file
     const TYPE: FileType;
+    /// Indicate whether the files are stored encrypted
+    const ENCRYPTED: bool = true;
     /// The Id type associated with the repository file
-    type Id: From<Id> + Send;
+    type Id: RepoId;
 }
 
 /// Marker trait for Ids which identify repository files
-pub trait RepoId: Deref<Target = Id> + From<Id> + Sized + Send + Sync + 'static {
+pub trait RepoId: Deref<Target = Id> + From<Id> + Sized + Copy + Send + Sync + 'static {
     /// The [`FileType`] associated with Id type
     const TYPE: FileType;
 }

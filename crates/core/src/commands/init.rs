@@ -12,7 +12,7 @@ use crate::{
     crypto::aespoly1305::Key,
     error::RusticResult,
     id::Id,
-    repofile::{ConfigFile, configfile::RepositoryId},
+    repofile::{ConfigFile, KeyId, configfile::RepositoryId},
     repository::Repository,
 };
 
@@ -42,7 +42,7 @@ pub(crate) fn init<P, S>(
     pass: &str,
     key_opts: &KeyOptions,
     config_opts: &ConfigOptions,
-) -> RusticResult<(Key, ConfigFile)> {
+) -> RusticResult<(Key, KeyId, ConfigFile)> {
     // Create config first to allow catching errors from here without writing anything
     let repo_id = RepositoryId::from(Id::random());
     let chunker_poly = random_poly()?;
@@ -54,10 +54,10 @@ pub(crate) fn init<P, S>(
     }
     config_opts.apply(&mut config)?;
 
-    let key = init_with_config(repo, pass, key_opts, &config)?;
+    let (key, key_id) = init_with_config(repo, pass, key_opts, &config)?;
     info!("repository {repo_id} successfully created.");
 
-    Ok((key, config))
+    Ok((key, key_id, config))
 }
 
 /// Initialize a new repository with a given config.
@@ -82,11 +82,11 @@ pub(crate) fn init_with_config<P, S>(
     pass: &str,
     key_opts: &KeyOptions,
     config: &ConfigFile,
-) -> RusticResult<Key> {
+) -> RusticResult<(Key, KeyId)> {
     repo.be.create()?;
     let (key, id) = init_key(repo, key_opts, pass)?;
     info!("key {id} successfully added.");
     save_config(repo, config.clone(), key)?;
 
-    Ok(key)
+    Ok((key, id))
 }

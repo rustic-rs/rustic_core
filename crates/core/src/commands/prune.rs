@@ -1590,7 +1590,8 @@ fn find_used_blobs(
     let list: Vec<_> = be
         .list(FileType::Snapshot)?
         .into_iter()
-        .filter(|id| !ignore_snaps.contains(&SnapshotId::from(*id)))
+        .map(SnapshotId::from)
+        .filter(|id| !ignore_snaps.contains(&id))
         .collect();
     let snap_trees: Vec<_> = be
         .stream_list::<SnapshotFile>(&list, &p)?
