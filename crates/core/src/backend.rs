@@ -32,8 +32,8 @@ use crate::{
 #[derive(thiserror::Error, Debug, displaydoc::Display)]
 #[non_exhaustive]
 pub enum BackendErrorKind {
-    /// Path is not allowed: `{0}`
-    PathNotAllowed(String),
+    /// Path is not allowed: `{0:?}`
+    PathNotAllowed(UnixPathBuf),
 }
 
 pub(crate) type BackendResult<T> = Result<T, BackendErrorKind>;
@@ -393,9 +393,8 @@ pub struct ReadSourceEntry<O> {
 impl<O> ReadSourceEntry<O> {
     fn from_path(path: UnixPathBuf, open: Option<O>) -> BackendResult<Self> {
         let node = Node::new_node(
-            path.file_name().ok_or_else(|| {
-                BackendErrorKind::PathNotAllowed(path.to_string_lossy().to_string())
-            })?,
+            path.file_name()
+                .ok_or_else(|| BackendErrorKind::PathNotAllowed(path.clone()))?,
             NodeType::File,
             Metadata::default(),
         );

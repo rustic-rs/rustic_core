@@ -44,7 +44,7 @@ pub(crate) fn merge_snapshots<P: ProgressBars, S: IndexedTree>(
         .collect::<PathList>()
         .merge();
 
-    snap.paths.set_paths(&paths.unix_paths()).map_err(|err| {
+    snap.paths.set_paths(&paths.unix_paths()?).map_err(|err| {
         RusticError::with_source(
             ErrorKind::Internal,
             "Failed to set paths `{paths}` in snapshot.",

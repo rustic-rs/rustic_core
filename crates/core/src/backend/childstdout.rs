@@ -38,7 +38,7 @@ impl ChildStdoutSource {
             .spawn()
             .map_err(|err| CommandInputErrorKind::ProcessExecutionFailed {
                 command: cmd.clone(),
-                path: path.to_string_lossy().to_string(),
+                path: path.clone(),
                 source: err,
             });
 

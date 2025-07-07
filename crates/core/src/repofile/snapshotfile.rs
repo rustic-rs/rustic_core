@@ -1507,14 +1507,21 @@ impl PathList {
         self.0.clone()
     }
 
-    /// Clone the internal `Vec<PathBuf>`.
-    #[must_use]
-    pub(crate) fn unix_paths(&self) -> Vec<UnixPathBuf> {
+    /// turn into `Vec<UnixPathBuf>`.
+    pub(crate) fn unix_paths(&self) -> RusticResult<Vec<UnixPathBuf>> {
         self.0
             .iter()
-            .map(|p| p.clone().try_into())
-            .collect::<Result<_, _>>()
-            .unwrap()
+            .cloned()
+            .map(|p| {
+                p.try_into().map_err(|path: PathBuf| {
+                    RusticError::new(
+                        ErrorKind::InvalidInput,
+                        "cannot convert path into unix path: {path}",
+                    )
+                    .attach_context("path", path.display().to_string())
+                })
+            })
+            .collect()
     }
 
     /// Sanitize paths: Parse dots, absolutize if needed and merge paths.

@@ -14,7 +14,7 @@ use typed_path::{
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Serialize)]
 #[serde(transparent)]
-/// Like `UnixPathBuf` , but implements `Serialize`
+/// Like `UnixPathBuf`, but implements `Serialize`
 pub struct SerializablePath(#[serde(serialize_with = "serialize_unix_path")] pub UnixPathBuf);
 
 fn serialize_unix_path<S>(path: &UnixPath, serializer: S) -> Result<S::Ok, S::Error>
@@ -120,16 +120,18 @@ pub fn unix_path_to_path(path: &UnixPath) -> Result<&Path, Utf8Error> {
 // into an utf8 string and match on the windows path given by that string.
 // Note: `GlobMatcher` internally converts into a `&[u8]` to perform the matching
 // TODO: Use https://github.com/BurntSushi/ripgrep/pull/2955 once it is available.
-#[cfg(not(windows))]
 pub fn u8_to_path(path: impl AsRef<[u8]>) -> PathBuf {
-    use std::{ffi::OsStr, os::unix::ffi::OsStrExt};
-    Path::new(OsStr::from_bytes(path.as_ref())).to_path_buf()
-}
-#[cfg(windows)]
-pub fn u8_to_path(path: impl AsRef<[u8]>) -> PathBuf {
-    use std::ffi::OsStr;
-    let string: &str = &String::from_utf8_lossy(path.as_ref());
-    Path::new(OsStr::new(string)).to_path_buf()
+    #[cfg(not(windows))]
+    {
+        use std::{ffi::OsStr, os::unix::ffi::OsStrExt};
+        Path::new(OsStr::from_bytes(path.as_ref())).to_path_buf()
+    }
+    #[cfg(windows)]
+    {
+        use std::ffi::OsStr;
+        let string: &str = &String::from_utf8_lossy(path.as_ref());
+        Path::new(OsStr::new(string)).to_path_buf()
+    }
 }
 
 /// Converts a [`TypedPath`] to a [`Cow<UnixPath>`].
@@ -168,8 +170,8 @@ pub fn windows_path_to_unix_path(path: &WindowsPath) -> UnixPathBuf {
                         unix_path.push(q.to_ascii_lowercase());
                     }
                     WindowsPrefix::VerbatimDisk(p) | WindowsPrefix::Disk(p) => {
-                        let c = vec![p.to_ascii_lowercase()];
-                        unix_path.push(&c);
+                        let c = &[p.to_ascii_lowercase()];
+                        unix_path.push(UnixPath::new(c));
                     }
                 }
                 // remove RootDir from iterator
