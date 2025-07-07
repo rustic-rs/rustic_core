@@ -12,6 +12,7 @@ globset = "0.4.16"
 rustic_backend = { workspace = true }
 rustic_core = { workspace = true }
 simplelog = { workspace = true }
+typed-path = "0.10.0"
 
 [[example]]
 name = "find"

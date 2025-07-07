@@ -1,7 +1,4 @@
-use std::{
-    cmp::Ordering,
-    ffi::{OsStr, OsString},
-};
+use std::cmp::Ordering;
 
 use log::warn;
 
@@ -124,7 +121,7 @@ impl Parent {
     /// # Returns
     ///
     /// The parent node with the given name, or `None` if the parent node is not found.
-    fn p_node(&mut self, name: &OsStr) -> Option<&Node> {
+    fn p_node(&mut self, name: &[u8]) -> Option<&Node> {
         match &self.tree {
             None => None,
             Some(tree) => {
@@ -132,12 +129,12 @@ impl Parent {
                 loop {
                     match p_nodes.get(self.node_idx) {
                         None => break None,
-                        Some(p_node) => match p_node.name().as_os_str().cmp(name) {
-                            Ordering::Less => self.node_idx += 1,
+                        Some(p_node) => match name.cmp(&p_node.name()) {
+                            Ordering::Greater => self.node_idx += 1,
                             Ordering::Equal => {
                                 break Some(p_node);
                             }
-                            Ordering::Greater => {
+                            Ordering::Less => {
                                 break None;
                             }
                         },
@@ -161,7 +158,7 @@ impl Parent {
     /// # Note
     ///
     /// TODO: This function does not check whether the given node is a directory.
-    fn is_parent(&mut self, node: &Node, name: &OsStr) -> ParentResult<&Node> {
+    fn is_parent(&mut self, node: &Node, name: &[u8]) -> ParentResult<&Node> {
         // use new variables as the mutable borrow is used later
         let ignore_ctime = self.ignore_ctime;
         let ignore_inode = self.ignore_inode;
@@ -190,12 +187,7 @@ impl Parent {
     ///
     /// * `be` - The backend to read from.
     /// * `name` - The name of the parent node.
-    fn set_dir(
-        &mut self,
-        be: &impl DecryptReadBackend,
-        index: &impl ReadGlobalIndex,
-        name: &OsStr,
-    ) {
+    fn set_dir(&mut self, be: &impl DecryptReadBackend, index: &impl ReadGlobalIndex, name: &[u8]) {
         let tree = self.p_node(name).and_then(|p_node| {
             p_node.subtree.map_or_else(
                 || {
@@ -257,7 +249,7 @@ impl Parent {
         &mut self,
         be: &impl DecryptReadBackend,
         index: &impl ReadGlobalIndex,
-        item: TreeType<O, OsString>,
+        item: TreeType<O, Vec<u8>>,
     ) -> Result<ItemWithParent<O>, TreeStackEmptyError> {
         let result = match item {
             TreeType::NewTree((path, node, tree)) => {

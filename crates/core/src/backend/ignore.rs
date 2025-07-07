@@ -20,6 +20,7 @@ use log::warn;
 #[cfg(not(windows))]
 use nix::unistd::{Gid, Group, Uid, User};
 use serde_with::{DisplayFromStr, serde_as};
+use typed_path::UnixPath;
 
 #[cfg(not(windows))]
 use crate::backend::node::ExtendedAttribute;
@@ -30,6 +31,7 @@ use crate::{
         node::{Metadata, Node, NodeType},
     },
     error::{ErrorKind, RusticError, RusticResult},
+    util::path_to_unix_path,
 };
 
 /// [`IgnoreErrorKind`] describes the errors that can be returned by a Ignore action in Backends
@@ -58,6 +60,8 @@ pub enum IgnoreErrorKind {
     #[cfg(not(windows))]
     /// Error acquiring metadata for `{name}`: `{source:?}`
     AcquiringMetadataFailed { name: String, source: ignore::Error },
+    /// Non-UTF8 filename is not allowed: `{0:?}`
+    Utf8Error(#[from] std::str::Utf8Error),
 }
 
 pub(crate) type IgnoreResult<T> = Result<T, IgnoreErrorKind>;
@@ -65,6 +69,7 @@ pub(crate) type IgnoreResult<T> = Result<T, IgnoreErrorKind>;
 /// A [`LocalSource`] is a source from local paths which is used to be read from (i.e. to backup it).
 #[derive(Debug)]
 pub struct LocalSource {
+    base_path: PathBuf,
     /// The walk builder.
     builder: WalkBuilder,
     /// The save options to use.
@@ -309,7 +314,17 @@ impl LocalSource {
 
         let builder = walk_builder;
 
-        Ok(Self { builder, save_opts })
+        let base_path = if backup_paths.len() == 1 {
+            backup_paths[0].as_ref().to_path_buf()
+        } else {
+            PathBuf::new()
+        };
+
+        Ok(Self {
+            base_path,
+            builder,
+            save_opts,
+        })
     }
 }
 
@@ -374,6 +389,7 @@ impl ReadSource for LocalSource {
     /// An iterator over the entries of the local source.
     fn entries(&self) -> Self::Iter {
         LocalSourceWalker {
+            base_path: self.base_path.clone(),
             walker: self.builder.build(),
             save_opts: self.save_opts,
         }
@@ -383,6 +399,7 @@ impl ReadSource for LocalSource {
 // Walk doesn't implement Debug
 #[allow(missing_debug_implementations)]
 pub struct LocalSourceWalker {
+    base_path: PathBuf,
     /// The walk iterator.
     walker: Walk,
     /// The save options to use.
@@ -410,6 +427,7 @@ impl Iterator for LocalSourceWalker {
                     )
                     .ask_report()
                 })?,
+                &self.base_path,
                 self.save_opts.with_atime,
                 self.save_opts.ignore_devid,
             )
@@ -441,10 +459,11 @@ impl Iterator for LocalSourceWalker {
 #[allow(clippy::similar_names)]
 fn map_entry(
     entry: DirEntry,
+    base_path: &Path,
     with_atime: bool,
     _ignore_devid: bool,
 ) -> IgnoreResult<ReadSourceEntry<OpenFile>> {
-    let name = entry.file_name();
+    let name = entry.file_name().as_encoded_bytes();
     let m = entry
         .metadata()
         .map_err(|err| IgnoreErrorKind::FailedToGetMetadata { source: err })?;
@@ -502,7 +521,8 @@ fn map_entry(
             path: path.to_path_buf(),
             source: err,
         })?;
-        let node_type = NodeType::from_link(&target);
+        let target = target.as_os_str().as_encoded_bytes();
+        let node_type = NodeType::from_link(&UnixPath::new(target).to_typed_path());
         Node::new_node(name, node_type, meta)
     } else {
         Node::new_node(name, NodeType::File, meta)
@@ -510,6 +530,8 @@ fn map_entry(
 
     let path = entry.into_path();
     let open = Some(OpenFile(path.clone()));
+    let path = path.strip_prefix(base_path).unwrap();
+    let path = path_to_unix_path(path)?.to_path_buf();
     Ok(ReadSourceEntry { path, node, open })
 }
 
@@ -607,14 +629,15 @@ fn list_extended_attributes(path: &Path) -> IgnoreResult<Vec<ExtendedAttribute>>
 #[allow(clippy::similar_names)]
 fn map_entry(
     entry: DirEntry,
+    base_path: &Path,
     with_atime: bool,
     ignore_devid: bool,
 ) -> IgnoreResult<ReadSourceEntry<OpenFile>> {
-    let name = entry.file_name();
+    let name = entry.file_name().as_encoded_bytes();
     let m = entry
         .metadata()
         .map_err(|err| IgnoreErrorKind::AcquiringMetadataFailed {
-            name: name.to_string_lossy().to_string(),
+            name: String::from_utf8_lossy(name).to_string(),
             source: err,
         })?;
 
@@ -688,7 +711,8 @@ fn map_entry(
             path: path.to_path_buf(),
             source: err,
         })?;
-        let node_type = NodeType::from_link(&target);
+        let target = target.as_os_str().as_encoded_bytes();
+        let node_type = NodeType::from_link(&UnixPath::new(target).to_typed_path());
         Node::new_node(name, node_type, meta)
     } else if filetype.is_block_device() {
         let node_type = NodeType::Dev { device: m.rdev() };
@@ -705,6 +729,8 @@ fn map_entry(
     };
     let path = entry.into_path();
     let open = Some(OpenFile(path.clone()));
+    let path = path.strip_prefix(base_path).unwrap();
+    let path = path_to_unix_path(path)?.to_path_buf();
     Ok(ReadSourceEntry { path, node, open })
 }
 
