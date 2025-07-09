@@ -140,7 +140,7 @@ pub fn u8_to_path(path: impl AsRef<[u8]>) -> PathBuf {
 ///
 /// * `path` - The path to convert.
 #[must_use]
-pub fn typed_path_to_unix_path<'a>(path: &'a TypedPath<'_>) -> Cow<'a, UnixPath> {
+fn typed_path_to_unix_path<'a>(path: &'a TypedPath<'_>) -> Cow<'a, UnixPath> {
     match path {
         TypedPath::Unix(p) => Cow::Borrowed(p),
         TypedPath::Windows(p) => Cow::Owned(windows_path_to_unix_path(p)),
@@ -155,7 +155,7 @@ pub fn typed_path_to_unix_path<'a>(path: &'a TypedPath<'_>) -> Cow<'a, UnixPath>
 ///
 /// * `path` - The path to convert.
 #[must_use]
-pub fn windows_path_to_unix_path(path: &WindowsPath) -> UnixPathBuf {
+fn windows_path_to_unix_path(path: &WindowsPath) -> UnixPathBuf {
     let mut unix_path = UnixPathBuf::new();
     let mut components = path.components();
     if let Some(c) = components.next() {
