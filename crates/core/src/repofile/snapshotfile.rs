@@ -525,6 +525,8 @@ impl SnapshotFile {
 
     /// Get a [`SnapshotFile`] from the backend by (part of the) Id
     ///
+    /// Works with a snapshot `Id` or a `latest` indexed syntax: `latest` or `latest~N` with N >= 0
+    ///
     /// # Arguments
     ///
     /// * `be` - The backend to use
@@ -537,16 +539,38 @@ impl SnapshotFile {
     /// * If the string is not a valid hexadecimal string
     /// * If no id could be found.
     /// * If the id is not unique.
+    /// * If the `latest` syntax is "detected" but inexact
     pub(crate) fn from_str<B: DecryptReadBackend>(
         be: &B,
         string: &str,
         predicate: impl FnMut(&Self) -> bool + Send + Sync,
         p: &impl Progress,
     ) -> RusticResult<Self> {
-        match string {
-            "latest" => Self::latest(be, predicate, p),
-            _ => Self::from_id(be, string),
+        if string == "latest" {
+            return Self::latest(be, predicate, p);
         }
+        let err = RusticError::new(
+                    ErrorKind::InvalidInput,
+                    "Invalid snapshot identifier \"{input}\". Expected either a \"snapshot_id\" or \"latest\" or \"latest~N\" (N >= 0).",
+                )
+                .attach_context("input", string);
+
+        // we do a broad match to give a contextual error in case
+        // the user tried to use the latest~N feature
+        if string.contains('~') || string.contains("latest") {
+            let Some((latest_prefix, n)) = string.split_once('~') else {
+                return Err(err);
+            };
+            if latest_prefix != "latest" {
+                return Err(err);
+            }
+            let Ok(n) = n.parse::<usize>() else {
+                return Err(err);
+            };
+            return Self::latest_n(be, predicate, p, n);
+        }
+
+        Self::from_id(be, string)
     }
 
     /// Get the latest [`SnapshotFile`] from the backend
@@ -565,10 +589,35 @@ impl SnapshotFile {
         predicate: impl FnMut(&Self) -> bool + Send + Sync,
         p: &impl Progress,
     ) -> RusticResult<Self> {
-        p.set_title("getting latest snapshot...");
+        Self::latest_n(be, predicate, p, 0)
+    }
+
+    /// Get the latest [`SnapshotFile`] from the backend
+    ///
+    /// # Arguments
+    ///
+    /// * `be` - The backend to use
+    /// * `predicate` - A predicate to filter the snapshots
+    /// * `p` - A progress bar to use
+    /// * `n` - The n-latest index to go back for snapshot
+    ///
+    /// # Errors
+    ///
+    /// * If no snapshots are found
+    pub(crate) fn latest_n<B: DecryptReadBackend>(
+        be: &B,
+        predicate: impl FnMut(&Self) -> bool + Send + Sync,
+        p: &impl Progress,
+        n: usize,
+    ) -> RusticResult<Self> {
+        if n == 0 {
+            p.set_title("getting latest snapshot...");
+        } else {
+            p.set_title("getting latest~N snapshot...");
+        }
         let mut latest: Option<Self> = None;
         let mut pred = predicate;
-
+        let mut snapshots = Vec::new();
         for snap in be.stream_all::<Self>(p)? {
             let (id, mut snap) = snap?;
             if !pred(&snap) {
@@ -576,12 +625,13 @@ impl SnapshotFile {
             }
 
             snap.id = id;
-            match &latest {
-                Some(l) if l.time > snap.time => {}
-                _ => {
-                    latest = Some(snap);
-                }
-            }
+            snapshots.push(snap);
+        }
+
+        // sort in decreasing time order
+        snapshots.sort_by(|s1, s2| s2.time.cmp(&s1.time));
+        if snapshots.len() > n {
+            latest = Some(snapshots.swap_remove(n));
         }
 
         p.finish();
