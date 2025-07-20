@@ -33,7 +33,7 @@ harness = true
 cli = ["merge", "clap"]
 merge = ["dep:conflate"]
 clap = ["dep:clap"]
-rest = ["dep:reqwest", "dep:backon"]
+rest = ["dep:reqwest", "dep:backon", "dep:url"]
 rclone = ["rest", "dep:rand", "dep:semver"]
 # opendal services
 opendal-all = ["opendal-all-windows", "sftp"]
@@ -127,6 +127,7 @@ walkdir = "2.5.0"
 # rest backend
 backon = { version = "1.5.0", optional = true }
 reqwest = { version = "0.12.15", default-features = false, features = ["json", "rustls-tls-native-roots", "stream", "blocking"], optional = true }
+url = { version = "2.5.4", optional = true }
 
 # rclone backend
 rand = { version = "0.9.1", optional = true }
