@@ -13,7 +13,7 @@ use derive_setters::Setters;
 use dunce::canonicalize;
 use gethostname::gethostname;
 use itertools::Itertools;
-use log::info;
+use log::{info, warn};
 use path_dedot::ParseDot;
 use serde_derive::{Deserialize, Serialize};
 use serde_with::{DisplayFromStr, serde_as, skip_serializing_none};
@@ -612,24 +612,19 @@ impl SnapshotFile {
         } else {
             p.set_title("getting latest~N snapshot...");
         }
-        let mut latest: Option<Self> = None;
-        let mut pred = predicate;
         let mut snapshots: Vec<_> = be
             .stream_all::<Self>(p)?
             .into_iter()
+            .map(|item| item.inspect_err(|err| warn!("Error reading snapshot: {err}")))
             .filter_map(Result::ok)
-            .filter(|(_id, snap)| pred(snap))
-            .map(|(id, mut snap)| {
-                snap.id = id;
-                snap
-            })
-            // sort in decreasing time order
-            .sorted_by(|s1, s2| s2.time.cmp(&s1.time))
+            .map(Self::set_id)
+            .filter(predicate)
+            // find n+1 smallest elements when sorting in decreasing time order
+            .k_smallest_by(n + 1, |s1, s2| s2.time.cmp(&s1.time))
             .collect();
 
-        if snapshots.len() > n {
-            latest = Some(snapshots.swap_remove(n));
-        }
+        let len = snapshots.len();
+        let latest = snapshots.pop_if(|_| len > n); // we want the latest element if we found n+1 snapshots
 
         p.finish();
 
