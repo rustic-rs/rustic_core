@@ -412,8 +412,6 @@ impl Default for SnapshotFile {
     }
 }
 
-#[derive(TryUnwrap)]
-#[try_unwrap(ref)]
 enum SnapshotRequest {
     Latest(usize),
     StartsWith(String),
@@ -614,7 +612,7 @@ impl SnapshotFile {
         Self::latest_n(be, predicate, p, 0)
     }
 
-    fn latest_n_from_iter(n: usize, iter: impl IntoIterator<Item = SnapshotFile>) -> Vec<Self> {
+    fn latest_n_from_iter(n: usize, iter: impl IntoIterator<Item = Self>) -> Vec<Self> {
         iter.into_iter()
             // find n+1 smallest elements when sorting in decreasing time order
             .k_smallest_by(n + 1, |s1, s2| s2.time.cmp(&s1.time))
