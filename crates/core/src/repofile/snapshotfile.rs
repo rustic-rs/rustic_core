@@ -645,7 +645,7 @@ impl SnapshotFile {
         let mut snapshots = Self::latest_n_from_iter(n, Self::all_from_backend(be, predicate, p)?);
 
         let len = snapshots.len();
-        let latest = snapshots.pop_if(|_| len > n); // we want the latest element if we found n+1 snapshots
+        let latest = (len > n).then_some(snapshots.pop()).flatten(); // we want the latest element if we found n+1 snapshots
 
         p.finish();
 
