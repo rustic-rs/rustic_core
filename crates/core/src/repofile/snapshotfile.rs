@@ -23,6 +23,7 @@ use crate::{
     backend::{FileType, FindInBackend, decrypt::DecryptReadBackend},
     blob::tree::TreeId,
     error::{ErrorKind, RusticError, RusticResult},
+    id::constants::HEX_LEN,
     impl_repofile,
     progress::Progress,
     repofile::RepoFile,
@@ -411,6 +412,47 @@ impl Default for SnapshotFile {
     }
 }
 
+#[derive(TryUnwrap)]
+#[try_unwrap(ref)]
+enum SnapshotRequest {
+    Latest(usize),
+    StartsWith(String),
+    Id(SnapshotId),
+}
+
+impl FromStr for SnapshotRequest {
+    type Err = Box<RusticError>;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let err = || {
+            RusticError::new(
+                    ErrorKind::InvalidInput,
+                    "Invalid snapshot identifier \"{input}\". Expected either a snapshot id: \"01a2b3c4\" or \"latest\" or \"latest~N\" (N >= 0).",
+                )
+                .attach_context("input", s)
+        };
+
+        let result = match s.strip_prefix("latest") {
+            Some(suffix) => {
+                if suffix.is_empty() {
+                    Self::Latest(0)
+                } else {
+                    let latest_index = suffix.strip_prefix("~").ok_or_else(err)?;
+                    let n = latest_index.parse::<usize>().map_err(|_| err())?;
+                    Self::Latest(n)
+                }
+            }
+            None => {
+                if s.len() < HEX_LEN {
+                    Self::StartsWith(s.to_string())
+                } else {
+                    Self::Id(s.parse()?)
+                }
+            }
+        };
+        Ok(result)
+    }
+}
+
 impl SnapshotFile {
     /// Create a [`SnapshotFile`] from [`SnapshotOptions`].
     ///
@@ -546,28 +588,11 @@ impl SnapshotFile {
         predicate: impl FnMut(&Self) -> bool + Send + Sync,
         p: &impl Progress,
     ) -> RusticResult<Self> {
-        let Some(suffix) = string.strip_prefix("latest") else {
-            return Self::from_id(be, string);
-        };
-
-        if suffix.is_empty() {
-            return Self::latest(be, predicate, p);
+        match string.parse()? {
+            SnapshotRequest::Latest(n) => Self::latest_n(be, predicate, p, n),
+            SnapshotRequest::StartsWith(id) => Self::from_id(be, &id),
+            SnapshotRequest::Id(id) => Self::from_backend(be, &id),
         }
-
-        let err = RusticError::new(
-                    ErrorKind::InvalidInput,
-                    "Invalid snapshot identifier \"{input}\". Expected either a snapshot id: \"01a2b3c4\" or \"latest\" or \"latest~N\" (N >= 0).",
-                )
-                .attach_context("input", string);
-
-        let Some(latest_index) = suffix.strip_prefix("~") else {
-            return Err(err);
-        };
-        let Ok(n) = latest_index.parse::<usize>() else {
-            return Err(err);
-        };
-
-        Self::latest_n(be, predicate, p, n)
     }
 
     /// Get the latest [`SnapshotFile`] from the backend
@@ -587,6 +612,13 @@ impl SnapshotFile {
         p: &impl Progress,
     ) -> RusticResult<Self> {
         Self::latest_n(be, predicate, p, 0)
+    }
+
+    fn latest_n_from_iter(n: usize, iter: impl IntoIterator<Item = SnapshotFile>) -> Vec<Self> {
+        iter.into_iter()
+            // find n+1 smallest elements when sorting in decreasing time order
+            .k_smallest_by(n + 1, |s1, s2| s2.time.cmp(&s1.time))
+            .collect()
     }
 
     /// Get the latest [`SnapshotFile`] from the backend
@@ -612,16 +644,7 @@ impl SnapshotFile {
         } else {
             p.set_title("getting latest~N snapshot...");
         }
-        let mut snapshots: Vec<_> = be
-            .stream_all::<Self>(p)?
-            .into_iter()
-            .map(|item| item.inspect_err(|err| warn!("Error reading snapshot: {err}")))
-            .filter_map(Result::ok)
-            .map(Self::set_id)
-            .filter(predicate)
-            // find n+1 smallest elements when sorting in decreasing time order
-            .k_smallest_by(n + 1, |s1, s2| s2.time.cmp(&s1.time))
-            .collect();
+        let mut snapshots = Self::latest_n_from_iter(n, Self::all_from_backend(be, predicate, p)?);
 
         let len = snapshots.len();
         let latest = snapshots.pop_if(|_| len > n); // we want the latest element if we found n+1 snapshots
@@ -848,16 +871,18 @@ impl SnapshotFile {
         be: &B,
         filter: F,
         p: &impl Progress,
-    ) -> RusticResult<Vec<Self>>
+    ) -> RusticResult<impl Iterator<Item = Self>>
     where
         B: DecryptReadBackend,
         F: FnMut(&Self) -> bool,
     {
-        be.stream_all::<Self>(p)?
+        Ok(be
+            .stream_all::<Self>(p)?
             .into_iter()
-            .map_ok(Self::set_id)
-            .filter_ok(filter)
-            .try_collect()
+            .map(|item| item.inspect_err(|err| warn!("Error reading snapshot: {err}")))
+            .filter_map(Result::ok)
+            .map(Self::set_id)
+            .filter(filter))
     }
 
     // TODO: add documentation!
