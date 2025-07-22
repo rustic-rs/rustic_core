@@ -34,7 +34,11 @@ fn main() -> Result<(), Box<dyn Error>> {
     for (snap, matches) in snapshots.iter().zip(matches) {
         println!("results in {snap:?}");
         for (path_idx, node_idx) in matches {
-            println!("path: {:?}, node: {:?}", paths[path_idx], nodes[node_idx]);
+            println!(
+                "path: {}, node: {:?}",
+                paths[path_idx].display(),
+                nodes[node_idx]
+            );
         }
     }
 
