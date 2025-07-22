@@ -235,15 +235,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "backup"
-version = "0.1.0"
-dependencies = [
- "rustic_backend",
- "rustic_core",
- "simplelog",
-]
-
-[[package]]
 name = "base64"
 version = "0.13.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -484,15 +475,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "613afe47fcd5fac7ccf1db93babcb082c5994d996f20b8b159f2ad1658eb5724"
 
 [[package]]
-name = "check"
-version = "0.1.0"
-dependencies = [
- "rustic_backend",
- "rustic_core",
- "simplelog",
-]
-
-[[package]]
 name = "chrono"
 version = "0.4.40"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -585,15 +567,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "config"
-version = "0.1.0"
-dependencies = [
- "rustic_backend",
- "rustic_core",
- "simplelog",
-]
-
-[[package]]
 name = "conflate"
 version = "0.3.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -651,15 +624,6 @@ dependencies = [
  "getrandom 0.2.15",
  "once_cell",
  "tiny-keccak",
-]
-
-[[package]]
-name = "copy"
-version = "0.1.0"
-dependencies = [
- "rustic_backend",
- "rustic_core",
- "simplelog",
 ]
 
 [[package]]
@@ -1103,16 +1067,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "find"
-version = "0.1.0"
-dependencies = [
- "globset",
- "rustic_backend",
- "rustic_core",
- "simplelog",
-]
-
-[[package]]
 name = "flate2"
 version = "1.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1133,15 +1087,6 @@ name = "foldhash"
 version = "0.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d9c4f5dac5e15c24eb999c26181a6ca40b39fe946cbe4c263c7209467bc83af2"
-
-[[package]]
-name = "forget"
-version = "0.1.0"
-dependencies = [
- "rustic_backend",
- "rustic_core",
- "simplelog",
-]
 
 [[package]]
 name = "form_urlencoded"
@@ -1744,15 +1689,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "init"
-version = "0.1.0"
-dependencies = [
- "rustic_backend",
- "rustic_core",
- "simplelog",
-]
-
-[[package]]
 name = "inout"
 version = "0.1.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1851,15 +1787,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "key"
-version = "0.1.0"
-dependencies = [
- "rustic_backend",
- "rustic_core",
- "simplelog",
-]
-
-[[package]]
 name = "lazy_static"
 version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1939,15 +1866,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "ls"
-version = "0.1.0"
-dependencies = [
- "rustic_backend",
- "rustic_core",
- "simplelog",
-]
-
-[[package]]
 name = "matchers"
 version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1971,15 +1889,6 @@ name = "memchr"
 version = "2.7.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "78ca9ab1a0babb1e7d5695e3530886289c18cf2f87ec19a575a0abdce112e3a3"
-
-[[package]]
-name = "merge"
-version = "0.1.0"
-dependencies = [
- "rustic_backend",
- "rustic_core",
- "simplelog",
-]
 
 [[package]]
 name = "mime"
@@ -2733,15 +2642,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "prune"
-version = "0.1.0"
-dependencies = [
- "rustic_backend",
- "rustic_core",
- "simplelog",
-]
-
-[[package]]
 name = "quanta"
 version = "0.12.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3090,15 +2990,6 @@ dependencies = [
  "web-sys",
  "webpki-roots",
  "windows-registry",
-]
-
-[[package]]
-name = "restore"
-version = "0.1.0"
-dependencies = [
- "rustic_backend",
- "rustic_core",
- "simplelog",
 ]
 
 [[package]]
@@ -3894,15 +3785,6 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.100",
-]
-
-[[package]]
-name = "tag"
-version = "0.1.0"
-dependencies = [
- "rustic_backend",
- "rustic_core",
- "simplelog",
 ]
 
 [[package]]

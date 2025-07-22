@@ -140,3 +140,42 @@ toml = "0.8.20"
 
 [lints]
 workspace = true
+
+[[example]]
+name = "backup"
+
+[[example]]
+name = "check"
+
+[[example]]
+name = "config"
+
+[[example]]
+name = "copy"
+
+[[example]]
+name = "find"
+
+[[example]]
+name = "forget"
+
+[[example]]
+name = "init"
+
+[[example]]
+name = "key"
+
+[[example]]
+name = "ls"
+
+[[example]]
+name = "merge"
+
+[[example]]
+name = "prune"
+
+[[example]]
+name = "restore"
+
+[[example]]
+name = "tag"
