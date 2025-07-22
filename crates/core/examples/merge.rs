@@ -1,6 +1,6 @@
 //! `merge` example
 use rustic_backend::BackendOptions;
-use rustic_core::{last_modified_node, repofile::SnapshotFile, Repository, RepositoryOptions};
+use rustic_core::{Repository, RepositoryOptions, last_modified_node, repofile::SnapshotFile};
 use simplelog::{Config, LevelFilter, SimpleLogger};
 use std::error::Error;
 

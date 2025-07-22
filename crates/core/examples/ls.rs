@@ -27,7 +27,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let ls_opts = LsOptions::default();
     for item in repo.ls(&node, &ls_opts)? {
         let (path, _) = item?;
-        println!("{path:?} ");
+        println!("{}", path.display());
     }
     Ok(())
 }
