@@ -30,6 +30,7 @@ harness = true
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [features]
+ci = ["cli", "rest", "rclone", "opendal-all-windows"]
 cli = ["merge", "clap"]
 merge = ["dep:conflate"]
 clap = ["dep:clap"]

@@ -29,6 +29,7 @@ harness = true
 
 [features]
 default = []
+ci = ["cli", "merge", "clap"]
 cli = ["merge", "clap"]
 merge = ["dep:conflate"]
 clap = ["dep:clap"]
