@@ -642,7 +642,8 @@ impl SnapshotFile {
         } else {
             p.set_title("getting latest~N snapshot...");
         }
-        let mut snapshots = Self::latest_n_from_iter(n, Self::all_from_backend(be, predicate, p)?);
+        let mut snapshots =
+            Self::latest_n_from_iter(n, Self::iter_all_from_backend(be, predicate, p)?);
 
         let len = snapshots.len();
         let latest = (len > n).then_some(snapshots.pop()).flatten(); // we want the latest element if we found n+1 snapshots
@@ -865,7 +866,7 @@ impl SnapshotFile {
     }
 
     // TODO: add documentation!
-    pub(crate) fn all_from_backend<B, F>(
+    pub(crate) fn iter_all_from_backend<B, F>(
         be: &B,
         filter: F,
         p: &impl Progress,

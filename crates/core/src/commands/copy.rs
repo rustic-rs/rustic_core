@@ -169,7 +169,7 @@ where
         .progress_counter("finding relevant snapshots...");
     // save snapshots in destination in BTreeSet, as we want to efficiently search within to filter out already existing snapshots before copying.
     let snapshots_dest: BTreeSet<_> =
-        SnapshotFile::all_from_backend(dest_repo.dbe(), filter, &p)?.collect();
+        SnapshotFile::iter_all_from_backend(dest_repo.dbe(), filter, &p)?.collect();
 
     let relevant = snaps
         .iter()
