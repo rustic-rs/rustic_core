@@ -13,7 +13,7 @@ use derive_setters::Setters;
 use dunce::canonicalize;
 use gethostname::gethostname;
 use itertools::Itertools;
-use log::info;
+use log::{info, warn};
 use path_dedot::ParseDot;
 use serde_derive::{Deserialize, Serialize};
 use serde_with::{DisplayFromStr, serde_as, skip_serializing_none};
@@ -23,6 +23,7 @@ use crate::{
     backend::{FileType, FindInBackend, decrypt::DecryptReadBackend},
     blob::tree::TreeId,
     error::{ErrorKind, RusticError, RusticResult},
+    id::constants::HEX_LEN,
     impl_repofile,
     progress::Progress,
     repofile::RepoFile,
@@ -411,6 +412,45 @@ impl Default for SnapshotFile {
     }
 }
 
+enum SnapshotRequest {
+    Latest(usize),
+    StartsWith(String),
+    Id(SnapshotId),
+}
+
+impl FromStr for SnapshotRequest {
+    type Err = Box<RusticError>;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let err = || {
+            RusticError::new(
+                    ErrorKind::InvalidInput,
+                    "Invalid snapshot identifier \"{input}\". Expected either a snapshot id: \"01a2b3c4\" or \"latest\" or \"latest~N\" (N >= 0).",
+                )
+                .attach_context("input", s)
+        };
+
+        let result = match s.strip_prefix("latest") {
+            Some(suffix) => {
+                if suffix.is_empty() {
+                    Self::Latest(0)
+                } else {
+                    let latest_index = suffix.strip_prefix("~").ok_or_else(err)?;
+                    let n = latest_index.parse::<usize>().map_err(|_| err())?;
+                    Self::Latest(n)
+                }
+            }
+            None => {
+                if s.len() < HEX_LEN {
+                    Self::StartsWith(s.to_string())
+                } else {
+                    Self::Id(s.parse()?)
+                }
+            }
+        };
+        Ok(result)
+    }
+}
+
 impl SnapshotFile {
     /// Create a [`SnapshotFile`] from [`SnapshotOptions`].
     ///
@@ -525,6 +565,8 @@ impl SnapshotFile {
 
     /// Get a [`SnapshotFile`] from the backend by (part of the) Id
     ///
+    /// Works with a snapshot `Id` or a `latest` indexed syntax: `latest` or `latest~N` with N >= 0
+    ///
     /// # Arguments
     ///
     /// * `be` - The backend to use
@@ -537,15 +579,17 @@ impl SnapshotFile {
     /// * If the string is not a valid hexadecimal string
     /// * If no id could be found.
     /// * If the id is not unique.
+    /// * If the `latest` syntax is "detected" but inexact
     pub(crate) fn from_str<B: DecryptReadBackend>(
         be: &B,
         string: &str,
         predicate: impl FnMut(&Self) -> bool + Send + Sync,
         p: &impl Progress,
     ) -> RusticResult<Self> {
-        match string {
-            "latest" => Self::latest(be, predicate, p),
-            _ => Self::from_id(be, string),
+        match string.parse()? {
+            SnapshotRequest::Latest(n) => Self::latest_n(be, predicate, p, n),
+            SnapshotRequest::StartsWith(id) => Self::from_id(be, &id),
+            SnapshotRequest::Id(id) => Self::from_backend(be, &id),
         }
     }
 
@@ -565,32 +609,59 @@ impl SnapshotFile {
         predicate: impl FnMut(&Self) -> bool + Send + Sync,
         p: &impl Progress,
     ) -> RusticResult<Self> {
-        p.set_title("getting latest snapshot...");
-        let mut latest: Option<Self> = None;
-        let mut pred = predicate;
+        Self::latest_n(be, predicate, p, 0)
+    }
 
-        for snap in be.stream_all::<Self>(p)? {
-            let (id, mut snap) = snap?;
-            if !pred(&snap) {
-                continue;
-            }
+    fn latest_n_from_iter(n: usize, iter: impl IntoIterator<Item = Self>) -> Vec<Self> {
+        iter.into_iter()
+            // find n+1 smallest elements when sorting in decreasing time order
+            .k_smallest_by(n + 1, |s1, s2| s2.time.cmp(&s1.time))
+            .collect()
+    }
 
-            snap.id = id;
-            match &latest {
-                Some(l) if l.time > snap.time => {}
-                _ => {
-                    latest = Some(snap);
-                }
-            }
+    /// Get the latest [`SnapshotFile`] from the backend
+    ///
+    /// # Arguments
+    ///
+    /// * `be` - The backend to use
+    /// * `predicate` - A predicate to filter the snapshots
+    /// * `p` - A progress bar to use
+    /// * `n` - The n-latest index to go back for snapshot
+    ///
+    /// # Errors
+    ///
+    /// * If no snapshots are found
+    pub(crate) fn latest_n<B: DecryptReadBackend>(
+        be: &B,
+        predicate: impl FnMut(&Self) -> bool + Send + Sync,
+        p: &impl Progress,
+        n: usize,
+    ) -> RusticResult<Self> {
+        if n == 0 {
+            p.set_title("getting latest snapshot...");
+        } else {
+            p.set_title("getting latest~N snapshot...");
         }
+        let mut snapshots =
+            Self::latest_n_from_iter(n, Self::iter_all_from_backend(be, predicate, p)?);
+
+        let len = snapshots.len();
+        let latest = (len > n).then_some(snapshots.pop()).flatten(); // we want the latest element if we found n+1 snapshots
 
         p.finish();
 
         latest.ok_or_else(|| {
-            RusticError::new(
-                ErrorKind::Repository,
-                "No snapshots found. Please make sure there are snapshots in the repository.",
-            )
+            if n == 0 {
+                RusticError::new(
+                    ErrorKind::Repository,
+                    "No snapshots found. Please make sure there are snapshots in the repository.",
+                )
+            } else {
+                RusticError::new(
+                    ErrorKind::Repository,
+                    "No snapshots found for latest~{n}. Please make sure there are more than {n} snapshots in the repository.",
+                ).attach_context("n", n.to_string())
+            }
         })
     }
 
@@ -795,20 +866,22 @@ impl SnapshotFile {
     }
 
     // TODO: add documentation!
-    pub(crate) fn all_from_backend<B, F>(
+    pub(crate) fn iter_all_from_backend<B, F>(
         be: &B,
         filter: F,
         p: &impl Progress,
-    ) -> RusticResult<Vec<Self>>
+    ) -> RusticResult<impl Iterator<Item = Self>>
     where
         B: DecryptReadBackend,
         F: FnMut(&Self) -> bool,
     {
-        be.stream_all::<Self>(p)?
+        Ok(be
+            .stream_all::<Self>(p)?
             .into_iter()
-            .map_ok(Self::set_id)
-            .filter_ok(filter)
-            .try_collect()
+            .map(|item| item.inspect_err(|err| warn!("Error reading snapshot: {err}")))
+            .filter_map(Result::ok)
+            .map(Self::set_id)
+            .filter(filter))
     }
 
     // TODO: add documentation!
@@ -1371,8 +1444,19 @@ fn sanitize_dot(path: &Path) -> SnapshotFileResult<PathBuf> {
 
 #[cfg(test)]
 mod tests {
+    use std::{collections::HashMap, sync::Arc};
+
     use super::*;
+    use crate::{
+        NoProgress,
+        backend::{
+            MockBackend,
+            decrypt::{DecryptBackend, DecryptWriteBackend},
+        },
+        crypto::{CryptoKey, aespoly1305::Key},
+    };
     use anyhow::Result;
+    use bytes::Bytes;
     use rstest::rstest;
 
     #[rstest]
@@ -1440,5 +1524,135 @@ mod tests {
         let path_list = PathList::from_iter(input);
         let result = path_list.to_string();
         assert_eq!(expected, &result);
+    }
+
+    fn fake_snapshot_file_with_id_time(
+        id_time_vec: Vec<(Id, DateTime<Local>)>,
+        key: &Key,
+    ) -> HashMap<Id, Bytes> {
+        let mut res = HashMap::new();
+        for (id, time) in id_time_vec {
+            let snapshot_file = SnapshotFile {
+                id: SnapshotId(id),
+                time,
+                ..Default::default()
+            };
+            let encrypted = Bytes::from(
+                key.encrypt_data(serde_json::to_string(&snapshot_file).unwrap().as_bytes())
+                    .unwrap(),
+            );
+            let _ = res.insert(id, encrypted);
+        }
+        res
+    }
+
+    fn setup_mock_backend() -> (DecryptBackend<Key>, [Id; 3]) {
+        let key = Key::new();
+
+        let id1 = Id::from_str("0011223344556677001122334455667700112233445566770000000000000001")
+            .unwrap();
+        let id2 = Id::from_str("0011223344556677001122334455667700112233445566770000000000000002")
+            .unwrap();
+        let id3 = Id::from_str("0011223344556677001122334455667700112233445566770000000000000003")
+            .unwrap();
+
+        let snapshot_files = fake_snapshot_file_with_id_time(
+            vec![
+                (
+                    id1,
+                    DateTime::from_timestamp(1_752_483_600, 0).unwrap().into(),
+                ),
+                (
+                    id2,
+                    DateTime::from_timestamp(1_752_483_700, 0).unwrap().into(),
+                ),
+                (
+                    // this is the latest
+                    id3,
+                    DateTime::from_timestamp(1_752_483_800, 0).unwrap().into(),
+                ),
+            ],
+            &key,
+        );
+        let mut back = MockBackend::new();
+        let _ = back.expect_list_with_size().returning(move |_| {
+            // unordered ids
+            Ok(vec![(id2, 0), (id3, 0), (id1, 0)])
+        });
+        let _ = back
+            .expect_read_full()
+            .returning(move |_tpe, id| Ok(snapshot_files.get(id).unwrap().clone()));
+
+        let mut be = DecryptBackend::new(Arc::new(back), key);
+        be.set_zstd(None);
+
+        (be, [id1, id2, id3])
+    }
+
+    #[rstest]
+    fn test_snapshot_file_latest() {
+        let (be, [id1, id2, id3]) = setup_mock_backend();
+        let latest = SnapshotFile::latest(&be, |_sn| true, &NoProgress).unwrap();
+        assert_eq!(latest.id, SnapshotId(id3));
+
+        let latest_n0 = SnapshotFile::latest_n(&be, |_sn| true, &NoProgress, 0).unwrap();
+        assert_eq!(latest_n0, latest);
+
+        let latest_n1 = SnapshotFile::latest_n(&be, |_sn| true, &NoProgress, 1).unwrap();
+        assert_eq!(latest_n1.id, SnapshotId(id2));
+
+        let latest_n2 = SnapshotFile::latest_n(&be, |_sn| true, &NoProgress, 2).unwrap();
+        assert_eq!(latest_n2.id, SnapshotId(id1));
+
+        let latest_n3 = SnapshotFile::latest_n(&be, |_sn| true, &NoProgress, 3);
+        let latest_n3_err = latest_n3.unwrap_err().to_string();
+        let expected = "No snapshots found for latest~3.";
+        assert!(
+            latest_n3_err.contains(expected),
+            "Err is: {latest_n3_err}\n\nShould contain: {expected}",
+        );
+    }
+
+    #[rstest]
+    fn test_snapshot_file_from_str() {
+        let (be, [id1, id2, id3]) = setup_mock_backend();
+
+        let latest = SnapshotFile::from_str(&be, "latest", |_sn| true, &NoProgress).unwrap();
+        assert_eq!(latest.id, SnapshotId(id3));
+
+        let latest_n0 = SnapshotFile::from_str(&be, "latest~0", |_sn| true, &NoProgress).unwrap();
+        assert_eq!(latest_n0, latest);
+
+        let snap_id3 = SnapshotFile::from_str(
+            &be,
+            "0011223344556677001122334455667700112233445566770000000000000003",
+            |_sn| true,
+            &NoProgress,
+        )
+        .unwrap();
+        assert_eq!(latest, snap_id3);
+
+        let latest_n1 = SnapshotFile::from_str(&be, "latest~1", |_sn| true, &NoProgress).unwrap();
+        assert_eq!(latest_n1.id, SnapshotId(id2));
+
+        let latest_n2 = SnapshotFile::from_str(&be, "latest~2", |_sn| true, &NoProgress).unwrap();
+        assert_eq!(latest_n2.id, SnapshotId(id1));
+
+        let latest_n3 = SnapshotFile::from_str(&be, "latest~3", |_sn| true, &NoProgress);
+        let latest_n3_err = latest_n3.unwrap_err().to_string();
+        let expected = "No snapshots found for latest~3.";
+        assert!(
+            latest_n3_err.contains(expected),
+            "Err is: {latest_n3_err}\n\nShould contain: {expected}",
+        );
+
+        let latest_syntax_err = SnapshotFile::from_str(&be, "laztet~1", |_sn| true, &NoProgress)
+            .unwrap_err()
+            .to_string();
+        let expected = "No suitable id found for `laztet~1`.";
+        assert!(
+            latest_syntax_err.contains(expected),
+            "Err is: {latest_syntax_err}\n\nShould contain: {expected}",
+        );
     }
 }

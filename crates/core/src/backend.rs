@@ -341,7 +341,7 @@ pub trait WriteBackend: ReadBackend {
 
 #[cfg(test)]
 mock! {
-    Backend {}
+    pub(crate) Backend {}
 
     impl ReadBackend for Backend{
         fn location(&self) -> String;
