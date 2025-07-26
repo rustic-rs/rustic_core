@@ -211,47 +211,13 @@ impl Id {
     ///
     /// * If no id could be found for any request.
     /// * If the id is not unique for any request.
-    pub fn find_starts_with_from_iter<T: AsRef<str>, I: IntoIterator<Item = Id>>(
+    pub fn find_starts_with_from_iter<T: AsRef<str>, I: IntoIterator<Item = Self>>(
         vec: &[T],
         iter: I,
-    ) -> RusticResult<Vec<Id>> {
-        #[derive(Clone, Copy, PartialEq, Eq)]
-        enum FindResult<T> {
-            NotFound,
-            Found(T),
-            NonUnique,
-        }
-        let mut results = vec![FindResult::NotFound; vec.len()];
-        for id in iter.into_iter() {
-            let id_hex = id.to_hex();
-            for (i, v) in vec.iter().enumerate() {
-                if id_hex.starts_with(v.as_ref()) {
-                    if results[i] == FindResult::NotFound {
-                        results[i] = FindResult::Found(id);
-                    } else {
-                        results[i] = FindResult::NonUnique;
-                    }
-                }
-            }
-        }
-
-        results
-            .into_iter()
-            .enumerate()
-            .map(|(i, id)| match id {
-                FindResult::Found(id) => Ok(id),
-                FindResult::NotFound => Err(RusticError::new(
-                    ErrorKind::Backend,
-                    "No suitable id found for `{id}`.",
-                )
-                .attach_context("id", vec[i].as_ref().to_string())),
-                FindResult::NonUnique => Err(RusticError::new(
-                    ErrorKind::Backend,
-                    "Id not unique: `{id}`.",
-                )
-                .attach_context("id", vec[i].as_ref().to_string())),
-            })
-            .collect()
+    ) -> RusticResult<Vec<Self>> {
+        let mut results = FindResults::new(vec, |id| *id);
+        results.extend(iter);
+        results.try_into()
     }
 }
 
@@ -293,5 +259,81 @@ impl Deref for HexId {
 impl AsRef<Path> for HexId {
     fn as_ref(&self) -> &Path {
         self.as_str().as_ref()
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FindResult<T> {
+    NotFound,
+    Found(T),
+    NonUnique,
+}
+
+#[derive(Debug)]
+pub struct FindResults<'a, S, T, F> {
+    strings: &'a [S],
+    results: Vec<FindResult<T>>,
+    mapping: F,
+}
+
+impl<'a, S, T: Clone, F: FnMut(&T) -> Id> FindResults<'a, S, T, F> {
+    pub fn new(strings: &'a [S], map: F) -> Self {
+        let results = vec![FindResult::NotFound; strings.len()];
+        Self {
+            strings,
+            results,
+            mapping: map,
+        }
+    }
+}
+
+impl<S: AsRef<str>, T: PartialEq + Clone, F: FnMut(&T) -> Id> Extend<T>
+    for FindResults<'_, S, T, F>
+{
+    fn extend<I: IntoIterator<Item = T>>(&mut self, iter: I) {
+        for item in iter {
+            let id_hex = (self.mapping)(&item).to_hex();
+            for (i, v) in self.strings.iter().enumerate() {
+                if id_hex.starts_with(v.as_ref()) {
+                    if self.results[i] == FindResult::NotFound {
+                        self.results[i] = FindResult::Found(item.clone());
+                    } else {
+                        self.results[i] = FindResult::NonUnique;
+                    }
+                }
+            }
+        }
+    }
+}
+
+impl<S, T, F> IntoIterator for FindResults<'_, S, T, F> {
+    type Item = FindResult<T>;
+    type IntoIter = std::vec::IntoIter<FindResult<T>>;
+    fn into_iter(self) -> Self::IntoIter {
+        self.results.into_iter()
+    }
+}
+
+impl<'a, S: AsRef<str>, F, T> TryFrom<FindResults<'a, S, T, F>> for Vec<T> {
+    type Error = Box<RusticError>;
+    fn try_from(value: FindResults<'a, S, T, F>) -> Result<Self, Self::Error> {
+        value
+            .results
+            .into_iter()
+            .enumerate()
+            .map(|(i, id)| match id {
+                FindResult::Found(id) => Ok(id),
+                FindResult::NotFound => Err(RusticError::new(
+                    ErrorKind::Backend,
+                    "No suitable id found for `{id}`.",
+                )
+                .attach_context("id", value.strings[i].as_ref().to_string())),
+                FindResult::NonUnique => Err(RusticError::new(
+                    ErrorKind::Backend,
+                    "Id not unique: `{id}`.",
+                )
+                .attach_context("id", value.strings[i].as_ref().to_string())),
+            })
+            .collect()
     }
 }
