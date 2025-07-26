@@ -196,6 +196,63 @@ impl Id {
     pub fn as_u32(&self) -> u32 {
         u32::from_le_bytes([self.0[0], self.0[1], self.0[2], self.0[3]])
     }
+
+    /// Finds the [`Id`]s starting with the given strings from an iterator over [`Id`]s.
+    /// # Type Parameters
+    ///
+    /// * `T` - The type of the strings.
+    /// * `I` - The iterator used to produce [`Id`]s.
+    ///
+    /// # Arguments
+    ///
+    /// * `vec` - The strings to search for.
+    ///
+    /// # Errors
+    ///
+    /// * If no id could be found for any request.
+    /// * If the id is not unique for any request.
+    pub fn find_starts_with_from_iter<T: AsRef<str>, I: IntoIterator<Item = Id>>(
+        vec: &[T],
+        iter: I,
+    ) -> RusticResult<Vec<Id>> {
+        #[derive(Clone, Copy, PartialEq, Eq)]
+        enum FindResult<T> {
+            NotFound,
+            Found(T),
+            NonUnique,
+        }
+        let mut results = vec![FindResult::NotFound; vec.len()];
+        for id in iter.into_iter() {
+            let id_hex = id.to_hex();
+            for (i, v) in vec.iter().enumerate() {
+                if id_hex.starts_with(v.as_ref()) {
+                    if results[i] == FindResult::NotFound {
+                        results[i] = FindResult::Found(id);
+                    } else {
+                        results[i] = FindResult::NonUnique;
+                    }
+                }
+            }
+        }
+
+        results
+            .into_iter()
+            .enumerate()
+            .map(|(i, id)| match id {
+                FindResult::Found(id) => Ok(id),
+                FindResult::NotFound => Err(RusticError::new(
+                    ErrorKind::Backend,
+                    "No suitable id found for `{id}`.",
+                )
+                .attach_context("id", vec[i].as_ref().to_string())),
+                FindResult::NonUnique => Err(RusticError::new(
+                    ErrorKind::Backend,
+                    "Id not unique: `{id}`.",
+                )
+                .attach_context("id", vec[i].as_ref().to_string())),
+            })
+            .collect()
+    }
 }
 
 impl fmt::Debug for Id {
