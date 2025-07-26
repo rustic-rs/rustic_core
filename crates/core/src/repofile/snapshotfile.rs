@@ -23,7 +23,7 @@ use crate::{
     backend::{FileType, FindInBackend, decrypt::DecryptReadBackend},
     blob::tree::TreeId,
     error::{ErrorKind, RusticError, RusticResult},
-    id::constants::HEX_LEN,
+    id::{FindResults, constants::HEX_LEN},
     impl_repofile,
     progress::Progress,
     repofile::RepoFile,
@@ -590,6 +590,103 @@ impl SnapshotFile {
             SnapshotRequest::Latest(n) => Self::latest_n(be, predicate, p, n),
             SnapshotRequest::StartsWith(id) => Self::from_id(be, &id),
             SnapshotRequest::Id(id) => Self::from_backend(be, &id),
+        }
+    }
+
+    /// Get a [`Vec<SnapshotFile>`] from the backend by (part of the) Ids
+    ///
+    /// Works with a snapshot `Id` or a `latest` indexed syntax: `latest` or `latest~N` with N >= 0
+    ///
+    /// # Arguments
+    ///
+    /// * `be` - The backend to use
+    /// * `string` - The (part of the) id of the snapshot
+    /// * `predicate` - A predicate to filter the snapshots
+    /// * `p` - A progress bar to use
+    ///
+    /// # Errors
+    ///
+    /// * If the string is not a valid hexadecimal string
+    /// * If no id could be found.
+    /// * If the id is not unique.
+    /// * If the `latest` syntax is "detected" but inexact
+    pub(crate) fn from_strs<B: DecryptReadBackend, S: AsRef<str>>(
+        be: &B,
+        strings: &[S],
+        predicate: impl FnMut(&Self) -> bool + Send + Sync,
+        p: &impl Progress,
+    ) -> RusticResult<Vec<Self>> {
+        let requests: Vec<SnapshotRequest> = strings
+            .iter()
+            .map(|s| s.as_ref().parse())
+            .collect::<RusticResult<_>>()?;
+
+        let mut max_n_latest: Option<usize> = None;
+        let mut starts_with = Vec::new();
+        let mut ids = Vec::new();
+        for r in &requests {
+            match r {
+                SnapshotRequest::Latest(n) => {
+                    max_n_latest = Some(max_n_latest.unwrap_or_default().max(*n));
+                }
+                SnapshotRequest::StartsWith(s) => starts_with.push(s),
+                SnapshotRequest::Id(id) => ids.push(*id),
+            }
+        }
+
+        match max_n_latest {
+            None => {
+                //  specialize for only start_with and ids
+                let mut ids_starts_with = FindResults::new(starts_with.as_slice(), |id| *id);
+                if !starts_with.is_empty() {
+                    ids_starts_with.extend(be.list(FileType::Snapshot)?);
+                }
+                let ids_starts_with: Vec<Id> = ids_starts_with.try_into()?;
+
+                let mut ids_starts_with = ids_starts_with.into_iter();
+                let ids: Vec<_> = requests
+                    .into_iter()
+                    .map(|r| match r {
+                        SnapshotRequest::Latest(_) => unreachable!(),
+                        SnapshotRequest::StartsWith(_) => ids_starts_with.next().unwrap(),
+                        SnapshotRequest::Id(id) => *id,
+                    })
+                    .collect();
+
+                Self::fill_missing(be, Vec::new(), ids.as_slice(), |_| true, p)
+            }
+            Some(max_n) => {
+                let ids: BTreeMap<_, _> = ids
+                    .into_iter()
+                    .enumerate()
+                    .map(|(num, r)| (r, num))
+                    .collect();
+                let mut vec_ids = vec![Self::default(); ids.len()];
+                let mut ids_starts_with =
+                    FindResults::new(starts_with.as_slice(), |sn: &Self| *sn.id);
+
+                // search for id names while iterating snapshots to get latest ones
+                let iter = Self::iter_all_from_backend(be, predicate, p)?.inspect(|sn| {
+                    if let Some(idx) = ids.get(&sn.id) {
+                        vec_ids[*idx] = sn.clone();
+                    }
+                    ids_starts_with.extend(Some(sn.clone()));
+                });
+                let latest = Self::latest_n_from_iter(max_n, iter);
+                let vec_ids_starts_with: Vec<Self> = ids_starts_with.try_into()?;
+
+                let mut snaps_ids = vec_ids.into_iter();
+                let mut snaps_ids_start_with = vec_ids_starts_with.into_iter();
+                let result = requests
+                    .into_iter()
+                    .map(|r| match r {
+                        SnapshotRequest::Latest(n) => latest[n].clone(),
+                        SnapshotRequest::StartsWith(..) => snaps_ids_start_with.next().unwrap(),
+                        SnapshotRequest::Id(..) => snaps_ids.next().unwrap(),
+                    })
+                    .collect();
+                Ok(result)
+            }
         }
     }
 
