@@ -23,7 +23,7 @@ use crate::{
     backend::{FileType, FindInBackend, decrypt::DecryptReadBackend},
     blob::tree::TreeId,
     error::{ErrorKind, RusticError, RusticResult},
-    id::{FindResults, constants::HEX_LEN},
+    id::{FindUniqeMultiple, FindUniqueResults, constants::HEX_LEN},
     impl_repofile,
     progress::Progress,
     repofile::RepoFile,
@@ -637,11 +637,14 @@ impl SnapshotFile {
         match max_n_latest {
             None => {
                 //  specialize for only start_with and ids
-                let mut ids_starts_with = FindResults::new(starts_with.as_slice(), |id| *id);
-                if !starts_with.is_empty() {
-                    ids_starts_with.extend(be.list(FileType::Snapshot)?);
-                }
-                let ids_starts_with: Vec<Id> = ids_starts_with.try_into()?;
+                let ids_starts_with = if !starts_with.is_empty() {
+                    be.list(FileType::Snapshot)?
+                        .into_iter()
+                        .find_unique_multiple(|id, v| id.to_hex().starts_with(*v), &starts_with)
+                        .assert_found(&starts_with)?
+                } else {
+                    Vec::new()
+                };
 
                 let mut ids_starts_with = ids_starts_with.into_iter();
                 let ids: Vec<_> = requests
@@ -662,18 +665,21 @@ impl SnapshotFile {
                     .map(|(num, r)| (r, num))
                     .collect();
                 let mut vec_ids = vec![Self::default(); ids.len()];
-                let mut ids_starts_with =
-                    FindResults::new(starts_with.as_slice(), |sn: &Self| *sn.id);
+                let mut ids_starts_with = FindUniqueResults::new(&starts_with);
 
                 // search for id names while iterating snapshots to get latest ones
                 let iter = Self::iter_all_from_backend(be, predicate, p)?.inspect(|sn| {
                     if let Some(idx) = ids.get(&sn.id) {
                         vec_ids[*idx] = sn.clone();
                     }
-                    ids_starts_with.extend(Some(sn.clone()));
+                    ids_starts_with.add_item(
+                        sn.clone(),
+                        |sn, v| sn.id.to_hex().starts_with(*v),
+                        &starts_with,
+                    );
                 });
                 let latest = Self::latest_n_from_iter(max_n, iter);
-                let vec_ids_starts_with: Vec<Self> = ids_starts_with.try_into()?;
+                let vec_ids_starts_with = ids_starts_with.assert_found(&starts_with)?;
 
                 let mut snaps_ids = vec_ids.into_iter();
                 let mut snaps_ids_start_with = vec_ids_starts_with.into_iter();

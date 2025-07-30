@@ -215,9 +215,9 @@ impl Id {
         vec: &[T],
         iter: I,
     ) -> RusticResult<Vec<Self>> {
-        let mut results = FindResults::new(vec, |id| *id);
-        results.extend(iter);
-        results.try_into()
+        iter.into_iter()
+            .find_unique_multiple(|id: &Id, v: &T| id.to_hex().starts_with(v.as_ref()), vec)
+            .assert_found(vec)
     }
 }
 
@@ -262,6 +262,7 @@ impl AsRef<Path> for HexId {
     }
 }
 
+/// Possible results when searching for a criterion in an iterator
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FindResult<T> {
     NotFound,
@@ -270,55 +271,26 @@ pub enum FindResult<T> {
 }
 
 #[derive(Debug)]
-pub struct FindResults<'a, S, T, F> {
-    strings: &'a [S],
-    results: Vec<FindResult<T>>,
-    mapping: F,
-}
+/// results when searching for multiple criterion in an iterator
+pub struct FindUniqueResults<T>(Vec<FindResult<T>>);
 
-impl<'a, S, T: Clone, F: FnMut(&T) -> Id> FindResults<'a, S, T, F> {
-    pub fn new(strings: &'a [S], map: F) -> Self {
-        let results = vec![FindResult::NotFound; strings.len()];
-        Self {
-            strings,
-            results,
-            mapping: map,
-        }
+impl<T: Clone> FindUniqueResults<T> {
+    pub fn new<S>(vec: &[S]) -> Self {
+        Self(vec![FindResult::NotFound; vec.len()])
     }
-}
-
-impl<S: AsRef<str>, T: PartialEq + Clone, F: FnMut(&T) -> Id> Extend<T>
-    for FindResults<'_, S, T, F>
-{
-    fn extend<I: IntoIterator<Item = T>>(&mut self, iter: I) {
-        for item in iter {
-            let id_hex = (self.mapping)(&item).to_hex();
-            for (i, v) in self.strings.iter().enumerate() {
-                if id_hex.starts_with(v.as_ref()) {
-                    if self.results[i] == FindResult::NotFound {
-                        self.results[i] = FindResult::Found(item.clone());
-                    } else {
-                        self.results[i] = FindResult::NonUnique;
-                    }
+    pub fn add_item<S, F: FnMut(&T, &S) -> bool>(&mut self, item: T, mut cmp: F, with: &[S]) {
+        for (i, v) in with.iter().enumerate() {
+            if cmp(&item, v) {
+                if matches!(self.0[i], FindResult::NotFound) {
+                    self.0[i] = FindResult::Found(item.clone());
+                } else {
+                    self.0[i] = FindResult::NonUnique;
                 }
             }
         }
     }
-}
-
-impl<S, T, F> IntoIterator for FindResults<'_, S, T, F> {
-    type Item = FindResult<T>;
-    type IntoIter = std::vec::IntoIter<FindResult<T>>;
-    fn into_iter(self) -> Self::IntoIter {
-        self.results.into_iter()
-    }
-}
-
-impl<'a, S: AsRef<str>, F, T> TryFrom<FindResults<'a, S, T, F>> for Vec<T> {
-    type Error = Box<RusticError>;
-    fn try_from(value: FindResults<'a, S, T, F>) -> Result<Self, Self::Error> {
-        value
-            .results
+    pub fn assert_found<S: AsRef<str>>(self, vec: &[S]) -> RusticResult<Vec<T>> {
+        self.0
             .into_iter()
             .enumerate()
             .map(|(i, id)| match id {
@@ -327,13 +299,32 @@ impl<'a, S: AsRef<str>, F, T> TryFrom<FindResults<'a, S, T, F>> for Vec<T> {
                     ErrorKind::Backend,
                     "No suitable id found for `{id}`.",
                 )
-                .attach_context("id", value.strings[i].as_ref().to_string())),
+                .attach_context("id", vec[i].as_ref().to_string())),
                 FindResult::NonUnique => Err(RusticError::new(
                     ErrorKind::Backend,
                     "Id not unique: `{id}`.",
                 )
-                .attach_context("id", value.strings[i].as_ref().to_string())),
+                .attach_context("id", vec[i].as_ref().to_string())),
             })
             .collect()
     }
 }
+
+pub trait FindUniqeMultiple: Iterator + Sized
+where
+    Self::Item: Clone,
+{
+    fn find_unique_multiple<T, F: FnMut(&Self::Item, &T) -> bool>(
+        self,
+        mut cmp: F,
+        with: &[T],
+    ) -> FindUniqueResults<Self::Item> {
+        let mut results = FindUniqueResults::new(with);
+        for item in self {
+            results.add_item(item, &mut cmp, with);
+        }
+        results
+    }
+}
+
+impl<I: Iterator> FindUniqeMultiple for I where I::Item: Clone {}
