@@ -451,6 +451,59 @@ impl FromStr for SnapshotRequest {
     }
 }
 
+struct SnapshotRequests {
+    requests: Vec<SnapshotRequest>,
+    max_n_latest: Option<usize>,
+    starts_with: Vec<String>,
+    ids: Vec<SnapshotId>,
+}
+
+impl SnapshotRequests {
+    fn from_strs<S: AsRef<str>>(strings: &[S]) -> RusticResult<Self> {
+        let requests: Vec<SnapshotRequest> = strings
+            .iter()
+            .map(|s| s.as_ref().parse())
+            .collect::<RusticResult<_>>()?;
+
+        let mut max_n_latest: Option<usize> = None;
+        let mut starts_with = Vec::new();
+        let mut ids = Vec::new();
+        for r in &requests {
+            match r {
+                SnapshotRequest::Latest(n) => {
+                    max_n_latest = Some(max_n_latest.unwrap_or_default().max(*n));
+                }
+                SnapshotRequest::StartsWith(s) => starts_with.push(s.to_string()),
+                SnapshotRequest::Id(id) => ids.push(*id),
+            }
+        }
+        Ok(Self {
+            requests,
+            max_n_latest,
+            starts_with,
+            ids,
+        })
+    }
+
+    fn map_results<T: Clone>(
+        self,
+        latest: Vec<T>,
+        vec_ids_starts_with: Vec<T>,
+        vec_ids: Vec<T>,
+    ) -> Vec<T> {
+        let mut snaps_ids = vec_ids.into_iter();
+        let mut snaps_ids_start_with = vec_ids_starts_with.into_iter();
+        self.requests
+            .into_iter()
+            .map(|r| match r {
+                SnapshotRequest::Latest(n) => latest[n].clone(),
+                SnapshotRequest::StartsWith(..) => snaps_ids_start_with.next().unwrap(),
+                SnapshotRequest::Id(..) => snaps_ids.next().unwrap(),
+            })
+            .collect()
+    }
+}
+
 impl SnapshotFile {
     /// Create a [`SnapshotFile`] from [`SnapshotOptions`].
     ///
@@ -616,56 +669,37 @@ impl SnapshotFile {
         predicate: impl FnMut(&Self) -> bool + Send + Sync,
         p: &impl Progress,
     ) -> RusticResult<Vec<Self>> {
-        let requests: Vec<SnapshotRequest> = strings
-            .iter()
-            .map(|s| s.as_ref().parse())
-            .collect::<RusticResult<_>>()?;
+        let requests = SnapshotRequests::from_strs(strings)?;
 
-        let mut max_n_latest: Option<usize> = None;
-        let mut starts_with = Vec::new();
-        let mut ids = Vec::new();
-        for r in &requests {
-            match r {
-                SnapshotRequest::Latest(n) => {
-                    max_n_latest = Some(max_n_latest.unwrap_or_default().max(*n));
-                }
-                SnapshotRequest::StartsWith(s) => starts_with.push(s),
-                SnapshotRequest::Id(id) => ids.push(*id),
-            }
-        }
-
-        match max_n_latest {
+        match requests.max_n_latest {
             None => {
                 //  specialize for only start_with and ids
-                let ids_starts_with = if !starts_with.is_empty() {
+                let ids_starts_with = if requests.starts_with.is_empty() {
+                    Vec::new()
+                } else {
                     be.list(FileType::Snapshot)?
                         .into_iter()
-                        .find_unique_multiple(|id, v| id.to_hex().starts_with(*v), &starts_with)
-                        .assert_found(&starts_with)?
-                } else {
-                    Vec::new()
+                        .find_unique_multiple(
+                            |id, v| id.to_hex().starts_with(v),
+                            &requests.starts_with,
+                        )
+                        .assert_found(&requests.starts_with)?
                 };
 
-                let mut ids_starts_with = ids_starts_with.into_iter();
-                let ids: Vec<_> = requests
-                    .into_iter()
-                    .map(|r| match r {
-                        SnapshotRequest::Latest(_) => unreachable!(),
-                        SnapshotRequest::StartsWith(_) => ids_starts_with.next().unwrap(),
-                        SnapshotRequest::Id(id) => *id,
-                    })
-                    .collect();
+                let ids: Vec<Id> = requests.ids.iter().map(|sn| **sn).collect();
+                let all_ids = requests.map_results(Vec::new(), ids_starts_with, ids);
 
-                Self::fill_missing(be, Vec::new(), ids.as_slice(), |_| true, p)
+                Self::fill_missing(be, Vec::new(), all_ids.as_slice(), |_| true, p)
             }
             Some(max_n) => {
-                let ids: BTreeMap<_, _> = ids
-                    .into_iter()
+                let ids: BTreeMap<_, _> = requests
+                    .ids
+                    .iter()
                     .enumerate()
                     .map(|(num, r)| (r, num))
                     .collect();
                 let mut vec_ids = vec![Self::default(); ids.len()];
-                let mut ids_starts_with = FindUniqueResults::new(&starts_with);
+                let mut ids_starts_with = FindUniqueResults::new(&requests.starts_with);
 
                 // search for id names while iterating snapshots to get latest ones
                 let iter = Self::iter_all_from_backend(be, predicate, p)?.inspect(|sn| {
@@ -674,24 +708,13 @@ impl SnapshotFile {
                     }
                     ids_starts_with.add_item(
                         sn.clone(),
-                        |sn, v| sn.id.to_hex().starts_with(*v),
-                        &starts_with,
+                        |sn, v| sn.id.to_hex().starts_with(v),
+                        &requests.starts_with,
                     );
                 });
                 let latest = Self::latest_n_from_iter(max_n, iter);
-                let vec_ids_starts_with = ids_starts_with.assert_found(&starts_with)?;
-
-                let mut snaps_ids = vec_ids.into_iter();
-                let mut snaps_ids_start_with = vec_ids_starts_with.into_iter();
-                let result = requests
-                    .into_iter()
-                    .map(|r| match r {
-                        SnapshotRequest::Latest(n) => latest[n].clone(),
-                        SnapshotRequest::StartsWith(..) => snaps_ids_start_with.next().unwrap(),
-                        SnapshotRequest::Id(..) => snaps_ids.next().unwrap(),
-                    })
-                    .collect();
-                Ok(result)
+                let vec_ids_starts_with = ids_starts_with.assert_found(&requests.starts_with)?;
+                Ok(requests.map_results(latest, vec_ids_starts_with, vec_ids))
             }
         }
     }
