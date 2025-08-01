@@ -216,7 +216,7 @@ impl Id {
         iter: I,
     ) -> RusticResult<Vec<Self>> {
         iter.into_iter()
-            .find_unique_multiple(|id: &Id, v: &T| id.to_hex().starts_with(v.as_ref()), vec)
+            .find_unique_multiple(|id: &Self, v: &T| id.to_hex().starts_with(v.as_ref()), vec)
             .assert_found(vec)
     }
 }

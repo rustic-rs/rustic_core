@@ -487,7 +487,7 @@ impl SnapshotRequests {
 
     fn map_results<T: Clone>(
         self,
-        latest: Vec<T>,
+        latest: &[T],
         vec_ids_starts_with: Vec<T>,
         vec_ids: Vec<T>,
     ) -> Vec<T> {
@@ -687,7 +687,7 @@ impl SnapshotFile {
                 };
 
                 let ids: Vec<Id> = requests.ids.iter().map(|sn| **sn).collect();
-                let all_ids = requests.map_results(Vec::new(), ids_starts_with, ids);
+                let all_ids = requests.map_results(&[], ids_starts_with, ids);
 
                 Self::fill_missing(be, Vec::new(), all_ids.as_slice(), |_| true, p)
             }
@@ -714,7 +714,7 @@ impl SnapshotFile {
                 });
                 let latest = Self::latest_n_from_iter(max_n, iter);
                 let vec_ids_starts_with = ids_starts_with.assert_found(&requests.starts_with)?;
-                Ok(requests.map_results(latest, vec_ids_starts_with, vec_ids))
+                Ok(requests.map_results(&latest, vec_ids_starts_with, vec_ids))
             }
         }
     }
