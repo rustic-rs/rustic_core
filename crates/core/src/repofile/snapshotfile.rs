@@ -1677,9 +1677,9 @@ mod tests {
 
         let id1 = Id::from_str("0011223344556677001122334455667700112233445566770000000000000001")
             .unwrap();
-        let id2 = Id::from_str("0011223344556677001122334455667700112233445566770000000000000002")
+        let id2 = Id::from_str("0021223344556677001122334455667700112233445566770000000000000002")
             .unwrap();
-        let id3 = Id::from_str("0011223344556677001122334455667700112233445566770000000000000003")
+        let id3 = Id::from_str("0031223344556677001122334455667700112233445566770000000000000003")
             .unwrap();
 
         let snapshot_files = fake_snapshot_file_with_id_time(
@@ -1751,11 +1751,14 @@ mod tests {
 
         let snap_id3 = SnapshotFile::from_str(
             &be,
-            "0011223344556677001122334455667700112233445566770000000000000003",
+            "0031223344556677001122334455667700112233445566770000000000000003",
             |_sn| true,
             &NoProgress,
         )
         .unwrap();
+        assert_eq!(latest, snap_id3);
+
+        let snap_id3 = SnapshotFile::from_str(&be, "003", |_sn| true, &NoProgress).unwrap();
         assert_eq!(latest, snap_id3);
 
         let latest_n1 = SnapshotFile::from_str(&be, "latest~1", |_sn| true, &NoProgress).unwrap();
@@ -1780,5 +1783,75 @@ mod tests {
             latest_syntax_err.contains(expected),
             "Err is: {latest_syntax_err}\n\nShould contain: {expected}",
         );
+    }
+
+    #[rstest]
+    fn test_snapshot_file_from_strs() {
+        let (be, [id1, id2, id3]) = setup_mock_backend();
+
+        // all kind of requests mixed
+        let snaps = SnapshotFile::from_strs(
+            &be,
+            &[
+                "latest~2",
+                "002",
+                "0031223344556677001122334455667700112233445566770000000000000003",
+            ],
+            |_sn| true,
+            &NoProgress,
+        )
+        .unwrap();
+        let ids: Vec<_> = snaps.iter().map(|sn| *sn.id).collect();
+        assert_eq!(ids, vec![id1, id2, id3]);
+
+        // all kind of requests mixed, with duplicates
+        let snaps = SnapshotFile::from_strs(
+            &be,
+            &[
+                "0021223344556677001122334455667700112233445566770000000000000002",
+                "latest~1",
+                "001",
+            ],
+            |_sn| true,
+            &NoProgress,
+        )
+        .unwrap();
+        let ids: Vec<_> = snaps.iter().map(|sn| *sn.id).collect();
+        assert_eq!(ids, vec![id2, id2, id1]);
+
+        // typical "last two" request
+        let snaps =
+            SnapshotFile::from_strs(&be, &["latest", "latest~1"], |_sn| true, &NoProgress).unwrap();
+        let ids: Vec<_> = snaps.iter().map(|sn| *sn.id).collect();
+        assert_eq!(ids, vec![id3, id2]);
+
+        // only (parts of) ids
+        let snaps = SnapshotFile::from_strs(
+            &be,
+            &[
+                "0031223344556677001122334455667700112233445566770000000000000003",
+                "001",
+            ],
+            |_sn| true,
+            &NoProgress,
+        )
+        .unwrap();
+        let ids: Vec<_> = snaps.iter().map(|sn| *sn.id).collect();
+        assert_eq!(ids, vec![id3, id1]);
+
+        // only full ids
+        let snaps = SnapshotFile::from_strs(
+            &be,
+            &[
+                "0031223344556677001122334455667700112233445566770000000000000003",
+                "0011223344556677001122334455667700112233445566770000000000000001",
+                "0031223344556677001122334455667700112233445566770000000000000003",
+            ],
+            |_sn| true,
+            &NoProgress,
+        )
+        .unwrap();
+        let ids: Vec<_> = snaps.iter().map(|sn| *sn.id).collect();
+        assert_eq!(ids, vec![id3, id1, id3]);
     }
 }
