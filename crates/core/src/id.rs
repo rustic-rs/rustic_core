@@ -12,11 +12,11 @@ use crate::{
     error::{ErrorKind, RusticError, RusticResult},
 };
 
-pub(super) mod constants {
+pub(crate) mod constants {
     /// The length of the hash in bytes
     pub(super) const LEN: usize = 32;
     /// The length of the hash in hexadecimal characters
-    pub(super) const HEX_LEN: usize = LEN * 2;
+    pub(crate) const HEX_LEN: usize = LEN * 2;
 }
 
 #[macro_export]
