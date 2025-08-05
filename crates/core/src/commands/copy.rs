@@ -5,7 +5,7 @@ use rayon::prelude::{IntoParallelRefIterator, ParallelBridge, ParallelIterator};
 
 use crate::{
     backend::{decrypt::DecryptWriteBackend, node::NodeType},
-    blob::{BlobId, BlobType, packer::Packer, tree::TreeStreamerOnce},
+    blob::{BlobId, BlobType, repopacker::RepositoryPacker, tree::TreeStreamerOnce},
     error::RusticResult,
     index::{ReadIndex, indexer::Indexer},
     progress::{Progress, ProgressBars},
@@ -58,16 +58,16 @@ pub(crate) fn copy<'a, Q, R: IndexedFull, P: ProgressBars, S: IndexedIds>(
     let be = repo.dbe();
     let index = repo.index();
     let index_dest = repo_dest.index();
-    let indexer = Indexer::new(be_dest.clone()).into_shared();
+    let indexer = Indexer::new().into_shared();
 
-    let data_packer = Packer::new(
+    let data_packer = RepositoryPacker::new_with_default_sizer(
         be_dest.clone(),
         BlobType::Data,
         indexer.clone(),
         repo_dest.config(),
         index_dest.total_size(BlobType::Data),
     )?;
-    let tree_packer = Packer::new(
+    let tree_packer = RepositoryPacker::new_with_default_sizer(
         be_dest.clone(),
         BlobType::Tree,
         indexer.clone(),
@@ -128,7 +128,7 @@ pub(crate) fn copy<'a, Q, R: IndexedFull, P: ProgressBars, S: IndexedIds>(
 
     _ = data_packer.finalize()?;
     _ = tree_packer.finalize()?;
-    indexer.write().unwrap().finalize()?;
+    indexer.finalize_and_check_save(|file| be_dest.save_file_no_id(file))?;
 
     let p = pb.progress_counter("saving snapshots...");
     be_dest.save_list(snaps.iter(), p)?;

@@ -281,6 +281,16 @@ pub trait DecryptWriteBackend: WriteBackend + Clone + 'static {
         }
     }
 
+    /// Saves the given file without returning the id.
+    ///
+    /// # Arguments
+    ///
+    /// * `file` - The file to save.
+    fn save_file_no_id<F: RepoFile>(&self, file: &F) -> RusticResult<()> {
+        let _ = self.save_file(file)?;
+        Ok(())
+    }
+
     /// Saves the given file uncompressed.
     ///
     /// # Arguments
