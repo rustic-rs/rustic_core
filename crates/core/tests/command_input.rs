@@ -1,4 +1,5 @@
 #![allow(missing_docs)]
+use std::collections::HashMap;
 #[cfg(not(windows))]
 use std::fs::File;
 
@@ -76,7 +77,7 @@ fn run_empty() -> Result<()> {
     let command: CommandInput = "".parse()?;
     dbg!(&command);
     assert!(!command.is_set());
-    command.run("test", "empty")?;
+    command.run("test", "empty", None::<(&str, &str)>)?;
     Ok(())
 }
 
@@ -91,8 +92,25 @@ fn run_deletey() -> Result<()> {
 
     let command: CommandInput = format!("rm {}", filename.to_str().unwrap()).parse()?;
     assert!(command.is_set());
-    command.run("test", "test-call")?;
+    command.run("test", "test-call", None::<(&str, &str)>)?;
     assert!(!filename.exists());
 
+    Ok(())
+}
+
+#[cfg(not(windows))]
+#[test]
+fn run_set_var() -> Result<()> {
+    let command: CommandInput = Into::<CommandInput>::into(vec![
+        "bash".to_string(),
+        "-c".to_string(),
+        "test $RUSTIC_TEST = test_env".to_string(),
+    ]);
+    dbg!(&command);
+    command.run(
+        "test",
+        "test-env",
+        HashMap::<&str, &str>::from([("RUSTIC_TEST", "test_env")]),
+    )?;
     Ok(())
 }
