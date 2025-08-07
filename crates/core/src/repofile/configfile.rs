@@ -50,6 +50,11 @@ pub struct ConfigFile {
     /// The chunker polynomial used to chunk data
     pub chunker_polynomial: String,
 
+    /// Marker if this repository uses padding for pack files to mitigate chunking attacks.
+    ///
+    /// If not set, uses padding
+    pub use_pack_padding: Option<bool>,
+
     /// Marker if this is a hot repository. If not set, this is no hot repository
     ///
     /// # Note
@@ -164,6 +169,12 @@ impl ConfigFile {
             )
             .attach_context("version", self.version.to_string())),
         }
+    }
+
+    /// Determine whether to use pack padding
+    #[must_use]
+    pub fn use_pack_padding(&self) -> bool {
+        self.use_pack_padding.unwrap_or(true)
     }
 
     /// Get whether an extra verification (decompressing/decrypting data before writing to the repository) should be performed.

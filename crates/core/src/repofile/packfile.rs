@@ -26,13 +26,13 @@ pub(crate) type PackFileResult<T> = Result<T, PackFileErrorKind>;
 
 impl_repoid!(PackId, FileType::Pack);
 
-pub(super) mod constants {
+pub(crate) mod constants {
     // 32 equals the size of the crypto overhead
     // TODO: use from crypto mod
     /// The overhead of compression and encryption
-    pub(super) const COMP_OVERHEAD: u32 = 32;
+    pub(crate) const COMP_OVERHEAD: u32 = 32;
     /// The length of the length field within the pack header
-    pub(super) const LENGTH_LEN: u32 = 4;
+    pub(crate) const LENGTH_LEN: u32 = 4;
 }
 
 /// The length field within the pack header (which is the total length of the pack header)
@@ -131,7 +131,7 @@ pub enum HeaderEntry {
 
 impl HeaderEntry {
     /// The length of an uncompressed header entry
-    const ENTRY_LEN: u32 = 37;
+    pub(crate) const ENTRY_LEN: u32 = 37;
 
     /// The length of a compressed header entry
     pub(crate) const ENTRY_LEN_COMPRESSED: u32 = 41;
