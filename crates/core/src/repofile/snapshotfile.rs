@@ -23,7 +23,7 @@ use crate::{
     backend::{FileType, FindInBackend, decrypt::DecryptReadBackend},
     blob::tree::TreeId,
     error::{ErrorKind, RusticError, RusticResult},
-    id::constants::HEX_LEN,
+    id::{FindUniqeMultiple, FindUniqueResults, constants::HEX_LEN},
     impl_repofile,
     progress::Progress,
     repofile::RepoFile,
@@ -451,6 +451,59 @@ impl FromStr for SnapshotRequest {
     }
 }
 
+struct SnapshotRequests {
+    requests: Vec<SnapshotRequest>,
+    max_n_latest: Option<usize>,
+    starts_with: Vec<String>,
+    ids: Vec<SnapshotId>,
+}
+
+impl SnapshotRequests {
+    fn from_strs<S: AsRef<str>>(strings: &[S]) -> RusticResult<Self> {
+        let requests: Vec<SnapshotRequest> = strings
+            .iter()
+            .map(|s| s.as_ref().parse())
+            .collect::<RusticResult<_>>()?;
+
+        let mut max_n_latest: Option<usize> = None;
+        let mut starts_with = Vec::new();
+        let mut ids = Vec::new();
+        for r in &requests {
+            match r {
+                SnapshotRequest::Latest(n) => {
+                    max_n_latest = Some(max_n_latest.unwrap_or_default().max(*n));
+                }
+                SnapshotRequest::StartsWith(s) => starts_with.push(s.to_string()),
+                SnapshotRequest::Id(id) => ids.push(*id),
+            }
+        }
+        Ok(Self {
+            requests,
+            max_n_latest,
+            starts_with,
+            ids,
+        })
+    }
+
+    fn map_results<T: Clone>(
+        self,
+        latest: &[T],
+        vec_ids_starts_with: Vec<T>,
+        vec_ids: Vec<T>,
+    ) -> Vec<T> {
+        let mut snaps_ids = vec_ids.into_iter();
+        let mut snaps_ids_start_with = vec_ids_starts_with.into_iter();
+        self.requests
+            .into_iter()
+            .map(|r| match r {
+                SnapshotRequest::Latest(n) => latest[n].clone(),
+                SnapshotRequest::StartsWith(..) => snaps_ids_start_with.next().unwrap(),
+                SnapshotRequest::Id(..) => snaps_ids.next().unwrap(),
+            })
+            .collect()
+    }
+}
+
 impl SnapshotFile {
     /// Create a [`SnapshotFile`] from [`SnapshotOptions`].
     ///
@@ -590,6 +643,79 @@ impl SnapshotFile {
             SnapshotRequest::Latest(n) => Self::latest_n(be, predicate, p, n),
             SnapshotRequest::StartsWith(id) => Self::from_id(be, &id),
             SnapshotRequest::Id(id) => Self::from_backend(be, &id),
+        }
+    }
+
+    /// Get a [`Vec<SnapshotFile>`] from the backend by (part of the) Ids
+    ///
+    /// Works with a snapshot `Id` or a `latest` indexed syntax: `latest` or `latest~N` with N >= 0
+    ///
+    /// # Arguments
+    ///
+    /// * `be` - The backend to use
+    /// * `string` - The (part of the) id of the snapshot
+    /// * `predicate` - A predicate to filter the snapshots
+    /// * `p` - A progress bar to use
+    ///
+    /// # Errors
+    ///
+    /// * If the string is not a valid hexadecimal string
+    /// * If no id could be found.
+    /// * If the id is not unique.
+    /// * If the `latest` syntax is "detected" but inexact
+    pub(crate) fn from_strs<B: DecryptReadBackend, S: AsRef<str>>(
+        be: &B,
+        strings: &[S],
+        predicate: impl FnMut(&Self) -> bool + Send + Sync,
+        p: &impl Progress,
+    ) -> RusticResult<Vec<Self>> {
+        let requests = SnapshotRequests::from_strs(strings)?;
+
+        match requests.max_n_latest {
+            None => {
+                //  specialize for only start_with and ids
+                let ids_starts_with = if requests.starts_with.is_empty() {
+                    Vec::new()
+                } else {
+                    be.list(FileType::Snapshot)?
+                        .into_iter()
+                        .find_unique_multiple(
+                            |id, v| id.to_hex().starts_with(v),
+                            &requests.starts_with,
+                        )
+                        .assert_found(&requests.starts_with)?
+                };
+
+                let ids: Vec<Id> = requests.ids.iter().map(|sn| **sn).collect();
+                let all_ids = requests.map_results(&[], ids_starts_with, ids);
+
+                Self::fill_missing(be, Vec::new(), all_ids.as_slice(), |_| true, p)
+            }
+            Some(max_n) => {
+                let ids: BTreeMap<_, _> = requests
+                    .ids
+                    .iter()
+                    .enumerate()
+                    .map(|(num, r)| (r, num))
+                    .collect();
+                let mut vec_ids = vec![Self::default(); ids.len()];
+                let mut ids_starts_with = FindUniqueResults::new(&requests.starts_with);
+
+                // search for id names while iterating snapshots to get latest ones
+                let iter = Self::iter_all_from_backend(be, predicate, p)?.inspect(|sn| {
+                    if let Some(idx) = ids.get(&sn.id) {
+                        vec_ids[*idx] = sn.clone();
+                    }
+                    ids_starts_with.add_item(
+                        sn.clone(),
+                        |sn, v| sn.id.to_hex().starts_with(v),
+                        &requests.starts_with,
+                    );
+                });
+                let latest = Self::latest_n_from_iter(max_n, iter);
+                let vec_ids_starts_with = ids_starts_with.assert_found(&requests.starts_with)?;
+                Ok(requests.map_results(&latest, vec_ids_starts_with, vec_ids))
+            }
         }
     }
 
@@ -1551,9 +1677,9 @@ mod tests {
 
         let id1 = Id::from_str("0011223344556677001122334455667700112233445566770000000000000001")
             .unwrap();
-        let id2 = Id::from_str("0011223344556677001122334455667700112233445566770000000000000002")
+        let id2 = Id::from_str("0021223344556677001122334455667700112233445566770000000000000002")
             .unwrap();
-        let id3 = Id::from_str("0011223344556677001122334455667700112233445566770000000000000003")
+        let id3 = Id::from_str("0031223344556677001122334455667700112233445566770000000000000003")
             .unwrap();
 
         let snapshot_files = fake_snapshot_file_with_id_time(
@@ -1625,11 +1751,14 @@ mod tests {
 
         let snap_id3 = SnapshotFile::from_str(
             &be,
-            "0011223344556677001122334455667700112233445566770000000000000003",
+            "0031223344556677001122334455667700112233445566770000000000000003",
             |_sn| true,
             &NoProgress,
         )
         .unwrap();
+        assert_eq!(latest, snap_id3);
+
+        let snap_id3 = SnapshotFile::from_str(&be, "003", |_sn| true, &NoProgress).unwrap();
         assert_eq!(latest, snap_id3);
 
         let latest_n1 = SnapshotFile::from_str(&be, "latest~1", |_sn| true, &NoProgress).unwrap();
@@ -1654,5 +1783,75 @@ mod tests {
             latest_syntax_err.contains(expected),
             "Err is: {latest_syntax_err}\n\nShould contain: {expected}",
         );
+    }
+
+    #[rstest]
+    fn test_snapshot_file_from_strs() {
+        let (be, [id1, id2, id3]) = setup_mock_backend();
+
+        // all kind of requests mixed
+        let snaps = SnapshotFile::from_strs(
+            &be,
+            &[
+                "latest~2",
+                "002",
+                "0031223344556677001122334455667700112233445566770000000000000003",
+            ],
+            |_sn| true,
+            &NoProgress,
+        )
+        .unwrap();
+        let ids: Vec<_> = snaps.iter().map(|sn| *sn.id).collect();
+        assert_eq!(ids, vec![id1, id2, id3]);
+
+        // all kind of requests mixed, with duplicates
+        let snaps = SnapshotFile::from_strs(
+            &be,
+            &[
+                "0021223344556677001122334455667700112233445566770000000000000002",
+                "latest~1",
+                "001",
+            ],
+            |_sn| true,
+            &NoProgress,
+        )
+        .unwrap();
+        let ids: Vec<_> = snaps.iter().map(|sn| *sn.id).collect();
+        assert_eq!(ids, vec![id2, id2, id1]);
+
+        // typical "last two" request
+        let snaps =
+            SnapshotFile::from_strs(&be, &["latest", "latest~1"], |_sn| true, &NoProgress).unwrap();
+        let ids: Vec<_> = snaps.iter().map(|sn| *sn.id).collect();
+        assert_eq!(ids, vec![id3, id2]);
+
+        // only (parts of) ids
+        let snaps = SnapshotFile::from_strs(
+            &be,
+            &[
+                "0031223344556677001122334455667700112233445566770000000000000003",
+                "001",
+            ],
+            |_sn| true,
+            &NoProgress,
+        )
+        .unwrap();
+        let ids: Vec<_> = snaps.iter().map(|sn| *sn.id).collect();
+        assert_eq!(ids, vec![id3, id1]);
+
+        // only full ids
+        let snaps = SnapshotFile::from_strs(
+            &be,
+            &[
+                "0031223344556677001122334455667700112233445566770000000000000003",
+                "0011223344556677001122334455667700112233445566770000000000000001",
+                "0031223344556677001122334455667700112233445566770000000000000003",
+            ],
+            |_sn| true,
+            &NoProgress,
+        )
+        .unwrap();
+        let ids: Vec<_> = snaps.iter().map(|sn| *sn.id).collect();
+        assert_eq!(ids, vec![id3, id1, id3]);
     }
 }
