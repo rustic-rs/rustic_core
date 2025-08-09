@@ -1,3 +1,5 @@
+use std::str::FromStr;
+
 use serde_derive::{Deserialize, Serialize};
 use serde_with::skip_serializing_none;
 
@@ -30,6 +32,15 @@ pub(super) mod constants {
 
     /// The default minimum percentage of targeted pack size.
     pub(super) const DEFAULT_MIN_PERCENTAGE: u32 = 30;
+
+    pub(super) const KB_U: usize = 1024;
+    pub(super) const MB_U: usize = 1024 * KB_U;
+    /// The default (average) size of a chunk.
+    pub(super) const DEFAULT_CHUNK_SIZE: usize = MB_U;
+    /// The default maximum size of a chunk.
+    pub(super) const DEFAULT_CHUNK_MIN_SIZE: usize = 512 * KB_U;
+    /// The default maximum size of a chunk.
+    pub(super) const DEFAULT_CHUNK_MAX_SIZE: usize = 8 * MB_U;
 }
 
 define_new_id_struct!(RepositoryId, "repository");
@@ -48,7 +59,24 @@ pub struct ConfigFile {
     pub id: RepositoryId,
 
     /// The chunker polynomial used to chunk data
+    pub chunker: Option<Chunker>,
+
+    /// The chunker polynomial used to chunk data in case of Rabin content defined chunking
     pub chunker_polynomial: String,
+
+    /// The (average) chunk size. For `FixedSized` chunking, this is the chunk size, for Rabin chunking, this size
+    /// will be reached on average for chunks.
+    pub chunk_size: Option<usize>,
+
+    /// The minimum chunk size. For Rabin chunking, this defines the minimum chunk size before chunks are defined by
+    /// the Rabin fingerprint.
+    /// Has no effect for `FixedSized` chunking.
+    pub chunk_min_size: Option<usize>,
+
+    /// The maximum chunk size. For Rabin chunking, this defines the maximum chunk size, i.e. the size when chunks are cut
+    /// even if no cut point has been identified by the Rabin fingerprint.
+    /// Has no effect for `FixedSized` chunking.
+    pub chunk_max_size: Option<usize>,
 
     /// Marker if this is a hot repository. If not set, this is no hot repository
     ///
@@ -216,5 +244,50 @@ impl ConfigFile {
                 Some(percent) => percent,
             },
         )
+    }
+
+    /// Get the chunker
+    #[must_use]
+    pub fn chunker(&self) -> Chunker {
+        self.chunker.unwrap_or_default()
+    }
+
+    /// Get the (average) chunk size
+    #[must_use]
+    pub fn chunk_size(&self) -> usize {
+        self.chunk_size.unwrap_or(constants::DEFAULT_CHUNK_SIZE)
+    }
+    /// Get the min chunk size
+    #[must_use]
+    pub fn chunk_min_size(&self) -> usize {
+        self.chunk_min_size
+            .unwrap_or(constants::DEFAULT_CHUNK_MIN_SIZE)
+    }
+    /// Get the max chunk size
+    #[must_use]
+    pub fn chunk_max_size(&self) -> usize {
+        self.chunk_max_size
+            .unwrap_or(constants::DEFAULT_CHUNK_MAX_SIZE)
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub enum Chunker {
+    #[default]
+    Rabin,
+    FixedSize,
+}
+
+impl FromStr for Chunker {
+    type Err = Box<RusticError>;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "rabin" => Ok(Self::Rabin),
+            "fixed_size" => Ok(Self::FixedSize),
+            _ => Err(RusticError::new(
+                ErrorKind::InvalidInput,
+                "only ``rabin`` and ``fixed_size`` are valid chunkers",
+            )),
+        }
     }
 }
