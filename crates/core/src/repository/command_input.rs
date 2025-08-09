@@ -1,5 +1,8 @@
 use std::{
+    convert::AsRef,
+    ffi::OsStr,
     fmt::{Debug, Display},
+    iter::Iterator,
     process::{Command, ExitStatus},
     str::FromStr,
 };
@@ -128,13 +131,23 @@ impl CommandInput {
     /// # Errors
     ///
     /// * If return status cannot be read
-    pub fn run(&self, context: &str, what: &str) -> RusticResult<()> {
+    pub fn run<I, K, V>(&self, context: &str, what: &str, env: I) -> RusticResult<()>
+    where
+        I: IntoIterator<Item = (K, V)>,
+        K: AsRef<OsStr>,
+        V: AsRef<OsStr>,
+    {
         if !self.is_set() {
             trace!("not calling command {context}:{what} - not set");
             return Ok(());
         }
         debug!("calling command {context}:{what}: {self:?}");
-        let status = Command::new(self.command()).args(self.args()).status();
+
+        let status = Command::new(self.command())
+            .args(self.args())
+            .envs(env)
+            .status();
+
         self.on_failure().handle_status(status, context, what)?;
         Ok(())
     }

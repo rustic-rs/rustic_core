@@ -132,7 +132,10 @@ impl<'a, BE: DecryptWriteBackend, I: ReadGlobalIndex> FileArchiver<'a, BE, I> {
                             .attach_context("path", path.display().to_string())
                         })?;
 
-                    self.backup_reader(r, node, p)?
+                    self.backup_reader(r, node, p).map_err(|err| {
+                        err.prepend_guidance_line("Error while backing up `{path}`")
+                            .attach_context("path", path.display().to_string())
+                    })?
                 } else {
                     (node, 0)
                 };
