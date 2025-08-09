@@ -128,7 +128,9 @@ fn test_backup_with_tar_gz_passes(
     let mut groups = repo.get_snapshot_group(&[], group_by, |_| true)?;
 
     // sort groups to get unique result
-    groups.iter_mut().for_each(|(_, snaps)| snaps.sort());
+    for (_, snaps) in &mut groups {
+        snaps.sort();
+    }
     groups.sort_by_key(|(group, _)| group.tags.clone());
 
     insta_snapshotfile_redaction.bind(|| {
