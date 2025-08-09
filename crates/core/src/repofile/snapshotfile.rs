@@ -58,7 +58,7 @@ pub(crate) type SnapshotFileResult<T> = Result<T, SnapshotFileErrorKind>;
 ///
 /// # Note
 ///
-/// The preferred way is to use [`SnapshotFile::from_options`] to create a SnapshotFile for a new backup.
+/// The preferred way is to use [`SnapshotFile::from_options`] to create a `SnapshotFile` for a new backup.
 #[serde_as]
 #[cfg_attr(feature = "merge", derive(conflate::Merge))]
 #[cfg_attr(feature = "clap", derive(clap::Parser))]
