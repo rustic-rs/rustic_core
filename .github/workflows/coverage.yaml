@@ -32,7 +32,7 @@ jobs:
         env:
           RUST_BACKTRACE: "0"
         run: |
-          cargo tarpaulin --verbose --all-features --workspace --timeout 120 --out xml
+          cargo tarpaulin --verbose --features ci --workspace --timeout 120 --out xml
 
       - name: Upload coverage reports to Codecov
         uses: codecov/codecov-action@1e68e06f1dbfde0e4cefc87efeba9e4643565303 # v5
