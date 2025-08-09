@@ -63,7 +63,7 @@ pub enum CommandInputErrorKind {
 pub(crate) type CommandInputResult<T> = Result<T, CommandInputErrorKind>;
 
 /// A command to be called which can be given as CLI option as well as in config files
-/// `CommandInput` implements Serialize/Deserialize as well as FromStr.
+/// `CommandInput` implements Serialize/Deserialize as well as `FromStr`.
 #[serde_as]
 #[derive(Debug, Default, Clone, PartialEq, Eq, Deserialize)]
 pub struct CommandInput(
