@@ -1,6 +1,6 @@
-//! `merge` example
+//! `ls` example
 use rustic_backend::BackendOptions;
-use rustic_core::{last_modified_node, repofile::SnapshotFile, Repository, RepositoryOptions};
+use rustic_core::{LsOptions, Repository, RepositoryOptions};
 use simplelog::{Config, LevelFilter, SimpleLogger};
 use std::error::Error;
 
@@ -18,13 +18,16 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     let repo = Repository::new(&repo_opts, &backends)?
         .open()?
-        .to_indexed_ids()?;
+        .to_indexed()?;
 
-    // Merge all snapshots using the latest entry for duplicate entries
-    let snaps = repo.get_all_snapshots()?;
-    // This creates a new snapshot without removing the used ones
-    let snap = repo.merge_snapshots(&snaps, &last_modified_node, SnapshotFile::default())?;
+    // use latest snapshot without filtering snapshots
+    let node = repo.node_from_snapshot_path("latest", |_| true)?;
 
-    println!("successfully created snapshot:\n{snap:#?}");
+    // recursively list the snapshot contents using no additional filtering
+    let ls_opts = LsOptions::default();
+    for item in repo.ls(&node, &ls_opts)? {
+        let (path, _) = item?;
+        println!("{}", path.display());
+    }
     Ok(())
 }

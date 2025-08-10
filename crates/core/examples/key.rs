@@ -1,6 +1,6 @@
-//! `config` example
+//! `key` example
 use rustic_backend::BackendOptions;
-use rustic_core::{max_compression_level, ConfigOptions, Repository, RepositoryOptions};
+use rustic_core::{KeyOptions, Repository, RepositoryOptions};
 use simplelog::{Config, LevelFilter, SimpleLogger};
 use std::error::Error;
 
@@ -15,10 +15,11 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     // Open repository
     let repo_opts = RepositoryOptions::default().password("test");
-    let mut repo = Repository::new(&repo_opts, &backends)?.open()?;
 
-    // Set Config, e.g. Compression level
-    let config_opts = ConfigOptions::default().set_compression(max_compression_level());
-    repo.apply_config(&config_opts)?;
+    let repo = Repository::new(&repo_opts, &backends)?.open()?;
+
+    // Add a new key with the given password
+    let key_opts = KeyOptions::default();
+    _ = repo.add_key("new_password", &key_opts)?;
     Ok(())
 }
