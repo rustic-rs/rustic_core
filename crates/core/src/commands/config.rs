@@ -109,6 +109,10 @@ pub struct ConfigOptions {
     #[cfg_attr(feature = "clap", clap(long, value_name = "VERSION"))]
     pub set_version: Option<u32>,
 
+    /// Set padding for data packs
+    #[cfg_attr(feature = "clap", clap(long))]
+    pub set_use_pack_padding: Option<bool>,
+
     /// Set append-only mode.
     /// Note that only append-only commands work once this is set. `forget`, `prune` or `config` won't work any longer.
     #[cfg_attr(feature = "clap", clap(long))]
@@ -208,6 +212,8 @@ impl ConfigOptions {
 
             config.version = version;
         }
+
+        config.use_pack_padding = self.set_use_pack_padding;
 
         if let Some(compression) = self.set_compression {
             if config.version == 1 && compression != 0 {

@@ -73,7 +73,7 @@ pub(crate) fn repair_index<P: ProgressBars, S: Open>(
     let pack_read_header = checker.into_pack_to_read();
     repo.warm_up_wait(pack_read_header.iter().map(|(id, _, _)| *id))?;
 
-    let indexer = Indexer::new(be.clone()).into_shared();
+    let mut indexer = Indexer::new();
     let p = repo.pb.progress_counter("reading pack headers");
 
     p.set_length(pack_read_header.len().try_into().map_err(|err| {
@@ -101,13 +101,18 @@ pub(crate) fn repair_index<P: ProgressBars, S: Open>(
                 };
                 if !dry_run {
                     // write pack file to index - without the delete mark
-                    indexer.write().unwrap().add_with(pack, false)?;
+                    indexer.add_with(pack, false);
+                    if let Some(file) = indexer.save_if_needed() {
+                        _ = be.save_file(&file)?;
+                    }
                 }
             }
         }
         p.inc(1);
     }
-    indexer.write().unwrap().finalize()?;
+    if let Some(file) = indexer.finalize() {
+        _ = be.save_file(&file)?;
+    }
     p.finish();
 
     Ok(())
