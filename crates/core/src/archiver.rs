@@ -40,16 +40,16 @@ pub struct TreeStackEmptyError;
 #[allow(clippy::struct_field_names)]
 pub struct Archiver<'a, BE: DecryptFullBackend, I: ReadGlobalIndex> {
     /// The `FileArchiver` is responsible for archiving files.
-    file_archiver: FileArchiver<'a, BE, I>,
+    file_archiver: FileArchiver<'a, I>,
 
     /// The `TreeArchiver` is responsible for archiving trees.
-    tree_archiver: TreeArchiver<'a, BE, I>,
+    tree_archiver: TreeArchiver<'a, I>,
 
     /// The parent snapshot to use.
     parent: Parent,
 
     /// The `SharedIndexer` is used to index the data.
-    indexer: SharedIndexer<BE>,
+    indexer: SharedIndexer,
 
     /// The backend to write to.
     be: BE,
@@ -83,7 +83,7 @@ impl<'a, BE: DecryptFullBackend, I: ReadGlobalIndex> Archiver<'a, BE, I> {
         parent: Parent,
         mut snap: SnapshotFile,
     ) -> RusticResult<Self> {
-        let indexer = Indexer::new(be.clone()).into_shared();
+        let indexer = Indexer::new().into_shared();
         let mut summary = snap.summary.take().unwrap_or_default();
         summary.backup_start = Local::now();
 
@@ -217,7 +217,8 @@ impl<'a, BE: DecryptFullBackend, I: ReadGlobalIndex> Archiver<'a, BE, I> {
         stats.apply(&mut summary, BlobType::Data);
         self.snap.tree = id;
 
-        self.indexer.write().unwrap().finalize()?;
+        self.indexer
+            .finalize_and_check_save(|file| self.be.save_file_no_id(file))?;
 
         summary.finalize(self.snap.time).map_err(|err| {
             RusticError::with_source(

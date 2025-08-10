@@ -7,9 +7,7 @@ use std::{
 use log::warn;
 
 use crate::{
-    backend::decrypt::DecryptWriteBackend,
     blob::BlobId,
-    error::RusticResult,
     repofile::indexfile::{IndexFile, IndexPack},
 };
 
@@ -22,16 +20,9 @@ pub(super) mod constants {
     pub(super) const MAX_AGE: Duration = Duration::from_secs(300);
 }
 
-pub(crate) type SharedIndexer<BE> = Arc<RwLock<Indexer<BE>>>;
-
 /// The `Indexer` is responsible for indexing blobs.
 #[derive(Debug)]
-pub struct Indexer<BE>
-where
-    BE: DecryptWriteBackend,
-{
-    /// The backend to write to.
-    be: BE,
+pub struct Indexer {
     /// The index file.
     file: IndexFile,
     /// The number of blobs indexed.
@@ -42,7 +33,7 @@ where
     indexed: Option<BTreeSet<BlobId>>,
 }
 
-impl<BE: DecryptWriteBackend> Indexer<BE> {
+impl Indexer {
     /// Creates a new `Indexer`.
     ///
     /// # Type Parameters
@@ -52,9 +43,8 @@ impl<BE: DecryptWriteBackend> Indexer<BE> {
     /// # Arguments
     ///
     /// * `be` - The backend to write to.
-    pub fn new(be: BE) -> Self {
+    pub fn new() -> Self {
         Self {
-            be,
             file: IndexFile::default(),
             count: 0,
             created: SystemTime::now(),
@@ -71,9 +61,8 @@ impl<BE: DecryptWriteBackend> Indexer<BE> {
     /// # Arguments
     ///
     /// * `be` - The backend to write to.
-    pub fn new_unindexed(be: BE) -> Self {
+    pub fn new_unindexed() -> Self {
         Self {
-            be,
             file: IndexFile::default(),
             count: 0,
             created: SystemTime::now(),
@@ -81,20 +70,13 @@ impl<BE: DecryptWriteBackend> Indexer<BE> {
         }
     }
 
-    /// Resets the indexer.
-    pub fn reset(&mut self) {
-        self.file = IndexFile::default();
-        self.count = 0;
-        self.created = SystemTime::now();
-    }
-
     /// Returns a `SharedIndexer` to use in multiple threads.
     ///
     /// # Type Parameters
     ///
     /// * `BE` - The backend type.
-    pub fn into_shared(self) -> SharedIndexer<BE> {
-        Arc::new(RwLock::new(self))
+    pub fn into_shared(self) -> SharedIndexer {
+        SharedIndexer(Arc::new(RwLock::new(self)))
     }
 
     /// Finalizes the `Indexer`.
@@ -102,7 +84,23 @@ impl<BE: DecryptWriteBackend> Indexer<BE> {
     /// # Errors
     ///
     /// * If the index file could not be serialized.
-    pub fn finalize(&self) -> RusticResult<()> {
+    pub fn finalize(mut self) -> Option<IndexFile> {
+        self.save()
+    }
+
+    pub fn needs_save(&self) -> bool {
+        // check if IndexFile needs to be saved
+        let elapsed = self.created.elapsed().unwrap_or_else(|err| {
+            warn!("couldn't get elapsed time from system time: {err:?}");
+            Duration::ZERO
+        });
+        self.count >= constants::MAX_COUNT || elapsed >= constants::MAX_AGE
+    }
+
+    pub fn save_if_needed(&mut self) -> Option<IndexFile> {
+        if !self.needs_save() {
+            return None;
+        }
         self.save()
     }
 
@@ -111,11 +109,14 @@ impl<BE: DecryptWriteBackend> Indexer<BE> {
     /// # Errors
     ///
     /// * If the index file could not be serialized.
-    pub fn save(&self) -> RusticResult<()> {
-        if (self.file.packs.len() + self.file.packs_to_delete.len()) > 0 {
-            _ = self.be.save_file(&self.file)?;
+    pub fn save(&mut self) -> Option<IndexFile> {
+        if self.file.packs.is_empty() && self.file.packs_to_delete.is_empty() {
+            return None;
         }
-        Ok(())
+        let file = std::mem::take(&mut self.file);
+        self.count = 0;
+        self.created = SystemTime::now();
+        Some(file)
     }
 
     /// Adds a pack to the `Indexer`.
@@ -127,8 +128,8 @@ impl<BE: DecryptWriteBackend> Indexer<BE> {
     /// # Errors
     ///
     /// * If the index file could not be serialized.
-    pub fn add(&mut self, pack: IndexPack) -> RusticResult<()> {
-        self.add_with(pack, false)
+    pub fn add(&mut self, pack: IndexPack) {
+        self.add_with(pack, false);
     }
 
     /// Adds a pack to the `Indexer` and removes it from the backend.
@@ -140,8 +141,8 @@ impl<BE: DecryptWriteBackend> Indexer<BE> {
     /// # Errors
     ///
     /// * If the index file could not be serialized.
-    pub fn add_remove(&mut self, pack: IndexPack) -> RusticResult<()> {
-        self.add_with(pack, true)
+    pub fn add_remove(&mut self, pack: IndexPack) {
+        self.add_with(pack, true);
     }
 
     /// Adds a pack to the `Indexer`.
@@ -154,7 +155,7 @@ impl<BE: DecryptWriteBackend> Indexer<BE> {
     /// # Errors
     ///
     /// * If the index file could not be serialized.
-    pub fn add_with(&mut self, pack: IndexPack, delete: bool) -> RusticResult<()> {
+    pub fn add_with(&mut self, pack: IndexPack, delete: bool) {
         self.count += pack.blobs.len();
 
         if let Some(indexed) = &mut self.indexed {
@@ -164,27 +165,63 @@ impl<BE: DecryptWriteBackend> Indexer<BE> {
         }
 
         self.file.add(pack, delete);
-
-        // check if IndexFile needs to be saved
-        let elapsed = self.created.elapsed().unwrap_or_else(|err| {
-            warn!("couldn't get elapsed time from system time: {err:?}");
-            Duration::ZERO
-        });
-        if self.count >= constants::MAX_COUNT || elapsed >= constants::MAX_AGE {
-            self.save()?;
-            self.reset();
-        }
-        Ok(())
     }
 
     /// Returns whether the given id is indexed.
+    ///     
+    /// # Arguments
+    ///
+    /// * `id` - The id to check.
+    pub fn has(&mut self, id: &BlobId) -> bool {
+        self.indexed
+            .as_mut()
+            .is_some_and(|indexed| indexed.contains(id))
+    }
+
+    /// Reserve an id for saving in the index. Returns whether the id was newly reseved, i.e. was not already present.
     ///
     /// # Arguments
     ///
     /// * `id` - The id to check.
-    pub fn has(&self, id: &BlobId) -> bool {
+    pub fn reserve(&mut self, id: &BlobId) -> bool {
         self.indexed
-            .as_ref()
-            .is_some_and(|indexed| indexed.contains(id))
+            .as_mut()
+            .is_none_or(|indexed| indexed.insert(*id))
+    }
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct SharedIndexer(Arc<RwLock<Indexer>>);
+
+impl SharedIndexer {
+    pub fn add_and_check_save<E>(
+        &self,
+        pack: IndexPack,
+        delete: bool,
+        writer: impl Fn(&IndexFile) -> Result<(), E>,
+    ) -> Result<(), E> {
+        let mut indexer = self.0.write().unwrap();
+        indexer.add_with(pack, delete);
+        let res = indexer.save_if_needed();
+        drop(indexer);
+
+        res.as_ref().map_or(Ok(()), writer)
+    }
+
+    pub fn finalize_and_check_save<E>(
+        self,
+        writer: impl Fn(&IndexFile) -> Result<(), E>,
+    ) -> Result<(), E> {
+        let res = Arc::try_unwrap(self.0)
+            .expect("indexer still in use")
+            .into_inner()
+            .unwrap()
+            .finalize();
+
+        res.as_ref().map_or(Ok(()), writer)
+    }
+
+    pub fn reserve(&self, id: &BlobId) -> bool {
+        self.0.write().unwrap().reserve(id)
     }
 }
