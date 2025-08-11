@@ -4,7 +4,7 @@ use log::info;
 
 use crate::{
     backend::WriteBackend,
-    chunker::random_poly,
+    chunker::rabin::random_poly,
     commands::{
         config::{ConfigOptions, save_config},
         key::{KeyOptions, init_key},
