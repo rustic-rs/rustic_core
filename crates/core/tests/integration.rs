@@ -25,6 +25,7 @@
 mod integration {
     mod append_only;
     mod backup;
+    mod chunker;
     mod find;
     mod key;
     mod ls;
