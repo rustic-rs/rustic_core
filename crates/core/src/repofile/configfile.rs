@@ -261,11 +261,27 @@ impl ConfigFile {
         self.chunk_min_size
             .unwrap_or(constants::DEFAULT_CHUNK_MIN_SIZE)
     }
+
     /// Get the max chunk size
     #[must_use]
     pub fn chunk_max_size(&self) -> usize {
         self.chunk_max_size
             .unwrap_or(constants::DEFAULT_CHUNK_MAX_SIZE)
+    }
+
+    /// Determine if two [`ConfigFile`]s have compatible chunker parameters
+    #[must_use]
+    pub fn has_same_chunker(&self, other: &Self) -> bool {
+        match self.chunker() {
+            chunker if chunker != other.chunker() => false,
+            Chunker::Rabin => {
+                self.chunker_polynomial == other.chunker_polynomial
+                    && self.chunk_size() == other.chunk_size()
+                    && self.chunk_min_size() == other.chunk_min_size()
+                    && self.chunk_max_size() == other.chunk_max_size()
+            }
+            Chunker::FixedSize => self.chunk_size() == other.chunk_size(),
+        }
     }
 }
 
