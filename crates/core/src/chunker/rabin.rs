@@ -7,7 +7,7 @@ use crate::error::{ErrorKind, RusticError, RusticResult};
 
 pub(super) mod constants {
     /// The Splitmask is used to determine if a chunk is a chunk boundary.
-    pub(super) const SPLITMASK: u64 = (1u64 << 20) - 1;
+    pub(super) const SIZE: usize = 1 << 20;
     /// The size of a kilobyte.
     pub(super) const KB: usize = 1024;
     /// The size of a megabyte.
@@ -49,12 +49,6 @@ pub(crate) fn check_rabin_params(
     Ok(())
 }
 
-/// Default predicate for chunking.
-#[inline]
-const fn default_predicate(x: u64) -> bool {
-    (x & constants::SPLITMASK) == 0
-}
-
 /// `ChunkIter` is an iterator that chunks data.
 pub(crate) struct ChunkIter<R: Read + Send> {
     /// The buffer used for reading.
@@ -66,8 +60,8 @@ pub(crate) struct ChunkIter<R: Read + Send> {
     /// The reader.
     reader: R,
 
-    /// The predicate used to determine if a chunk is a chunk boundary.
-    predicate: fn(u64) -> bool,
+    /// The split mask used to determine if a chunk is a chunk boundary.
+    split_mask: u64,
 
     /// The rolling hash.
     rabin: Rabin64,
@@ -93,18 +87,28 @@ impl<R: Read + Send> ChunkIter<R> {
     /// * `reader` - The reader to read from.
     /// * `size_hint` - The size hint is used to optimize memory allocation; this should be an upper bound on the size.
     /// * `rabin` - The rolling hash.
-    pub(crate) fn new(reader: R, size_hint: usize, rabin: Rabin64) -> Self {
-        Self {
+    pub(crate) fn new(
+        rabin: Rabin64,
+        chunk_size: usize,
+        chunk_min_size: usize,
+        chunk_max_size: usize,
+        reader: R,
+        size_hint: usize,
+    ) -> RusticResult<Self> {
+        check_rabin_params(chunk_size, chunk_min_size, chunk_max_size)?;
+        let chunk_size: u64 = chunk_size.try_into().unwrap();
+        let split_mask: u64 = chunk_size - 1;
+        Ok(Self {
             buf: vec![0; constants::BUF_SIZE],
             pos: constants::BUF_SIZE,
             reader,
-            predicate: default_predicate,
+            split_mask,
             rabin,
             size_hint, // size hint is used to optimize memory allocation; this should be an upper bound on the size
-            min_size: constants::MIN_SIZE,
-            max_size: constants::MAX_SIZE,
+            min_size: chunk_min_size,
+            max_size: chunk_max_size,
             finished: false,
-        }
+        })
     }
 }
 
@@ -159,7 +163,7 @@ impl<R: Read + Send> Iterator for ChunkIter<R> {
                 break;
             }
 
-            if (self.predicate)(self.rabin.hash) {
+            if (self.rabin.hash & self.split_mask) == 0 {
                 break;
             }
 
@@ -322,16 +326,49 @@ fn qp(p: i32, g: Polynom64) -> Polynom64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::crypto::hasher::hash;
+    use insta::assert_ron_snapshot;
+    use rand::prelude::*;
     use std::io::{Cursor, repeat};
+
+    fn chunker<R: Read + Send>(reader: R, size_hint: usize) -> ChunkIter<R> {
+        let poly = 0x003D_A335_8B4D_C173;
+        let rabin = Rabin64::new_with_polynom(6, &poly);
+        ChunkIter::new(
+            rabin,
+            constants::SIZE,
+            constants::MIN_SIZE,
+            constants::MAX_SIZE,
+            reader,
+            size_hint,
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn chunk_random() {
+        const RANDOM_DATA_SIZE: usize = 32 * 1024 * 1024;
+        const SEED: u64 = 23;
+        let mut rng = StdRng::seed_from_u64(SEED);
+        let mut data = vec![0u8; RANDOM_DATA_SIZE];
+        rng.fill_bytes(&mut data);
+        let mut reader = Cursor::new(data);
+        let chunker = chunker(&mut reader, 0);
+        let chunks: Vec<_> = chunker
+            .map(|chunk| {
+                let chunk = chunk.unwrap();
+                (chunk.len(), hash(&chunk))
+            })
+            .collect();
+
+        assert_ron_snapshot!(chunks);
+    }
 
     #[test]
     fn chunk_empty() {
         let empty: Vec<u8> = vec![];
         let mut reader = Cursor::new(empty);
-
-        let poly = random_poly().unwrap();
-        let rabin = Rabin64::new_with_polynom(6, &poly);
-        let chunker = ChunkIter::new(&mut reader, 0, rabin);
+        let chunker = chunker(&mut reader, 0);
 
         assert_eq!(0, chunker.into_iter().count());
     }
@@ -340,10 +377,7 @@ mod tests {
     fn chunk_empty_wrong_hint() {
         let empty: Vec<u8> = vec![];
         let mut reader = Cursor::new(empty);
-
-        let poly = random_poly().unwrap();
-        let rabin = Rabin64::new_with_polynom(6, &poly);
-        let chunker = ChunkIter::new(&mut reader, 100, rabin);
+        let chunker = chunker(&mut reader, 100);
 
         assert_eq!(0, chunker.into_iter().count());
     }
@@ -351,10 +385,7 @@ mod tests {
     #[test]
     fn chunk_zeros() {
         let mut reader = repeat(0u8);
-
-        let poly = random_poly().unwrap();
-        let rabin = Rabin64::new_with_polynom(6, &poly);
-        let mut chunker = ChunkIter::new(&mut reader, usize::MAX, rabin);
+        let mut chunker = chunker(&mut reader, usize::MAX);
 
         let chunk = chunker.next().unwrap().unwrap();
         assert_eq!(constants::MIN_SIZE, chunk.len());

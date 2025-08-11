@@ -20,7 +20,14 @@ impl<R: Read + Send> ChunkIter<R> {
     ) -> RusticResult<Self> {
         let poly = config.poly()?;
         let rabin = Rabin64::new_with_polynom(6, &poly);
-        let iter = Self::Rabin(Box::new(RabinChunkIter::new(reader, size_hint, rabin)));
+        let iter = Self::Rabin(Box::new(RabinChunkIter::new(
+            rabin,
+            config.chunk_size(),
+            config.chunk_min_size(),
+            config.chunk_max_size(),
+            reader,
+            size_hint,
+        )?));
         Ok(iter)
     }
 }
