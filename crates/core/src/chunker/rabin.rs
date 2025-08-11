@@ -22,6 +22,33 @@ pub(super) mod constants {
     pub(super) const RAND_POLY_MAX_TRIES: i32 = 1_000_000;
 }
 
+pub(crate) fn check_rabin_params(
+    chunk_size: usize,
+    chunk_min_size: usize,
+    chunk_max_size: usize,
+) -> RusticResult<()> {
+    if (chunk_size & (chunk_size - 1)) != 0 {
+        return Err(RusticError::new(
+            ErrorKind::Unsupported,
+            "Chunk size must be a power of 2 for the rabin chunker. chunk size = {chunk_size}.",
+        )
+        .attach_context("chunk_size", chunk_size.to_string()));
+    }
+    if chunk_min_size > chunk_size {
+        return Err(RusticError::new(
+            ErrorKind::Unsupported,
+            "Chunk min size must be smaller or equal than the chunk size.",
+        ));
+    }
+    if chunk_max_size < chunk_size {
+        return Err(RusticError::new(
+            ErrorKind::Unsupported,
+            "Chunk max size must be larger or equal than the chunk size.",
+        ));
+    }
+    Ok(())
+}
+
 /// Default predicate for chunking.
 #[inline]
 const fn default_predicate(x: u64) -> bool {

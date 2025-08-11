@@ -58,7 +58,7 @@ pub use {
         },
         blob::{ALL_BLOB_TYPES, BlobType, tree::Tree},
     },
-    configfile::ConfigFile,
+    configfile::{Chunker, ConfigFile},
     indexfile::{IndexBlob, IndexFile, IndexId, IndexPack},
     keyfile::{KeyFile, KeyId},
     packfile::{HeaderEntry, PackHeader, PackHeaderLength, PackHeaderRef, PackId},
