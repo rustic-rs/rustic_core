@@ -23,7 +23,7 @@ use serde_derive::{Deserialize, Serialize};
 
 use crate::{
     backend::node::{Metadata, Node, NodeType},
-    error::{ErrorKind, RusticError, RusticResult},
+    error::RusticResult,
     id::Id,
 };
 
@@ -204,43 +204,7 @@ pub trait FindInBackend: ReadBackend {
     ///
     /// This function is used to find the id of a snapshot.
     fn find_starts_with<T: AsRef<str>>(&self, tpe: FileType, vec: &[T]) -> RusticResult<Vec<Id>> {
-        #[derive(Clone, Copy, PartialEq, Eq)]
-        enum MapResult<T> {
-            None,
-            Some(T),
-            NonUnique,
-        }
-        let mut results = vec![MapResult::None; vec.len()];
-        for id in self.list(tpe)? {
-            let id_hex = id.to_hex();
-            for (i, v) in vec.iter().enumerate() {
-                if id_hex.starts_with(v.as_ref()) {
-                    if results[i] == MapResult::None {
-                        results[i] = MapResult::Some(id);
-                    } else {
-                        results[i] = MapResult::NonUnique;
-                    }
-                }
-            }
-        }
-
-        results
-            .into_iter()
-            .enumerate()
-            .map(|(i, id)| match id {
-                MapResult::Some(id) => Ok(id),
-                MapResult::None => Err(RusticError::new(
-                    ErrorKind::Backend,
-                    "No suitable id found for `{id}`.",
-                )
-                .attach_context("id", vec[i].as_ref().to_string())),
-                MapResult::NonUnique => Err(RusticError::new(
-                    ErrorKind::Backend,
-                    "Id not unique: `{id}`.",
-                )
-                .attach_context("id", vec[i].as_ref().to_string())),
-            })
-            .collect()
+        Id::find_starts_with_from_iter(vec, self.list(tpe)?)
     }
 
     /// Finds the id of the file starting with the given string.

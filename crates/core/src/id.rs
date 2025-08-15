@@ -196,6 +196,29 @@ impl Id {
     pub fn as_u32(&self) -> u32 {
         u32::from_le_bytes([self.0[0], self.0[1], self.0[2], self.0[3]])
     }
+
+    /// Finds the [`Id`]s starting with the given strings from an iterator over [`Id`]s.
+    /// # Type Parameters
+    ///
+    /// * `T` - The type of the strings.
+    /// * `I` - The iterator used to produce [`Id`]s.
+    ///
+    /// # Arguments
+    ///
+    /// * `vec` - The strings to search for.
+    ///
+    /// # Errors
+    ///
+    /// * If no id could be found for any request.
+    /// * If the id is not unique for any request.
+    pub fn find_starts_with_from_iter<T: AsRef<str>, I: IntoIterator<Item = Self>>(
+        vec: &[T],
+        iter: I,
+    ) -> RusticResult<Vec<Self>> {
+        iter.into_iter()
+            .find_unique_multiple(|id: &Self, v: &T| id.to_hex().starts_with(v.as_ref()), vec)
+            .assert_found(vec)
+    }
 }
 
 impl fmt::Debug for Id {
@@ -238,3 +261,70 @@ impl AsRef<Path> for HexId {
         self.as_str().as_ref()
     }
 }
+
+/// Possible results when searching for a criterion in an iterator
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FindResult<T> {
+    NotFound,
+    Found(T),
+    NonUnique,
+}
+
+#[derive(Debug)]
+/// results when searching for multiple criterion in an iterator
+pub struct FindUniqueResults<T>(Vec<FindResult<T>>);
+
+impl<T: Clone> FindUniqueResults<T> {
+    pub fn new<S>(vec: &[S]) -> Self {
+        Self(vec![FindResult::NotFound; vec.len()])
+    }
+    pub fn add_item<S, F: FnMut(&T, &S) -> bool>(&mut self, item: T, mut cmp: F, with: &[S]) {
+        for (i, v) in with.iter().enumerate() {
+            if cmp(&item, v) {
+                if matches!(self.0[i], FindResult::NotFound) {
+                    self.0[i] = FindResult::Found(item.clone());
+                } else {
+                    self.0[i] = FindResult::NonUnique;
+                }
+            }
+        }
+    }
+    pub fn assert_found<S: AsRef<str>>(self, vec: &[S]) -> RusticResult<Vec<T>> {
+        self.0
+            .into_iter()
+            .enumerate()
+            .map(|(i, id)| match id {
+                FindResult::Found(id) => Ok(id),
+                FindResult::NotFound => Err(RusticError::new(
+                    ErrorKind::Backend,
+                    "No suitable id found for `{id}`.",
+                )
+                .attach_context("id", vec[i].as_ref().to_string())),
+                FindResult::NonUnique => Err(RusticError::new(
+                    ErrorKind::Backend,
+                    "Id not unique: `{id}`.",
+                )
+                .attach_context("id", vec[i].as_ref().to_string())),
+            })
+            .collect()
+    }
+}
+
+pub trait FindUniqeMultiple: Iterator + Sized
+where
+    Self::Item: Clone,
+{
+    fn find_unique_multiple<T, F: FnMut(&Self::Item, &T) -> bool>(
+        self,
+        mut cmp: F,
+        with: &[T],
+    ) -> FindUniqueResults<Self::Item> {
+        let mut results = FindUniqueResults::new(with);
+        for item in self {
+            results.add_item(item, &mut cmp, with);
+        }
+        results
+    }
+}
+
+impl<I: Iterator> FindUniqeMultiple for I where I::Item: Clone {}
