@@ -91,7 +91,7 @@ pub struct SnapshotOptions {
     #[cfg_attr(feature = "merge", merge(strategy = conflate::option::overwrite_none))]
     pub description_from: Option<PathBuf>,
 
-    /// Set the backup time manually (e.g. "2021-01-01 11:15:23+0000")
+    /// Set the backup time manually (e.g. "2021-01-21 14:15:23+0000")
     #[cfg_attr(feature = "clap", clap(long))]
     #[cfg_attr(feature = "merge", merge(strategy = conflate::option::overwrite_none))]
     pub time: Option<DateTime<Local>>,
