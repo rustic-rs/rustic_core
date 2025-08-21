@@ -1,7 +1,5 @@
 use std::io::Read;
 
-use rustic_cdc::Rabin64;
-
 use crate::{
     archiver::{
         parent::{ItemWithParent, ParentResult},
@@ -36,7 +34,7 @@ use crate::{
 pub(crate) struct FileArchiver<'a, BE: DecryptWriteBackend, I: ReadGlobalIndex> {
     index: &'a I,
     data_packer: Packer<BE>,
-    rabin: Rabin64,
+    config: ConfigFile,
 }
 
 impl<'a, BE: DecryptWriteBackend, I: ReadGlobalIndex> FileArchiver<'a, BE, I> {
@@ -64,8 +62,6 @@ impl<'a, BE: DecryptWriteBackend, I: ReadGlobalIndex> FileArchiver<'a, BE, I> {
         indexer: SharedIndexer<BE>,
         config: &ConfigFile,
     ) -> RusticResult<Self> {
-        let poly = config.poly()?;
-
         let data_packer = Packer::new(
             be,
             BlobType::Data,
@@ -74,12 +70,10 @@ impl<'a, BE: DecryptWriteBackend, I: ReadGlobalIndex> FileArchiver<'a, BE, I> {
             index.total_size(BlobType::Data),
         )?;
 
-        let rabin = Rabin64::new_with_polynom(6, &poly);
-
         Ok(Self {
             index,
             data_packer,
-            rabin,
+            config: config.clone(),
         })
     }
 
@@ -151,11 +145,11 @@ impl<'a, BE: DecryptWriteBackend, I: ReadGlobalIndex> FileArchiver<'a, BE, I> {
         node: Node,
         p: &impl Progress,
     ) -> RusticResult<(Node, u64)> {
-        let chunks: Vec<_> = ChunkIter::new(
+        let chunks: Vec<_> = ChunkIter::from_config(
+            &self.config,
             r,
             usize::try_from(node.meta.size).unwrap_or(usize::MAX),
-            self.rabin.clone(),
-        )
+        )?
         .map(|chunk| {
             let chunk = chunk?;
             let id = hash(&chunk);
