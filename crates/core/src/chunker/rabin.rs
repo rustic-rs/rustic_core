@@ -1,0 +1,393 @@
+use std::io::{self, Read};
+
+use rand::{Rng, rng};
+use rustic_cdc::{Polynom, Polynom64, Rabin64, RollingHash64};
+
+use crate::error::{ErrorKind, RusticError, RusticResult};
+
+pub(super) mod constants {
+    /// The Splitmask is used to determine if a chunk is a chunk boundary.
+    pub(super) const SIZE: usize = 1 << 20;
+    /// The size of a kilobyte.
+    pub(super) const KB: usize = 1024;
+    /// The size of a megabyte.
+    pub(super) const MB: usize = 1024 * KB;
+    /// The minimum size of a chunk.
+    pub(super) const MIN_SIZE: usize = 512 * KB;
+    /// The maximum size of a chunk.
+    pub(super) const MAX_SIZE: usize = 8 * MB;
+    /// Buffer size used for reading - TODO: Find out optimal size for best performance!
+    pub(super) const BUF_SIZE: usize = 4 * KB;
+    /// Random polynomial maximum tries.
+    pub(super) const RAND_POLY_MAX_TRIES: i32 = 1_000_000;
+}
+
+pub(crate) fn check_rabin_params(
+    chunk_size: usize,
+    chunk_min_size: usize,
+    chunk_max_size: usize,
+) -> RusticResult<()> {
+    if (chunk_size & (chunk_size - 1)) != 0 {
+        return Err(RusticError::new(
+            ErrorKind::Unsupported,
+            "Chunk size must be a power of 2 for the rabin chunker. chunk size = {chunk_size}.",
+        )
+        .attach_context("chunk_size", chunk_size.to_string()));
+    }
+    if chunk_min_size > chunk_size {
+        return Err(RusticError::new(
+            ErrorKind::Unsupported,
+            "Chunk min size must be smaller or equal than the chunk size.",
+        ));
+    }
+    if chunk_max_size < chunk_size {
+        return Err(RusticError::new(
+            ErrorKind::Unsupported,
+            "Chunk max size must be larger or equal than the chunk size.",
+        ));
+    }
+    Ok(())
+}
+
+/// `ChunkIter` is an iterator that chunks data.
+pub(crate) struct ChunkIter<R: Read + Send> {
+    /// The buffer used for reading.
+    buf: Vec<u8>,
+
+    /// The position in the buffer.
+    pos: usize,
+
+    /// The reader.
+    reader: R,
+
+    /// The split mask used to determine if a chunk is a chunk boundary.
+    split_mask: u64,
+
+    /// The rolling hash.
+    rabin: Rabin64,
+
+    /// The size hint is used to optimize memory allocation; this should be an upper bound on the size.
+    size_hint: usize,
+
+    /// The minimum size of a chunk.
+    min_size: usize,
+
+    /// The maximum size of a chunk.
+    max_size: usize,
+
+    /// If the iterator is finished.
+    finished: bool,
+}
+
+impl<R: Read + Send> ChunkIter<R> {
+    /// Creates a new `ChunkIter`.
+    ///
+    /// # Arguments
+    ///
+    /// * `reader` - The reader to read from.
+    /// * `size_hint` - The size hint is used to optimize memory allocation; this should be an upper bound on the size.
+    /// * `rabin` - The rolling hash.
+    pub(crate) fn new(
+        rabin: Rabin64,
+        chunk_size: usize,
+        chunk_min_size: usize,
+        chunk_max_size: usize,
+        reader: R,
+        size_hint: usize,
+    ) -> RusticResult<Self> {
+        check_rabin_params(chunk_size, chunk_min_size, chunk_max_size)?;
+        let chunk_size: u64 = chunk_size.try_into().unwrap();
+        let split_mask: u64 = chunk_size - 1;
+        Ok(Self {
+            buf: vec![0; constants::BUF_SIZE],
+            pos: constants::BUF_SIZE,
+            reader,
+            split_mask,
+            rabin,
+            size_hint, // size hint is used to optimize memory allocation; this should be an upper bound on the size
+            min_size: chunk_min_size,
+            max_size: chunk_max_size,
+            finished: false,
+        })
+    }
+}
+
+impl<R: Read + Send> Iterator for ChunkIter<R> {
+    type Item = RusticResult<Vec<u8>>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.finished {
+            return None;
+        }
+
+        let mut min_size = self.min_size;
+        let mut vec = Vec::with_capacity(self.size_hint.min(min_size));
+
+        // check if some bytes exist in the buffer and if yes, use them
+        let open_buf_len = self.buf.len() - self.pos;
+        if open_buf_len > 0 {
+            vec.resize(open_buf_len, 0);
+            vec.copy_from_slice(&self.buf[self.pos..]);
+            self.pos = self.buf.len();
+            min_size -= open_buf_len;
+        }
+
+        let size = match (&mut self.reader)
+            .take(min_size as u64)
+            .read_to_end(&mut vec)
+        {
+            Ok(size) => size,
+            Err(err) => {
+                return Some(Err(RusticError::with_source(
+                    ErrorKind::InputOutput,
+                    "Failed to read from reader in iterator",
+                    err,
+                )));
+            }
+        };
+
+        // If self.min_size is not reached, we are done.
+        // Note that the read data is of size size + open_buf_len and self.min_size = minsize + open_buf_len
+        if size < min_size {
+            self.finished = true;
+            vec.truncate(size + open_buf_len);
+            return if vec.is_empty() { None } else { Some(Ok(vec)) };
+        }
+
+        _ = self
+            .rabin
+            .reset_and_prefill_window(&mut vec[vec.len() - 64..vec.len()].iter().copied());
+
+        loop {
+            if vec.len() >= self.max_size {
+                break;
+            }
+
+            if (self.rabin.hash & self.split_mask) == 0 {
+                break;
+            }
+
+            if self.buf.len() == self.pos {
+                match self.reader.read(&mut self.buf[..]) {
+                    Ok(0) => {
+                        self.finished = true;
+                        break;
+                    }
+                    Ok(size) => {
+                        self.pos = 0;
+                        self.buf.truncate(size);
+                    }
+
+                    Err(ref e) if e.kind() == io::ErrorKind::Interrupted => continue,
+                    Err(err) => {
+                        return Some(Err(RusticError::with_source(
+                            ErrorKind::InputOutput,
+                            "Failed to read from reader in iterator",
+                            err,
+                        )));
+                    }
+                }
+            }
+
+            let byte = self.buf[self.pos];
+            vec.push(byte);
+            self.pos += 1;
+            self.rabin.slide(byte);
+        }
+        self.size_hint = self.size_hint.saturating_sub(vec.len()); // size_hint can be too small!
+        Some(Ok(vec))
+    }
+}
+
+/// [`random_poly`] returns an random irreducible polynomial of degree 53
+/// (largest prime number below 64-8)
+/// There are (2^53-2/53) irreducible polynomials of degree 53 in
+/// `F_2[X]`, c.f. Michael O. Rabin (1981): "Fingerprinting by Random
+/// Polynomials", page 4.
+///
+/// # Errors
+///
+/// * If no polynomial could be found in one million tries.
+pub fn random_poly() -> RusticResult<u64> {
+    for _ in 0..constants::RAND_POLY_MAX_TRIES {
+        let mut poly: u64 = rng().random();
+
+        // mask away bits above bit 53
+        poly &= (1 << 54) - 1;
+
+        // set highest and lowest bit so that the degree is 53 and the
+        // polynomial is not trivially reducible
+        poly |= (1 << 53) | 1;
+
+        if poly.irreducible() {
+            return Ok(poly);
+        }
+    }
+
+    Err(RusticError::new(
+        ErrorKind::Internal,
+        "No suitable polynomial found, this should essentially never happen. Please try again.",
+    )
+    .ask_report())
+}
+
+/// A trait for extending polynomials.
+pub(crate) trait PolynomExtend {
+    /// Returns true IFF x is irreducible over `F_2`.
+    fn irreducible(&self) -> bool;
+
+    /// Returns the degree of the polynomial.
+    fn gcd(self, other: Self) -> Self;
+
+    /// Adds two polynomials.
+    fn add(self, other: Self) -> Self;
+
+    /// Multiplies two polynomials modulo another polynomial.
+    fn mulmod(self, other: Self, modulo: Self) -> Self;
+}
+
+// implementation goes along the lines of
+// https://github.com/restic/chunker/blob/master/polynomials.go
+impl PolynomExtend for Polynom64 {
+    // Irreducible returns true IFF x is irreducible over F_2. This function
+    // uses Ben Or's reducibility test.
+    //
+    // For details see "Tests and Constructions of Irreducible Polynomials over
+    // Finite Fields".
+    fn irreducible(&self) -> bool {
+        for i in 1..=self.degree() / 2 {
+            if self.gcd(qp(i, *self)) != 1 {
+                return false;
+            }
+        }
+        true
+    }
+
+    fn gcd(self, other: Self) -> Self {
+        if other == 0 {
+            return self;
+        }
+
+        if self == 0 {
+            return other;
+        }
+
+        if self.degree() < other.degree() {
+            self.gcd(other.modulo(&self))
+        } else {
+            other.gcd(self.modulo(&other))
+        }
+    }
+
+    fn add(self, other: Self) -> Self {
+        self ^ other
+    }
+
+    fn mulmod(self, other: Self, modulo: Self) -> Self {
+        if self == 0 || other == 0 {
+            return 0;
+        }
+
+        let mut res: Self = 0;
+        let mut a = self;
+        let mut b = other;
+
+        if b & 1 > 0 {
+            res = res.add(a).modulo(&modulo);
+        }
+
+        while b != 0 {
+            a = (a << 1).modulo(&modulo);
+            b >>= 1;
+            if b & 1 > 0 {
+                res = res.add(a).modulo(&modulo);
+            }
+        }
+
+        res
+    }
+}
+
+// qp computes the polynomial (x^(2^p)-x) mod g. This is needed for the
+// reducibility test.
+fn qp(p: i32, g: Polynom64) -> Polynom64 {
+    // start with x
+    let mut res: Polynom64 = 2;
+
+    for _ in 0..p {
+        // repeatedly square res
+        res = res.mulmod(res, g);
+    }
+
+    // add x
+    res.add(2).modulo(&g)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::crypto::hasher::hash;
+    use insta::assert_ron_snapshot;
+    use rand::prelude::*;
+    use std::io::{Cursor, repeat};
+
+    fn chunker<R: Read + Send>(reader: R, size_hint: usize) -> ChunkIter<R> {
+        let poly = 0x003D_A335_8B4D_C173;
+        let rabin = Rabin64::new_with_polynom(6, &poly);
+        ChunkIter::new(
+            rabin,
+            constants::SIZE,
+            constants::MIN_SIZE,
+            constants::MAX_SIZE,
+            reader,
+            size_hint,
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn chunk_random() {
+        const RANDOM_DATA_SIZE: usize = 32 * 1024 * 1024;
+        const SEED: u64 = 23;
+        let mut rng = StdRng::seed_from_u64(SEED);
+        let mut data = vec![0u8; RANDOM_DATA_SIZE];
+        rng.fill_bytes(&mut data);
+        let mut reader = Cursor::new(data);
+        let chunker = chunker(&mut reader, 0);
+        let chunks: Vec<_> = chunker
+            .map(|chunk| {
+                let chunk = chunk.unwrap();
+                (chunk.len(), hash(&chunk))
+            })
+            .collect();
+
+        assert_ron_snapshot!(chunks);
+    }
+
+    #[test]
+    fn chunk_empty() {
+        let empty: Vec<u8> = vec![];
+        let mut reader = Cursor::new(empty);
+        let chunker = chunker(&mut reader, 0);
+
+        assert_eq!(0, chunker.into_iter().count());
+    }
+
+    #[test]
+    fn chunk_empty_wrong_hint() {
+        let empty: Vec<u8> = vec![];
+        let mut reader = Cursor::new(empty);
+        let chunker = chunker(&mut reader, 100);
+
+        assert_eq!(0, chunker.into_iter().count());
+    }
+
+    #[test]
+    fn chunk_zeros() {
+        let mut reader = repeat(0u8);
+        let mut chunker = chunker(&mut reader, usize::MAX);
+
+        let chunk = chunker.next().unwrap().unwrap();
+        assert_eq!(constants::MIN_SIZE, chunk.len());
+    }
+}

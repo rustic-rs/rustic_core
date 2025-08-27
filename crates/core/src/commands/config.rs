@@ -4,9 +4,10 @@ use derive_setters::Setters;
 
 use crate::{
     backend::decrypt::{DecryptBackend, DecryptWriteBackend},
+    chunker::rabin::check_rabin_params,
     crypto::CryptoKey,
     error::{ErrorKind, RusticError, RusticResult},
-    repofile::ConfigFile,
+    repofile::{ConfigFile, configfile::Chunker},
     repository::{Open, Repository},
 };
 
@@ -100,14 +101,34 @@ pub(crate) fn save_config<P, S>(
 #[non_exhaustive]
 /// Options for the `config` command, used to set repository-wide options
 pub struct ConfigOptions {
+    /// Set repository version. Allowed versions: 1,2
+    #[cfg_attr(feature = "clap", clap(long, value_name = "VERSION"))]
+    pub set_version: Option<u32>,
+
+    /// Set chunker to use. Allowed chunkers: ``rabin``, ``fixed_size``.
+    /// Defaults to ``rabin`` if not set.
+    #[cfg_attr(feature = "clap", clap(long, value_name = "CHUNKER"))]
+    pub set_chunker: Option<Chunker>,
+
+    /// Set the chunk size. For the rabin chunker this is the average chunk size.
+    /// Defaults to `1 MiB` if not set.
+    #[cfg_attr(feature = "clap", clap(long, value_name = "SIZE"))]
+    pub set_chunk_size: Option<ByteSize>,
+
+    /// Set the minimum chunk size. Only used for the rabin chunker.
+    /// Defaults to `512 kiB` if not set.
+    #[cfg_attr(feature = "clap", clap(long, value_name = "SIZE"))]
+    pub set_chunk_min_size: Option<ByteSize>,
+
+    /// Set the maximum chunk size. Only used for the rabin chunker.
+    /// Defaults to `8 MiB` if not set.
+    #[cfg_attr(feature = "clap", clap(long, value_name = "SIZE"))]
+    pub set_chunk_max_size: Option<ByteSize>,
+
     /// Set compression level. Allowed levels are 1 to 22 and -1 to -7, see <https://facebook.github.io/zstd/>.
     /// Note that 0 equals to no compression
     #[cfg_attr(feature = "clap", clap(long, value_name = "LEVEL"))]
     pub set_compression: Option<i32>,
-
-    /// Set repository version. Allowed versions: 1,2
-    #[cfg_attr(feature = "clap", clap(long, value_name = "VERSION"))]
-    pub set_version: Option<u32>,
 
     /// Set append-only mode.
     /// Note that only append-only commands work once this is set. `forget`, `prune` or `config` won't work any longer.
@@ -185,6 +206,7 @@ impl ConfigOptions {
     /// * If the size is too large
     /// * If the min packsize tolerate percent is wrong
     /// * If the max packsize tolerate percent is wrong
+    #[allow(clippy::too_many_lines)]
     pub fn apply(&self, config: &mut ConfigFile) -> RusticResult<()> {
         if let Some(version) = self.set_version {
             // only allow versions 1 and 2
@@ -207,6 +229,43 @@ impl ConfigOptions {
             }
 
             config.version = version;
+        }
+
+        if let Some(chunker) = self.set_chunker {
+            config.chunker = Some(chunker);
+        }
+
+        if let Some(size) = self.set_chunk_size {
+            let chunk_size: usize = size
+                .as_u64()
+                .try_into()
+                .map_err(|err| construct_size_too_large_error(err, size))?;
+            config.chunk_size = Some(chunk_size);
+        }
+
+        if let Some(size) = self.set_chunk_min_size {
+            let chunk_min_size = size
+                .as_u64()
+                .try_into()
+                .map_err(|err| construct_size_too_large_error(err, size))?;
+            config.chunk_min_size = Some(chunk_min_size);
+        }
+
+        if let Some(size) = self.set_chunk_max_size {
+            let chunk_max_size = size
+                .as_u64()
+                .try_into()
+                .map_err(|err| construct_size_too_large_error(err, size))?;
+            config.chunk_max_size = Some(chunk_max_size);
+        }
+
+        // validate chunker parameters
+        if matches!(config.chunker(), Chunker::Rabin) {
+            check_rabin_params(
+                config.chunk_size(),
+                config.chunk_min_size(),
+                config.chunk_max_size(),
+            )?;
         }
 
         if let Some(compression) = self.set_compression {
