@@ -23,13 +23,11 @@ pub(crate) type ItemWithParent<O> = TreeType<(O, ParentResult<()>), ParentResult
 #[derive(Debug)]
 pub struct Parent {
     /// The tree id of the parent tree.
-    tree_id: Option<TreeId>,
+    tree_ids: Vec<TreeId>,
     /// The parent tree.
-    tree: Option<Tree>,
-    /// The current node index.
-    node_idx: usize,
+    trees: Vec<(Tree, usize)>,
     /// The stack of parent trees.
-    stack: Vec<(Option<Tree>, usize)>,
+    stack: Vec<Vec<(Tree, usize)>>,
     /// Ignore ctime when comparing nodes.
     ignore_ctime: bool,
     /// Ignore inode number when comparing nodes.
@@ -90,25 +88,28 @@ impl Parent {
     pub(crate) fn new(
         be: &impl DecryptReadBackend,
         index: &impl ReadGlobalIndex,
-        tree_id: Option<TreeId>,
+        tree_id: impl IntoIterator<Item = TreeId>,
         ignore_ctime: bool,
         ignore_inode: bool,
     ) -> Self {
         // if tree_id is given, try to load tree from backend.
-        let tree = tree_id.and_then(|tree_id| match Tree::from_backend(be, index, tree_id) {
-            Ok(tree) => Some(tree),
-            Err(err) => {
-                warn!(
-                    "ignoring error when loading parent tree {tree_id}: {}",
-                    err.display_log()
-                );
-                None
-            }
-        });
+        let (trees, tree_ids) = tree_id
+            .into_iter()
+            .filter_map(|tree_id| match Tree::from_backend(be, index, tree_id) {
+                Ok(tree) => Some(((tree, 0), tree_id)),
+                Err(err) => {
+                    warn!(
+                        "ignoring error when loading parent tree {tree_id:?}: {}",
+                        err.display_log()
+                    );
+                    None
+                }
+            })
+            .unzip();
+
         Self {
-            tree_id,
-            tree,
-            node_idx: 0,
+            tree_ids,
+            trees,
             stack: Vec::new(),
             ignore_ctime,
             ignore_inode,
@@ -124,27 +125,24 @@ impl Parent {
     /// # Returns
     ///
     /// The parent node with the given name, or `None` if the parent node is not found.
-    fn p_node(&mut self, name: &OsStr) -> Option<&Node> {
-        match &self.tree {
-            None => None,
-            Some(tree) => {
-                let p_nodes = &tree.nodes;
-                loop {
-                    match p_nodes.get(self.node_idx) {
-                        None => break None,
-                        Some(p_node) => match p_node.name().as_os_str().cmp(name) {
-                            Ordering::Less => self.node_idx += 1,
-                            Ordering::Equal => {
-                                break Some(p_node);
-                            }
-                            Ordering::Greater => {
-                                break None;
-                            }
-                        },
-                    }
+    fn p_node(&mut self, name: &OsStr) -> impl Iterator<Item = &Node> {
+        self.trees.iter_mut().filter_map(|(tree, idx)| {
+            let p_nodes = &tree.nodes;
+            loop {
+                match p_nodes.get(*idx) {
+                    None => break None,
+                    Some(p_node) => match p_node.name().as_os_str().cmp(name) {
+                        Ordering::Less => *idx += 1,
+                        Ordering::Equal => {
+                            break Some(p_node);
+                        }
+                        Ordering::Greater => {
+                            break None;
+                        }
+                    },
                 }
             }
-        }
+        })
     }
 
     /// Returns whether the given node is the parent of the given tree.
@@ -166,18 +164,22 @@ impl Parent {
         let ignore_ctime = self.ignore_ctime;
         let ignore_inode = self.ignore_inode;
 
-        self.p_node(name).map_or(ParentResult::NotFound, |p_node| {
-            if p_node.node_type == node.node_type
-                && p_node.meta.size == node.meta.size
-                && p_node.meta.mtime == node.meta.mtime
-                && (ignore_ctime || p_node.meta.ctime == node.meta.ctime)
-                && (ignore_inode || p_node.meta.inode == 0 || p_node.meta.inode == node.meta.inode)
-            {
-                ParentResult::Matched(p_node)
-            } else {
-                ParentResult::NotMatched
-            }
-        })
+        let mut p_node = self.p_node(name).peekable();
+        if p_node.peek().is_none() {
+            return ParentResult::NotFound;
+        }
+
+        p_node
+            .find(|p_node| {
+                p_node.node_type == node.node_type
+                    && p_node.meta.size == node.meta.size
+                    && p_node.meta.mtime == node.meta.mtime
+                    && (ignore_ctime || p_node.meta.ctime == node.meta.ctime)
+                    && (ignore_inode
+                        || p_node.meta.inode == 0
+                        || p_node.meta.inode == node.meta.inode)
+            })
+            .map_or(ParentResult::NotMatched, ParentResult::Matched)
     }
 
     // TODO: add documentation!
@@ -196,27 +198,29 @@ impl Parent {
         index: &impl ReadGlobalIndex,
         name: &OsStr,
     ) {
-        let tree = self.p_node(name).and_then(|p_node| {
-            p_node.subtree.map_or_else(
-                || {
-                    warn!("ignoring parent node {}: is no tree!", p_node.name);
-                    None
-                },
-                |tree_id| match Tree::from_backend(be, index, tree_id) {
-                    Ok(tree) => Some(tree),
-                    Err(err) => {
-                        warn!(
-                            "ignoring error when loading parent tree {tree_id}: {}",
-                            err.display_log()
-                        );
+        let mut tree = self
+            .p_node(name)
+            .filter_map(|p_node| {
+                p_node.subtree.map_or_else(
+                    || {
+                        warn!("ignoring parent node {}: is no tree!", p_node.name);
                         None
-                    }
-                },
-            )
-        });
-        self.stack.push((self.tree.take(), self.node_idx));
-        self.tree = tree;
-        self.node_idx = 0;
+                    },
+                    |tree_id| match Tree::from_backend(be, index, tree_id) {
+                        Ok(tree) => Some((tree, 0)),
+                        Err(err) => {
+                            warn!(
+                                "ignoring error when loading parent tree {tree_id}: {}",
+                                err.display_log()
+                            );
+                            None
+                        }
+                    },
+                )
+            })
+            .collect();
+        std::mem::swap(&mut self.trees, &mut tree);
+        self.stack.push(tree);
     }
 
     // TODO: add documentation!
@@ -225,17 +229,15 @@ impl Parent {
     ///
     /// * If the tree stack is empty.
     fn finish_dir(&mut self) -> Result<(), TreeStackEmptyError> {
-        let (tree, node_idx) = self.stack.pop().ok_or(TreeStackEmptyError)?;
-
-        self.tree = tree;
-        self.node_idx = node_idx;
+        let tree = self.stack.pop().ok_or(TreeStackEmptyError)?;
+        self.trees = tree;
 
         Ok(())
     }
 
     // TODO: add documentation!
     pub(crate) fn tree_id(&self) -> Option<TreeId> {
-        self.tree_id
+        self.tree_ids.first().cloned()
     }
 
     // TODO: add documentation!
