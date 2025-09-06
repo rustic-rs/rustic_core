@@ -1,5 +1,6 @@
 //! `backup` subcommand
 use derive_setters::Setters;
+use itertools::Itertools;
 use log::info;
 
 use std::path::PathBuf;
@@ -51,8 +52,8 @@ pub struct ParentOptions {
         feature = "clap",
         clap(long, value_name = "SNAPSHOT", conflicts_with = "force",)
     )]
-    #[cfg_attr(feature = "merge", merge(strategy = conflate::option::overwrite_none))]
-    pub parent: Option<String>,
+    #[cfg_attr(feature = "merge", merge(strategy = conflate::vec::append))]
+    pub parent: Vec<String>,
 
     /// Skip writing of snapshot if nothing changed w.r.t. the parent snapshot.
     #[cfg_attr(feature = "clap", clap(long))]
@@ -97,30 +98,38 @@ impl ParentOptions {
         repo: &Repository<P, S>,
         snap: &SnapshotFile,
         backup_stdin: bool,
-    ) -> (Option<SnapshotId>, Parent) {
-        let parent = match (backup_stdin, self.force, &self.parent) {
-            (true, _, _) | (false, true, _) => None,
-            (false, false, None) => {
-                // get suitable snapshot group from snapshot and opts.group_by. This is used to filter snapshots for the parent detection
-                let group = SnapshotGroup::from_snapshot(snap, self.group_by.unwrap_or_default());
-                SnapshotFile::latest(
-                    repo.dbe(),
-                    |snap| snap.has_group(&group),
-                    &repo.pb.progress_counter(""),
-                )
-                .ok()
-            }
-            (false, false, Some(parent)) => SnapshotFile::from_id(repo.dbe(), parent).ok(),
+    ) -> (Vec<SnapshotId>, Parent) {
+        let parent = if backup_stdin || self.force {
+            Vec::new()
+        } else if self.parent.is_empty() {
+            // get suitable snapshot group from snapshot and opts.group_by. This is used to filter snapshots for the parent detection
+            let group = SnapshotGroup::from_snapshot(snap, self.group_by.unwrap_or_default());
+            SnapshotFile::latest(
+                repo.dbe(),
+                |snap| snap.has_group(&group),
+                &repo.pb.progress_counter(""),
+            )
+            .ok()
+            .into_iter()
+            .collect()
+        } else {
+            self.parent
+                .iter()
+                .filter_map(|parent| SnapshotFile::from_id(repo.dbe(), parent).ok())
+                .collect()
         };
 
-        let (parent_tree, parent_id) = parent.map(|parent| (parent.tree, parent.id)).unzip();
+        let (parent_trees, parent_ids): (Vec<_>, _) = parent
+            .into_iter()
+            .map(|parent| (parent.tree, parent.id))
+            .unzip();
 
         (
-            parent_id,
+            parent_ids,
             Parent::new(
                 repo.dbe(),
                 repo.index(),
-                parent_tree,
+                parent_trees,
                 self.ignore_ctime,
                 self.ignore_inode,
             ),
@@ -238,44 +247,33 @@ pub(crate) fn backup<P: ProgressBars, S: IndexedIds>(
         })
         .transpose()?;
 
-    match &as_path {
-        Some(p) => snap
-            .paths
-            .set_paths(std::slice::from_ref(p))
-            .map_err(|err| {
-                RusticError::with_source(
-                    ErrorKind::Internal,
-                    "Failed to set paths `{paths}` in snapshot.",
-                    err,
-                )
-                .attach_context("paths", p.display().to_string())
-            })?,
-        None => snap.paths.set_paths(&backup_path).map_err(|err| {
-            RusticError::with_source(
-                ErrorKind::Internal,
-                "Failed to set paths `{paths}` in snapshot.",
-                err,
-            )
-            .attach_context(
-                "paths",
-                backup_path
-                    .iter()
-                    .map(|p| p.display().to_string())
-                    .collect::<Vec<_>>()
-                    .join(","),
-            )
-        })?,
-    }
+    let paths = match &as_path {
+        Some(p) => std::slice::from_ref(p),
+        None => &backup_path,
+    };
 
-    let (parent_id, parent) = opts.parent_opts.get_parent(repo, &snap, backup_stdin);
-    match parent_id {
-        Some(id) => {
-            info!("using parent {id}");
-            snap.parent = Some(id);
-        }
-        None => {
-            info!("using no parent");
-        }
+    snap.paths.set_paths(paths).map_err(|err| {
+        RusticError::with_source(
+            ErrorKind::Internal,
+            "Failed to set paths `{paths}` in snapshot.",
+            err,
+        )
+        .attach_context(
+            "paths",
+            backup_path
+                .iter()
+                .map(|p| p.display().to_string())
+                .join(","),
+        )
+    })?;
+
+    let (parent_ids, parent) = opts.parent_opts.get_parent(repo, &snap, backup_stdin);
+    if parent_ids.is_empty() {
+        info!("using no parent");
+    } else {
+        info!("using parents {}", parent_ids.iter().join(", "));
+        snap.parent = Some(parent_ids[0]);
+        snap.parents = parent_ids;
     }
 
     let be = DryRunBackend::new(repo.dbe().clone(), opts.dry_run);

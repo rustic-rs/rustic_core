@@ -107,6 +107,7 @@ fn insta_snapshotfile_redaction() -> Settings {
     });
     settings.add_redaction(".**.time", "[time]");
     settings.add_dynamic_redaction(".**.parent", handle_option);
+    settings.add_redaction(".**.parents", "[parents]");
     settings.add_redaction(".**.id", "[id]");
     settings.add_redaction(".**.original", "[original]");
     settings.add_redaction(".**.hostname", "[hostname]");

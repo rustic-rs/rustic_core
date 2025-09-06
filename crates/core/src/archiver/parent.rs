@@ -198,29 +198,35 @@ impl Parent {
         index: &impl ReadGlobalIndex,
         name: &OsStr,
     ) {
-        let mut tree = self
+        let mut new_ids: Vec<_> = self
             .p_node(name)
             .filter_map(|p_node| {
-                p_node.subtree.map_or_else(
-                    || {
-                        warn!("ignoring parent node {}: is no tree!", p_node.name);
-                        None
-                    },
-                    |tree_id| match Tree::from_backend(be, index, tree_id) {
-                        Ok(tree) => Some((tree, 0)),
-                        Err(err) => {
-                            warn!(
-                                "ignoring error when loading parent tree {tree_id}: {}",
-                                err.display_log()
-                            );
-                            None
-                        }
-                    },
-                )
+                p_node.subtree.or_else(|| {
+                    warn!("ignoring parent node {}: is no tree!", p_node.name);
+                    None
+                })
             })
             .collect();
-        std::mem::swap(&mut self.trees, &mut tree);
-        self.stack.push(tree);
+
+        // remove potentially identical trees
+        new_ids.sort();
+        new_ids.dedup();
+
+        let new_tree = new_ids
+            .into_iter()
+            .filter_map(|tree_id| match Tree::from_backend(be, index, tree_id) {
+                Ok(tree) => Some((tree, 0)),
+                Err(err) => {
+                    warn!(
+                        "ignoring error when loading parent tree {tree_id}: {}",
+                        err.display_log()
+                    );
+                    None
+                }
+            })
+            .collect();
+        let old_tree = std::mem::replace(&mut self.trees, new_tree);
+        self.stack.push(old_tree);
     }
 
     // TODO: add documentation!
@@ -237,7 +243,7 @@ impl Parent {
 
     // TODO: add documentation!
     pub(crate) fn tree_id(&self) -> Option<TreeId> {
-        self.tree_ids.first().cloned()
+        self.tree_ids.first().copied()
     }
 
     // TODO: add documentation!
