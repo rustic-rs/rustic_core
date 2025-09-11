@@ -20,7 +20,7 @@ use nix::errno::Errno;
 use nix::sys::stat::{Mode, SFlag, mknod};
 #[cfg(not(windows))]
 use nix::{
-    fcntl::AtFlags,
+    fcntl::{AT_FDCWD, AtFlags},
     unistd::{Gid, Group, Uid, User, fchownat},
 };
 
@@ -335,7 +335,7 @@ impl LocalDestination {
         // use gid from group if valid, else from saved gid (if saved)
         let gid = group.or_else(|| meta.gid.map(Gid::from_raw));
 
-        fchownat(None, &filename, uid, gid, AtFlags::AT_SYMLINK_NOFOLLOW)
+        fchownat(AT_FDCWD, &filename, uid, gid, AtFlags::AT_SYMLINK_NOFOLLOW)
             .map_err(LocalDestinationErrorKind::FromErrnoError)?;
         Ok(())
     }
@@ -383,7 +383,7 @@ impl LocalDestination {
         let uid = meta.uid.map(Uid::from_raw);
         let gid = meta.gid.map(Gid::from_raw);
 
-        fchownat(None, &filename, uid, gid, AtFlags::AT_SYMLINK_NOFOLLOW)
+        fchownat(AT_FDCWD, &filename, uid, gid, AtFlags::AT_SYMLINK_NOFOLLOW)
             .map_err(LocalDestinationErrorKind::FromErrnoError)?;
         Ok(())
     }
