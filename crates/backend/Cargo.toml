@@ -94,12 +94,12 @@ typed-path = { version = "0.11.0", optional = true }
 # opendal backend
 # - sftp is not supported on windows, see https://github.com/apache/incubator-opendal/issues/2963
 # - ftp is temporarily disabled due to dependency on aws-lc-sys
-opendal = { version = "0.53.3", features = ["services-b2", "services-sftp", "services-swift", "services-azblob", "services-azdls", "services-cos", "services-fs", "services-dropbox", "services-gdrive", "services-gcs", "services-ghac", "services-http", "services-ipmfs", "services-memory", "services-obs", "services-onedrive", "services-oss", "services-s3", "services-webdav", "services-webhdfs", "services-azfile", "layers-blocking", "layers-throttle", "services-yandex-disk"], optional = true }
+opendal = { version = "0.54.0", features = ["services-b2", "services-sftp", "services-swift", "services-azblob", "services-azdls", "services-cos", "services-fs", "services-dropbox", "services-gdrive", "services-gcs", "services-ghac", "services-http", "services-ipmfs", "services-memory", "services-obs", "services-onedrive", "services-oss", "services-s3", "services-webdav", "services-webhdfs", "services-azfile", "layers-throttle", "services-yandex-disk", "blocking"], optional = true }
 
 [target.'cfg(windows)'.dependencies]
 # opendal backend
 # - ftp is temporarily disabled due to dependency on aws-lc-sys
-opendal = { version = "0.53.3", features = ["services-b2", "services-swift", "services-azblob", "services-azdls", "services-cos", "services-fs", "services-dropbox", "services-gdrive", "services-gcs", "services-ghac", "services-http", "services-ipmfs", "services-memory", "services-obs", "services-onedrive", "services-oss", "services-s3", "services-webdav", "services-webhdfs", "services-azfile", "layers-blocking", "layers-throttle", "services-yandex-disk"], optional = true }
+opendal = { version = "0.54.0", features = ["services-b2", "services-swift", "services-azblob", "services-azdls", "services-cos", "services-fs", "services-dropbox", "services-gdrive", "services-gcs", "services-ghac", "services-http", "services-ipmfs", "services-memory", "services-obs", "services-onedrive", "services-oss", "services-s3", "services-webdav", "services-webhdfs", "services-azfile", "layers-throttle", "services-yandex-disk", "blocking"], optional = true }
 
 [dev-dependencies]
 anyhow = { workspace = true }

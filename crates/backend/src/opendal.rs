@@ -5,8 +5,9 @@ use bytes::Bytes;
 use bytesize::ByteSize;
 use log::{error, trace};
 use opendal::{
-    BlockingOperator, Operator, Scheme,
-    layers::{BlockingLayer, ConcurrentLimitLayer, LoggingLayer, RetryLayer, ThrottleLayer},
+    Operator, Scheme, blocking,
+    layers::{ConcurrentLimitLayer, LoggingLayer, RetryLayer, ThrottleLayer},
+    options::{ListOptions, ReadOptions},
 };
 use rayon::prelude::{IntoParallelIterator, ParallelIterator};
 use tokio::runtime::Runtime;
@@ -24,7 +25,7 @@ mod constants {
 /// `OpenDALBackend` contains a wrapper around an blocking operator of the `OpenDAL` library.
 #[derive(Clone, Debug)]
 pub struct OpenDALBackend {
-    operator: BlockingOperator,
+    operator: blocking::Operator,
 }
 
 fn runtime() -> &'static Runtime {
@@ -162,14 +163,12 @@ impl OpenDALBackend {
             operator = operator.layer(ConcurrentLimitLayer::new(connections));
         }
 
+        let operator = operator.layer(LoggingLayer::default());
         let _guard = runtime().enter();
-        let operator = operator
-            .layer(LoggingLayer::default())
-            .layer(BlockingLayer::create().map_err(|err| {
-                RusticError::with_source(ErrorKind::Backend, "Creating BlockingLayer failed.", err)
-                    .ask_report()
-            })?)
-            .blocking();
+        let operator = blocking::Operator::new(operator).map_err(|err| {
+            RusticError::with_source(ErrorKind::Backend, "Creating BlockingLayer failed.", err)
+                .ask_report()
+        })?;
 
         Ok(Self { operator })
     }
@@ -239,11 +238,14 @@ impl ReadBackend for OpenDALBackend {
 
         let path = tpe.dirname().to_string() + "/";
 
+        let options = ListOptions {
+            recursive: true,
+            ..Default::default()
+        };
+
         Ok(self
             .operator
-            .list_with(&path)
-            .recursive(true)
-            .call()
+            .list_options(&path,options)
             .map_err(|err| {
                 RusticError::with_source(
                     ErrorKind::Backend,
@@ -293,11 +295,13 @@ impl ReadBackend for OpenDALBackend {
         }
 
         let path = tpe.dirname().to_string() + "/";
+        let options = ListOptions {
+            recursive: true,
+            ..Default::default()
+        };
         Ok(self
             .operator
-            .list_with(&path)
-            .recursive(true)
-            .call()
+            .list_options(&path,options)
             .map_err(|err|
                 RusticError::with_source(
                     ErrorKind::Backend,
@@ -366,11 +370,14 @@ impl ReadBackend for OpenDALBackend {
         let range = u64::from(offset)..u64::from(offset + length);
         let path = self.path(tpe, id);
 
+        let options = ReadOptions {
+            range: range.into(),
+            ..Default::default()
+        };
+
         Ok(self
             .operator
-            .read_with(&path)
-            .range(range)
-            .call()
+            .read_options(&path,options)
             .map_err(|err|
                 RusticError::with_source(
                     ErrorKind::Backend,
