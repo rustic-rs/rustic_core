@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 ## [unreleased]
 
+## [0.2.3](https://github.com/rustic-rs/rustic_core/compare/rustic_config-v0.2.2...rustic_config-v0.2.3) - 2025-09-12
+
+### Other
+
+- update to 2024 edition and fix clippy lints (#399)
+
 ## [0.2.2](https://github.com/rustic-rs/rustic_core/compare/rustic_config-v0.2.1...rustic_config-v0.2.2) - 2024-10-03
 
 ### Fixed
