@@ -2,6 +2,43 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.0](https://github.com/rustic-rs/rustic_core/compare/rustic_core-v0.7.3...rustic_core-v0.8.0) - 2025-09-12
+
+### Added
+
+- Add fixed size chunking and allow fine-tune of rabin chunking (#422)
+- Add env argument to the run function of command input (#420)
+- Show processed file when chunker gives an error (#421)
+- snapshots can be identified with latest~N (N >= 0) (#416)
+- expose Tree::serialize method
+- *(repository)* add progress_bars method
+- *(repository)* Add find_ids and stream_files_list (#411)
+- *(commands)* Add delete_unchanged option to forget (#386)
+- *(commands)* [**breaking**] rename backup skip_identical_parent to skip_if_unchanged (#387)
+- *(warmup)* [**breaking**] Add warmup wait command (#379)
+
+### Fixed
+
+- Make example for time format even more explicit (#425)
+- Add example for time format (#424)
+- fix clippy lints ([#423](https://github.com/rustic-rs/rustic_core/pull/423))
+- [**breaking**] Allow to unset append-only mode (#414)
+- improve handling of u32 conversions (#412)
+- *(repository)* use KeyId in delete_key() (#410)
+- Fix repair index (#406)
+- Allow to request identical snapshot multiple times (#408)
+- fix clippy lints ([#407](https://github.com/rustic-rs/rustic_core/pull/407))
+- fix clippy lints
+- [**breaking**] Don't panic when reading empty files (#381)
+
+### Other
+
+- update dependencies ([#428](https://github.com/rustic-rs/rustic_core/pull/428))
+- Add SnapshotFile::from_strs() to search for multiple snapshots ([#419](https://github.com/rustic-rs/rustic_core/pull/419))
+- *(repository)* [**breaking**] Add more control over used keys (#383)
+- update to 2024 edition and fix clippy lints (#399)
+- update dependencies and fix clippy lints / remove opendal::ftp support (#405)
+
 ## [0.7.3](https://github.com/rustic-rs/rustic_core/compare/rustic_core-v0.7.2...rustic_core-v0.7.3) - 2024-12-06
 
 ### Fixed

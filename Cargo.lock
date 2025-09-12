@@ -3302,7 +3302,7 @@ dependencies = [
 
 [[package]]
 name = "rustic_backend"
-version = "0.5.2"
+version = "0.5.3"
 dependencies = [
  "aho-corasick",
  "anyhow",
@@ -3343,11 +3343,11 @@ checksum = "fbcebf2228827bc4b61cb54dfd84cf43aacf06ca2dfe4c014b136a0e32b876e2"
 
 [[package]]
 name = "rustic_config"
-version = "0.2.2"
+version = "0.2.3"
 
 [[package]]
 name = "rustic_core"
-version = "0.7.3"
+version = "0.8.0"
 dependencies = [
  "aes256ctr_poly1305aes",
  "anyhow",
@@ -3418,7 +3418,7 @@ dependencies = [
 
 [[package]]
 name = "rustic_testing"
-version = "0.3.2"
+version = "0.3.3"
 dependencies = [
  "aho-corasick",
  "anyhow",
