@@ -1,0 +1,14 @@
+---
+source: crates/core/tests/integration/check.rs
+expression: check_results
+---
+CheckResults(
+    [
+        (
+            Warn,
+            PackNotReferenced {
+                id: f885cf59dbeedc4d53e94116ddeeebf3821ec62eff9b109bcc5f0dc591e276ed,
+            },
+        ),
+    ],
+)

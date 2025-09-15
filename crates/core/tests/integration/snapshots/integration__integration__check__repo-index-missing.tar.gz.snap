@@ -1,0 +1,46 @@
+---
+source: crates/core/tests/integration/check.rs
+expression: check_results
+---
+CheckResults(
+    [
+        (
+            Warn,
+            PackNotReferenced {
+                id: 289ec47250b19bd284bb8d65ed9437607a03c0724883316765064b1be71a44c0,
+            },
+        ),
+        (
+            Warn,
+            PackNotReferenced {
+                id: d44cf31e272ec4dd35a155d55b773aa2a0d599254ca48cb4d618757d38fa3a36,
+            },
+        ),
+        (
+            Error,
+            ErrorCheckingTrees {
+                source: RusticError {
+                    kind: Internal,
+                    guidance: "Tree ID `{tree_id}` not found in index",
+                    docs_url: None,
+                    error_code: None,
+                    ask_report: false,
+                    existing_issue_urls: [],
+                    new_issue_url: None,
+                    context: [
+                        (
+                            "tree_id",
+                            "c5897731",
+                        ),
+                    ],
+                    source: None,
+                    severity: None,
+                    status: None,
+                    backtrace: Some(
+                        <disabled>,
+                    ),
+                },
+            },
+        ),
+    ],
+)
