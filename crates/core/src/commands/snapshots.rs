@@ -1,5 +1,7 @@
 //! `snapshot` subcommand
 
+use itertools::Itertools;
+
 use crate::{
     Progress,
     error::RusticResult,
@@ -41,11 +43,15 @@ pub(crate) fn get_snapshot_group<P: ProgressBars, S: Open>(
     let groups = if ids.is_empty() {
         SnapshotFile::group_from_backend(dbe, filter, group_by, &p)?
     } else {
-        let item = (
-            SnapshotGroup::default(),
-            SnapshotFile::from_strs(dbe, ids, filter, &p)?,
-        );
-        vec![item]
+        let snaps = SnapshotFile::from_strs(dbe, ids, filter, &p)?;
+        let mut result = Vec::new();
+        for (group, snaps) in &snaps
+            .into_iter()
+            .chunk_by(|sn| SnapshotGroup::from_snapshot(sn, group_by))
+        {
+            result.push((group, snaps.collect()));
+        }
+        result
     };
     p.finish();
 
