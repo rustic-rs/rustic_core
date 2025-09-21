@@ -33,7 +33,7 @@ pub(crate) fn get_snapshot_group<P: ProgressBars, S: Open>(
     repo: &Repository<P, S>,
     ids: &[String],
     group_by: SnapshotGroupCriterion,
-    filter: impl FnMut(&SnapshotFile) -> bool,
+    filter: impl FnMut(&SnapshotFile) -> bool + Send + Sync,
 ) -> RusticResult<Vec<(SnapshotGroup, Vec<SnapshotFile>)>> {
     let pb = &repo.pb;
     let dbe = repo.dbe();
@@ -43,7 +43,7 @@ pub(crate) fn get_snapshot_group<P: ProgressBars, S: Open>(
     } else {
         let item = (
             SnapshotGroup::default(),
-            SnapshotFile::from_strs(dbe, ids, |_| true, &p)?,
+            SnapshotFile::from_strs(dbe, ids, filter, &p)?,
         );
         vec![item]
     };

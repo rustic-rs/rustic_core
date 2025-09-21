@@ -938,7 +938,7 @@ impl<P: ProgressBars, S: Open> Repository<P, S> {
         &self,
         ids: &[String],
         group_by: SnapshotGroupCriterion,
-        filter: impl FnMut(&SnapshotFile) -> bool,
+        filter: impl FnMut(&SnapshotFile) -> bool + Send + Sync,
     ) -> RusticResult<Vec<(SnapshotGroup, Vec<SnapshotFile>)>> {
         commands::snapshots::get_snapshot_group(self, ids, group_by, filter)
     }
@@ -1133,7 +1133,7 @@ impl<P: ProgressBars, S: Open> Repository<P, S> {
         &self,
         keep: &KeepOptions,
         group_by: SnapshotGroupCriterion,
-        filter: impl FnMut(&SnapshotFile) -> bool,
+        filter: impl FnMut(&SnapshotFile) -> bool + Send + Sync,
     ) -> RusticResult<ForgetGroups> {
         commands::forget::get_forget_snapshots(self, keep, group_by, filter)
     }
