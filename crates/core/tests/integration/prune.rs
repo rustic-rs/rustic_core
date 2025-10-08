@@ -58,13 +58,13 @@ fn test_prune(
 
     // run check
     let check_opts = CheckOptions::default().read_data(true);
-    repo.check(check_opts)?;
+    repo.check(check_opts)?.is_ok()?;
 
     if !instant_delete {
         // re-run if we only marked pack files. As keep-delete = 0, they should be removed here
         let plan = repo.prune_plan(&prune_opts)?;
         repo.prune(&prune_opts, plan)?;
-        repo.check(check_opts)?;
+        repo.check(check_opts)?.is_ok()?;
     }
 
     Ok(())
