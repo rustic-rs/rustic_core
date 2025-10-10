@@ -47,7 +47,7 @@ fn test_backup_with_tar_gz_passes(
         assert_with_win("backup-tar-summary-first", &first_snapshot);
     });
 
-    assert_eq!(first_snapshot.parent, None);
+    assert!(first_snapshot.get_parents().is_empty());
 
     // tree of first backup
     // re-read index
@@ -74,7 +74,7 @@ fn test_backup_with_tar_gz_passes(
         assert_with_win("backup-tar-summary-second", &second_snapshot);
     });
 
-    assert_eq!(second_snapshot.parent, Some(first_snapshot.id));
+    assert_eq!(second_snapshot.get_parents(), &[first_snapshot.id]);
     assert_eq!(first_snapshot.tree, second_snapshot.tree);
 
     // pack files should be unchanged
@@ -87,13 +87,14 @@ fn test_backup_with_tar_gz_passes(
     let snap = SnapshotOptions::default()
         .tags([StringList::from_str("a,b")?])
         .to_snapshot()?;
-    let opts = opts.parent_opts(ParentOptions::default().parent(second_snapshot.id.to_string()));
+    let opts =
+        opts.parent_opts(ParentOptions::default().parent(vec![second_snapshot.id.to_string()]));
     let third_snapshot = repo.backup(&opts, paths, snap)?;
 
     insta_snapshotfile_redaction.bind(|| {
         assert_with_win("backup-tar-summary-third", &third_snapshot);
     });
-    assert_eq!(third_snapshot.parent, Some(second_snapshot.id));
+    assert_eq!(third_snapshot.get_parents(), &[second_snapshot.id]);
     assert_eq!(third_snapshot.tree, second_snapshot.tree);
 
     // get all snapshots and check them
