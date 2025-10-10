@@ -178,7 +178,8 @@ impl RcloneBackend {
         let user = Alphanumeric.sample_string(&mut rng(), 12);
         let password = Alphanumeric.sample_string(&mut rng(), 12);
 
-        let mut rclone_command = rclone_command.map_or(DEFAULT_COMMAND.to_string(), Clone::clone);
+        let mut rclone_command =
+            rclone_command.map_or_else(|| DEFAULT_COMMAND.to_string(), Clone::clone);
         rclone_command.push(' ');
         rclone_command.push_str(url.as_ref());
         let rclone_command: CommandInput = rclone_command.parse().map_err(

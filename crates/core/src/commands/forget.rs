@@ -81,7 +81,7 @@ pub(crate) fn get_forget_snapshots<P: ProgressBars, S: Open>(
     repo: &Repository<P, S>,
     keep: &KeepOptions,
     group_by: SnapshotGroupCriterion,
-    filter: impl FnMut(&SnapshotFile) -> bool,
+    filter: impl FnMut(&SnapshotFile) -> bool + Send + Sync,
 ) -> RusticResult<ForgetGroups> {
     let now = Local::now();
 

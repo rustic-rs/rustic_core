@@ -173,7 +173,7 @@ pub struct RusticError {
     context: EcoVec<(EcoString, EcoString)>,
 
     /// Chain to the cause of the error.
-    source: Option<Box<(dyn std::error::Error + Send + Sync)>>,
+    source: Option<Box<dyn std::error::Error + Send + Sync>>,
 
     /// Severity of the error.
     severity: Option<Severity>,
@@ -346,7 +346,7 @@ impl RusticError {
     pub fn with_source(
         kind: ErrorKind,
         guidance: impl Into<EcoString>,
-        source: impl Into<Box<(dyn std::error::Error + Send + Sync)>>,
+        source: impl Into<Box<dyn std::error::Error + Send + Sync>>,
     ) -> Box<Self> {
         Self::new(kind, guidance).attach_source(source)
     }
@@ -445,7 +445,7 @@ impl RusticError {
     /// Attach a chain to the cause of the error.
     pub fn attach_source(
         self,
-        value: impl Into<Box<(dyn std::error::Error + Send + Sync)>>,
+        value: impl Into<Box<dyn std::error::Error + Send + Sync>>,
     ) -> Box<Self> {
         Box::new(Self {
             source: Some(value.into()),
