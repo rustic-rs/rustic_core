@@ -31,6 +31,7 @@ mod integration {
     mod ls;
     mod prune;
     mod restore;
+    mod snapshots;
     mod vfs;
     use super::*;
 }
