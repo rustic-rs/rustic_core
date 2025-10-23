@@ -1,26 +1,30 @@
 //! `check` subcommand
 use std::{
-    collections::{BTreeSet, HashMap},
+    collections::{BTreeMap, BTreeSet, HashMap},
     fmt::Debug,
     num::ParseIntError,
+    path::PathBuf,
     str::FromStr,
+    sync::Mutex,
 };
 
 use bytes::Bytes;
 use bytesize::ByteSize;
 use chrono::{Datelike, Local, NaiveDateTime, Timelike};
 use derive_setters::Setters;
+use displaydoc::Display;
 use log::{debug, error, warn};
 use rand::{Rng, prelude::SliceRandom, rng};
 use rayon::prelude::{IntoParallelIterator, ParallelIterator};
+use thiserror::Error;
 use zstd::stream::decode_all;
 
 use crate::{
-    ErrorKind, TreeId,
+    DataId, ErrorKind, RusticError, TreeId,
     backend::{FileType, ReadBackend, cache::Cache, decrypt::DecryptReadBackend, node::NodeType},
     blob::{BlobId, BlobType, tree::TreeStreamerOnce},
     crypto::hasher::hash,
-    error::{RusticError, RusticResult},
+    error::RusticResult,
     id::Id,
     index::{
         GlobalIndex, ReadGlobalIndex,
@@ -236,12 +240,13 @@ pub(crate) fn check_repository<P: ProgressBars, S: Open>(
     repo: &Repository<P, S>,
     opts: CheckOptions,
     trees: Vec<TreeId>,
-) -> RusticResult<()> {
+) -> RusticResult<CheckResults> {
     let be = repo.dbe();
     let cache = &repo.open_status().cache;
     let hot_be = &repo.be_hot;
     let raw_be = repo.dbe();
     let pb = &repo.pb;
+    let collector = CheckResultsCollector::default();
     if !opts.trust_cache {
         if let Some(cache) = &cache {
             for file_type in [FileType::Snapshot, FileType::Index] {
@@ -253,18 +258,18 @@ pub(crate) fn check_repository<P: ProgressBars, S: Open>(
 
                 let p = pb.progress_bytes(format!("checking {file_type:?} in cache..."));
                 // TODO: Make concurrency (20) customizable
-                check_cache_files(20, cache, raw_be, file_type, &p)?;
+                check_cache_files(20, cache, raw_be, file_type, &p, &collector)?;
             }
         }
     }
 
     if let Some(hot_be) = hot_be {
         for file_type in [FileType::Snapshot, FileType::Index] {
-            check_hot_files(raw_be, hot_be, file_type, pb)?;
+            check_hot_files(raw_be, hot_be, file_type, pb, &collector)?;
         }
     }
 
-    let index_collector = check_packs(be, hot_be.as_ref(), pb)?;
+    let (index_collector, missing_packs) = check_packs(be, hot_be.as_ref(), pb, &collector)?;
 
     if let Some(cache) = &cache {
         let p = pb.progress_spinner("cleaning up packs from cache...");
@@ -284,18 +289,21 @@ pub(crate) fn check_repository<P: ProgressBars, S: Open>(
         if !opts.trust_cache {
             let p = pb.progress_bytes("checking packs in cache...");
             // TODO: Make concurrency (5) customizable
-            check_cache_files(5, cache, raw_be, FileType::Pack, &p)?;
+            check_cache_files(5, cache, raw_be, FileType::Pack, &p, &collector)?;
         }
     }
 
     let index_be = GlobalIndex::new_from_index(index_collector.into_index());
 
-    let packs = check_trees(be, &index_be, trees, pb)?;
+    let packs = check_trees(be, &index_be, trees, pb, &collector)
+        .map_err(|err| collector.add_error(CheckError::ErrorCheckingTrees { source: err }))
+        .unwrap_or_default();
 
     if opts.read_data {
         let packs = index_be
             .into_index()
             .into_iter()
+            .filter(|p| !missing_packs.contains_key(&p.id))
             .filter(|p| packs.contains(&p.id));
 
         debug!("using read-data-subset {:?}", opts.read_data_subset);
@@ -309,22 +317,21 @@ pub(crate) fn check_repository<P: ProgressBars, S: Open>(
 
         packs.into_par_iter().for_each(|pack| {
             let id = pack.id;
-            let data = match be.read_full(FileType::Pack, &id) {
-                Ok(data) => data,
+            match be.read_full(FileType::Pack, &id) {
                 Err(err) => {
-                    error!("Error reading data for pack {id} : {}", err.display_log());
-                    return;
+                    collector.add_error(CheckError::ErrorReadingPack { id, source: err });
                 }
-            };
-            match check_pack(be, pack, data, &p) {
-                Ok(()) => {}
-                Err(err) => error!("Pack {id} is not valid: {}", err.display_log()),
+                Ok(data) => {
+                    if let Err(err) = check_pack(be, pack, data, &p, &collector) {
+                        collector.add_error(CheckError::ErrorCheckingPack { id, source: err });
+                    }
+                }
             }
         });
         p.finish();
     }
 
-    Ok(())
+    Ok(collector.into_check_results())
 }
 
 /// Checks if all files in the backend are also in the hot backend
@@ -344,6 +351,7 @@ fn check_hot_files(
     be_hot: &impl ReadBackend,
     file_type: FileType,
     pb: &impl ProgressBars,
+    collector: &CheckResultsCollector,
 ) -> RusticResult<()> {
     let p = pb.progress_spinner(format!("checking {file_type:?} in hot repo..."));
     let mut files = be
@@ -355,16 +363,21 @@ fn check_hot_files(
 
     for (id, size_hot) in files_hot {
         match files.remove(&id) {
-            None => error!("hot file Type: {file_type:?}, Id: {id} does not exist in repo"),
+            None => collector.add_error(CheckError::NoColdFile { id, file_type }),
             Some(size) if size != size_hot => {
-                error!("Type: {file_type:?}, Id: {id}: hot size: {size_hot}, actual size: {size}");
+                collector.add_error(CheckError::HotFileSizeMismatch {
+                    id,
+                    file_type,
+                    size_hot,
+                    size,
+                });
             }
             _ => {} //everything ok
         }
     }
 
     for (id, _) in files {
-        error!("hot file Type: {file_type:?}, Id: {id} is missing!",);
+        collector.add_error(CheckError::NoHotFile { id, file_type });
     }
     p.finish();
 
@@ -390,6 +403,7 @@ fn check_cache_files(
     be: &impl ReadBackend,
     file_type: FileType,
     p: &impl Progress,
+    collector: &CheckResultsCollector,
 ) -> RusticResult<()> {
     let files = cache.list_with_size(file_type)?;
 
@@ -409,21 +423,21 @@ fn check_cache_files(
                 be.read_full(file_type, &id),
             ) {
                 (Err(err), _) => {
-                    error!(
-                        "Error reading cached file Type: {file_type:?}, Id: {id} : {}",
-                        err.display_log()
-                    );
+                    collector.add_error(CheckError::ErrorReadingCache {
+                        id,
+                        file_type,
+                        source: err,
+                    });
                 }
                 (_, Err(err)) => {
-                    error!(
-                        "Error reading file Type: {file_type:?}, Id: {id} : {}",
-                        err.display_log()
-                    );
+                    collector.add_error(CheckError::ErrorReadingFile {
+                        id,
+                        file_type,
+                        source: err,
+                    });
                 }
                 (Ok(Some(data_cached)), Ok(data)) if data_cached != data => {
-                    error!(
-                        "Cached file Type: {file_type:?}, Id: {id} is not identical to backend!"
-                    );
+                    collector.add_error(CheckError::CacheMismatch { id, file_type });
                 }
                 (Ok(_), Ok(_)) => {} // everything ok
             }
@@ -455,9 +469,10 @@ fn check_packs(
     be: &impl DecryptReadBackend,
     hot_be: Option<&impl ReadBackend>,
     pb: &impl ProgressBars,
-) -> RusticResult<IndexCollector> {
-    let mut packs = HashMap::new();
-    let mut tree_packs = HashMap::new();
+    collector: &CheckResultsCollector,
+) -> RusticResult<(IndexCollector, BTreeMap<PackId, u32>)> {
+    let mut packs = BTreeMap::new();
+    let mut tree_packs = BTreeMap::new();
     let mut index_collector = IndexCollector::new(IndexType::Full);
 
     let p = pb.progress_counter("reading index...");
@@ -475,7 +490,7 @@ fn check_packs(
 
             // Check if time is set _
             if check_time && p.time.is_none() {
-                error!("pack {}: No time is set! Run prune to correct this!", p.id);
+                collector.add_error(CheckError::PackTimeNotSet { id: p.id });
             }
 
             // check offsests in index
@@ -484,17 +499,21 @@ fn check_packs(
             blobs.sort_unstable();
             for blob in blobs {
                 if blob.tpe != blob_type {
-                    error!(
-                        "pack {}: blob {} blob type does not match: type: {:?}, expected: {:?}",
-                        p.id, blob.id, blob.tpe, blob_type
-                    );
+                    collector.add_error(CheckError::PackBlobTypesMismatch {
+                        id: p.id,
+                        blob_id: blob.id,
+                        blob_type: blob.tpe,
+                        expected: blob_type,
+                    });
                 }
 
                 if blob.offset != expected_offset {
-                    error!(
-                        "pack {}: blob {} offset in index: {}, expected: {}",
-                        p.id, blob.id, blob.offset, expected_offset
-                    );
+                    collector.add_error(CheckError::PackBlobOffsetMismatch {
+                        id: p.id,
+                        blob_id: blob.id,
+                        offset: blob.offset,
+                        expected: expected_offset,
+                    });
                 }
                 expected_offset += blob.length;
             }
@@ -505,15 +524,15 @@ fn check_packs(
 
     if let Some(hot_be) = hot_be {
         let p = pb.progress_spinner("listing packs in hot repo...");
-        check_packs_list_hot(hot_be, tree_packs, &packs)?;
+        check_packs_list_hot(hot_be, tree_packs, &packs, collector)?;
         p.finish();
     }
 
     let p = pb.progress_spinner("listing packs...");
-    check_packs_list(be, packs)?;
+    check_packs_list(be, &mut packs, collector)?;
     p.finish();
 
-    Ok(index_collector)
+    Ok((index_collector, packs))
 }
 
 // TODO: Add documentation
@@ -527,25 +546,29 @@ fn check_packs(
 /// # Errors
 ///
 /// * If a pack is missing or has a different size
-fn check_packs_list(be: &impl ReadBackend, mut packs: HashMap<PackId, u32>) -> RusticResult<()> {
-    for (id, size) in be.list_with_size(FileType::Pack)? {
+fn check_packs_list(
+    be: &impl ReadBackend,
+    packs: &mut BTreeMap<PackId, u32>,
+    collector: &CheckResultsCollector,
+) -> RusticResult<()> {
+    let mut packs_from_be = be.list_with_size(FileType::Pack)?;
+    packs_from_be.sort_by_key(|item| item.0);
+    for (id, size) in packs_from_be {
         match packs.remove(&PackId::from(id)) {
-            None => warn!(
-                "pack {id} not referenced in index. Can be a parallel backup job. To repair: 'rustic repair index'."
-            ),
+            None => collector.add_warn(CheckError::PackNotReferenced { id }),
             Some(index_size) if index_size != size => {
-                error!(
-                    "pack {id}: size computed by index: {index_size}, actual size: {size}. To repair: 'rustic repair index'."
-                );
+                collector.add_error(CheckError::PackSizeMismatchIndex {
+                    id,
+                    index_size,
+                    size,
+                });
             }
             _ => {} //everything ok
         }
     }
 
-    for (id, _) in packs {
-        error!(
-            "pack {id} is referenced by the index but not present! To repair: 'rustic repair index'.",
-        );
+    for id in packs.keys() {
+        collector.add_error(CheckError::NoPack { id: *id });
     }
     Ok(())
 }
@@ -562,33 +585,33 @@ fn check_packs_list(be: &impl ReadBackend, mut packs: HashMap<PackId, u32>) -> R
 /// * If a pack is missing or has a different size
 fn check_packs_list_hot(
     be: &impl ReadBackend,
-    mut treepacks: HashMap<PackId, u32>,
-    packs: &HashMap<PackId, u32>,
+    mut treepacks: BTreeMap<PackId, u32>,
+    packs: &BTreeMap<PackId, u32>,
+    collector: &CheckResultsCollector,
 ) -> RusticResult<()> {
     for (id, size) in be.list_with_size(FileType::Pack)? {
         match treepacks.remove(&PackId::from(id)) {
             None => {
-                if packs.contains_key(&PackId::from(id)) {
-                    warn!("hot pack {id} is a data pack. This should not happen.");
+                let id = PackId::from(id);
+                if packs.contains_key(&id) {
+                    collector.add_warn(CheckError::HotDataPack { id });
                 } else {
-                    warn!(
-                        "hot pack {id} not referenced in index. Can be a parallel backup job. To repair: 'rustic repair index'."
-                    );
+                    collector.add_warn(CheckError::HotPackNotReferenced { id });
                 }
             }
             Some(index_size) if index_size != size => {
-                error!(
-                    "hot pack {id}: size computed by index: {index_size}, actual size: {size}. To repair: 'rustic repair index'."
-                );
+                collector.add_error(CheckError::HotPackSizeMismatchIndex {
+                    id,
+                    index_size,
+                    size,
+                });
             }
             _ => {} //everything ok
         }
     }
 
     for (id, _) in treepacks {
-        error!(
-            "tree pack {id} is referenced by the index but not present in hot repo! To repair: 'rustic repair index'.",
-        );
+        collector.add_error(CheckError::NoHotPack { id });
     }
     Ok(())
 }
@@ -608,6 +631,7 @@ fn check_trees(
     index: &impl ReadGlobalIndex,
     snap_trees: Vec<TreeId>,
     pb: &impl ProgressBars,
+    collector: &CheckResultsCollector,
 ) -> RusticResult<BTreeSet<PackId>> {
     let mut packs = BTreeSet::new();
     let p = pb.progress_counter("checking trees...");
@@ -618,28 +642,25 @@ fn check_trees(
             match node.node_type {
                 NodeType::File => node.content.as_ref().map_or_else(
                     || {
-                        error!(
-                            "file {} doesn't have a content",
-                            path.join(node.name()).display()
-                        );
+                        collector.add_error(CheckError::FileHasNoContent {
+                            file: path.join(node.name()),
+                        });
                     },
                     |content| {
                         for (i, id) in content.iter().enumerate() {
                             if id.is_null() {
-                                error!(
-                                    "file {} blob {} has null ID",
-                                    path.join(node.name()).display(),
-                                    i
-                                );
+                                collector.add_error(CheckError::FileBlobHasNullId {
+                                    file: path.join(node.name()),
+                                    blob_num: i,
+                                });
                             }
 
                             match index.get_data(id) {
                                 None => {
-                                    error!(
-                                        "file {} blob {} is missing in index",
-                                        path.join(node.name()).display(),
-                                        id
-                                    );
+                                    collector.add_error(CheckError::FileBlobNotInIndex {
+                                        file: path.join(node.name()),
+                                        blob_id: *id,
+                                    });
                                 }
                                 Some(entry) => {
                                     _ = packs.insert(entry.pack);
@@ -651,25 +672,20 @@ fn check_trees(
 
                 NodeType::Dir => {
                     match node.subtree {
-                        None => {
-                            error!(
-                                "dir {} subtree does not exist",
-                                path.join(node.name()).display()
-                            );
-                        }
+                        None => collector.add_error(CheckError::NoSubTree {
+                            dir: path.join(node.name()),
+                        }),
                         Some(tree) if tree.is_null() => {
-                            error!(
-                                "dir {} subtree has null ID",
-                                path.join(node.name()).display()
-                            );
+                            collector.add_error(CheckError::NullSubTree {
+                                dir: path.join(node.name()),
+                            });
                         }
                         Some(id) => match index.get_tree(&id) {
                             None => {
-                                error!(
-                                    "dir {} subtree blob {} is missing in index",
-                                    path.join(node.name()).display(),
-                                    id
-                                );
+                                collector.add_error(CheckError::SubTreeMissingInIndex {
+                                    dir: path.join(node.name()),
+                                    blob_id: id,
+                                });
                             }
                             Some(entry) => {
                                 _ = packs.insert(entry.pack);
@@ -677,7 +693,6 @@ fn check_trees(
                         }, // subtree is ok
                     }
                 }
-
                 _ => {} // nothing to check
             }
         }
@@ -707,20 +722,22 @@ fn check_pack(
     index_pack: IndexPack,
     mut data: Bytes,
     p: &impl Progress,
+    collector: &CheckResultsCollector,
 ) -> RusticResult<()> {
     let id = index_pack.id;
     let size = index_pack.pack_size();
     if data.len() != size as usize {
-        error!(
-            "pack {id}: data size does not match expected size. Read: {} bytes, expected: {size} bytes",
-            data.len()
-        );
+        collector.add_error(CheckError::PackSizeMismatch {
+            id,
+            size: data.len(),
+            expected: size as usize,
+        });
         return Ok(());
     }
 
     let comp_id = PackId::from(hash(&data));
     if id != comp_id {
-        error!("pack {id}: Hash mismatch. Computed hash: {comp_id}");
+        collector.add_error(CheckError::PackHashMismatch { id, comp_id });
         return Ok(());
     }
 
@@ -739,9 +756,11 @@ fn check_pack(
         })?
         .to_u32();
     if pack_header_len != header_len {
-        error!(
-            "pack {id}: Header length in pack file doesn't match index. In pack: {pack_header_len}, calculated: {header_len}"
-        );
+        collector.add_error(CheckError::PackHeaderLengthMismatch {
+            id,
+            length: pack_header_len,
+            computed: header_len,
+        });
         return Ok(());
     }
 
@@ -762,7 +781,7 @@ fn check_pack(
     let mut blobs = index_pack.blobs;
     blobs.sort_unstable_by_key(|b| b.offset);
     if pack_blobs != blobs {
-        error!("pack {id}: Header from pack file does not match the index");
+        collector.add_error(CheckError::PackHeaderMismatchIndex { id });
         debug!("pack file header: {pack_blobs:?}");
         debug!("index: {blobs:?}");
         return Ok(());
@@ -778,22 +797,205 @@ fn check_pack(
         if let Some(length) = blob.uncompressed_length {
             blob_data = decode_all(&*blob_data).unwrap();
             if blob_data.len() != length.get() as usize {
-                error!(
-                    "pack {id}, blob {blob_id}: Actual uncompressed length does not fit saved uncompressed length"
-                );
-                return Ok(());
+                collector.add_error(CheckError::PackBlobLengthMismatch { id, blob_id });
             }
         }
 
         let comp_id = BlobId::from(hash(&blob_data));
         if blob.id != comp_id {
-            error!("pack {id}, blob {blob_id}: Hash mismatch. Computed hash: {comp_id}");
-            return Ok(());
+            collector.add_error(CheckError::PackBlobHashMismatch {
+                id,
+                blob_id,
+                comp_id,
+            });
         }
         p.inc(blob.length.into());
     }
 
     Ok(())
+}
+
+#[non_exhaustive]
+#[derive(Error, Debug, Display)]
+#[allow(clippy::doc_markdown)]
+pub enum CheckError {
+    /// error reading pack {id} : {source}
+    ErrorReadingPack {
+        id: PackId,
+        source: Box<RusticError>,
+    },
+    /// error checking pack {id} : {source}
+    ErrorCheckingPack {
+        id: PackId,
+        source: Box<RusticError>,
+    },
+    /// error checking trees : {source}
+    ErrorCheckingTrees { source: Box<RusticError> },
+    /// cold file for hot file Type: {file_type:?}, Id: {id} does not exist
+    NoColdFile { id: Id, file_type: FileType },
+    /// Type: {file_type:?}, Id: {id}: hot size: {size_hot}, actual size: {size}
+    HotFileSizeMismatch {
+        id: Id,
+        file_type: FileType,
+        size_hot: u32,
+        size: u32,
+    },
+    /// hot file Type: {file_type:?}, Id: {id} is missing!
+    NoHotFile { id: Id, file_type: FileType },
+    /// Error reading cached file Type: {file_type:?}, Id: {id} : {source}
+    ErrorReadingCache {
+        id: Id,
+        file_type: FileType,
+        source: Box<RusticError>,
+    },
+    /// Error reading file Type: {file_type:?}, Id: {id} : {source}
+    ErrorReadingFile {
+        id: Id,
+        file_type: FileType,
+        source: Box<RusticError>,
+    },
+    /// Cached file Type: {file_type:?}, Id: {id} is not identical to backend!
+    CacheMismatch { id: Id, file_type: FileType },
+    /// pack {id}: No time is set! Run prune to correct this!
+    PackTimeNotSet { id: PackId },
+    /// pack {id}: blob {blob_id} blob type does not match: type: {blob_type:?}, expected: {expected:?}
+    PackBlobTypesMismatch {
+        id: PackId,
+        blob_id: BlobId,
+        blob_type: BlobType,
+        expected: BlobType,
+    },
+    /// pack {id}: blob {blob_id} offset in index: {offset}, expected: {expected}
+    PackBlobOffsetMismatch {
+        id: PackId,
+        blob_id: BlobId,
+        offset: u32,
+        expected: u32,
+    },
+    /// pack {id} not referenced in index. Can be a parallel backup job. To repair: 'rustic repair index'.
+    PackNotReferenced { id: Id },
+    /// hot pack {id} not referenced in index. Can be a parallel backup job. To repair: 'rustic repair index'.
+    HotPackNotReferenced { id: PackId },
+    /// pack {id}: size computed by index: {index_size}, actual size: {size}. To repair: 'rustic repair index'.
+    PackSizeMismatchIndex { id: Id, index_size: u32, size: u32 },
+    /// hot pack {id}: size computed by index: {index_size}, actual size: {size}. To repair: 'rustic repair index'.
+    HotPackSizeMismatchIndex { id: Id, index_size: u32, size: u32 },
+    /// hot pack {id} is a data pack. This should not happen.
+    HotDataPack { id: PackId },
+    /// hot pack {id} is referenced by the index but not present! To repair: 'rustic repair index'.
+    NoHotPack { id: PackId },
+    /// pack {id} is referenced by the index but not present! To repair: 'rustic repair index'.
+    NoPack { id: PackId },
+    /// file {file:?} doesn't have a content
+    FileHasNoContent { file: PathBuf },
+    /// file {file:?} blob {blob_num} has null ID
+    FileBlobHasNullId { file: PathBuf, blob_num: usize },
+    /// file {file:?} blob {blob_id} is missing in index
+    FileBlobNotInIndex { file: PathBuf, blob_id: DataId },
+    /// dir {dir:?} doesn't have a subtree
+    NoSubTree { dir: PathBuf },
+    /// "dir {dir:?} subtree has null ID
+    NullSubTree { dir: PathBuf },
+    /// "dir {dir:?} subtree blob {blob_id} is missing in index",
+    SubTreeMissingInIndex { dir: PathBuf, blob_id: TreeId },
+    /// pack {id}: data size does not match expected size. Read: {size} bytes, expected: {expected} bytes
+    PackSizeMismatch {
+        id: PackId,
+        size: usize,
+        expected: usize,
+    },
+    /// pack {id}: Hash mismatch. Computed hash: {comp_id}
+    PackHashMismatch { id: PackId, comp_id: PackId },
+    /// pack {id}: Header length in pack file doesn't match index. In pack: {length}, computed: {computed}
+    PackHeaderLengthMismatch {
+        id: PackId,
+        length: u32,
+        computed: u32,
+    },
+    /// pack {id}: Header from pack file does not match the index
+    PackHeaderMismatchIndex { id: PackId },
+    /// pack {id}, blob {blob_id}: Actual uncompressed length does not fit saved uncompressed length
+    PackBlobLengthMismatch { id: PackId, blob_id: BlobId },
+    /// pack {id}, blob {blob_id}: Hash mismatch. Computed hash: {comp_id}
+    PackBlobHashMismatch {
+        id: PackId,
+        blob_id: BlobId,
+        comp_id: BlobId,
+    },
+}
+
+#[derive(Debug, PartialEq, Eq)]
+#[non_exhaustive]
+/// `CheckErrorLevel` describes severity levels of problems identified by check.
+pub enum CheckErrorLevel {
+    /// A warning: Something is strange and should be corrected, but repository integrity is not affected.
+    Warn,
+    /// An error: Something in the repository is not as it should be.
+    Error,
+}
+
+#[derive(Debug)]
+/// `CheckResults` is a list of errors encountered during the check.
+pub struct CheckResults(pub Vec<(CheckErrorLevel, CheckError)>);
+
+impl CheckResults {
+    /// Returns whether severe errors have been found.
+    ///
+    /// # Errors
+    /// `CheckFoundErrors` if there are severe errors.
+    pub fn is_ok(&self) -> RusticResult<()> {
+        if self
+            .0
+            .iter()
+            .any(|(level, _)| level == &CheckErrorLevel::Error)
+        {
+            return Err(RusticError::new(
+                ErrorKind::Repository,
+                "check found errors!",
+            ));
+        }
+        Ok(())
+    }
+}
+
+#[derive(Default)]
+pub struct CheckResultsCollector {
+    log: bool,
+    findings: Mutex<Vec<(CheckErrorLevel, CheckError)>>,
+}
+
+impl CheckResultsCollector {
+    pub(crate) fn log(self, log: bool) -> Self {
+        Self {
+            log,
+            findings: self.findings,
+        }
+    }
+
+    fn add_error(&self, err: CheckError) {
+        if self.log {
+            error!("{err}");
+        }
+        self.findings
+            .lock()
+            .unwrap()
+            .push((CheckErrorLevel::Error, err));
+    }
+
+    fn add_warn(&self, err: CheckError) {
+        if self.log {
+            warn!("{err}");
+        }
+        self.findings
+            .lock()
+            .unwrap()
+            .push((CheckErrorLevel::Warn, err));
+    }
+
+    // turn collected results into `CheckResults`
+    pub(crate) fn into_check_results(self) -> CheckResults {
+        CheckResults(self.findings.into_inner().unwrap())
+    }
 }
 
 #[cfg(test)]

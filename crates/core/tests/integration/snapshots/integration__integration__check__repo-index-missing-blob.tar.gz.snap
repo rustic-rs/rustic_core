@@ -1,0 +1,29 @@
+---
+source: crates/core/tests/integration/check.rs
+expression: check_results
+---
+CheckResults {
+    errors: [
+        (
+            Warn,
+            PackNotReferenced {
+                id: 8f120ae0b2916471961af123af445ddde0b49776163ff6fa53b7b232ad6d466c,
+            },
+        ),
+        (
+            Warn,
+            PackNotReferenced {
+                id: f885cf59dbeedc4d53e94116ddeeebf3821ec62eff9b109bcc5f0dc591e276ed,
+            },
+        ),
+        (
+            Error,
+            FileBlobNotInIndex {
+                file: "home/thinkpad/data/test",
+                blob_id: DataId(
+                    f2ca1bb6c7e907d06dafe4687e579fce76b37e4e93b7605022da52e6ccc26fd2,
+                ),
+            },
+        ),
+    ],
+}

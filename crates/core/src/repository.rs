@@ -33,7 +33,7 @@ use crate::{
     commands::{
         self,
         backup::BackupOptions,
-        check::{CheckOptions, check_repository},
+        check::{CheckOptions, CheckResults, check_repository},
         config::ConfigOptions,
         copy::CopySnapshot,
         forget::{ForgetGroups, KeepOptions},
@@ -1218,16 +1218,14 @@ impl<P: ProgressBars, S: Open> Repository<P, S> {
     /// # Panics
     ///
     // TODO: Document panics
-    pub fn check(&self, opts: CheckOptions) -> RusticResult<()> {
+    pub fn check(&self, opts: CheckOptions) -> RusticResult<CheckResults> {
         let trees = self
             .get_all_snapshots()?
             .into_iter()
             .map(|snap| snap.tree)
             .collect();
 
-        check_repository(self, opts, trees)?;
-
-        Ok(())
+        check_repository(self, opts, trees)
     }
 
     /// Check the repository and given trees for errors or inconsistencies
@@ -1242,7 +1240,11 @@ impl<P: ProgressBars, S: Open> Repository<P, S> {
     /// # Panics
     ///
     // TODO: Document panics
-    pub fn check_with_trees(&self, opts: CheckOptions, trees: Vec<TreeId>) -> RusticResult<()> {
+    pub fn check_with_trees(
+        &self,
+        opts: CheckOptions,
+        trees: Vec<TreeId>,
+    ) -> RusticResult<CheckResults> {
         check_repository(self, opts, trees)
     }
 

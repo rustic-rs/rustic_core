@@ -1,0 +1,32 @@
+---
+source: crates/core/tests/integration/check.rs
+expression: check_results
+---
+CheckResults(
+    [
+        (
+            Error,
+            PackSizeMismatchIndex {
+                id: f6a0bdd2515a5fc8d4253a4ba50abe03649d710cd2f6142837c86c760b94a43a,
+                index_size: 2974,
+                size: 0,
+            },
+        ),
+        (
+            Error,
+            NoPack {
+                id: PackId(
+                    b2a0e6762aeeb8205967f326929e7f07f4997eed540fc8a759604f4baba43027,
+                ),
+            },
+        ),
+        (
+            Error,
+            NoPack {
+                id: PackId(
+                    d05c81069fdf4616aaf89ddf530dd312633176e6ca8f24fd4c878e453aa57b81,
+                ),
+            },
+        ),
+    ],
+)

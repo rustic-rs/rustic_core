@@ -1,0 +1,86 @@
+---
+source: crates/core/tests/integration/check.rs
+expression: check_results
+---
+CheckResults(
+    [
+        (
+            Error,
+            PackBlobTypesMismatch {
+                id: PackId(
+                    d9de8b055292fe3e5c3d0c91acafb0e6884d157e2bf5c1411b45e13877931cb7,
+                ),
+                blob_id: BlobId(
+                    55e5b06b77310a0c462b9464813c158c1b720f2468acde5b86cc1e4f631f378f,
+                ),
+                blob_type: Tree,
+                expected: Data,
+            },
+        ),
+        (
+            Error,
+            PackBlobTypesMismatch {
+                id: PackId(
+                    d9de8b055292fe3e5c3d0c91acafb0e6884d157e2bf5c1411b45e13877931cb7,
+                ),
+                blob_id: BlobId(
+                    41bcf594e091c89153bd0d36932d4cece61ffc9c9c7b17ae1d6ff8d5ee5d90f5,
+                ),
+                blob_type: Tree,
+                expected: Data,
+            },
+        ),
+        (
+            Error,
+            PackBlobTypesMismatch {
+                id: PackId(
+                    d9de8b055292fe3e5c3d0c91acafb0e6884d157e2bf5c1411b45e13877931cb7,
+                ),
+                blob_id: BlobId(
+                    46b4d80d32376446b1ac1b0113bc2a75afe9cee1f9197b8d673bcb390f9fb8b1,
+                ),
+                blob_type: Tree,
+                expected: Data,
+            },
+        ),
+        (
+            Error,
+            PackBlobTypesMismatch {
+                id: PackId(
+                    d9de8b055292fe3e5c3d0c91acafb0e6884d157e2bf5c1411b45e13877931cb7,
+                ),
+                blob_id: BlobId(
+                    ba9bdf22c25455d2bb404c656a6f580461043aafaffe67ce071dba6b30719593,
+                ),
+                blob_type: Tree,
+                expected: Data,
+            },
+        ),
+        (
+            Error,
+            ErrorCheckingTrees {
+                source: RusticError {
+                    kind: Internal,
+                    guidance: "Tree ID `{tree_id}` not found in index",
+                    docs_url: None,
+                    error_code: None,
+                    ask_report: false,
+                    existing_issue_urls: [],
+                    new_issue_url: None,
+                    context: [
+                        (
+                            "tree_id",
+                            "ba9bdf22",
+                        ),
+                    ],
+                    source: None,
+                    severity: None,
+                    status: None,
+                    backtrace: Some(
+                        <disabled>,
+                    ),
+                },
+            },
+        ),
+    ],
+)

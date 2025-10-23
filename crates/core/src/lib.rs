@@ -136,7 +136,7 @@ pub use crate::{
     },
     commands::{
         backup::{BackupOptions, ParentOptions},
-        check::{CheckOptions, ReadSubsetOption},
+        check::{CheckOptions, CheckResults, ReadSubsetOption},
         config::ConfigOptions,
         copy::CopySnapshot,
         forget::{ForgetGroup, ForgetGroups, ForgetSnapshot, KeepOptions},
