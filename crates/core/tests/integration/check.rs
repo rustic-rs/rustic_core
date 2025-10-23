@@ -13,7 +13,7 @@ use rustic_core::{CheckOptions, Repository, RepositoryBackends, RepositoryOption
 #[rstest]
 #[case("repo-data-missing.tar.gz")]
 #[case("repo-duplicates.tar.gz")]
-// #[case("repo-index-missing-blob.tar.gz")] TODO: Activate when paths are identical for unix/windows
+#[case("repo-index-missing-blob.tar.gz")]
 #[case("repo-index-missing.tar.gz")]
 #[case("repo-mixed.tar.gz")]
 #[case("repo-obsolete-index.tar.gz")]

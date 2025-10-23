@@ -2,6 +2,7 @@
 ///
 use std::{
     borrow::Cow,
+    fmt::Debug,
     path::{Path, PathBuf},
     str::Utf8Error,
 };
@@ -12,9 +13,9 @@ use typed_path::{
     WindowsPrefix,
 };
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+#[derive(PartialEq, Eq, PartialOrd, Ord, Serialize)]
 #[serde(transparent)]
-/// Like `UnixPathBuf`, but implements `Serialize`
+/// Like `UnixPathBuf`, but implements `Serialize` and a nicer `Debug`
 pub struct SerializablePath(#[serde(serialize_with = "serialize_unix_path")] pub UnixPathBuf);
 
 fn serialize_unix_path<S>(path: &UnixPath, serializer: S) -> Result<S::Ok, S::Error>
@@ -23,6 +24,12 @@ where
 {
     let s = format!("{}", path.display());
     serializer.serialize_str(&s)
+}
+
+impl Debug for SerializablePath {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0.display())
+    }
 }
 
 /// Converts a [`Path`] to a [`WindowsPath`].
