@@ -1,10 +1,12 @@
 //! `ls` example
 use globset::Glob;
 use rustic_backend::BackendOptions;
-use rustic_core::{FindMatches, Repository, RepositoryOptions};
+use rustic_core::{util::u8_to_path, FindMatches, Repository, RepositoryOptions};
 use simplelog::{Config, LevelFilter, SimpleLogger};
 use std::error::Error;
 
+// don't warn about try_from paths conversion on unix
+#[allow(clippy::unnecessary_fallible_conversions)]
 fn main() -> Result<(), Box<dyn Error>> {
     // Display info logs
     let _ = SimpleLogger::init(LevelFilter::Info, Config::default());
@@ -30,7 +32,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         paths,
         nodes,
         matches,
-    } = repo.find_matching_nodes(tree_ids, &|path, _| glob.is_match(path))?;
+    } = repo.find_matching_nodes(tree_ids, &|path, _| glob.is_match(u8_to_path(path)))?;
     for (snap, matches) in snapshots.iter().zip(matches) {
         println!("results in {snap:?}");
         for (path_idx, node_idx) in matches {

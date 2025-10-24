@@ -3,11 +3,10 @@ pub(crate) mod parent;
 pub(crate) mod tree;
 pub(crate) mod tree_archiver;
 
-use std::path::{Path, PathBuf};
-
 use chrono::Local;
 use log::warn;
 use pariter::{IteratorExt, scope};
+use typed_path::UnixPathBuf;
 
 use crate::{
     Progress,
@@ -126,8 +125,7 @@ impl<'a, BE: DecryptFullBackend, I: ReadGlobalIndex> Archiver<'a, BE, I> {
     pub fn archive<R>(
         mut self,
         src: &R,
-        backup_path: &Path,
-        as_path: Option<&PathBuf>,
+        as_path: Option<&UnixPathBuf>,
         skip_identical_parent: bool,
         no_scan: bool,
         p: &impl Progress,
@@ -157,9 +155,7 @@ impl<'a, BE: DecryptFullBackend, I: ReadGlobalIndex> Archiver<'a, BE, I> {
                 }
                 Ok(ReadSourceEntry { path, node, open }) => {
                     let snapshot_path = if let Some(as_path) = as_path {
-                        as_path
-                            .clone()
-                            .join(path.strip_prefix(backup_path).unwrap())
+                        as_path.join(path)
                     } else {
                         path
                     };

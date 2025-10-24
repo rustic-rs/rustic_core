@@ -17,6 +17,7 @@ use log::{info, warn};
 use path_dedot::ParseDot;
 use serde_derive::{Deserialize, Serialize};
 use serde_with::{DisplayFromStr, serde_as, skip_serializing_none};
+use typed_path::{UnixPath, UnixPathBuf};
 
 use crate::{
     Id,
@@ -34,7 +35,7 @@ use crate::{
 #[non_exhaustive]
 pub enum SnapshotFileErrorKind {
     /// non-unicode path `{0:?}`
-    NonUnicodePath(PathBuf),
+    NonUnicodePath(UnixPathBuf),
     /// value `{0:?}` not allowed
     ValueNotAllowed(String),
     /// datetime out of range: `{0:?}`
@@ -1402,7 +1403,7 @@ impl StringList {
     /// # Errors
     ///
     /// * If a path is not valid unicode
-    pub(crate) fn set_paths<T: AsRef<Path>>(&mut self, paths: &[T]) -> SnapshotFileResult<()> {
+    pub(crate) fn set_paths<T: AsRef<UnixPath>>(&mut self, paths: &[T]) -> SnapshotFileResult<()> {
         self.0 = paths
             .iter()
             .map(|p| {
@@ -1504,6 +1505,23 @@ impl PathList {
     #[must_use]
     pub(crate) fn paths(&self) -> Vec<PathBuf> {
         self.0.clone()
+    }
+
+    /// turn into `Vec<UnixPathBuf>`.
+    pub(crate) fn unix_paths(&self) -> RusticResult<Vec<UnixPathBuf>> {
+        self.0
+            .iter()
+            .cloned()
+            .map(|p| {
+                p.try_into().map_err(|path: PathBuf| {
+                    RusticError::new(
+                        ErrorKind::InvalidInput,
+                        "cannot convert path into unix path: {path}",
+                    )
+                    .attach_context("path", path.display().to_string())
+                })
+            })
+            .collect()
     }
 
     /// Sanitize paths: Parse dots, absolutize if needed and merge paths.

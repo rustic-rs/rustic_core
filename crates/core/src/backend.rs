@@ -20,6 +20,7 @@ use log::trace;
 use mockall::mock;
 
 use serde_derive::{Deserialize, Serialize};
+use typed_path::UnixPathBuf;
 
 use crate::{
     backend::node::{Metadata, Node, NodeType},
@@ -32,7 +33,7 @@ use crate::{
 #[non_exhaustive]
 pub enum BackendErrorKind {
     /// Path is not allowed: `{0:?}`
-    PathNotAllowed(PathBuf),
+    PathNotAllowed(UnixPathBuf),
 }
 
 pub(crate) type BackendResult<T> = Result<T, BackendErrorKind>;
@@ -380,7 +381,7 @@ impl std::fmt::Debug for dyn WriteBackend {
 #[derive(Debug, Clone)]
 pub struct ReadSourceEntry<O> {
     /// The path of the entry.
-    pub path: PathBuf,
+    pub path: UnixPathBuf,
 
     /// The node information of the entry.
     pub node: Node,
@@ -390,7 +391,7 @@ pub struct ReadSourceEntry<O> {
 }
 
 impl<O> ReadSourceEntry<O> {
-    fn from_path(path: PathBuf, open: Option<O>) -> BackendResult<Self> {
+    fn from_path(path: UnixPathBuf, open: Option<O>) -> BackendResult<Self> {
         let node = Node::new_node(
             path.file_name()
                 .ok_or_else(|| BackendErrorKind::PathNotAllowed(path.clone()))?,

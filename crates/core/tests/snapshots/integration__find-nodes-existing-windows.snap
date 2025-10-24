@@ -1,7 +1,0 @@
----
-source: crates/core/tests/integration.rs
-expression: snap
----
-[
-  Some(0),
-]

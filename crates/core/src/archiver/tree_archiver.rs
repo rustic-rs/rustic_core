@@ -1,7 +1,6 @@
-use std::path::{Path, PathBuf};
-
 use bytesize::ByteSize;
 use log::{debug, trace};
+use typed_path::{UnixPath, UnixPathBuf};
 
 use crate::{
     archiver::{parent::ParentResult, tree::TreeType},
@@ -30,7 +29,7 @@ pub(crate) struct TreeArchiver<'a, BE: DecryptWriteBackend, I: ReadGlobalIndex> 
     /// The current tree.
     tree: Tree,
     /// The stack of trees.
-    stack: Vec<(PathBuf, Node, ParentResult<TreeId>, Tree)>,
+    stack: Vec<(UnixPathBuf, Node, ParentResult<TreeId>, Tree)>,
     /// The index to read from.
     index: &'a I,
     /// The packer to write to.
@@ -129,7 +128,7 @@ impl<'a, BE: DecryptWriteBackend, I: ReadGlobalIndex> TreeArchiver<'a, BE, I> {
     /// * `path` - The path of the file.
     /// * `node` - The node of the file.
     /// * `parent` - The parent result of the file.
-    fn add_file(&mut self, path: &Path, node: Node, parent: &ParentResult<()>, size: u64) {
+    fn add_file(&mut self, path: &UnixPath, node: Node, parent: &ParentResult<()>, size: u64) {
         let filename = path.join(node.name());
         match parent {
             ParentResult::Matched(()) => {
@@ -164,7 +163,11 @@ impl<'a, BE: DecryptWriteBackend, I: ReadGlobalIndex> TreeArchiver<'a, BE, I> {
     /// # Returns
     ///
     /// The id of the tree.
-    fn backup_tree(&mut self, path: &Path, parent: &ParentResult<TreeId>) -> RusticResult<TreeId> {
+    fn backup_tree(
+        &mut self,
+        path: &UnixPath,
+        parent: &ParentResult<TreeId>,
+    ) -> RusticResult<TreeId> {
         let (chunk, id) = self.tree.serialize().map_err(|err| {
             RusticError::with_source(
                 ErrorKind::Internal,
@@ -224,7 +227,7 @@ impl<'a, BE: DecryptWriteBackend, I: ReadGlobalIndex> TreeArchiver<'a, BE, I> {
         parent_tree: Option<TreeId>,
     ) -> RusticResult<(TreeId, SnapshotSummary)> {
         let parent = parent_tree.map_or(ParentResult::NotFound, ParentResult::Matched);
-        let id = self.backup_tree(&PathBuf::new(), &parent)?;
+        let id = self.backup_tree(UnixPath::new(&[]), &parent)?;
         let stats = self.tree_packer.finalize()?;
         stats.apply(&mut self.summary, BlobType::Tree);
 

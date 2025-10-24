@@ -1,6 +1,5 @@
-use std::path::Path;
-
 use bytes::Bytes;
+use typed_path::UnixPath;
 
 use crate::{
     backend::{FileType, FindInBackend, decrypt::DecryptReadBackend},
@@ -103,7 +102,7 @@ pub(crate) fn cat_tree<P: ProgressBars, S: IndexedTree>(
         sn_filter,
         &repo.pb.progress_counter("getting snapshot..."),
     )?;
-    let node = Tree::node_from_path(repo.dbe(), repo.index(), snap.tree, Path::new(path))?;
+    let node = Tree::node_from_path(repo.dbe(), repo.index(), snap.tree, UnixPath::new(path))?;
     let id = node.subtree.ok_or_else(|| {
         RusticError::new(
             ErrorKind::InvalidInput,

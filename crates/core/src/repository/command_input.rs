@@ -10,6 +10,7 @@ use std::{
 use log::{debug, error, trace, warn};
 use serde::{Deserialize, Serialize, Serializer};
 use serde_with::{DisplayFromStr, PickFirst, serde_as};
+use typed_path::UnixPathBuf;
 
 use crate::error::{ErrorKind, RusticError, RusticResult};
 
@@ -53,7 +54,7 @@ pub enum CommandInputErrorKind {
         command: CommandInput,
 
         /// The path in which the command was tried to be executed
-        path: std::path::PathBuf,
+        path: UnixPathBuf,
 
         /// The source of the error
         source: std::io::Error,

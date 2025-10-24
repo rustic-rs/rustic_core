@@ -1,9 +1,8 @@
 use std::{
     cmp::Ordering,
     collections::{BTreeMap, BTreeSet, BinaryHeap},
-    ffi::{OsStr, OsString},
     mem,
-    path::{Component, Path, PathBuf, Prefix},
+    path::PathBuf,
     str::{self, Utf8Error},
 };
 
@@ -13,6 +12,7 @@ use ignore::Match;
 use ignore::overrides::{Override, OverrideBuilder};
 use serde::{Deserialize, Deserializer};
 use serde_derive::Serialize;
+use typed_path::{Component, UnixPath, UnixPathBuf};
 
 use crate::{
     backend::{
@@ -52,8 +52,8 @@ pub(super) mod constants {
     pub(super) const MAX_TREE_LOADER: usize = 4;
 }
 
-pub(crate) type TreeStreamItem = RusticResult<(PathBuf, Tree)>;
-type NodeStreamItem = RusticResult<(PathBuf, Node)>;
+pub(crate) type TreeStreamItem = RusticResult<(UnixPathBuf, Tree)>;
+type NodeStreamItem = RusticResult<(UnixPathBuf, Node)>;
 impl_blobid!(TreeId, BlobType::Tree);
 
 #[derive(Default, Serialize, Deserialize, Clone, Debug)]
@@ -174,37 +174,27 @@ impl Tree {
         be: &impl DecryptReadBackend,
         index: &impl ReadGlobalIndex,
         id: TreeId,
-        path: &Path,
+        path: &UnixPath,
     ) -> RusticResult<Node> {
-        let mut node = Node::new_node(OsStr::new(""), NodeType::Dir, Metadata::default());
+        let mut node = Node::new_node(&[], NodeType::Dir, Metadata::default());
         node.subtree = Some(id);
 
         for p in path.components() {
-            if let Some(p) = comp_to_osstr(p).map_err(|err| {
-                RusticError::with_source(
-                    ErrorKind::Internal,
-                    "Failed to convert Path component `{path}` to OsString.",
-                    err,
-                )
-                .attach_context("path", path.display().to_string())
-                .ask_report()
-            })? {
-                let id = node.subtree.ok_or_else(|| {
-                    RusticError::new(ErrorKind::Internal, "Node `{node}` is not a directory.")
-                        .attach_context("node", p.to_string_lossy())
+            let id = node.subtree.ok_or_else(|| {
+                RusticError::new(ErrorKind::Internal, "Node `{node}` is not a directory.")
+                    .attach_context("node", String::from_utf8_lossy(p.as_bytes()))
+                    .ask_report()
+            })?;
+            let tree = Self::from_backend(be, index, id)?;
+            node = tree
+                .nodes
+                .into_iter()
+                .find(|node| node.name() == p.as_bytes())
+                .ok_or_else(|| {
+                    RusticError::new(ErrorKind::Internal, "Node `{node}` not found in tree.")
+                        .attach_context("node", String::from_utf8_lossy(p.as_bytes()))
                         .ask_report()
                 })?;
-                let tree = Self::from_backend(be, index, id)?;
-                node = tree
-                    .nodes
-                    .into_iter()
-                    .find(|node| node.name() == p)
-                    .ok_or_else(|| {
-                        RusticError::new(ErrorKind::Internal, "Node `{node}` not found in tree.")
-                            .attach_context("node", p.to_string_lossy())
-                            .ask_report()
-                    })?;
-            }
         }
 
         Ok(node)
@@ -214,14 +204,14 @@ impl Tree {
         be: &impl DecryptReadBackend,
         index: &impl ReadGlobalIndex,
         ids: impl IntoIterator<Item = TreeId>,
-        path: &Path,
+        path: &UnixPath,
     ) -> RusticResult<FindNode> {
         // helper function which is recursively called
         fn find_node_from_component(
             be: &impl DecryptReadBackend,
             index: &impl ReadGlobalIndex,
             tree_id: TreeId,
-            path_comp: &[OsString],
+            path_comp: &[&[u8]],
             results_cache: &mut [BTreeMap<TreeId, Option<usize>>],
             nodes: &mut BTreeMap<Node, usize>,
             idx: usize,
@@ -246,7 +236,7 @@ impl Tree {
                             ErrorKind::Internal,
                             "Subtree ID not found for node `{node}`",
                         )
-                        .attach_context("node", path_comp[idx].to_string_lossy())
+                        .attach_context("node", String::from_utf8_lossy(path_comp[idx]))
                         .ask_report()
                     })?;
 
@@ -267,19 +257,7 @@ impl Tree {
             Ok(result)
         }
 
-        let path_comp: Vec<_> = path
-            .components()
-            .filter_map(|p| comp_to_osstr(p).transpose())
-            .collect::<TreeResult<_>>()
-            .map_err(|err| {
-                RusticError::with_source(
-                    ErrorKind::Internal,
-                    "Failed to convert Path component `{path}` to OsString.",
-                    err,
-                )
-                .attach_context("path", path.display().to_string())
-                .ask_report()
-            })?;
+        let path_comp: Vec<_> = path.components().map(|p| p.as_bytes()).collect();
 
         // caching all results
         let mut results_cache = vec![BTreeMap::new(); path_comp.len()];
@@ -312,19 +290,19 @@ impl Tree {
         be: &impl DecryptReadBackend,
         index: &impl ReadGlobalIndex,
         ids: impl IntoIterator<Item = TreeId>,
-        matches: &impl Fn(&Path, &Node) -> bool,
+        matches: &impl Fn(&UnixPath, &Node) -> bool,
     ) -> RusticResult<FindMatches> {
         // internal state used to save match information in find_matching_nodes
         #[derive(Default)]
         struct MatchInternalState {
             // we cache all results
-            cache: BTreeMap<(TreeId, PathBuf), Vec<(usize, usize)>>,
+            cache: BTreeMap<(TreeId, UnixPathBuf), Vec<(usize, usize)>>,
             nodes: BTreeMap<Node, usize>,
-            paths: BTreeMap<PathBuf, usize>,
+            paths: BTreeMap<UnixPathBuf, usize>,
         }
 
         impl MatchInternalState {
-            fn insert_result(&mut self, path: PathBuf, node: Node) -> (usize, usize) {
+            fn insert_result(&mut self, path: UnixPathBuf, node: Node) -> (usize, usize) {
                 let new_idx = self.nodes.len();
                 let node_idx = self.nodes.entry(node).or_insert(new_idx);
                 let new_idx = self.paths.len();
@@ -338,9 +316,9 @@ impl Tree {
             be: &impl DecryptReadBackend,
             index: &impl ReadGlobalIndex,
             tree_id: TreeId,
-            path: &Path,
+            path: &UnixPath,
             state: &mut MatchInternalState,
-            matches: &impl Fn(&Path, &Node) -> bool,
+            matches: &impl Fn(&UnixPath, &Node) -> bool,
         ) -> RusticResult<Vec<(usize, usize)>> {
             let mut result = Vec::new();
             if let Some(result) = state.cache.get(&(tree_id, path.to_path_buf())) {
@@ -356,7 +334,7 @@ impl Tree {
                             ErrorKind::Internal,
                             "Subtree ID not found for node `{node}`",
                         )
-                        .attach_context("node", node.name().to_string_lossy())
+                        .attach_context("node", String::from_utf8_lossy(&node.name()))
                         .ask_report()
                     })?;
 
@@ -376,7 +354,7 @@ impl Tree {
 
         let mut state = MatchInternalState::default();
 
-        let initial_path = PathBuf::new();
+        let initial_path = UnixPathBuf::new();
         let matches: Vec<_> = ids
             .into_iter()
             .map(|id| {
@@ -411,41 +389,14 @@ pub struct FindNode {
 }
 
 /// Results from `find_matching_nodes`
-#[derive(Debug, Serialize)]
+#[derive(Debug)]
 pub struct FindMatches {
     /// found matching paths
-    pub paths: Vec<PathBuf>,
+    pub paths: Vec<UnixPathBuf>,
     /// found matching nodes
     pub nodes: Vec<Node>,
     /// found paths/nodes for all given snapshots. (usize,usize) is the path / node index
     pub matches: Vec<Vec<(usize, usize)>>,
-}
-
-/// Converts a [`Component`] to an [`OsString`].
-///
-/// # Arguments
-///
-/// * `p` - The component to convert.
-///
-/// # Errors
-///
-/// * If the component is a current or parent directory.
-/// * If the component is not UTF-8 conform.
-pub(crate) fn comp_to_osstr(p: Component<'_>) -> TreeResult<Option<OsString>> {
-    let s = match p {
-        Component::RootDir => None,
-        Component::Prefix(p) => match p.kind() {
-            Prefix::Verbatim(p) | Prefix::DeviceNS(p) => Some(p.to_os_string()),
-            Prefix::VerbatimUNC(_, q) | Prefix::UNC(_, q) => Some(q.to_os_string()),
-            Prefix::VerbatimDisk(p) | Prefix::Disk(p) => Some(
-                OsStr::new(str::from_utf8(&[p]).map_err(TreeErrorKind::PathIsNotUtf8Conform)?)
-                    .to_os_string(),
-            ),
-        },
-        Component::Normal(p) => Some(p.to_os_string()),
-        _ => return Err(TreeErrorKind::ContainsCurrentOrParentDirectory),
-    };
-    Ok(s)
 }
 
 impl IntoIterator for Tree {
@@ -517,7 +468,7 @@ where
     /// Inner iterator for the current subtree nodes
     inner: std::vec::IntoIter<Node>,
     /// The current path
-    path: PathBuf,
+    path: UnixPathBuf,
     /// The backend to read from
     be: BE,
     /// index
@@ -578,7 +529,7 @@ where
         Ok(Self {
             inner,
             open_iterators: Vec::new(),
-            path: PathBuf::new(),
+            path: UnixPathBuf::new(),
             be,
             index,
             overrides,
@@ -730,7 +681,18 @@ where
                     }
 
                     if let Some(overrides) = &self.overrides {
-                        if let Match::Ignore(_) = overrides.matched(&path, false) {
+                        // TODO: use globset directly with UnixPath instead of converting to std::Path,
+                        // see https://github.com/BurntSushi/ripgrep/issues/2954
+                        #[cfg(windows)]
+                        if let Match::Ignore(_) = overrides.matched(
+                            // using a lossy UTF-8 string from the underlying bytes is a best effort to get "correct" matching results
+                            PathBuf::from(String::from_utf8_lossy(path.as_bytes()).to_string()),
+                            false,
+                        ) {
+                            continue;
+                        }
+                        #[cfg(not(windows))]
+                        if let Match::Ignore(_) = overrides.matched(PathBuf::from(&path), false) {
                             continue;
                         }
                     }
@@ -759,9 +721,9 @@ pub struct TreeStreamerOnce<P> {
     /// The visited tree IDs
     visited: BTreeSet<TreeId>,
     /// The queue to send tree IDs to
-    queue_in: Option<Sender<(PathBuf, TreeId, usize)>>,
+    queue_in: Option<Sender<(UnixPathBuf, TreeId, usize)>>,
     /// The queue to receive trees from
-    queue_out: Receiver<RusticResult<(PathBuf, Tree, usize)>>,
+    queue_out: Receiver<RusticResult<(UnixPathBuf, Tree, usize)>>,
     /// The progress indicator
     p: P,
     /// The number of trees that are not yet finished
@@ -824,7 +786,7 @@ impl<P: Progress> TreeStreamerOnce<P> {
 
         for (count, id) in ids.into_iter().enumerate() {
             if !streamer
-                .add_pending(PathBuf::new(), id, count)
+                .add_pending(UnixPathBuf::new(), id, count)
                 .map_err(|err| {
                     RusticError::with_source(
                         ErrorKind::Internal,
@@ -859,7 +821,7 @@ impl<P: Progress> TreeStreamerOnce<P> {
     /// # Errors
     ///
     /// * If sending the message fails.
-    fn add_pending(&mut self, path: PathBuf, id: TreeId, count: usize) -> TreeResult<bool> {
+    fn add_pending(&mut self, path: UnixPathBuf, id: TreeId, count: usize) -> TreeResult<bool> {
         if self.visited.insert(id) {
             self.queue_in
                 .as_ref()
@@ -915,7 +877,7 @@ impl<P: Progress> Iterator for TreeStreamerOnce<P> {
                                 "Failed to add tree ID `{tree_id}` to pending queue (`{count}`).",
                                 err,
                             )
-                            .attach_context("path", path.display().to_string())
+                            .attach_context("path", path.to_string_lossy().to_string())
                             .attach_context("tree_id", id.to_string())
                             .attach_context("count", count.to_string())
                             .ask_report()

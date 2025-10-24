@@ -3,7 +3,6 @@ use std::{
     collections::{BTreeMap, BTreeSet, HashMap},
     fmt::Debug,
     num::ParseIntError,
-    path::PathBuf,
     str::FromStr,
     sync::Mutex,
 };
@@ -35,6 +34,7 @@ use crate::{
         IndexFile, IndexPack, PackHeader, PackHeaderLength, PackHeaderRef, packfile::PackId,
     },
     repository::{Open, Repository},
+    util::SerializablePath,
 };
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -643,14 +643,14 @@ fn check_trees(
                 NodeType::File => node.content.as_ref().map_or_else(
                     || {
                         collector.add_error(CheckError::FileHasNoContent {
-                            file: path.join(node.name()),
+                            file: SerializablePath(path.join(node.name())),
                         });
                     },
                     |content| {
                         for (i, id) in content.iter().enumerate() {
                             if id.is_null() {
                                 collector.add_error(CheckError::FileBlobHasNullId {
-                                    file: path.join(node.name()),
+                                    file: SerializablePath(path.join(node.name())),
                                     blob_num: i,
                                 });
                             }
@@ -658,7 +658,7 @@ fn check_trees(
                             match index.get_data(id) {
                                 None => {
                                     collector.add_error(CheckError::FileBlobNotInIndex {
-                                        file: path.join(node.name()),
+                                        file: SerializablePath(path.join(node.name())),
                                         blob_id: *id,
                                     });
                                 }
@@ -673,17 +673,17 @@ fn check_trees(
                 NodeType::Dir => {
                     match node.subtree {
                         None => collector.add_error(CheckError::NoSubTree {
-                            dir: path.join(node.name()),
+                            dir: SerializablePath(path.join(node.name())),
                         }),
                         Some(tree) if tree.is_null() => {
                             collector.add_error(CheckError::NullSubTree {
-                                dir: path.join(node.name()),
+                                dir: SerializablePath(path.join(node.name())),
                             });
                         }
                         Some(id) => match index.get_tree(&id) {
                             None => {
                                 collector.add_error(CheckError::SubTreeMissingInIndex {
-                                    dir: path.join(node.name()),
+                                    dir: SerializablePath(path.join(node.name())),
                                     blob_id: id,
                                 });
                             }
@@ -887,17 +887,26 @@ pub enum CheckError {
     /// pack {id} is referenced by the index but not present! To repair: 'rustic repair index'.
     NoPack { id: PackId },
     /// file {file:?} doesn't have a content
-    FileHasNoContent { file: PathBuf },
+    FileHasNoContent { file: SerializablePath },
     /// file {file:?} blob {blob_num} has null ID
-    FileBlobHasNullId { file: PathBuf, blob_num: usize },
+    FileBlobHasNullId {
+        file: SerializablePath,
+        blob_num: usize,
+    },
     /// file {file:?} blob {blob_id} is missing in index
-    FileBlobNotInIndex { file: PathBuf, blob_id: DataId },
+    FileBlobNotInIndex {
+        file: SerializablePath,
+        blob_id: DataId,
+    },
     /// dir {dir:?} doesn't have a subtree
-    NoSubTree { dir: PathBuf },
+    NoSubTree { dir: SerializablePath },
     /// "dir {dir:?} subtree has null ID
-    NullSubTree { dir: PathBuf },
+    NullSubTree { dir: SerializablePath },
     /// "dir {dir:?} subtree blob {blob_id} is missing in index",
-    SubTreeMissingInIndex { dir: PathBuf, blob_id: TreeId },
+    SubTreeMissingInIndex {
+        dir: SerializablePath,
+        blob_id: TreeId,
+    },
     /// pack {id}: data size does not match expected size. Read: {size} bytes, expected: {expected} bytes
     PackSizeMismatch {
         id: PackId,

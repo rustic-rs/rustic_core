@@ -1,0 +1,11 @@
+---
+source: crates/core/tests/integration/find.rs
+expression: not_found
+---
+FindMatches {
+    paths: [],
+    nodes: [],
+    matches: [
+        [],
+    ],
+}

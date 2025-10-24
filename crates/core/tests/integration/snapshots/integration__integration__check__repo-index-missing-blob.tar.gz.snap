@@ -2,8 +2,8 @@
 source: crates/core/tests/integration/check.rs
 expression: check_results
 ---
-CheckResults {
-    errors: [
+CheckResults(
+    [
         (
             Warn,
             PackNotReferenced {
@@ -19,11 +19,11 @@ CheckResults {
         (
             Error,
             FileBlobNotInIndex {
-                file: "home/thinkpad/data/test",
+                file: home/thinkpad/data/test,
                 blob_id: DataId(
                     f2ca1bb6c7e907d06dafe4687e579fce76b37e4e93b7605022da52e6ccc26fd2,
                 ),
             },
         ),
     ],
-}
+)

@@ -1,10 +1,10 @@
 //! `backup` subcommand
 use derive_setters::Setters;
 use log::info;
+use typed_path::{UnixPath, UnixPathBuf};
 
 use std::path::PathBuf;
 
-use path_dedot::ParseDot;
 use serde_derive::{Deserialize, Serialize};
 use serde_with::{DisplayFromStr, serde_as};
 
@@ -221,22 +221,12 @@ pub(crate) fn backup<P: ProgressBars, S: IndexedIds>(
         source.paths()
     };
 
-    let as_path = opts
-        .as_path
-        .as_ref()
-        .map(|p| -> RusticResult<_> {
-            Ok(p.parse_dot()
-                .map_err(|err| {
-                    RusticError::with_source(
-                        ErrorKind::InvalidInput,
-                        "Failed to parse dotted path `{path}`",
-                        err,
-                    )
-                    .attach_context("path", p.display().to_string())
-                })?
-                .to_path_buf())
-        })
-        .transpose()?;
+    let as_path = match &opts.as_path {
+        Some(p) => Some(p),
+        None if !backup_stdin && backup_path.len() == 1 => Some(&backup_path[0]),
+        None => None,
+    }
+    .map(|p| UnixPath::new(p.as_os_str().as_encoded_bytes()).normalize());
 
     match &as_path {
         Some(p) => snap
@@ -250,22 +240,31 @@ pub(crate) fn backup<P: ProgressBars, S: IndexedIds>(
                 )
                 .attach_context("paths", p.display().to_string())
             })?,
-        None => snap.paths.set_paths(&backup_path).map_err(|err| {
-            RusticError::with_source(
-                ErrorKind::Internal,
-                "Failed to set paths `{paths}` in snapshot.",
-                err,
-            )
-            .attach_context(
-                "paths",
-                backup_path
+        None => snap
+            .paths
+            .set_paths(
+                &backup_path
                     .iter()
-                    .map(|p| p.display().to_string())
-                    .collect::<Vec<_>>()
-                    .join(","),
+                    .map(|p| UnixPathBuf::try_from(p.clone()))
+                    .collect::<Result<Vec<_>, _>>()
+                    .unwrap(),
             )
-        })?,
-    }
+            .map_err(|err| {
+                RusticError::with_source(
+                    ErrorKind::Internal,
+                    "Failed to set paths `{paths}` in snapshot.",
+                    err,
+                )
+                .attach_context(
+                    "paths",
+                    backup_path
+                        .iter()
+                        .map(|p| p.display().to_string())
+                        .collect::<Vec<_>>()
+                        .join(","),
+                )
+            })?,
+    };
 
     let (parent_id, parent) = opts.parent_opts.get_parent(repo, &snap, backup_stdin);
     match parent_id {
@@ -286,10 +285,10 @@ pub(crate) fn backup<P: ProgressBars, S: IndexedIds>(
     let snap = if backup_stdin {
         let path = &backup_path[0];
         if let Some(command) = &opts.stdin_command {
-            let src = ChildStdoutSource::new(command, path.clone())?;
+            let unix_path: UnixPathBuf = path.clone().try_into().unwrap(); // todo: error handling
+            let src = ChildStdoutSource::new(command, unix_path)?;
             let res = archiver.archive(
                 &src,
-                path,
                 as_path.as_ref(),
                 opts.parent_opts.skip_if_unchanged,
                 opts.no_scan,
@@ -298,10 +297,10 @@ pub(crate) fn backup<P: ProgressBars, S: IndexedIds>(
             src.finish()?;
             res
         } else {
-            let src = StdinSource::new(path.clone());
+            let path: UnixPathBuf = path.clone().try_into().unwrap(); // TODO: error handling
+            let src = StdinSource::new(path);
             archiver.archive(
                 &src,
-                path,
                 as_path.as_ref(),
                 opts.parent_opts.skip_if_unchanged,
                 opts.no_scan,
@@ -316,7 +315,6 @@ pub(crate) fn backup<P: ProgressBars, S: IndexedIds>(
         )?;
         archiver.archive(
             &src,
-            &backup_path[0],
             as_path.as_ref(),
             opts.parent_opts.skip_if_unchanged,
             opts.no_scan,

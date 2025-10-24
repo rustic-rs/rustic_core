@@ -1,13 +1,15 @@
-use std::{collections::BTreeMap, ffi::OsStr};
+use std::collections::BTreeMap;
 use std::{path::PathBuf, str::FromStr};
 
 use anyhow::Result;
 use insta::Settings;
+use itertools::Itertools;
 use rstest::rstest;
 
 use rustic_core::{
     BackupOptions, LsOptions, RusticResult,
     repofile::{Metadata, Node, SnapshotFile},
+    util::SerializablePath,
 };
 
 use super::{
@@ -31,7 +33,7 @@ fn test_ls(
 
     // test non-existing entries
     let mut node = Node::new_node(
-        OsStr::new(""),
+        &[],
         rustic_core::repofile::NodeType::Dir,
         Metadata::default(),
     );
@@ -42,6 +44,7 @@ fn test_ls(
 
     let entries: BTreeMap<_, _> = repo
         .ls(&node, &LsOptions::default())?
+        .map_ok(|(path, node)| (SerializablePath(path), node))
         .collect::<RusticResult<_>>()?;
 
     insta_node_redaction.bind(|| {
