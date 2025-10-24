@@ -2,27 +2,25 @@
 
 use std::path::PathBuf;
 use std::str::FromStr;
-use std::sync::LazyLock;
 
 use crate::tar_gz_testdata;
 
 use super::set_up_repo;
 use anyhow::Result;
 use chrono::DateTime;
-use rstest::rstest;
+use rstest::{fixture, rstest};
 use rustic_core::repofile::SnapshotFile;
 use rustic_core::{
     BackupOptions, IdIndex, IndexedStatus, NoProgressBars, OpenStatus, Repository,
     SnapshotGroupCriterion,
 };
 
-/// This lazy static initialize once a `(Repository, Vec<SnapshotFile>)`
-/// Which is shared in the different tests in this module
-#[allow(clippy::type_complexity)]
-static REPOSITORY_RESOURCE: LazyLock<(
+#[fixture]
+#[once]
+fn repo_and_snapshots() -> (
     Repository<NoProgressBars, IndexedStatus<IdIndex, OpenStatus>>,
     Vec<SnapshotFile>,
-)> = LazyLock::new(|| {
+) {
     let repo = set_up_repo().unwrap().to_indexed_ids().unwrap();
     let source = tar_gz_testdata().unwrap();
 
@@ -50,11 +48,16 @@ static REPOSITORY_RESOURCE: LazyLock<(
     }
 
     (repo, snapshot_files)
-});
+}
 
 #[rstest]
-fn test_get_snapshot_group_no_ids() -> Result<()> {
-    let (repo, snapshots) = &*REPOSITORY_RESOURCE;
+fn test_get_snapshot_group_no_ids(
+    repo_and_snapshots: &(
+        Repository<NoProgressBars, IndexedStatus<IdIndex, OpenStatus>>,
+        Vec<SnapshotFile>,
+    ),
+) -> Result<()> {
+    let (repo, snapshots) = repo_and_snapshots;
 
     let res = repo.get_snapshot_group(&[], SnapshotGroupCriterion::default(), |_| true)?;
 
@@ -65,8 +68,13 @@ fn test_get_snapshot_group_no_ids() -> Result<()> {
 }
 
 #[rstest]
-fn test_get_snapshot_group_wrong_id() {
-    let (repo, _snapshots) = &*REPOSITORY_RESOURCE;
+fn test_get_snapshot_group_wrong_id(
+    repo_and_snapshots: &(
+        Repository<NoProgressBars, IndexedStatus<IdIndex, OpenStatus>>,
+        Vec<SnapshotFile>,
+    ),
+) {
+    let (repo, _snapshots) = repo_and_snapshots;
 
     let res = repo.get_snapshot_group(
         &[String::from("wrong_id_that_is_out_of_format")],
@@ -82,9 +90,13 @@ fn test_get_snapshot_group_wrong_id() {
 }
 
 #[rstest]
-fn test_get_snapshot_group_latest_id() -> Result<()> {
-    let (repo, snapshots) = &*REPOSITORY_RESOURCE;
-
+fn test_get_snapshot_group_latest_id(
+    repo_and_snapshots: &(
+        Repository<NoProgressBars, IndexedStatus<IdIndex, OpenStatus>>,
+        Vec<SnapshotFile>,
+    ),
+) -> Result<()> {
+    let (repo, snapshots) = repo_and_snapshots;
     let res = repo.get_snapshot_group(
         &[String::from("latest")],
         SnapshotGroupCriterion::default(),
@@ -99,8 +111,13 @@ fn test_get_snapshot_group_latest_id() -> Result<()> {
 }
 
 #[rstest]
-fn test_get_snapshot_group_latest_n_id() -> Result<()> {
-    let (repo, snapshots) = &*REPOSITORY_RESOURCE;
+fn test_get_snapshot_group_latest_n_id(
+    repo_and_snapshots: &(
+        Repository<NoProgressBars, IndexedStatus<IdIndex, OpenStatus>>,
+        Vec<SnapshotFile>,
+    ),
+) -> Result<()> {
+    let (repo, snapshots) = repo_and_snapshots;
 
     let res = repo.get_snapshot_group(
         &[String::from("latest~2")],
@@ -127,8 +144,13 @@ fn test_get_snapshot_group_latest_n_id() -> Result<()> {
 }
 
 #[rstest]
-fn test_get_snapshot_from_str_short_id() -> Result<()> {
-    let (repo, _snapshots) = &*REPOSITORY_RESOURCE;
+fn test_get_snapshot_from_str_short_id(
+    repo_and_snapshots: &(
+        Repository<NoProgressBars, IndexedStatus<IdIndex, OpenStatus>>,
+        Vec<SnapshotFile>,
+    ),
+) -> Result<()> {
+    let (repo, _snapshots) = repo_and_snapshots;
 
     let snap_original = repo.get_all_snapshots()?[0].clone();
 
@@ -142,8 +164,13 @@ fn test_get_snapshot_from_str_short_id() -> Result<()> {
 }
 
 #[rstest]
-fn test_get_snapshot_from_str_latest() -> Result<()> {
-    let (repo, snapshots) = &*REPOSITORY_RESOURCE;
+fn test_get_snapshot_from_str_latest(
+    repo_and_snapshots: &(
+        Repository<NoProgressBars, IndexedStatus<IdIndex, OpenStatus>>,
+        Vec<SnapshotFile>,
+    ),
+) -> Result<()> {
+    let (repo, snapshots) = repo_and_snapshots;
 
     let snap_latest = repo.get_snapshot_from_str("latest", |_| true)?;
     assert_eq!(snap_latest, snapshots[2]);
@@ -153,8 +180,13 @@ fn test_get_snapshot_from_str_latest() -> Result<()> {
 }
 
 #[rstest]
-fn test_get_snapshots_from_strs_latest() -> Result<()> {
-    let (repo, snapshots) = &*REPOSITORY_RESOURCE;
+fn test_get_snapshots_from_strs_latest(
+    repo_and_snapshots: &(
+        Repository<NoProgressBars, IndexedStatus<IdIndex, OpenStatus>>,
+        Vec<SnapshotFile>,
+    ),
+) -> Result<()> {
+    let (repo, snapshots) = repo_and_snapshots;
 
     let snap_latest = repo.get_snapshots_from_strs(&["latest", "latest~1"], |_| true)?;
     assert_eq!(snap_latest[0], snapshots[2]);
