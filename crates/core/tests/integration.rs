@@ -32,6 +32,7 @@ mod integration {
     mod ls;
     mod prune;
     mod restore;
+    mod snapshots;
     mod vfs;
     use super::*;
 }
@@ -100,11 +101,10 @@ fn insta_snapshotfile_redaction() -> Settings {
 
     settings.add_redaction(".**.tree", "[tree_id]");
     settings.add_dynamic_redaction(".**.program_version", |val, _| {
-        val.resolve_inner()
-            .as_str()
-            .map_or("[program_version]".to_string(), |v| {
-                v.replace(env!("CARGO_PKG_VERSION"), "[rustic_core_version]")
-            })
+        val.resolve_inner().as_str().map_or_else(
+            || "[program_version]".to_string(),
+            |v| v.replace(env!("CARGO_PKG_VERSION"), "[rustic_core_version]"),
+        )
     });
     settings.add_redaction(".**.time", "[time]");
     settings.add_dynamic_redaction(".**.parent", handle_option);

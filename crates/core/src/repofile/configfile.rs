@@ -53,7 +53,7 @@ pub struct ConfigFile {
     /// Repository version. Currently 1 and 2 are supported
     pub version: u32,
 
-    /// The [`Id`] identifying the repsitory
+    /// The [`Id`] identifying the repository
     pub id: RepositoryId,
 
     /// The chunker polynomial used to chunk data

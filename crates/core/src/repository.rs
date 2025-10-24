@@ -938,7 +938,7 @@ impl<P: ProgressBars, S: Open> Repository<P, S> {
         &self,
         ids: &[String],
         group_by: SnapshotGroupCriterion,
-        filter: impl FnMut(&SnapshotFile) -> bool,
+        filter: impl FnMut(&SnapshotFile) -> bool + Send + Sync,
     ) -> RusticResult<Vec<(SnapshotGroup, Vec<SnapshotFile>)>> {
         commands::snapshots::get_snapshot_group(self, ids, group_by, filter)
     }
@@ -959,7 +959,7 @@ impl<P: ProgressBars, S: Open> Repository<P, S> {
     /// # Returns
     ///
     /// If `id` is (part of) an `Id`, return this snapshot.
-    /// If `id` is "latest", return the latest snapshot respecting the giving filter.
+    /// If `id` is "latest" or "latest~N", return the latest (or Nth latest) snapshot respecting the giving filter.
     pub fn get_snapshot_from_str(
         &self,
         id: &str,
@@ -969,6 +969,35 @@ impl<P: ProgressBars, S: Open> Repository<P, S> {
         let snap = SnapshotFile::from_str(self.dbe(), id, filter, &p)?;
         p.finish();
         Ok(snap)
+    }
+
+    /// Get a single snapshot
+    ///
+    /// # Arguments
+    ///
+    /// * `ids` - The ids of the snapshot to get
+    ///   * each `id` can use an actual (short) id "01a2b3c4" or "latest" or "latest~N"
+    /// * `filter` - The filter to use
+    ///
+    /// # Errors
+    ///
+    /// * If the string is not a valid hexadecimal string
+    /// * If no id could be found.
+    /// * If the id is not unique.
+    ///
+    /// # Returns
+    ///
+    /// If `id` is (part of) an `Id`, return this snapshot.
+    /// If `id` is "latest" or "latest~N", return the latest (or Nth latest) snapshot respecting the giving filter.
+    pub fn get_snapshots_from_strs<T: AsRef<str>>(
+        &self,
+        ids: &[T],
+        filter: impl FnMut(&SnapshotFile) -> bool + Send + Sync,
+    ) -> RusticResult<Vec<SnapshotFile>> {
+        let p = self.pb.progress_counter("getting snapshots...");
+        let snaps = SnapshotFile::from_strs(self.dbe(), ids, filter, &p)?;
+        p.finish();
+        Ok(snaps)
     }
 
     /// Get the given snapshots.
@@ -1104,7 +1133,7 @@ impl<P: ProgressBars, S: Open> Repository<P, S> {
         &self,
         keep: &KeepOptions,
         group_by: SnapshotGroupCriterion,
-        filter: impl FnMut(&SnapshotFile) -> bool,
+        filter: impl FnMut(&SnapshotFile) -> bool + Send + Sync,
     ) -> RusticResult<ForgetGroups> {
         commands::forget::get_forget_snapshots(self, keep, group_by, filter)
     }
