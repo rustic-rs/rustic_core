@@ -473,7 +473,7 @@ impl SnapshotRequests {
                 SnapshotRequest::Latest(n) => {
                     max_n_latest = Some(max_n_latest.unwrap_or_default().max(*n));
                 }
-                SnapshotRequest::StartsWith(s) => starts_with.push(s.to_string()),
+                SnapshotRequest::StartsWith(s) => starts_with.push(s.clone()),
                 SnapshotRequest::Id(id) => ids.push(*id),
             }
         }
