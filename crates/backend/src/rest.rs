@@ -1,3 +1,4 @@
+use std::io::Read;
 use std::str::FromStr;
 use std::time::Duration;
 
@@ -34,6 +35,55 @@ fn construct_backoff_error(err: reqwest::Error) -> Box<RusticError> {
         "Backoff failed, please check the logs for more information.",
         err,
     )
+}
+
+fn read_file_contents(log_name: &str, path: &str) -> RusticResult<Vec<u8>> {
+    let mut buf = Vec::new();
+    let _ = std::fs::File::open(path)
+        .map_err(|err| {
+            RusticError::with_source(
+                ErrorKind::InvalidInput,
+                "Cannot open {log_name} `{path}`",
+                err,
+            )
+            .attach_context("path", path)
+            .attach_context("log_name", log_name)
+        })?
+        .read_to_end(&mut buf)
+        .map_err(|err| {
+            RusticError::with_source(
+                ErrorKind::InvalidInput,
+                "Cannot read {log_name} `{path}`",
+                err,
+            )
+            .attach_context("path", path)
+            .attach_context("log_name", log_name)
+        })?;
+    Ok(buf)
+}
+
+fn get_cacert(value: &str) -> RusticResult<reqwest::Certificate> {
+    let buf = read_file_contents("cacert", value)?;
+    reqwest::Certificate::from_pem(&buf).map_err(|err| {
+        RusticError::with_source(
+            ErrorKind::InvalidInput,
+            "Cannot parse cacert `{value}`",
+            err,
+        )
+        .attach_context("value", value)
+    })
+}
+
+fn get_tls_client_cert(value: &str) -> RusticResult<reqwest::Identity> {
+    let buf = read_file_contents("tls-client-cert", value)?;
+    reqwest::Identity::from_pem(&buf).map_err(|err| {
+        RusticError::with_source(
+            ErrorKind::InvalidInput,
+            "Cannot parse tls-client-cert `{value}`",
+            err,
+        )
+        .attach_context("value", value)
+    })
 }
 
 /// A backend implementation that uses REST to access the backend.
@@ -145,6 +195,10 @@ impl RestBackend {
                     .attach_context("value", value)
                     .attach_context("option", "timeout")
                 })?;
+            } else if option == "cacert" {
+                client_builder = client_builder.add_root_certificate(get_cacert(&value)?);
+            } else if option == "tls-client-cert" {
+                client_builder = client_builder.identity(get_tls_client_cert(&value)?);
             }
         }
 
