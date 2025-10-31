@@ -107,13 +107,10 @@ impl RestBackend {
         let mut headers = HeaderMap::new();
         _ = headers.insert("User-Agent", HeaderValue::from_static("rustic"));
 
-        let mut client = ClientBuilder::new()
-            .default_headers(headers)
-            .timeout(constants::DEFAULT_TIMEOUT) // set default timeout to 10 minutes (we can have *large* packfiles)
-            .build()
-            .map_err(|err| {
-                RusticError::with_source(ErrorKind::Backend, "Failed to build HTTP client", err)
-            })?;
+        // set default timeout to 10 minutes (we can have *large* packfiles)
+        let mut timeout = constants::DEFAULT_TIMEOUT;
+
+        let mut client_builder = ClientBuilder::new().default_headers(headers);
 
         // backon doesn't allow us to specify `None` for `max_delay`
         // see <https://github.com/Xuanwo/backon/pull/160>
@@ -139,7 +136,7 @@ impl RestBackend {
                 };
                 backoff = backoff.with_max_times(max_retries);
             } else if option == "timeout" {
-                let timeout = humantime::Duration::from_str(&value).map_err(|err| {
+                timeout = *humantime::Duration::from_str(&value).map_err(|err| {
                     RusticError::with_source(
                         ErrorKind::InvalidInput,
                         "Could not parse value `{value}` as `humantime` duration. Invalid value for option `{option}`.",
@@ -148,19 +145,12 @@ impl RestBackend {
                     .attach_context("value", value)
                     .attach_context("option", "timeout")
                 })?;
-
-                client = ClientBuilder::new()
-                    .timeout(*timeout)
-                    .build()
-                    .map_err(|err| {
-                        RusticError::with_source(
-                            ErrorKind::Backend,
-                            "Failed to build HTTP client",
-                            err,
-                        )
-                    })?;
             }
         }
+
+        let client = client_builder.timeout(timeout).build().map_err(|err| {
+            RusticError::with_source(ErrorKind::Backend, "Failed to build HTTP client", err)
+        })?;
 
         Ok(Self {
             url,
