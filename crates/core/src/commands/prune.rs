@@ -409,9 +409,10 @@ impl PruneIndex {
 }
 
 /// Task to be executed by a `PrunePlan` on Packs
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Default)]
 pub enum PackToDo {
     // TODO: Add documentation
+    #[default]
     Undecided,
     /// The pack should be kept
     Keep,
@@ -427,12 +428,6 @@ pub enum PackToDo {
     Recover,
     /// The pack should be deleted
     Delete,
-}
-
-impl Default for PackToDo {
-    fn default() -> Self {
-        Self::Undecided
-    }
 }
 
 /// A pack which is to be pruned
