@@ -168,7 +168,7 @@ impl ConfigFile {
                 ErrorKind::InvalidInput,
                 "Parsing u64 from hex failed for polynomial `{polynomial}`, the value must be a valid hexadecimal string.",
                 err)
-            .attach_context("polynomial",self.chunker_polynomial.to_string()))
+            .attach_context("polynomial",&self.chunker_polynomial))
             ?;
 
         Ok(chunker_poly)

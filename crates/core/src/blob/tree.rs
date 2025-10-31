@@ -616,7 +616,7 @@ where
                     "Failed to add glob pattern `{glob}` to override builder.",
                     err,
                 )
-                .attach_context("glob", g.to_string())
+                .attach_context("glob", g)
                 .ask_report()
             })?;
         }
@@ -629,7 +629,7 @@ where
                         "Failed to read string from glob file `{glob_file}` ",
                         err,
                     )
-                    .attach_context("glob_file", file.to_string())
+                    .attach_context("glob_file", file)
                     .ask_report()
                 })?
                 .lines()
@@ -661,7 +661,7 @@ where
                     "Failed to add iglob pattern `{iglob}` to override builder.",
                     err,
                 )
-                .attach_context("iglob", g.to_string())
+                .attach_context("iglob", g)
                 .ask_report()
             })?;
         }
@@ -674,7 +674,7 @@ where
                         "Failed to read string from iglob file `{iglob_file}`",
                         err,
                     )
-                    .attach_context("iglob_file", file.to_string())
+                    .attach_context("iglob_file", file)
                     .ask_report()
                 })?
                 .lines()

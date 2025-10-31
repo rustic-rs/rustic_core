@@ -37,17 +37,12 @@ pub enum IndexType {
 }
 
 // TODO: add documentation!
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub(crate) enum EntriesVariants {
+    #[default]
     None,
     Ids(Vec<BlobId>),
     FullEntries(Vec<SortedEntry>),
-}
-
-impl Default for EntriesVariants {
-    fn default() -> Self {
-        Self::None
-    }
 }
 
 #[derive(Default, Debug)]

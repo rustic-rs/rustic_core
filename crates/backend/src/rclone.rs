@@ -264,7 +264,7 @@ impl RcloneBackend {
                     }
                 }
             }
-            Some(url) => url.to_string(),
+            Some(url) => url.clone(),
         };
 
         if use_password {

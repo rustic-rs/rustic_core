@@ -195,7 +195,7 @@ impl LocalSource {
                     "Failed to add glob pattern `{glob}` to override builder.",
                     err,
                 )
-                .attach_context("glob", g.to_string())
+                .attach_context("glob", g)
                 .ask_report()
             })?;
         }
@@ -208,7 +208,7 @@ impl LocalSource {
                         "Failed to read string from glob file at `{glob_file}`",
                         err,
                     )
-                    .attach_context("glob_file", file.to_string())
+                    .attach_context("glob_file", file)
                     .ask_report()
                 })?
                 .lines()
@@ -240,7 +240,7 @@ impl LocalSource {
                     "Failed to add iglob pattern `{iglob}` to override builder.",
                     err,
                 )
-                .attach_context("iglob", g.to_string())
+                .attach_context("iglob", g)
                 .ask_report()
             })?;
         }
@@ -253,7 +253,7 @@ impl LocalSource {
                         "Failed to read string from iglob file at `{iglob_file}`",
                         err,
                     )
-                    .attach_context("iglob_file", file.to_string())
+                    .attach_context("iglob_file", file)
                     .ask_report()
                 })?
                 .lines()

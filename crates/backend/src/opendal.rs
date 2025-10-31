@@ -124,7 +124,7 @@ impl OpenDALBackend {
                         "Parsing connections value `{value}` failed, the value must be a valid integer.",
                         err,
                     )
-                    .attach_context("value", c.to_string())
+                    .attach_context("value", c)
                 })
             })
             .transpose()?;

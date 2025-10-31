@@ -124,9 +124,11 @@ pub struct Node {
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, strum::Display)]
 #[serde(tag = "type", rename_all = "lowercase")]
 /// Types a [`Node`] can have with type-specific additional information
+#[derive(Default)]
 pub enum NodeType {
     /// Node is a regular file
     #[strum(to_string = "file")]
+    #[default]
     File,
     /// Node is a directory
     #[strum(to_string = "dir")]
@@ -241,12 +243,6 @@ impl NodeType {
             Self::Symlink { linktarget, .. } => Path::new(linktarget),
             _ => panic!("called method to_link on non-symlink!"),
         }
-    }
-}
-
-impl Default for NodeType {
-    fn default() -> Self {
-        Self::File
     }
 }
 
@@ -496,7 +492,7 @@ fn unescape_filename(s: &str) -> NodeResult<'_, OsString> {
                                 u.push(u8::from_str_radix(&hex, 16).map_err(|err| {
                                     NodeErrorKind::ParsingHexFailed {
                                         file_name: s.to_string(),
-                                        hex: hex.to_string(),
+                                        hex: hex.clone(),
                                         chars: chars.clone(),
                                         source: err,
                                     }
