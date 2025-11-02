@@ -1,4 +1,7 @@
-use std::{ffi::OsString, path::PathBuf};
+use std::{
+    ffi::OsString,
+    path::{Component, PathBuf},
+};
 
 use crate::{
     backend::node::{Metadata, Node, NodeType},
@@ -35,6 +38,22 @@ where
             item,
         }
     }
+
+    // like self.path.pop(), but does also pop path prefixes (on windows; like "C:\")
+    fn pop(&mut self) -> bool {
+        let mut comps = self.path.components();
+        loop {
+            let comp = comps.next_back();
+            match comp {
+                Some(Component::Prefix(_) | Component::Normal(_)) => {
+                    self.path = comps.collect();
+                    return true;
+                }
+                Some(Component::RootDir | Component::ParentDir | Component::CurDir) => {}
+                None => return false,
+            }
+        }
+    }
 }
 
 /// `TreeType` is the type returned by the `TreeIterator`.
@@ -46,7 +65,7 @@ where
 ///
 /// * `T` - The type of the original item.
 /// * `U` - The type of the new tree.
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub(crate) enum TreeType<T, U> {
     /// New tree to be inserted.
     NewTree((PathBuf, Node, U)),
@@ -63,24 +82,11 @@ where
     type Item = TreeType<O, OsString>;
     fn next(&mut self) -> Option<Self::Item> {
         match &self.item {
-            None => {
-                if self.path.pop() {
-                    Some(TreeType::EndTree)
-                } else {
-                    // Check if we still have a path prefix open...
-                    match self.path.components().next() {
-                        Some(std::path::Component::Prefix(..)) => {
-                            self.path = PathBuf::new();
-                            Some(TreeType::EndTree)
-                        }
-                        _ => None,
-                    }
-                }
-            }
+            None => self.pop().then_some(TreeType::EndTree),
             Some((path, node, _)) => {
                 match path.strip_prefix(&self.path) {
                     Err(_) => {
-                        _ = self.path.pop();
+                        _ = self.pop();
                         Some(TreeType::EndTree)
                     }
                     Ok(missing_dirs) => {
@@ -111,5 +117,50 @@ where
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use insta::assert_debug_snapshot;
+    use rstest::rstest;
+
+    use super::*;
+    use std::path::Path;
+
+    fn test_tree_iter(case: &str, paths: Vec<&str>) {
+        let paths = paths.into_iter().map(|p| {
+            (
+                Path::new(&p).to_path_buf(),
+                Node::new_node(
+                    Path::new(&p).file_name().unwrap(),
+                    NodeType::Dir,
+                    Metadata::default(),
+                ),
+                (),
+            )
+        });
+
+        let result: Vec<_> = TreeIterator::new(paths).collect();
+        assert_debug_snapshot!(format!("tree_iter#{case}"), result);
+    }
+
+    #[cfg(not(windows))]
+    #[rstest]
+    #[case("simple", ["a", "a/b", "a/b/c"].to_vec())]
+    #[case("simple_root", ["/a", "/a/b", "/a/b/c"].to_vec())]
+    #[case("simple_relative", ["./a", "./a/b", "./a/b/c"].to_vec())]
+    #[case("complex", ["a/b", "a/b/c", "a/b/d", "f"].to_vec())]
+    #[case("complex_root", ["/a/b", "/a/b/c", "/a/b/d", "/f"].to_vec())]
+    #[case("complex_relative", ["./a/b", "./a/b/c", "./a/b/d", "./f"].to_vec())]
+    fn test_tree_iter_nix(#[case] case: &str, #[case] paths: Vec<&str>) {
+        test_tree_iter(case, paths);
+    }
+
+    #[cfg(windows)]
+    #[rstest]
+    #[case("windows", [r"C:\a", r"C:\a\b", r"D:\a"].to_vec())]
+    fn test_tree_iter_windows(#[case] case: &str, #[case] paths: Vec<&str>) {
+        test_tree_iter(case, paths);
     }
 }
