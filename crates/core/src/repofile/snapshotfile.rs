@@ -23,7 +23,7 @@ use crate::{
     backend::{FileType, FindInBackend, decrypt::DecryptReadBackend},
     blob::tree::TreeId,
     error::{ErrorKind, RusticError, RusticResult},
-    id::{FindUniqeMultiple, FindUniqueResults, constants::HEX_LEN},
+    id::{FindUniqueMultiple, FindUniqueResults, constants::HEX_LEN},
     impl_repofile,
     progress::Progress,
     repofile::RepoFile,
