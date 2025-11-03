@@ -1,0 +1,8 @@
+[files]
+extend-exclude = [
+  "crates/core/tests/integration/snapshots/integration__integration__check__repo-mixed.tar.gz.snap",
+]
+
+[default.extend-words]
+dbe = "dbe"
+tpe = "tpe"
