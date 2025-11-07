@@ -1,0 +1,90 @@
+---
+source: crates/core/src/archiver/tree.rs
+expression: result
+---
+[
+    NewTree(
+        (
+            "a",
+            Node {
+                name: "a",
+                node_type: Dir,
+                meta: Metadata {
+                    mode: None,
+                    mtime: None,
+                    atime: None,
+                    ctime: None,
+                    uid: None,
+                    gid: None,
+                    user: None,
+                    group: None,
+                    inode: 0,
+                    device_id: 0,
+                    size: 0,
+                    links: 0,
+                    extended_attributes: [],
+                },
+                content: None,
+                subtree: None,
+            },
+            "a",
+        ),
+    ),
+    NewTree(
+        (
+            "a/b",
+            Node {
+                name: "b",
+                node_type: Dir,
+                meta: Metadata {
+                    mode: None,
+                    mtime: None,
+                    atime: None,
+                    ctime: None,
+                    uid: None,
+                    gid: None,
+                    user: None,
+                    group: None,
+                    inode: 0,
+                    device_id: 0,
+                    size: 0,
+                    links: 0,
+                    extended_attributes: [],
+                },
+                content: None,
+                subtree: None,
+            },
+            "b",
+        ),
+    ),
+    NewTree(
+        (
+            "a/b/c",
+            Node {
+                name: "c",
+                node_type: Dir,
+                meta: Metadata {
+                    mode: None,
+                    mtime: None,
+                    atime: None,
+                    ctime: None,
+                    uid: None,
+                    gid: None,
+                    user: None,
+                    group: None,
+                    inode: 0,
+                    device_id: 0,
+                    size: 0,
+                    links: 0,
+                    extended_attributes: [],
+                },
+                content: None,
+                subtree: None,
+            },
+            "c",
+        ),
+    ),
+    EndTree,
+    EndTree,
+    EndTree,
+]

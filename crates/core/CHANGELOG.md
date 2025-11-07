@@ -584,7 +584,7 @@ All notable changes to this project will be documented in this file.
 
 ### Rest/rclone
 
-- Make # of retries cusomizable and use sensible default
+- Make # of retries customizable and use sensible default
 
 ### Restore
 
