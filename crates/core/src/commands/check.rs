@@ -246,7 +246,7 @@ pub(crate) fn check_repository<P: ProgressBars, S: Open>(
     let hot_be = &repo.be_hot;
     let raw_be = repo.dbe();
     let pb = &repo.pb;
-    let collector = CheckResultsCollector::default();
+    let collector = CheckResultsCollector::default().log(true);
     if !opts.trust_cache {
         if let Some(cache) = &cache {
             for file_type in [FileType::Snapshot, FileType::Index] {
