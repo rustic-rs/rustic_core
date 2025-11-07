@@ -65,11 +65,11 @@ strum_macros = "0.27"
 
 # general / backend choosing
 hex = { version = "0.4.3", features = ["serde"] }
-serde = { version = "1.0.219" }
+serde = { version = "1.0.228" }
 url = "2.5.7"
 
 # cli support
-clap = { version = "4.5.47", optional = true, features = ["derive", "env", "wrap_help"] }
+clap = { version = "4.5.51", optional = true, features = ["derive", "env", "wrap_help"] }
 conflate = { version = "0.3.3", optional = true }
 
 # local backend
@@ -77,34 +77,34 @@ aho-corasick = { workspace = true }
 walkdir = "2.5.0"
 
 # rest backend
-backon = { version = "1.5.2", optional = true }
-reqwest = { version = "0.12.23", default-features = false, features = ["json", "rustls-tls-native-roots", "stream", "blocking"], optional = true }
+backon = { version = "1.6.0", optional = true }
+reqwest = { version = "0.12.24", default-features = false, features = ["json", "rustls-tls-native-roots", "stream", "blocking"], optional = true }
 
 # rclone backend
 rand = { version = "0.9.2", optional = true }
-semver = { version = "1.0.26", optional = true }
+semver = { version = "1.0.27", optional = true }
 
 # opendal backend
-bytesize = "2.0.1"
+bytesize = "2.1.0"
 rayon = { version = "1.11.0", optional = true }
-tokio = { version = "1.47.1", optional = true, default-features = false }
-typed-path = { version = "0.11.0", optional = true }
+tokio = { version = "1.48.0", optional = true, default-features = false }
+typed-path = { version = "0.12.0", optional = true }
 
 [target.'cfg(not(windows))'.dependencies]
 # opendal backend
 # - sftp is not supported on windows, see https://github.com/apache/incubator-opendal/issues/2963
 # - ftp is temporarily disabled due to dependency on aws-lc-sys
-opendal = { version = "0.53.3", features = ["services-b2", "services-sftp", "services-swift", "services-azblob", "services-azdls", "services-cos", "services-fs", "services-dropbox", "services-gdrive", "services-gcs", "services-ghac", "services-http", "services-ipmfs", "services-memory", "services-obs", "services-onedrive", "services-oss", "services-s3", "services-webdav", "services-webhdfs", "services-azfile", "layers-blocking", "layers-throttle", "services-yandex-disk"], optional = true }
+opendal = { version = "0.54.1", features = ["blocking", "services-b2", "services-sftp", "services-swift", "services-azblob", "services-azdls", "services-cos", "services-fs", "services-dropbox", "services-gdrive", "services-gcs", "services-ghac", "services-http", "services-ipmfs", "services-memory", "services-obs", "services-onedrive", "services-oss", "services-s3", "services-webdav", "services-webhdfs", "services-azfile", "layers-throttle", "services-yandex-disk"], optional = true }
 
 [target.'cfg(windows)'.dependencies]
 # opendal backend
 # - ftp is temporarily disabled due to dependency on aws-lc-sys
-opendal = { version = "0.53.3", features = ["services-b2", "services-swift", "services-azblob", "services-azdls", "services-cos", "services-fs", "services-dropbox", "services-gdrive", "services-gcs", "services-ghac", "services-http", "services-ipmfs", "services-memory", "services-obs", "services-onedrive", "services-oss", "services-s3", "services-webdav", "services-webhdfs", "services-azfile", "layers-blocking", "layers-throttle", "services-yandex-disk"], optional = true }
+opendal = { version = "0.54.1", features = ["blocking", "services-b2", "services-swift", "services-azblob", "services-azdls", "services-cos", "services-fs", "services-dropbox", "services-gdrive", "services-gcs", "services-ghac", "services-http", "services-ipmfs", "services-memory", "services-obs", "services-onedrive", "services-oss", "services-s3", "services-webdav", "services-webhdfs", "services-azfile", "layers-throttle", "services-yandex-disk"], optional = true }
 
 [dev-dependencies]
 anyhow = { workspace = true }
 rstest = { workspace = true }
-toml = "0.9.5"
+toml = "0.9.8"
 
 [lints]
 workspace = true

@@ -64,17 +64,17 @@ binrw = "0.15.0"
 hex = { version = "0.4.3", features = ["serde"] }
 integer-sqrt = "0.1.5"
 rustic_cdc = "0.3.1"
-serde = { version = "1.0.219" }
+serde = { version = "1.0.228" }
 serde-aux = "4.7.0"
-serde_derive = "1.0.219"
-serde_json = "1.0.143"
-serde_with = { version = "3.14.0", features = ["base64"] }
+serde_derive = "1.0.228"
+serde_json = "1.0.145"
+serde_with = { version = "3.15.1", features = ["base64"] }
 
 # local source/destination
 cached = { version = "0.56.0", default-features = false, features = ["proc_macro"] }
 dunce = "1.0.5"
 filetime = "0.2.26"
-ignore = "0.4.23"
+ignore = "0.4.25"
 nix = { version = "0.30.1", default-features = false, features = ["user", "fs"] }
 path-dedot = "3.1.1"
 walkdir = "2.5.0"
@@ -84,7 +84,7 @@ cachedir = "0.3.1"
 dirs = "6.0.0"
 
 # cli support
-clap = { version = "4.5.47", optional = true, features = ["derive", "env", "wrap_help"] }
+clap = { version = "4.5.51", optional = true, features = ["derive", "env", "wrap_help"] }
 conflate = { version = "0.3.3", optional = true }
 
 # vfs support
@@ -92,16 +92,16 @@ runtime-format = "0.1.3"
 
 # other dependencies
 bytes = { workspace = true }
-bytesize = "2.0.1"
+bytesize = "2.1.0"
 chrono = { version = "0.4.42", default-features = false, features = ["clock", "serde"] }
 ecow = "0.2.6"
 enum-map = { workspace = true }
 enum-map-derive = "0.17.0"
 enumset = { version = "1.1.10", features = ["serde"] }
-gethostname = "1.0.2"
+gethostname = "1.1.0"
 humantime = "2.3.0"
 itertools = "0.14.0"
-quick_cache = "0.6.16"
+quick_cache = "0.6.18"
 shell-words = "1.1.0"
 strum = { version = "0.27.2", features = ["derive"] }
 zstd = "0.13.3"
@@ -121,12 +121,12 @@ xattr = "1"
 [dev-dependencies]
 anyhow = { workspace = true }
 expect-test = "1.5.1"
-flate2 = "1.1.2"
-globset = "0.4.16"
+flate2 = "1.1.5"
+globset = "0.4.18"
 insta = { version = "1.43.2", features = ["redactions", "ron"] }
 mockall = "0.13"
 pretty_assertions = "1.4.1"
-proptest = { version = "1.7.0", default-features = false, features = ["std"] }
+proptest = { version = "1.9.0", default-features = false, features = ["std"] }
 rstest = { workspace = true }
 rustdoc-json = "0.9.7"
 # We need to have rustic_backend here, because the doc-tests in lib.rs of rustic_core
@@ -136,7 +136,7 @@ rustup-toolchain = "0.1.10"
 simplelog = "0.12.2"
 tar = "0.4.44"
 tempfile = { workspace = true }
-toml = "0.9.5"
+toml = "0.9.8"
 
 [lints]
 workspace = true
