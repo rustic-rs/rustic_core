@@ -1527,7 +1527,7 @@ impl PackInfo {
 
         if let Some(first_needed) = first_needed {
             // The pack is actually needed.
-            // We reprocess the blobs up to the first needed one and mark all blobs which are genarally needed as used.
+            // We reprocess the blobs up to the first needed one and mark all blobs which are generally needed as used.
             for blob in &pack.blobs[..first_needed] {
                 match used_ids.get_mut(&blob.id) {
                     None | Some(0) => {} // already correctly marked

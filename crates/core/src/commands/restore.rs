@@ -776,7 +776,7 @@ impl RestorePlan {
 
     /// Get a list of all pack files needed to perform the restore
     ///
-    /// This can be used e.g. to warm-up those pack files before doing the atual restore.
+    /// This can be used e.g. to warm-up those pack files before doing the actual restore.
     #[must_use]
     pub fn to_packs(&self) -> Vec<PackId> {
         self.r

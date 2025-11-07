@@ -68,7 +68,7 @@ All notable changes to this project will be documented in this file.
 ### Fixed
 
 - Add #[non_exhaustive] to pub structs which may be extended in future ([#293](https://github.com/rustic-rs/rustic_core/pull/293))
-- *(backend)* [**breaking**] Use correct merge stratgy for repository options ([#291](https://github.com/rustic-rs/rustic_core/pull/291))
+- *(backend)* [**breaking**] Use correct merge strategy for repository options ([#291](https://github.com/rustic-rs/rustic_core/pull/291))
 
 ### Other
 

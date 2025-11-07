@@ -310,7 +310,7 @@ impl<T: Clone> FindUniqueResults<T> {
     }
 }
 
-pub trait FindUniqeMultiple: Iterator + Sized
+pub trait FindUniqueMultiple: Iterator + Sized
 where
     Self::Item: Clone,
 {
@@ -327,4 +327,4 @@ where
     }
 }
 
-impl<I: Iterator> FindUniqeMultiple for I where I::Item: Clone {}
+impl<I: Iterator> FindUniqueMultiple for I where I::Item: Clone {}
