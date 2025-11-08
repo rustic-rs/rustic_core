@@ -2,6 +2,22 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.5.4](https://github.com/rustic-rs/rustic_core/compare/rustic_backend-v0.5.3...rustic_backend-v0.5.4) - 2025-11-08
+
+### Added
+
+- *(rest)* add support for cacert and tls-client-cert ([#430](https://github.com/rustic-rs/rustic_core/pull/430))
+- *(core)* repository APIs to identify snapshots using latest~N ([#426](https://github.com/rustic-rs/rustic_core/pull/426))
+
+### Fixed
+
+- Fix typos using the typos tool ([#433](https://github.com/rustic-rs/rustic_core/pull/433))
+
+### Other
+
+- update dependencies ([#437](https://github.com/rustic-rs/rustic_core/pull/437))
+- clippy lints ([#431](https://github.com/rustic-rs/rustic_core/pull/431))
+
 ## [0.5.3](https://github.com/rustic-rs/rustic_core/compare/rustic_backend-v0.5.2...rustic_backend-v0.5.3) - 2025-09-12
 
 ### Fixed
