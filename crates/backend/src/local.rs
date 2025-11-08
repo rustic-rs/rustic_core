@@ -417,6 +417,16 @@ impl ReadBackend for LocalBackend {
 
         Ok(vec.into())
     }
+
+    fn warmup_path(&self, tpe: FileType, id: &Id) -> RusticResult<String> {
+        // For local backends, we can provide the filesystem path as the warmup path
+        // though warmup is not typically needed for local storage
+        Ok(self.path(tpe, id).to_string_lossy().to_string())
+    }
+
+    fn needs_warm_up(&self) -> bool {
+        false // Local backends don't need warmup
+    }
 }
 
 impl WriteBackend for LocalBackend {
