@@ -2,6 +2,24 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.9.0](https://github.com/rustic-rs/rustic_core/compare/rustic_core-v0.8.0...rustic_core-v0.9.0) - 2025-11-08
+
+### Added
+
+- *(core)* repository APIs to identify snapshots using latest~N ([#426](https://github.com/rustic-rs/rustic_core/pull/426))
+
+### Fixed
+
+- Also log check findings ([#434](https://github.com/rustic-rs/rustic_core/pull/434))
+- Handle windows path prefixes and relative paths correctly ([#432](https://github.com/rustic-rs/rustic_core/pull/432))
+- Fix typos using the typos tool ([#433](https://github.com/rustic-rs/rustic_core/pull/433))
+- *(commands)* [**breaking**] return error if check fails ([#224](https://github.com/rustic-rs/rustic_core/pull/224))
+
+### Other
+
+- update dependencies ([#437](https://github.com/rustic-rs/rustic_core/pull/437))
+- clippy lints ([#431](https://github.com/rustic-rs/rustic_core/pull/431))
+
 ## [0.8.0](https://github.com/rustic-rs/rustic_core/compare/rustic_core-v0.7.3...rustic_core-v0.8.0) - 2025-09-12
 
 ### Added
