@@ -6,6 +6,7 @@ SnapshotFile(
   time: "[time]",
   program_version: "rustic [rustic_core_version]",
   parent: "[some]",
+  parents: "[parents]",
   tree: "[tree_id]",
   paths: StringList([
     "test",
