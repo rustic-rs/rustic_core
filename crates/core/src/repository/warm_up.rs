@@ -1,7 +1,7 @@
 use std::process::Command;
 use std::thread::sleep;
 
-use log::{debug, error, warn};
+use log::{debug, error};
 use rayon::ThreadPoolBuilder;
 
 use crate::{
@@ -10,7 +10,7 @@ use crate::{
     error::{ErrorKind, RusticError, RusticResult},
     progress::{Progress, ProgressBars},
     repofile::packfile::PackId,
-    repository::Repository,
+    repository::{Repository, WarmUpPackIdInput, WarmUpInputType},
 };
 
 pub(super) mod constants {
@@ -36,7 +36,16 @@ pub(crate) fn warm_up_wait<P: ProgressBars, S>(
     warm_up(repo, packs.clone())?;
 
     if let Some(warm_up_wait_cmd) = &repo.opts.warm_up_wait_command {
-        warm_up_command(packs, warm_up_wait_cmd, &repo.pb, &WarmUpType::WaitPack)?;
+        warm_up_command(
+            packs,
+            warm_up_wait_cmd,
+            &repo.pb,
+            &WarmUpType::WaitPack,
+            repo.opts.warm_up_batch,
+            repo.opts.warm_up_pack_id_input.unwrap_or_default(),
+            repo.opts.warm_up_input_type.unwrap_or_default(),
+            &repo.be,
+        )?;
     } else if let Some(wait) = repo.opts.warm_up_wait {
         let p = repo.pb.progress_spinner(format!("waiting {wait}..."));
         sleep(*wait);
@@ -61,7 +70,16 @@ pub(crate) fn warm_up<P: ProgressBars, S>(
     packs: impl ExactSizeIterator<Item = PackId>,
 ) -> RusticResult<()> {
     if let Some(warm_up_cmd) = &repo.opts.warm_up_command {
-        warm_up_command(packs, warm_up_cmd, &repo.pb, &WarmUpType::WarmUp)?;
+        warm_up_command(
+            packs,
+            warm_up_cmd,
+            &repo.pb,
+            &WarmUpType::WarmUp,
+            repo.opts.warm_up_batch,
+            repo.opts.warm_up_pack_id_input.unwrap_or_default(),
+            repo.opts.warm_up_input_type.unwrap_or_default(),
+            &repo.be,
+        )?;
     } else if repo.be.needs_warm_up() {
         warm_up_repo(repo, packs)?;
     }
@@ -74,6 +92,14 @@ enum WarmUpType {
     WaitPack,
 }
 
+/// Get the input string for a pack ID based on the input type
+fn get_pack_input(pack_id: &PackId, input_type: WarmUpInputType, backend: &impl ReadBackend) -> RusticResult<String> {
+    match input_type {
+        WarmUpInputType::PackId => Ok(pack_id.to_hex().to_string()),
+        WarmUpInputType::BackendPath => backend.warmup_path(FileType::Pack, pack_id),
+    }
+}
+
 /// Warm up the repository using a command.
 ///
 /// # Arguments
@@ -81,6 +107,9 @@ enum WarmUpType {
 /// * `packs` - The packs to warm up.
 /// * `command` - The command to execute.
 /// * `pb` - The progress bar to use.
+/// * `ty` - The type of warm-up operation.
+/// * `batch_size` - The number of packs to process in each batch.
+/// * `input_mode` - How to pass pack IDs to the command.
 ///
 /// # Errors
 ///
@@ -90,38 +119,118 @@ fn warm_up_command<P: ProgressBars>(
     command: &CommandInput,
     pb: &P,
     ty: &WarmUpType,
+    batch_size: usize,
+    input_mode: WarmUpPackIdInput,
+    input_type: WarmUpInputType,
+    backend: &impl ReadBackend,
 ) -> RusticResult<()> {
+    let packs: Vec<_> = packs.collect();
+    let total_packs = packs.len();
+
     let p = pb.progress_counter(match ty {
         WarmUpType::WarmUp => "warming up packs...",
         WarmUpType::WaitPack => "waiting for packs to be ready...",
     });
-    p.set_length(packs.len() as u64);
-    for pack in packs {
-        let args: Vec<_> = command
-            .args()
-            .iter()
-            .map(|c| c.replace("%id", &pack.to_hex()))
-            .collect();
+    p.set_length(total_packs as u64);
 
-        debug!("calling {command:?}...");
+    // Process packs in batches
+    for batch in packs.chunks(batch_size) {
+        match input_mode {
+            WarmUpPackIdInput::Anchor => {
+                // For anchor mode, call command once per pack with %id replacement
+                for pack in batch {
+                    let pack_input = get_pack_input(pack, input_type, backend)
+                        .map_err(|err| {
+                            RusticError::with_source(
+                                ErrorKind::Backend,
+                                "Failed to get backend path for pack. This backend may not support path-based warm-up operations.",
+                                err,
+                            )
+                            .attach_context("pack", pack.to_hex().to_string())
+                            .attach_context("input_type", format!("{:?}", input_type))
+                        })?;
+                    let args: Vec<_> = command
+                        .args()
+                        .iter()
+                        .map(|c| c.replace("%id", &pack_input))
+                        .collect();
 
-        let status = Command::new(command.command())
-            .args(&args)
-            .status()
-            .map_err(|err| {
-                RusticError::with_source(
-                    ErrorKind::ExternalCommand,
-                    "Error in executing warm-up command `{command}`.",
-                    err,
-                )
-                .attach_context("command", command.to_string())
-                .attach_context("type", format!("{ty:?}"))
-            })?;
+                    debug!("calling {command:?} for pack {pack:?}...");
 
-        if !status.success() {
-            warn!("{ty:?} command was not successful for pack {pack:?}. {status}");
+                    let status = Command::new(command.command())
+                        .args(&args)
+                        .status()
+                        .map_err(|err| {
+                            RusticError::with_source(
+                                ErrorKind::ExternalCommand,
+                                "Error in executing warm-up command `{command}`.",
+                                err,
+                            )
+                            .attach_context("command", command.to_string())
+                            .attach_context("type", format!("{ty:?}"))
+                        })?;
+
+                    if !status.success() {
+                        return Err(RusticError::new(
+                            ErrorKind::ExternalCommand,
+                            format!("{ty:?} command failed for pack {pack:?}. {status}"),
+                        )
+                        .attach_context("command", command.to_string())
+                        .attach_context("pack", pack.to_hex().to_string())
+                        .attach_context("status", status.to_string())
+                        .attach_context("type", format!("{ty:?}")));
+                    }
+                    p.inc(1);
+                }
+            }
+            WarmUpPackIdInput::Argv => {
+                // For argv mode, pass all pack inputs in batch as arguments
+                let mut args = command.args().to_vec();
+                for pack in batch {
+                    let pack_input = get_pack_input(pack, input_type, backend)
+                        .map_err(|err| {
+                            RusticError::with_source(
+                                ErrorKind::Backend,
+                                "Failed to get backend path for pack. This backend may not support path-based warm-up operations.",
+                                err,
+                            )
+                            .attach_context("pack", pack.to_hex().to_string())
+                            .attach_context("input_type", format!("{:?}", input_type))
+                        })?;
+                    args.push(pack_input);
+                }
+
+                debug!(
+                    "calling {command:?} with {} pack(s)...",
+                    batch.len()
+                );
+
+                let status = Command::new(command.command())
+                    .args(&args)
+                    .status()
+                    .map_err(|err| {
+                        RusticError::with_source(
+                            ErrorKind::ExternalCommand,
+                            "Error in executing warm-up command `{command}`.",
+                            err,
+                        )
+                        .attach_context("command", command.to_string())
+                        .attach_context("type", format!("{ty:?}"))
+                    })?;
+
+                if !status.success() {
+                    return Err(RusticError::new(
+                        ErrorKind::ExternalCommand,
+                        format!("{ty:?} command failed for batch of {} pack(s). {status}", batch.len()),
+                    )
+                    .attach_context("command", command.to_string())
+                    .attach_context("batch_size", batch.len().to_string())
+                    .attach_context("status", status.to_string())
+                    .attach_context("type", format!("{ty:?}")));
+                }
+                p.inc(batch.len() as u64);
+            }
         }
-        p.inc(1);
     }
     p.finish();
     Ok(())
