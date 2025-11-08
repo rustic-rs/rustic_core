@@ -75,6 +75,10 @@ impl ReadBackend for HotColdBackend {
     fn warm_up(&self, tpe: FileType, id: &Id) -> RusticResult<()> {
         self.be.warm_up(tpe, id)
     }
+
+    fn warmup_path(&self, tpe: FileType, id: &Id) -> String {
+        self.be.warmup_path(tpe, id)
+    }
 }
 
 impl WriteBackend for HotColdBackend {

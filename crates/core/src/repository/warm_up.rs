@@ -1,6 +1,7 @@
 use std::process::Command;
 use std::thread::sleep;
 
+use itertools::Itertools;
 use log::{debug, error, warn};
 use rayon::ThreadPoolBuilder;
 
@@ -10,7 +11,7 @@ use crate::{
     error::{ErrorKind, RusticError, RusticResult},
     progress::{Progress, ProgressBars},
     repofile::packfile::PackId,
-    repository::Repository,
+    repository::{Repository, uses_plural_placeholders},
 };
 
 pub(super) mod constants {
@@ -36,7 +37,14 @@ pub(crate) fn warm_up_wait<P: ProgressBars, S>(
     warm_up(repo, packs.clone())?;
 
     if let Some(warm_up_wait_cmd) = &repo.opts.warm_up_wait_command {
-        warm_up_command(packs, warm_up_wait_cmd, &repo.pb, &WarmUpType::WaitPack)?;
+        warm_up_command(
+            packs,
+            warm_up_wait_cmd,
+            &repo.pb,
+            &WarmUpType::WaitPack,
+            repo.opts.warm_up_batch.unwrap_or(1),
+            &repo.be,
+        )?;
     } else if let Some(wait) = repo.opts.warm_up_wait {
         let p = repo.pb.progress_spinner(format!("waiting {wait}..."));
         sleep(
@@ -66,7 +74,14 @@ pub(crate) fn warm_up<P: ProgressBars, S>(
     packs: impl ExactSizeIterator<Item = PackId>,
 ) -> RusticResult<()> {
     if let Some(warm_up_cmd) = &repo.opts.warm_up_command {
-        warm_up_command(packs, warm_up_cmd, &repo.pb, &WarmUpType::WarmUp)?;
+        warm_up_command(
+            packs,
+            warm_up_cmd,
+            &repo.pb,
+            &WarmUpType::WarmUp,
+            repo.opts.warm_up_batch.unwrap_or(1),
+            &repo.be,
+        )?;
     } else if repo.be.needs_warm_up() {
         warm_up_repo(repo, packs)?;
     }
@@ -86,6 +101,9 @@ enum WarmUpType {
 /// * `packs` - The packs to warm up.
 /// * `command` - The command to execute.
 /// * `pb` - The progress bar to use.
+/// * `ty` - The type of warm-up operation.
+/// * `batch_size` - The number of packs to process in each batch.
+/// * `backend` - The backend to get pack paths from.
 ///
 /// # Errors
 ///
@@ -95,40 +113,202 @@ fn warm_up_command<P: ProgressBars>(
     command: &CommandInput,
     pb: &P,
     ty: &WarmUpType,
+    batch_size: usize,
+    backend: &impl ReadBackend,
 ) -> RusticResult<()> {
+    let use_plural = uses_plural_placeholders(command)?;
+
+    let total = packs.len();
+
     let p = pb.progress_counter(match ty {
         WarmUpType::WarmUp => "warming up packs...",
         WarmUpType::WaitPack => "waiting for packs to be ready...",
     });
-    p.set_length(packs.len() as u64);
-    for pack in packs {
-        let args: Vec<_> = command
-            .args()
-            .iter()
-            .map(|c| c.replace("%id", &pack.to_hex()))
-            .collect();
+    p.set_length(total as u64);
 
-        debug!("calling {command:?}...");
+    let chunks = packs.chunks(batch_size);
+    for batch in &chunks {
+        let batch: Vec<_> = batch.collect();
+        if use_plural {
+            warm_up_batch_plural(&batch, command, ty, backend, &p)?;
+        } else {
+            warm_up_batch_singular(&batch, command, ty, backend, &p)?;
+        }
+    }
 
-        let status = Command::new(command.command())
-            .args(&args)
-            .status()
-            .map_err(|err| {
-                RusticError::with_source(
-                    ErrorKind::ExternalCommand,
-                    "Error in executing warm-up command `{command}`.",
-                    err,
-                )
-                .attach_context("command", command.to_string())
-                .attach_context("type", format!("{ty:?}"))
-            })?;
+    p.finish();
+    Ok(())
+}
+
+/// Warm up a batch of packs using singular mode (one command per pack).
+///
+/// # Arguments
+///
+/// * `batch` - The packs in this batch.
+/// * `command` - The command to execute.
+/// * `pb` - The progress bar to use.
+/// * `ty` - The type of warm-up operation.
+/// * `backend` - The backend to get pack paths from.
+/// * `progress` - The progress bar to update.
+///
+/// # Errors
+///
+/// * If the command could not be parsed.
+fn warm_up_batch_singular(
+    batch: &[PackId],
+    command: &CommandInput,
+    ty: &WarmUpType,
+    backend: &impl ReadBackend,
+    progress: &impl Progress,
+) -> RusticResult<()> {
+    let children: Vec<_> = batch
+        .iter()
+        .map(|pack| {
+            let id = pack.to_hex().to_string();
+            let path = backend.warmup_path(FileType::Pack, pack);
+
+            let args: Vec<_> = command
+                .args()
+                .iter()
+                .map(|c| c.replace("%id", &id).replace("%path", &path))
+                .collect();
+
+            debug!("spawning {command:?} for pack {pack:?}...");
+
+            let child = Command::new(command.command())
+                .args(&args)
+                .spawn()
+                .map_err(|err| {
+                    RusticError::with_source(
+                        ErrorKind::ExternalCommand,
+                        "Error in spawning warm-up command `{command}`.",
+                        err,
+                    )
+                    .attach_context("command", command.to_string())
+                    .attach_context("pack", pack.to_hex().to_string())
+                    .attach_context("type", format!("{ty:?}"))
+                })?;
+
+            Ok::<_, Box<RusticError>>((child, *pack))
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+
+    let mut failed_packs = Vec::new();
+
+    for (mut child, pack) in children {
+        debug!("waiting for warm-up command for pack {pack:?}...");
+
+        let status = child.wait().map_err(|err| {
+            RusticError::with_source(
+                ErrorKind::ExternalCommand,
+                "Error waiting for warm-up command `{command}`.",
+                err,
+            )
+            .attach_context("command", command.to_string())
+            .attach_context("pack", pack.to_hex().to_string())
+            .attach_context("type", format!("{ty:?}"))
+        })?;
 
         if !status.success() {
-            warn!("{ty:?} command was not successful for pack {pack:?}. {status}");
+            failed_packs.push((pack, status));
         }
-        p.inc(1);
+
+        progress.inc(1);
     }
-    p.finish();
+
+    if !failed_packs.is_empty() {
+        let error_msg = format!(
+            "{ty:?} command failed for {}/{} pack(s): {}",
+            failed_packs.len(),
+            batch.len(),
+            failed_packs
+                .iter()
+                .map(|(pack, status)| format!("{pack:?} ({status})"))
+                .collect::<Vec<_>>()
+                .join(", ")
+        );
+
+        return Err(RusticError::new(ErrorKind::ExternalCommand, error_msg)
+            .attach_context("command", command.to_string())
+            .attach_context("failed_packs", failed_packs.len().to_string())
+            .attach_context("total_packs", batch.len().to_string())
+            .attach_context("type", format!("{ty:?}")));
+    }
+
+    Ok(())
+}
+
+/// Warm up a batch of packs using plural mode (single command with all values).
+///
+/// # Arguments
+///
+/// * `batch` - The packs in this batch.
+/// * `command` - The command to execute.
+/// * `pb` - The progress bar to use.
+/// * `ty` - The type of warm-up operation.
+/// * `backend` - The backend to get pack paths from.
+/// * `progress` - The progress bar to update.
+///
+/// # Errors
+///
+/// * If the command could not be parsed.
+fn warm_up_batch_plural(
+    batch: &[PackId],
+    command: &CommandInput,
+    ty: &WarmUpType,
+    backend: &impl ReadBackend,
+    progress: &impl Progress,
+) -> RusticResult<()> {
+    let cmd_str = command.to_string();
+    let use_ids = cmd_str.contains("%ids");
+    let use_paths = cmd_str.contains("%paths");
+
+    let mut args = Vec::new();
+
+    for arg in command.args() {
+        if use_ids && arg.contains("%ids") {
+            args.extend(batch.iter().map(|id| id.to_hex().to_string()));
+        } else if use_paths && arg.contains("%paths") {
+            args.extend(
+                batch
+                    .iter()
+                    .map(|id| backend.warmup_path(FileType::Pack, id)),
+            );
+        } else {
+            args.push(arg.clone());
+        }
+    }
+
+    debug!("calling {command:?} with {} pack(s)...", batch.len());
+
+    let status = Command::new(command.command())
+        .args(&args)
+        .status()
+        .map_err(|err| {
+            RusticError::with_source(
+                ErrorKind::ExternalCommand,
+                "Error in executing warm-up command `{command}`.",
+                err,
+            )
+            .attach_context("command", command.to_string())
+            .attach_context("type", format!("{ty:?}"))
+        })?;
+
+    if !status.success() {
+        return Err(RusticError::new(
+            ErrorKind::ExternalCommand,
+            format!(
+                "{ty:?} command failed for batch of {} pack(s). {status}",
+                batch.len()
+            ),
+        )
+        .attach_context("command", command.to_string())
+        .attach_context("batch_size", batch.len().to_string())
+        .attach_context("status", status.to_string())
+        .attach_context("type", format!("{ty:?}")));
+    }
+
+    progress.inc(batch.len() as u64);
     Ok(())
 }
 

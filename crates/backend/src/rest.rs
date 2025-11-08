@@ -398,6 +398,15 @@ impl ReadBackend for RestBackend {
         })
         .map_err(construct_backoff_error)
     }
+
+    fn warmup_path(&self, tpe: FileType, id: &Id) -> String {
+        // For REST backends, return the URL path that could be used for warmup
+        // Though warmup is typically handled by the REST server itself
+        self.url
+            .join(&format!("{}/{}", tpe.dirname(), id))
+            .unwrap()
+            .to_string()
+    }
 }
 
 fn construct_join_url_error(

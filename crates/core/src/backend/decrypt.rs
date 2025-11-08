@@ -637,6 +637,16 @@ impl<C: CryptoKey> ReadBackend for DecryptBackend<C> {
     ) -> RusticResult<Bytes> {
         self.be.read_partial(tpe, id, cacheable, offset, length)
     }
+
+    fn warmup_path(&self, tpe: FileType, id: &Id) -> String {
+        // Delegate to the underlying backend
+        self.be.warmup_path(tpe, id)
+    }
+
+    fn needs_warm_up(&self) -> bool {
+        // Delegate to the underlying backend
+        self.be.needs_warm_up()
+    }
 }
 
 impl<C: CryptoKey> WriteBackend for DecryptBackend<C> {
