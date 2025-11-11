@@ -663,7 +663,7 @@ impl LocalDestination {
                         source: err,
                     }
                 })?;
-                mknod(&filename, SFlag::S_IFBLK, Mode::empty(), device)
+                mknod(&filename, SFlag::S_IFBLK, Mode::empty(), device.into())
                     .map_err(LocalDestinationErrorKind::FromErrnoError)?;
             }
             NodeType::Chardev { device } => {
@@ -689,7 +689,7 @@ impl LocalDestination {
                         source: err,
                     }
                 })?;
-                mknod(&filename, SFlag::S_IFCHR, Mode::empty(), device)
+                mknod(&filename, SFlag::S_IFCHR, Mode::empty(), device.into())
                     .map_err(LocalDestinationErrorKind::FromErrnoError)?;
             }
             NodeType::Fifo => {
