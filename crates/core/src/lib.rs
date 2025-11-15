@@ -154,7 +154,7 @@ pub use crate::{
     },
     repository::{
         FullIndex, IdIndex, IndexedFull, IndexedIds, IndexedStatus, IndexedTree, Open, OpenStatus,
-        Repository, RepositoryOptions,
+        Repository, RepositoryOptions, WarmUpPackIdInput, WarmUpInputType,
         command_input::{CommandInput, CommandInputErrorKind},
     },
 };
