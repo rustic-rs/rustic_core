@@ -5,7 +5,6 @@ use bytes::Bytes;
 use bytesize::ByteSize;
 use log::{error, trace};
 use opendal::{
-    Scheme,
     blocking::Operator,
     layers::{ConcurrentLimitLayer, LoggingLayer, RetryLayer, ThrottleLayer},
     options::{ListOptions, ReadOptions},
@@ -136,15 +135,13 @@ impl OpenDALBackend {
             .map(|t| Throttle::from_str(t))
             .transpose()?;
 
-        let schema = Scheme::from_str(path.as_ref()).map_err(|err| {
-            RusticError::with_source(
-                ErrorKind::InvalidInput,
-                "Parsing scheme from path `{path}` failed, the path must contain a valid scheme.",
-                err,
-            )
-            .attach_context("path", path.as_ref().to_string())
-        })?;
-        let mut operator = opendal::Operator::via_iter(schema, options)
+        let scheme = path
+            .as_ref()
+            .split(':')
+            .next()
+            .unwrap_or(path.as_ref());
+
+        let mut operator = opendal::Operator::via_iter(scheme, options)
             .map_err(|err| {
                 RusticError::with_source(
                     ErrorKind::Backend,
@@ -152,7 +149,7 @@ impl OpenDALBackend {
                     err,
                 )
                 .attach_context("path", path.as_ref().to_string())
-                .attach_context("schema", schema.to_string())
+                .attach_context("schema", scheme.to_string())
             })?
             .layer(RetryLayer::new().with_max_times(max_retries).with_jitter());
 
@@ -205,11 +202,10 @@ impl OpenDALBackend {
 impl ReadBackend for OpenDALBackend {
     /// Returns the location of the backend.
     ///
-    /// This is `local:<path>`.
+    /// This is `opendal:<scheme>:<name>` (e.g., `opendal:gdrive:` for Google Drive).
     fn location(&self) -> String {
-        let mut location = "opendal:".to_string();
-        location.push_str(&self.operator.info().name());
-        location
+        let info = self.operator.info();
+        format!("opendal:{}:{}", info.scheme(), info.name())
     }
 
     /// Lists all files of the given type.
