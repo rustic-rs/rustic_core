@@ -139,7 +139,11 @@ impl OpenDALBackend {
             .as_ref()
             .split(':')
             .next()
+<<<<<<< HEAD
             .unwrap_or_else(|| path.as_ref());
+=======
+            .unwrap_or(path.as_ref());
+>>>>>>> a1cc3b5 (fix(backend/opendal): include scheme in location() for backend identification)
 
         let mut operator = opendal::Operator::via_iter(scheme, options)
             .map_err(|err| {
