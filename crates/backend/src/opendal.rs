@@ -139,7 +139,7 @@ impl OpenDALBackend {
             .as_ref()
             .split(':')
             .next()
-            .unwrap_or(path.as_ref());
+            .unwrap_or_else(|| path.as_ref());
 
         let mut operator = opendal::Operator::via_iter(scheme, options)
             .map_err(|err| {
