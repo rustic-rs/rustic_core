@@ -26,7 +26,7 @@ use crate::{
     },
     blob::{
         BlobId, BlobType, BlobTypeMap, Initialize,
-        packer::{PackSizer, Repacker},
+        packer::{PackSizer, RepackPackBlobs, Repacker},
         tree::TreeStreamerOnce,
     },
     error::{ErrorKind, RusticError, RusticResult},
@@ -46,6 +46,11 @@ use crate::{
 pub(super) mod constants {
     /// Minimum size of an index file to be considered for pruning
     pub(super) const MIN_INDEX_LEN: usize = 10_000;
+    /// The maximum size of pack-part which is read at once from the backend.
+    /// (needed to limit the memory size used for large backends)
+    pub(crate) const LIMIT_PACK_READ: u32 = 40 * 1024 * 1024; // 40 MiB
+    /// The maximum size of holes which are still read when repacking
+    pub(crate) const MAX_HOLESIZE: u32 = 256 * 1024; // 256 kiB
 }
 
 #[allow(clippy::struct_excessive_bools)]
@@ -1289,12 +1294,8 @@ pub(crate) fn prune_repository<P: ProgressBars, S: Open>(
     let mut repack_packs = Vec::new();
 
     // process packs by index_file
-    let p = if prune_plan.index_files.is_empty() {
-        info!("nothing to do!");
-        pb.progress_hidden()
-    } else {
-        pb.progress_spinner("rebuilding index...")
-    };
+    let p = pb.progress_counter("rebuilding index...");
+    p.set_length(u64::try_from(prune_plan.index_files.len()).unwrap_or_default());
     for index in prune_plan.index_files {
         for mut pack in index.packs {
             match pack.to_do {
@@ -1397,18 +1398,38 @@ pub(crate) fn prune_repository<P: ProgressBars, S: Open>(
         repack_packs
             .into_par_iter()
             .try_for_each(|pack| -> RusticResult<_> {
+                let repacker = match pack.blob_type {
+                    BlobType::Data => &data_repacker,
+                    BlobType::Tree => &tree_repacker,
+                };
+                let blobs: Vec<_> = pack
+                    .blobs
+                    .into_iter()
+                    .map(|blob| RepackPackBlobs::from_index_blob(pack.id, blob))
+                    .coalesce(|mut x, mut y| {
+                        // if the blobs are (almost) contiguous and we don't trespass the limit, read blobs one partial read
+                        if y.offset <= x.offset + x.length + constants::MAX_HOLESIZE
+                            && y.offset > x.offset
+                            && y.offset + y.length - x.offset <= constants::LIMIT_PACK_READ
+                        {
+                            x.length = y.offset + y.length - x.offset; // read till the end of y
+                            x.blobs.append(&mut y.blobs);
+                            Ok(x)
+                        } else {
+                            Err((x, y))
+                        }
+                    })
+                    .collect();
+
                 // TODO: repack in parallel
-                for blob in &pack.blobs {
-                    let repacker = match blob.tpe {
-                        BlobType::Data => &data_repacker,
-                        BlobType::Tree => &tree_repacker,
-                    };
+                for blobs in blobs {
+                    let length = u64::from(blobs.length);
                     if opts.fast_repack {
-                        repacker.add_fast(&pack.id, blob)?;
+                        repacker.add_fast(blobs)?;
                     } else {
-                        repacker.add(&pack.id, blob)?;
+                        repacker.add(blobs)?;
                     }
-                    p.inc(u64::from(blob.length));
+                    p.inc(length);
                 }
                 Ok(())
             })?;
