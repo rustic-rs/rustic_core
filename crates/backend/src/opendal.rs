@@ -135,12 +135,14 @@ impl OpenDALBackend {
             .map(|t| Throttle::from_str(t))
             .transpose()?;
 
-        let scheme = path
+        let scheme_str = path
             .as_ref()
             .split(':')
             .next()
+            .unwrap_or_else(|| path.as_ref())
+            .to_string();
 
-        let mut operator = opendal::Operator::via_iter(scheme, options)
+        let mut operator = opendal::Operator::via_iter(&scheme_str, options)
             .map_err(|err| {
                 RusticError::with_source(
                     ErrorKind::Backend,
@@ -148,7 +150,7 @@ impl OpenDALBackend {
                     err,
                 )
                 .attach_context("path", path.as_ref().to_string())
-                .attach_context("schema", scheme.to_string())
+                .attach_context("schema", scheme_str.clone())
             })?
             .layer(RetryLayer::new().with_max_times(max_retries).with_jitter());
 
