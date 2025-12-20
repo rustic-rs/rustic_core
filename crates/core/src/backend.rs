@@ -7,11 +7,8 @@ pub(crate) mod hotcold;
 pub(crate) mod ignore;
 pub(crate) mod local_destination;
 pub(crate) mod node;
-<<<<<<< HEAD
-=======
 /// Pack file caching for API-expensive backends like Google Drive
 pub mod pack_cache;
->>>>>>> 6fa0468 (feat(core): export PackCachingBackend and auto-wrap GDrive backends)
 pub(crate) mod stdin;
 pub(crate) mod warm_up;
 
