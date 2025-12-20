@@ -238,17 +238,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "55248b47b0caf0546f7988906588779981c43bb1bc9d0c44087278f80cdb44ba"
 
 [[package]]
-name = "bb8"
-version = "0.9.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "212d8b8e1a22743d9241575c6ba822cf9c8fef34771c86ab7e477a4fbfd254e5"
-dependencies = [
- "futures-util",
- "parking_lot",
- "tokio",
-]
-
-[[package]]
 name = "binrw"
 version = "0.15.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -764,6 +753,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "ctor"
+version = "0.6.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "424e0138278faeb2b401f174ad17e715c829512d74f3d1e81eb43365c2e0590e"
+dependencies = [
+ "ctor-proc-macro",
+ "dtor",
+]
+
+[[package]]
+name = "ctor-proc-macro"
+version = "0.0.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "52560adf09603e58c9a7ee1fe1dcb95a16927b17c127f0ac02d6e768a0e25bc1"
+
+[[package]]
 name = "ctr"
 version = "0.9.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -993,6 +998,21 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1435fa1053d8b2fbbe9be7e97eca7f33d37b28409959813daefc1446a14247f1"
 
 [[package]]
+name = "dtor"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "404d02eeb088a82cfd873006cb713fe411306c7d182c344905e101fb1167d301"
+dependencies = [
+ "dtor-proc-macro",
+]
+
+[[package]]
+name = "dtor-proc-macro"
+version = "0.0.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f678cf4a922c215c63e0de95eb1ff08a958a81d47e485cf9da1e27bf6305cfa5"
+
+[[package]]
 name = "dunce"
 version = "1.0.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1120,6 +1140,16 @@ checksum = "63af43ff4431e848fb47472a920f14fa71c24de13255a5692e93d4e90302acb0"
 dependencies = [
  "dissimilar",
  "once_cell",
+]
+
+[[package]]
+name = "fastpool"
+version = "1.0.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a6777b4743839a42fd32141d95d7adc4c98e3a1d5200a2598cf32ffd102c81e1"
+dependencies = [
+ "mea",
+ "scopeguard",
 ]
 
 [[package]]
@@ -1831,10 +1861,18 @@ checksum = "49cce2b81f2098e7e3efc35bc2e0a6b7abec9d34128283d7a26fa8f32a6dbb35"
 dependencies = [
  "jiff-static",
  "jiff-tzdb-platform",
+<<<<<<< HEAD
+=======
+ "js-sys",
+>>>>>>> cc624c0 (fix(backend/opendal): include scheme in location(); update GDrive detection and caching; update OpenDAL to 0.55.0; clippy and doc fixes)
  "log",
  "portable-atomic",
  "portable-atomic-util",
  "serde_core",
+<<<<<<< HEAD
+=======
+ "wasm-bindgen",
+>>>>>>> cc624c0 (fix(backend/opendal): include scheme in location(); update GDrive detection and caching; update OpenDAL to 0.55.0; clippy and doc fixes)
  "windows-sys 0.61.2",
 ]
 
@@ -1968,6 +2006,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "34080505efa8e45a4b816c349525ebe327ceaa8559756f0356cba97ef3bf7432"
 
 [[package]]
+name = "lru"
+version = "0.12.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "234cf4f4a04dc1f57e24b96cc0cd600cf2af460d4161ac5ecdd0af8e1f3b2a38"
+dependencies = [
+ "hashbrown 0.15.5",
+]
+
+[[package]]
 name = "lru-slab"
 version = "0.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1990,6 +2037,15 @@ checksum = "d89e7ee0cfbedfc4da3340218492196241d89eefb6dab27de5df917a6d2e78cf"
 dependencies = [
  "cfg-if",
  "digest",
+]
+
+[[package]]
+name = "mea"
+version = "0.5.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ef98beae251f03af02d54d7964b1f5fbc1a042bbf7e2296e5261d2962a762dda"
+dependencies = [
+ "slab",
 ]
 
 [[package]]
@@ -2206,38 +2262,421 @@ checksum = "c08d65885ee38876c4f86fa503fb49d7b507c2b62552df7c70b2fce627e06381"
 [[package]]
 name = "opendal"
 version = "0.55.0"
+<<<<<<< HEAD
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d075ab8a203a6ab4bc1bce0a4b9fe486a72bf8b939037f4b78d95386384bc80a"
+=======
+dependencies = [
+ "opendal-core",
+ "opendal-layer-logging",
+ "opendal-layer-retry",
+ "opendal-layer-throttle",
+ "opendal-layer-timeout",
+ "opendal-service-azblob",
+ "opendal-service-azdls",
+ "opendal-service-azfile",
+ "opendal-service-b2",
+ "opendal-service-cos",
+ "opendal-service-dropbox",
+ "opendal-service-fs",
+ "opendal-service-gcs",
+ "opendal-service-gdrive",
+ "opendal-service-ghac",
+ "opendal-service-http",
+ "opendal-service-ipmfs",
+ "opendal-service-obs",
+ "opendal-service-onedrive",
+ "opendal-service-oss",
+ "opendal-service-s3",
+ "opendal-service-swift",
+ "opendal-service-webdav",
+ "opendal-service-webhdfs",
+ "opendal-service-yandex-disk",
+]
+
+[[package]]
+name = "opendal-core"
+version = "0.55.0"
+>>>>>>> cc624c0 (fix(backend/opendal): include scheme in location(); update GDrive detection and caching; update OpenDAL to 0.55.0; clippy and doc fixes)
 dependencies = [
  "anyhow",
  "backon",
  "base64 0.22.1",
- "bb8",
  "bytes",
+<<<<<<< HEAD
  "crc32c",
+=======
+ "ctor",
+ "fastpool",
+>>>>>>> cc624c0 (fix(backend/opendal): include scheme in location(); update GDrive detection and caching; update OpenDAL to 0.55.0; clippy and doc fixes)
  "futures",
  "getrandom 0.2.16",
- "ghac",
- "governor",
  "http",
  "http-body",
  "jiff",
  "log",
  "md-5",
+ "mea",
  "moka",
  "openssh",
  "openssh-sftp-client",
  "percent-encoding",
- "prost",
- "quick-xml 0.38.3",
+ "quick-xml",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "tokio",
+ "url",
+ "uuid",
+ "web-time",
+]
+
+[[package]]
+name = "opendal-layer-logging"
+version = "0.55.0"
+dependencies = [
+ "log",
+ "opendal-core",
+]
+
+[[package]]
+name = "opendal-layer-retry"
+version = "0.55.0"
+dependencies = [
+ "backon",
+ "log",
+ "opendal-core",
+]
+
+[[package]]
+name = "opendal-layer-throttle"
+version = "0.55.0"
+dependencies = [
+ "governor",
+ "opendal-core",
+]
+
+[[package]]
+name = "opendal-layer-timeout"
+version = "0.55.0"
+dependencies = [
+ "opendal-core",
+ "tokio",
+]
+
+[[package]]
+name = "opendal-service-azblob"
+version = "0.55.0"
+dependencies = [
+ "base64 0.22.1",
+ "bytes",
+ "ctor",
+ "http",
+ "log",
+ "opendal-core",
+ "opendal-service-azure-common",
+ "quick-xml",
+ "reqsign",
+ "serde",
+ "sha2",
+ "uuid",
+]
+
+[[package]]
+name = "opendal-service-azdls"
+version = "0.55.0"
+dependencies = [
+ "bytes",
+ "ctor",
+ "http",
+ "log",
+ "opendal-core",
+ "opendal-service-azure-common",
+ "quick-xml",
+ "reqsign",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "opendal-service-azfile"
+version = "0.55.0"
+dependencies = [
+ "bytes",
+ "ctor",
+ "http",
+ "log",
+ "opendal-core",
+ "opendal-service-azure-common",
+ "quick-xml",
+ "reqsign",
+ "serde",
+]
+
+[[package]]
+name = "opendal-service-azure-common"
+version = "0.55.0"
+dependencies = [
+ "http",
+ "opendal-core",
+ "reqsign",
+]
+
+[[package]]
+name = "opendal-service-b2"
+version = "0.55.0"
+dependencies = [
+ "bytes",
+ "ctor",
+ "http",
+ "log",
+ "mea",
+ "opendal-core",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "opendal-service-cos"
+version = "0.55.0"
+dependencies = [
+ "bytes",
+ "ctor",
+ "http",
+ "log",
+ "opendal-core",
+ "quick-xml",
+ "reqsign",
+ "reqwest",
+ "serde",
+]
+
+[[package]]
+name = "opendal-service-dropbox"
+version = "0.55.0"
+dependencies = [
+ "bytes",
+ "ctor",
+ "http",
+ "mea",
+ "opendal-core",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "opendal-service-fs"
+version = "0.55.0"
+dependencies = [
+ "bytes",
+ "ctor",
+ "log",
+ "opendal-core",
+ "serde",
+ "tokio",
+ "xattr",
+]
+
+[[package]]
+name = "opendal-service-gcs"
+version = "0.55.0"
+dependencies = [
+ "backon",
+ "bytes",
+ "ctor",
+ "http",
+ "log",
+ "opendal-core",
+ "percent-encoding",
+ "quick-xml",
  "reqsign",
  "reqwest",
  "serde",
  "serde_json",
- "sha2",
  "tokio",
+<<<<<<< HEAD
  "url",
+=======
+]
+
+[[package]]
+name = "opendal-service-gdrive"
+version = "0.55.0"
+dependencies = [
+ "bytes",
+ "ctor",
+ "http",
+ "log",
+ "mea",
+ "opendal-core",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "opendal-service-ghac"
+version = "0.55.0"
+dependencies = [
+ "bytes",
+ "ctor",
+ "ghac",
+ "http",
+ "log",
+ "opendal-core",
+ "opendal-service-azblob",
+ "prost",
+ "reqsign",
+ "serde",
+ "serde_json",
+ "sha2",
+]
+
+[[package]]
+name = "opendal-service-http"
+version = "0.55.0"
+dependencies = [
+ "ctor",
+ "http",
+ "log",
+ "opendal-core",
+ "serde",
+]
+
+[[package]]
+name = "opendal-service-ipmfs"
+version = "0.55.0"
+dependencies = [
+ "bytes",
+ "ctor",
+ "http",
+ "log",
+ "opendal-core",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "opendal-service-obs"
+version = "0.55.0"
+dependencies = [
+ "bytes",
+ "ctor",
+ "http",
+ "log",
+ "opendal-core",
+ "quick-xml",
+ "reqsign",
+ "serde",
+]
+
+[[package]]
+name = "opendal-service-onedrive"
+version = "0.55.0"
+dependencies = [
+ "bytes",
+ "ctor",
+ "http",
+ "log",
+ "mea",
+ "opendal-core",
+ "serde",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
+name = "opendal-service-oss"
+version = "0.55.0"
+dependencies = [
+ "bytes",
+ "ctor",
+ "http",
+ "log",
+ "opendal-core",
+ "quick-xml",
+ "reqsign",
+ "serde",
+]
+
+[[package]]
+name = "opendal-service-s3"
+version = "0.55.0"
+dependencies = [
+ "base64 0.22.1",
+ "bytes",
+ "crc32c",
+ "ctor",
+ "http",
+ "log",
+ "md-5",
+ "opendal-core",
+ "quick-xml",
+ "reqsign-aws-v4",
+ "reqsign-core",
+ "reqsign-file-read-tokio",
+ "reqsign-http-send-reqwest",
+ "reqwest",
+ "serde",
+]
+
+[[package]]
+name = "opendal-service-swift"
+version = "0.55.0"
+dependencies = [
+ "bytes",
+ "ctor",
+ "http",
+ "log",
+ "opendal-core",
+ "quick-xml",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "opendal-service-webdav"
+version = "0.55.0"
+dependencies = [
+ "anyhow",
+ "bytes",
+ "ctor",
+ "http",
+ "log",
+ "mea",
+ "opendal-core",
+ "quick-xml",
+ "serde",
+]
+
+[[package]]
+name = "opendal-service-webhdfs"
+version = "0.55.0"
+dependencies = [
+ "anyhow",
+ "bytes",
+ "ctor",
+ "http",
+ "log",
+ "mea",
+ "opendal-core",
+ "serde",
+ "serde_json",
+>>>>>>> cc624c0 (fix(backend/opendal): include scheme in location(); update GDrive detection and caching; update OpenDAL to 0.55.0; clippy and doc fixes)
  "uuid",
+]
+
+[[package]]
+name = "opendal-service-yandex-disk"
+version = "0.55.0"
+dependencies = [
+ "bytes",
+ "ctor",
+ "http",
+ "log",
+ "opendal-core",
+ "quick-xml",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -2773,16 +3212,6 @@ dependencies = [
 
 [[package]]
 name = "quick-xml"
-version = "0.37.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "331e97a1af0bf59823e6eadffe373d7b27f485be8748f71471c662c1f269b7fb"
-dependencies = [
- "memchr",
- "serde",
-]
-
-[[package]]
-name = "quick-xml"
 version = "0.38.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "42a232e7487fc2ef313d96dde7948e7a3c05101870d8985e4fd8d26aedd27b89"
@@ -3065,16 +3494,86 @@ dependencies = [
  "log",
  "once_cell",
  "percent-encoding",
- "quick-xml 0.37.5",
  "rand 0.8.5",
  "reqwest",
  "rsa",
- "rust-ini",
  "serde",
  "serde_json",
  "sha1",
  "sha2",
+]
+
+[[package]]
+name = "reqsign-aws-v4"
+version = "2.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4510c2a3e42b653cf788d560a3d54b0ae4cc315a62aaba773554f18319c0db0b"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "bytes",
+ "form_urlencoded",
+ "http",
+ "log",
+ "percent-encoding",
+ "quick-xml",
+ "reqsign-core",
+ "rust-ini",
+ "serde",
+ "serde_json",
+ "serde_urlencoded",
+ "sha1",
+]
+
+[[package]]
+name = "reqsign-core"
+version = "2.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "39da118ccf3bdb067ac6cc40136fec99bc5ba418cbd388dc88e4ce0e5d0b1423"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "base64 0.22.1",
+ "bytes",
+ "form_urlencoded",
+ "hex",
+ "hmac",
+ "http",
+ "jiff",
+ "log",
+ "percent-encoding",
+ "sha1",
+ "sha2",
+ "windows-sys 0.61.2",
+]
+
+[[package]]
+name = "reqsign-file-read-tokio"
+version = "2.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "669ea66036266a9ac371d2e63cc7d345e69994da0168b4e6f3487fe21e126f76"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "reqsign-core",
  "tokio",
+]
+
+[[package]]
+name = "reqsign-http-send-reqwest"
+version = "2.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "46186bce769674f9200ad01af6f2ca42de3e819ddc002fff1edae135bfb6cd9c"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "bytes",
+ "futures-channel",
+ "http",
+ "http-body-util",
+ "reqsign-core",
+ "reqwest",
+ "wasm-bindgen-futures",
 ]
 
 [[package]]
@@ -3333,6 +3832,7 @@ dependencies = [
  "integer-sqrt",
  "itertools",
  "log",
+ "lru",
  "mockall",
  "nix",
  "pariter",
@@ -4108,7 +4608,6 @@ dependencies = [
  "bytes",
  "libc",
  "mio",
- "parking_lot",
  "pin-project-lite",
  "signal-hook-registry",
  "socket2",

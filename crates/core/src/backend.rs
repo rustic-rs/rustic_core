@@ -530,7 +530,7 @@ impl RepositoryBackends {
         // Automatically wrap Google Drive backends with pack caching
         let repository = pack_cache::PackCachingBackend::wrap_if_needed(repository);
         let repo_hot = repo_hot.map(pack_cache::PackCachingBackend::wrap_if_needed);
-        
+
         Self {
             repository,
             repo_hot,
