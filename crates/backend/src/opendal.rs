@@ -139,15 +139,6 @@ impl OpenDALBackend {
             .as_ref()
             .split(':')
             .next()
-<<<<<<< HEAD
-<<<<<<< HEAD
-            .unwrap_or_else(|| path.as_ref());
-=======
-            .unwrap_or(path.as_ref());
->>>>>>> a1cc3b5 (fix(backend/opendal): include scheme in location() for backend identification)
-=======
-            .unwrap_or_else(|| path.as_ref());
->>>>>>> cc624c0 (fix(backend/opendal): include scheme in location(); update GDrive detection and caching; update OpenDAL to 0.55.0; clippy and doc fixes)
 
         let mut operator = opendal::Operator::via_iter(scheme, options)
             .map_err(|err| {
