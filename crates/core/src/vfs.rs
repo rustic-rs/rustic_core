@@ -60,7 +60,7 @@ enum VfsTree {
     /// A repository tree; id of the tree
     RusticTree(TreeId),
     /// A purely virtual tree containing subtrees
-    VirtualTree(BTreeMap<OsString, VfsTree>),
+    VirtualTree(BTreeMap<OsString, Self>),
 }
 
 #[derive(Debug)]
