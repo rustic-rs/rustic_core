@@ -36,26 +36,18 @@ pub enum NodeErrorKind<'a> {
     UnexpectedEOF {
         /// The filename
         file_name: String,
-        /// The remaining chars
-        chars: std::str::Chars<'a>,
     },
-    /// Invalid unicode
+    /// Invalid unicode while parsing filename: `{file_name}`
     #[cfg(not(windows))]
     InvalidUnicode {
         /// The filename
         file_name: String,
-        /// The unicode codepoint
-        unicode: u32,
-        /// The remaining chars
-        chars: std::str::Chars<'a>,
     },
     /// Unrecognized Escape while parsing filename: `{file_name}`
     #[cfg(not(windows))]
     UnrecognizedEscape {
         /// The filename
         file_name: String,
-        /// The remaining chars
-        chars: std::str::Chars<'a>,
     },
     /// Parsing hex chars {chars:?} failed for `{hex}` in filename: `{file_name}` : `{source}`
     #[cfg(not(windows))]
@@ -471,7 +463,6 @@ fn unescape_filename(s: &str) -> NodeResult<'_, OsString> {
                         None => {
                             return Err(NodeErrorKind::UnexpectedEOF {
                                 file_name: s.to_string(),
-                                chars,
                             });
                         }
                         Some(c) => match c {
@@ -511,8 +502,6 @@ fn unescape_filename(s: &str) -> NodeResult<'_, OsString> {
                                 let c = std::char::from_u32(n).ok_or_else(|| {
                                     NodeErrorKind::InvalidUnicode {
                                         file_name: s.to_string(),
-                                        unicode: n,
-                                        chars: chars.clone(),
                                     }
                                 })?;
                                 let mut bytes = vec![0u8; c.len_utf8()];
@@ -531,8 +520,6 @@ fn unescape_filename(s: &str) -> NodeResult<'_, OsString> {
                                 let c = std::char::from_u32(n).ok_or_else(|| {
                                     NodeErrorKind::InvalidUnicode {
                                         file_name: s.to_string(),
-                                        unicode: n,
-                                        chars: chars.clone(),
                                     }
                                 })?;
                                 let mut bytes = vec![0u8; c.len_utf8()];
@@ -542,7 +529,6 @@ fn unescape_filename(s: &str) -> NodeResult<'_, OsString> {
                             _ => {
                                 return Err(NodeErrorKind::UnrecognizedEscape {
                                     file_name: s.to_string(),
-                                    chars: chars.clone(),
                                 });
                             }
                         },
