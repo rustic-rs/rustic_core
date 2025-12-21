@@ -7,6 +7,8 @@ pub(crate) mod hotcold;
 pub(crate) mod ignore;
 pub(crate) mod local_destination;
 pub(crate) mod node;
+/// Pack file caching for API-expensive backends like Google Drive
+pub mod pack_cache;
 pub(crate) mod stdin;
 pub(crate) mod warm_up;
 
@@ -516,7 +518,16 @@ impl RepositoryBackends {
     ///
     /// * `repository` - The main repository of this [`RepositoryBackends`].
     /// * `repo_hot` - The hot repository of this [`RepositoryBackends`].
+    ///
+    /// # Note
+    ///
+    /// For API-expensive backends like Google Drive, this automatically wraps
+    /// the backend with [`PackCachingBackend`] to cache pack files in memory.
     pub fn new(repository: Arc<dyn WriteBackend>, repo_hot: Option<Arc<dyn WriteBackend>>) -> Self {
+        // Automatically wrap Google Drive backends with pack caching
+        let repository = pack_cache::PackCachingBackend::wrap_if_needed(repository);
+        let repo_hot = repo_hot.map(pack_cache::PackCachingBackend::wrap_if_needed);
+
         Self {
             repository,
             repo_hot,

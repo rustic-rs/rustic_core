@@ -129,6 +129,7 @@ pub use crate::{
         ignore::{LocalSource, LocalSourceFilterOptions, LocalSourceSaveOptions},
         local_destination::LocalDestination,
         node::last_modified_node,
+        pack_cache::PackCachingBackend,
     },
     blob::{
         BlobId, DataId, PackedId,
