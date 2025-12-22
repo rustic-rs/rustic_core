@@ -1,5 +1,5 @@
 #[cfg(not(windows))]
-use std::os::unix::fs::{PermissionsExt, symlink};
+use std::os::unix::fs::{symlink, PermissionsExt};
 
 use std::{
     fs::{self, File, OpenOptions},
@@ -11,17 +11,17 @@ use std::{
 use bytes::Bytes;
 #[allow(unused_imports)]
 use cached::proc_macro::cached;
-use filetime::{FileTime, set_symlink_file_times};
+use filetime::{set_symlink_file_times, FileTime};
 #[cfg(not(windows))]
 use log::warn;
 #[cfg(not(windows))]
 use nix::errno::Errno;
 #[cfg(not(windows))]
-use nix::sys::stat::{Mode, SFlag, mknod};
+use nix::sys::stat::{mknod, Mode, SFlag};
 #[cfg(not(windows))]
 use nix::{
-    fcntl::{AT_FDCWD, AtFlags},
-    unistd::{Gid, Group, Uid, User, fchownat},
+    fcntl::{AtFlags, AT_FDCWD},
+    unistd::{fchownat, Gid, Group, Uid, User},
 };
 
 #[cfg(not(windows))]
@@ -397,7 +397,7 @@ impl LocalDestination {
     /// * `item` - The item to set the permissions for
     /// * `node` - The node to get the permissions from
     ///
-    /// # Errors        
+    /// # Errors
     ///
     /// * If the permissions could not be set.
     #[allow(clippy::unused_self, clippy::unnecessary_wraps)]
@@ -417,7 +417,7 @@ impl LocalDestination {
     /// * `item` - The item to set the permissions for
     /// * `node` - The node to get the permissions from
     ///
-    /// # Errors        
+    /// # Errors
     ///
     /// * If the permissions could not be set.
     #[allow(clippy::similar_names)]
@@ -643,54 +643,78 @@ impl LocalDestination {
             NodeType::Dev { device } => {
                 #[cfg(not(any(
                     target_os = "macos",
-                    target_os = "openbsd",
-                    target_os = "freebsd"
+                    target_os = "freebsd",
+                    target_os = "openbsd"
                 )))]
-                let device = *device;
+                {
+                    let device = *device;
+                    mknod(&filename, SFlag::S_IFBLK, Mode::empty(), device)
+                        .map_err(LocalDestinationErrorKind::FromErrnoError)?;
+                }
+
                 #[cfg(any(target_os = "macos", target_os = "openbsd"))]
-                let device = i32::try_from(*device).map_err(|err| {
-                    LocalDestinationErrorKind::DeviceIdConversionFailed {
-                        target: "i32".to_string(),
-                        device: *device,
-                        source: err,
-                    }
-                })?;
+                {
+                    let device = i32::try_from(*device).map_err(|err| {
+                        LocalDestinationErrorKind::DeviceIdConversionFailed {
+                            target: "i32".to_string(),
+                            device: *device,
+                            source: err,
+                        }
+                    })?;
+
+                    mknod(&filename, SFlag::S_IFBLK, Mode::empty(), device)
+                        .map_err(LocalDestinationErrorKind::FromErrnoError)?;
+                }
                 #[cfg(target_os = "freebsd")]
-                let device = u32::try_from(*device).map_err(|err| {
-                    LocalDestinationErrorKind::DeviceIdConversionFailed {
-                        target: "u32".to_string(),
-                        device: *device,
-                        source: err,
-                    }
-                })?;
-                mknod(&filename, SFlag::S_IFBLK, Mode::empty(), device)
-                    .map_err(LocalDestinationErrorKind::FromErrnoError)?;
+                {
+                    let device = u32::try_from(*device).map_err(|err| {
+                        LocalDestinationErrorKind::DeviceIdConversionFailed {
+                            target: "u32".to_string(),
+                            device: *device,
+                            source: err,
+                        }
+                    })?;
+
+                    mknod(&filename, SFlag::S_IFBLK, Mode::empty(), device.into())
+                        .map_err(LocalDestinationErrorKind::FromErrnoError)?;
+                }
             }
             NodeType::Chardev { device } => {
                 #[cfg(not(any(
                     target_os = "macos",
-                    target_os = "openbsd",
-                    target_os = "freebsd"
+                    target_os = "freebsd",
+                    target_os = "openbsd"
                 )))]
-                let device = *device;
+                {
+                    let device = *device;
+                    mknod(&filename, SFlag::S_IFCHR, Mode::empty(), device)
+                        .map_err(LocalDestinationErrorKind::FromErrnoError)?;
+                }
+
                 #[cfg(any(target_os = "macos", target_os = "openbsd"))]
-                let device = i32::try_from(*device).map_err(|err| {
-                    LocalDestinationErrorKind::DeviceIdConversionFailed {
-                        target: "i32".to_string(),
-                        device: *device,
-                        source: err,
-                    }
-                })?;
+                {
+                    let device = i32::try_from(*device).map_err(|err| {
+                        LocalDestinationErrorKind::DeviceIdConversionFailed {
+                            target: "i32".to_string(),
+                            device: *device,
+                            source: err,
+                        }
+                    })?;
+                    mknod(&filename, SFlag::S_IFCHR, Mode::empty(), device)
+                        .map_err(LocalDestinationErrorKind::FromErrnoError)?;
+                }
                 #[cfg(target_os = "freebsd")]
-                let device = u32::try_from(*device).map_err(|err| {
-                    LocalDestinationErrorKind::DeviceIdConversionFailed {
-                        target: "u32".to_string(),
-                        device: *device,
-                        source: err,
-                    }
-                })?;
-                mknod(&filename, SFlag::S_IFCHR, Mode::empty(), device)
-                    .map_err(LocalDestinationErrorKind::FromErrnoError)?;
+                {
+                    let device = u32::try_from(*device).map_err(|err| {
+                        LocalDestinationErrorKind::DeviceIdConversionFailed {
+                            target: "u32".to_string(),
+                            device: *device,
+                            source: err,
+                        }
+                    })?;
+                    mknod(&filename, SFlag::S_IFCHR, Mode::empty(), device.into())
+                        .map_err(LocalDestinationErrorKind::FromErrnoError)?;
+                }
             }
             NodeType::Fifo => {
                 mknod(&filename, SFlag::S_IFIFO, Mode::empty(), 0)
