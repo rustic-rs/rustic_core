@@ -78,11 +78,35 @@ mod constants {
     pub(super) const WEIGHT_CAPACITY: u64 = 32_000_000;
 }
 
+/// Method for passing pack IDs to warm-up commands
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
+#[cfg_attr(feature = "clap", derive(clap::ValueEnum))]
+#[serde(rename_all = "lowercase")]
+pub enum WarmUpPackIdInput {
+    /// Use %id anchor replacement in command arguments (default)
+    #[default]
+    Anchor,
+    /// Pass pack IDs as command-line arguments to warm-up command
+    Argv,
+}
+
+/// Type of input to send to warm-up commands
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
+#[cfg_attr(feature = "clap", derive(clap::ValueEnum))]
+#[serde(rename_all = "lowercase")]
+pub enum WarmUpInputType {
+    /// Send pack IDs (default)
+    #[default]
+    PackId,
+    /// Send full backend paths (e.g., S3 keys)
+    BackendPath,
+}
+
 /// Options for using and opening a [`Repository`]
 #[serde_as]
 #[cfg_attr(feature = "clap", derive(clap::Parser))]
 #[cfg_attr(feature = "merge", derive(conflate::Merge))]
-#[derive(Clone, Default, Debug, serde::Deserialize, serde::Serialize, Setters)]
+#[derive(Clone, Debug, serde::Deserialize, serde::Serialize, Setters)]
 #[serde(default, rename_all = "kebab-case", deny_unknown_fields)]
 #[setters(into, strip_option)]
 #[non_exhaustive]
@@ -170,6 +194,46 @@ pub struct RepositoryOptions {
     #[serde_as(as = "Option<DisplayFromStr>")]
     #[cfg_attr(feature = "merge", merge(strategy = conflate::option::overwrite_none))]
     pub warm_up_wait: Option<humantime::Duration>,
+
+    /// Batch size for warm-up command invocations
+    #[cfg_attr(feature = "clap", clap(long, global = true, default_value = "1"))]
+    #[cfg_attr(feature = "merge", merge(skip))]
+    #[serde(default = "default_warm_up_batch")]
+    pub warm_up_batch: usize,
+
+    /// How to pass pack IDs to warm-up command
+    #[cfg_attr(feature = "clap", clap(long, global = true, value_enum))]
+    #[cfg_attr(feature = "merge", merge(strategy = conflate::option::overwrite_none))]
+    pub warm_up_pack_id_input: Option<WarmUpPackIdInput>,
+
+    /// Type of input to send to warm-up command
+    #[cfg_attr(feature = "clap", clap(long, global = true, value_enum))]
+    #[cfg_attr(feature = "merge", merge(strategy = conflate::option::overwrite_none))]
+    pub warm_up_input_type: Option<WarmUpInputType>,
+}
+
+/// Default value for warm_up_batch
+const fn default_warm_up_batch() -> usize {
+    1
+}
+
+impl Default for RepositoryOptions {
+    fn default() -> Self {
+        Self {
+            password: None,
+            password_file: None,
+            password_command: None,
+            no_cache: false,
+            cache_dir: None,
+            warm_up: false,
+            warm_up_command: None,
+            warm_up_wait_command: None,
+            warm_up_wait: None,
+            warm_up_batch: default_warm_up_batch(),
+            warm_up_pack_id_input: None,
+            warm_up_input_type: None,
+        }
+    }
 }
 
 impl RepositoryOptions {
@@ -365,14 +429,23 @@ impl<P> Repository<P, ()> {
         let be_hot = backends.repo_hot();
 
         if let Some(warm_up) = &opts.warm_up_command {
-            if warm_up.args().iter().all(|c| !c.contains("%id")) {
+            let input_mode = opts.warm_up_pack_id_input.unwrap_or_default();
+
+            // Only require %id when using anchor mode
+            if input_mode == WarmUpPackIdInput::Anchor
+                && warm_up.args().iter().all(|c| !c.contains("%id"))
+            {
                 return Err(RusticError::new(
                     ErrorKind::MissingInput,
-                    "No `%id` specified in warm-up command `{command}`. Please specify `%id` in the command.",
+                    "No `%id` specified in warm-up command `{command}` when using anchor mode. Please specify `%id` in the command or use --warm-up-pack-id-input=argv.",
                 )
                 .attach_context("command", warm_up.to_string()));
             }
-            info!("using warm-up command {warm_up}");
+
+            info!(
+                "using warm-up command {warm_up} with batch size {} and input mode {:?}",
+                opts.warm_up_batch, input_mode
+            );
         }
 
         if opts.warm_up {

@@ -87,6 +87,7 @@ impl FileType {
     }
 }
 
+
 /// Trait for backends that can read.
 ///
 /// This trait is implemented by all backends that can read data.
@@ -155,6 +156,31 @@ pub trait ReadBackend: Send + Sync + 'static {
         offset: u32,
         length: u32,
     ) -> RusticResult<Bytes>;
+
+    /// Get the warmup path for the given file type and id.
+    ///
+    /// This method returns a string representing the backend-specific path or identifier
+    /// for a file, which can be used as input to external warm-up commands. Unlike the
+    /// `path()` method which may have different return types for different backends,
+    /// this method must always return a string that can be passed to external programs.
+    ///
+    /// This is primarily used for warming up files in cold storage before they are
+    /// accessed, where the warm-up command needs to know the specific backend path
+    /// or identifier to request from the storage service.
+    ///
+    /// # Arguments
+    ///
+    /// * `tpe` - The type of the file.
+    /// * `id` - The id of the file.
+    ///
+    /// # Returns
+    ///
+    /// A string containing the backend-specific path or identifier for the file.
+    ///
+    /// # Errors
+    ///
+    /// * If the backend cannot provide a warmup path for the given file.
+    fn warmup_path(&self, tpe: FileType, id: &Id) -> RusticResult<String>;
 
     /// Specify if the backend needs a warming-up of files before accessing them.
     fn needs_warm_up(&self) -> bool {
@@ -319,6 +345,7 @@ mock! {
             offset: u32,
             length: u32,
         ) -> RusticResult<Bytes>;
+        fn warmup_path(&self, tpe: FileType, id: &Id) -> RusticResult<String>;
     }
 
     impl WriteBackend for Backend {
@@ -363,6 +390,10 @@ impl ReadBackend for Arc<dyn WriteBackend> {
     ) -> RusticResult<Bytes> {
         self.deref()
             .read_partial(tpe, id, cacheable, offset, length)
+    }
+
+    fn warmup_path(&self, tpe: FileType, id: &Id) -> RusticResult<String> {
+        self.deref().warmup_path(tpe, id)
     }
 }
 
