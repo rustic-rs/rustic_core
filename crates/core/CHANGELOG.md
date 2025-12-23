@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.10.0](https://github.com/rustic-rs/rustic_core/compare/rustic_core-v0.9.0...rustic_core-v0.10.0) - 2025-12-23
+
+### Added
+
+- [**breaking**] Add support for multiple parents ([#427](https://github.com/rustic-rs/rustic_core/pull/427))
+
+### Fixed
+
+- fix clippy lints ([#449](https://github.com/rustic-rs/rustic_core/pull/449))
+
 ## [0.9.0](https://github.com/rustic-rs/rustic_core/compare/rustic_core-v0.8.0...rustic_core-v0.9.0) - 2025-11-08
 
 ### Added
