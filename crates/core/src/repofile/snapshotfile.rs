@@ -334,8 +334,12 @@ pub struct SnapshotFile {
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub program_version: String,
 
-    /// The Id of the parent snapshot that this snapshot has been based on
+    /// The Id of the first parent snapshot that this snapshot has been based on
     pub parent: Option<SnapshotId>,
+
+    /// The Ids of all parent snapshots that this snapshot has been based on
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub parents: Vec<SnapshotId>,
 
     /// The tree blob id where the contents of this snapshot are stored
     pub tree: TreeId,
@@ -395,6 +399,7 @@ impl Default for SnapshotFile {
                 format!("rustic {project_version}")
             },
             parent: Option::default(),
+            parents: Vec::default(),
             tree: TreeId::default(),
             label: String::default(),
             paths: StringList::default(),
@@ -1144,7 +1149,18 @@ impl SnapshotFile {
     pub(crate) fn clear_ids(mut sn: Self) -> Self {
         sn.id = SnapshotId::default();
         sn.parent = None;
+        sn.parents = Vec::new();
         sn
+    }
+
+    /// Convenience method to get parent snapshots which are stored in the `parent` or `parents` field.
+    #[must_use]
+    pub fn get_parents(&self) -> &[SnapshotId] {
+        if self.parents.is_empty() {
+            self.parent.as_slice()
+        } else {
+            &self.parents
+        }
     }
 }
 
