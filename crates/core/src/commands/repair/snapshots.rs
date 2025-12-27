@@ -2,21 +2,20 @@
 use derive_setters::Setters;
 use log::{info, warn};
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    path::PathBuf,
+};
 
 use crate::{
-    backend::{
-        decrypt::{DecryptFullBackend, DecryptWriteBackend},
-        node::NodeType,
+    backend::{decrypt::DecryptWriteBackend, node::NodeType},
+    blob::tree::modify::{
+        ModifierAction, ModifierChange, NodeAction, TreeAction, TreeModifier, Visitor,
     },
-    blob::{
-        BlobId, BlobType,
-        packer::{PackSizer, Packer},
-        tree::{Tree, TreeId},
-    },
+    blob::tree::{Tree, TreeId},
     error::{ErrorKind, RusticError, RusticResult},
-    index::{ReadGlobalIndex, ReadIndex, indexer::Indexer},
-    repofile::{SnapshotFile, StringList, snapshotfile::SnapshotId},
+    index::ReadGlobalIndex,
+    repofile::{Node, SnapshotFile, StringList, snapshotfile::SnapshotId},
     repository::{IndexedFull, Repository},
 };
 
@@ -59,19 +58,90 @@ impl Default for RepairSnapshotsOptions {
     }
 }
 
-// TODO: add documentation
-#[derive(Clone, Copy)]
-pub(crate) enum Changed {
-    This,
-    SubTree,
-    None,
+pub(crate) struct RepairState<'a, I: ReadGlobalIndex> {
+    opts: &'a RepairSnapshotsOptions,
+    index: &'a I,
+    changed: BTreeMap<TreeId, TreeId>,
+    unchanged: BTreeSet<TreeId>,
+    delete: Vec<SnapshotId>,
 }
 
-#[derive(Default)]
-pub(crate) struct RepairState {
-    replaced: BTreeMap<TreeId, (Changed, TreeId)>,
-    seen: BTreeSet<TreeId>,
-    delete: Vec<SnapshotId>,
+impl<'a, I: ReadGlobalIndex> RepairState<'a, I> {
+    fn new(opts: &'a RepairSnapshotsOptions, index: &'a I) -> Self {
+        Self {
+            opts,
+            index,
+            changed: BTreeMap::new(),
+            unchanged: BTreeSet::new(),
+            delete: Vec::new(),
+        }
+    }
+}
+
+impl<I: ReadGlobalIndex> Visitor for RepairState<'_, I> {
+    fn pre_process(&self, _path: &PathBuf, id: TreeId) -> ModifierAction {
+        if self.unchanged.contains(&id) {
+            ModifierAction::Change(ModifierChange::Unchanged)
+        } else if let Some(r) = self.changed.get(&id) {
+            ModifierAction::Change(ModifierChange::Changed(*r))
+        } else {
+            ModifierAction::Process(id)
+        }
+    }
+    fn pre_process_tree(&mut self, tree: RusticResult<Tree>) -> RusticResult<TreeAction> {
+        Ok(tree.map_or_else(
+            |err| {
+                warn!("{}", err.display_log()); // TODO: id in error message
+                TreeAction::ProcessChangedTree(Tree::new())
+            },
+            TreeAction::ProcessUnchangedTree,
+        ))
+    }
+
+    fn process_node(&mut self, _path: &PathBuf, mut node: Node, _id: TreeId) -> NodeAction {
+        match node.node_type {
+            NodeType::File => {
+                let mut file_changed = false;
+                let mut new_content = Vec::new();
+                let mut new_size = 0;
+                for blob in node.content.take().unwrap() {
+                    self.index.get_data(&blob).map_or_else(
+                        || {
+                            file_changed = true;
+                        },
+                        |ie| {
+                            new_content.push(blob);
+                            new_size += u64::from(ie.data_length());
+                        },
+                    );
+                }
+                if file_changed {
+                    warn!("file {}: contents are missing", node.name);
+                    node.name += &self.opts.suffix;
+                } else if new_size != node.meta.size {
+                    info!("file {}: corrected file size", node.name);
+                }
+                node.content = Some(new_content);
+                node.meta.size = new_size;
+                NodeAction::Node(node, file_changed)
+            }
+            NodeType::Dir => {
+                if let Some(subtree) = node.subtree {
+                    NodeAction::VisitTree(subtree, node, false)
+                } else {
+                    NodeAction::CreateTree(node)
+                }
+            }
+            _ => NodeAction::Node(node, false), // Other types: no check needed
+        }
+    }
+    fn post_process(&mut self, _path: PathBuf, id: TreeId, new_id: Option<TreeId>, _tree: &Tree) {
+        if let Some(new_id) = new_id {
+            _ = self.changed.insert(id, new_id);
+        } else {
+            _ = self.unchanged.insert(id);
+        }
+    }
 }
 
 /// Runs the `repair snapshots` command
@@ -103,41 +173,31 @@ pub(crate) fn repair_snapshots<S: IndexedFull>(
         ));
     }
 
-    let mut state = RepairState::default();
-
-    let indexer = Indexer::new(be.clone()).into_shared();
-    let pack_sizer = PackSizer::from_config(
-        repo.config(),
-        BlobType::Tree,
-        repo.index().total_size(BlobType::Tree),
-    );
-    let packer = Packer::new(
-        repo.dbe().clone(),
-        BlobType::Tree,
-        indexer.clone(),
-        pack_sizer,
-    )?;
+    let mut state = RepairState::new(opts, repo.index());
+    let modifier = TreeModifier::new(be, repo.index(), config_file, dry_run)?;
 
     for mut snap in snapshots {
         let snap_id = snap.id;
         info!("processing snapshot {snap_id}");
-        match repair_tree(
-            repo.dbe(),
-            opts,
-            repo.index(),
-            &packer,
-            Some(snap.tree),
-            &mut state,
-            dry_run,
-        )? {
-            (Changed::None, _) => {
+        // match repair_tree(
+        //     repo.dbe(),
+        //     opts,
+        //     repo.index(),
+        //    &packer,
+        //     Some(snap.tree),
+        //     &mut state,
+        //     dry_run,
+        // )? {
+        //     (Changed::None, _) => {
+        match modifier.modify_tree(PathBuf::new(), snap.tree, &mut state)? {
+            ModifierChange::Unchanged => {
                 info!("snapshot {snap_id} is ok.");
             }
-            (Changed::This, _) => {
+            ModifierChange::Removed => {
                 warn!("snapshot {snap_id}: root tree is damaged -> marking for deletion!");
                 state.delete.push(snap_id);
             }
-            (Changed::SubTree, id) => {
+            ModifierChange::Changed(id) => {
                 // change snapshot tree
                 if snap.original.is_none() {
                     snap.original = Some(snap.id);
@@ -155,11 +215,6 @@ pub(crate) fn repair_snapshots<S: IndexedFull>(
         }
     }
 
-    if !dry_run {
-        _ = packer.finalize()?;
-        indexer.write().unwrap().finalize()?;
-    }
-
     if opts.delete {
         if dry_run {
             info!("would have removed {} snapshots.", state.delete.len());
@@ -173,131 +228,4 @@ pub(crate) fn repair_snapshots<S: IndexedFull>(
     }
 
     Ok(())
-}
-
-/// Repairs a tree
-///
-/// # Type Parameters
-///
-/// * `BE` - The type of the backend.
-///
-/// # Arguments
-///
-/// * `be` - The backend to use
-/// * `opts` - The repair options to use
-/// * `packer` - The packer to use
-/// * `id` - The id of the tree to repair
-/// * `replaced` - A map of already replaced trees
-/// * `seen` - A set of already seen trees
-/// * `dry_run` - Whether to actually modify the repository or just print what would be done
-///
-/// # Returns
-///
-/// A tuple containing the change status and the id of the repaired tree
-pub(crate) fn repair_tree<BE: DecryptWriteBackend>(
-    be: &impl DecryptFullBackend,
-    opts: &RepairSnapshotsOptions,
-    index: &impl ReadGlobalIndex,
-    packer: &Packer<BE>,
-    id: Option<TreeId>,
-    state: &mut RepairState,
-    dry_run: bool,
-) -> RusticResult<(Changed, TreeId)> {
-    let (tree, changed) = match id {
-        None => (Tree::new(), Changed::This),
-        Some(id) => {
-            if state.seen.contains(&id) {
-                return Ok((Changed::None, id));
-            }
-            if let Some(r) = state.replaced.get(&id) {
-                return Ok(*r);
-            }
-
-            let (tree, mut changed) = Tree::from_backend(be, index, id).map_or_else(
-                |err| {
-                    warn!("tree {id} could not be loaded: {}", err.display_log());
-                    (Tree::new(), Changed::This)
-                },
-                |tree| (tree, Changed::None),
-            );
-
-            let mut new_tree = Tree::new();
-
-            for mut node in tree {
-                match node.node_type {
-                    NodeType::File => {
-                        let mut file_changed = false;
-                        let mut new_content = Vec::new();
-                        let mut new_size = 0;
-                        for blob in node.content.take().unwrap() {
-                            index.get_data(&blob).map_or_else(
-                                || {
-                                    file_changed = true;
-                                },
-                                |ie| {
-                                    new_content.push(blob);
-                                    new_size += u64::from(ie.data_length());
-                                },
-                            );
-                        }
-                        if file_changed {
-                            warn!("file {}: contents are missing", node.name);
-                            node.name += &opts.suffix;
-                            changed = Changed::SubTree;
-                        } else if new_size != node.meta.size {
-                            info!("file {}: corrected file size", node.name);
-                            changed = Changed::SubTree;
-                        }
-                        node.content = Some(new_content);
-                        node.meta.size = new_size;
-                    }
-                    NodeType::Dir => {
-                        let (c, tree_id) =
-                            repair_tree(be, opts, index, packer, node.subtree, state, dry_run)?;
-                        match c {
-                            Changed::None => {}
-                            Changed::This => {
-                                warn!("dir {}: tree is missing", node.name);
-                                node.subtree = Some(tree_id);
-                                node.name += &opts.suffix;
-                                changed = Changed::SubTree;
-                            }
-                            Changed::SubTree => {
-                                node.subtree = Some(tree_id);
-                                changed = Changed::SubTree;
-                            }
-                        }
-                    }
-                    _ => {} // Other types: no check needed
-                }
-                new_tree.add(node);
-            }
-            if matches!(changed, Changed::None) {
-                _ = state.seen.insert(id);
-            }
-            (new_tree, changed)
-        }
-    };
-
-    match (id, changed) {
-        (None, Changed::None) => panic!("this should not happen!"),
-        (Some(id), Changed::None) => Ok((Changed::None, id)),
-        (_, c) => {
-            // the tree has been changed => save it
-            let (chunk, new_id) = tree.serialize().map_err(|err| {
-                RusticError::with_source(ErrorKind::Internal, "Failed to serialize tree.", err)
-                    .ask_report()
-            })?;
-
-            if !index.has_tree(&new_id) && !dry_run {
-                packer.add(chunk.into(), BlobId::from(*new_id))?;
-            }
-
-            if let Some(id) = id {
-                _ = state.replaced.insert(id, (c, new_id));
-            }
-
-            Ok((c, new_id))
-        }
-    }
 }
