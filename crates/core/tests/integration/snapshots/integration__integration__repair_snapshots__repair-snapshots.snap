@@ -1,0 +1,22 @@
+---
+source: crates/core/tests/integration/repair_snapshots.rs
+expression: "&entries"
+---
+{
+  "test.repaired": {
+    "name": "test.repaired",
+    "type": "file",
+    "mode": "[some]",
+    "mtime": "[some]",
+    "atime": "[some]",
+    "ctime": "[some]",
+    "uid": "[uid]",
+    "gid": "[gid]",
+    "user": "[user]",
+    "group": "[group]",
+    "inode": "[inode]",
+    "device_id": "[device_id]",
+    "links": 1,
+    "content": Some([]),
+  },
+}

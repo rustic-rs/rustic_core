@@ -1,14 +1,11 @@
-use std::{fs::File, path::Path, sync::Arc};
-
 use anyhow::Result;
-use flate2::read::GzDecoder;
 use insta::assert_debug_snapshot;
 use rstest::rstest;
-use tar::Archive;
 use tempfile::tempdir;
 
-use rustic_backend::LocalBackend;
-use rustic_core::{CheckOptions, Credentials, Repository, RepositoryBackends, RepositoryOptions};
+use rustic_core::CheckOptions;
+
+use crate::repo_from_fixture;
 
 #[rstest]
 #[case("repo-data-missing.tar.gz")]
@@ -19,19 +16,10 @@ use rustic_core::{CheckOptions, Credentials, Repository, RepositoryBackends, Rep
 #[case("repo-obsolete-index.tar.gz")]
 #[case("repo-unreferenced-data.tar.gz")]
 #[case("repo-unused-data-missing.tar.gz")]
-fn test_check(#[case] repo_file: String) -> Result<()> {
+fn test_check(#[case] repo_file: &str) -> Result<()> {
     // unpack repo
     let dir = tempdir()?;
-    let path = Path::new("tests/fixtures/").join(&repo_file);
-    let tar_gz = File::open(path)?;
-    let tar = GzDecoder::new(tar_gz);
-    let mut archive = Archive::new(tar);
-    archive.unpack(&dir)?;
-
-    let be = LocalBackend::new(dir.path().join("repo").to_str().unwrap(), None)?;
-    let be = RepositoryBackends::new(Arc::new(be), None);
-    let options = RepositoryOptions::default();
-    let repo = Repository::new(&options, &be)?.open(&Credentials::password("geheim"))?;
+    let repo = repo_from_fixture(&dir, repo_file)?;
 
     let opts = CheckOptions::default().read_data(true);
     let check_results = repo.check(opts)?;
