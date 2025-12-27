@@ -7,7 +7,8 @@ use crate::tar_gz_testdata;
 
 use super::set_up_repo;
 use anyhow::Result;
-use chrono::DateTime;
+use jiff::Timestamp;
+use jiff::tz::TimeZone;
 use rstest::{fixture, rstest};
 use rustic_core::repofile::SnapshotFile;
 use rustic_core::{
@@ -25,21 +26,27 @@ fn repo_and_snapshots() -> (
     let source = tar_gz_testdata().unwrap();
 
     let snapshot_timestamp = [
-        DateTime::from_timestamp(1_752_483_600, 0).unwrap().into(),
-        DateTime::from_timestamp(1_752_483_700, 0).unwrap().into(),
-        DateTime::from_timestamp(1_752_483_800, 0).unwrap().into(),
+        Timestamp::from_second(1_752_483_600)
+            .unwrap()
+            .to_zoned(TimeZone::UTC),
+        Timestamp::from_second(1_752_483_700)
+            .unwrap()
+            .to_zoned(TimeZone::UTC),
+        Timestamp::from_second(1_752_483_800)
+            .unwrap()
+            .to_zoned(TimeZone::UTC),
     ];
     let mut snapshot_files = Vec::new();
 
     // we use as_path to not depend on the actual tempdir
     let backup_options = BackupOptions::default().as_path(PathBuf::from_str("test").unwrap());
-    for snap_ts in &snapshot_timestamp {
+    for snap_ts in snapshot_timestamp {
         let snapshot_file = repo
             .backup(
                 &backup_options,
                 &source.path_list(),
                 SnapshotFile {
-                    time: *snap_ts,
+                    time: snap_ts,
                     ..Default::default()
                 },
             )

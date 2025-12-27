@@ -1,7 +1,7 @@
 //! `forget` subcommand
 
-use chrono::{DateTime, Datelike, Duration, Local, Timelike};
 use derive_setters::Setters;
+use jiff::{Span, Zoned};
 use serde_derive::{Deserialize, Serialize};
 use serde_with::{DisplayFromStr, serde_as, skip_serializing_none};
 
@@ -83,7 +83,7 @@ pub(crate) fn get_forget_snapshots<P: ProgressBars, S: Open>(
     group_by: SnapshotGroupCriterion,
     filter: impl FnMut(&SnapshotFile) -> bool + Send + Sync,
 ) -> RusticResult<ForgetGroups> {
-    let now = Local::now();
+    let now = Zoned::now();
 
     let groups = repo
         .get_snapshot_group(&[], group_by, filter)?
@@ -91,7 +91,7 @@ pub(crate) fn get_forget_snapshots<P: ProgressBars, S: Open>(
         .map(|(group, snapshots)| -> RusticResult<_> {
             Ok(ForgetGroup {
                 group,
-                snapshots: keep.apply(snapshots, now)?,
+                snapshots: keep.apply(snapshots, &now)?,
             })
         })
         .collect::<RusticResult<_>>()?;
@@ -103,7 +103,7 @@ pub(crate) fn get_forget_snapshots<P: ProgressBars, S: Open>(
 #[cfg_attr(feature = "merge", derive(conflate::Merge))]
 #[skip_serializing_none]
 #[serde_as]
-#[derive(Clone, Debug, PartialEq, Eq, Default, Serialize, Deserialize, Setters)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize, Setters)]
 #[serde(default, rename_all = "kebab-case", deny_unknown_fields)]
 #[setters(into)]
 #[non_exhaustive]
@@ -198,55 +198,55 @@ pub struct KeepOptions {
     #[cfg_attr(feature = "clap", clap(long, value_name = "DURATION"))]
     #[serde_as(as = "Option<DisplayFromStr>")]
     #[cfg_attr(feature = "merge", merge(strategy = conflate::option::overwrite_none))]
-    pub keep_within: Option<humantime::Duration>,
+    pub keep_within: Option<Span>,
 
     /// Keep minutely snapshots newer than DURATION relative to latest snapshot
     #[cfg_attr(feature = "clap", clap(long, value_name = "DURATION"))]
     #[serde_as(as = "Option<DisplayFromStr>")]
     #[cfg_attr(feature = "merge", merge(strategy = conflate::option::overwrite_none))]
-    pub keep_within_minutely: Option<humantime::Duration>,
+    pub keep_within_minutely: Option<Span>,
 
     /// Keep hourly snapshots newer than DURATION relative to latest snapshot
     #[cfg_attr(feature = "clap", clap(long, value_name = "DURATION"))]
     #[serde_as(as = "Option<DisplayFromStr>")]
     #[cfg_attr(feature = "merge", merge(strategy = conflate::option::overwrite_none))]
-    pub keep_within_hourly: Option<humantime::Duration>,
+    pub keep_within_hourly: Option<Span>,
 
     /// Keep daily snapshots newer than DURATION relative to latest snapshot
     #[cfg_attr(feature = "clap", clap(long, value_name = "DURATION"))]
     #[serde_as(as = "Option<DisplayFromStr>")]
     #[cfg_attr(feature = "merge", merge(strategy = conflate::option::overwrite_none))]
-    pub keep_within_daily: Option<humantime::Duration>,
+    pub keep_within_daily: Option<Span>,
 
     /// Keep weekly snapshots newer than DURATION relative to latest snapshot
     #[cfg_attr(feature = "clap", clap(long, value_name = "DURATION"))]
     #[serde_as(as = "Option<DisplayFromStr>")]
     #[cfg_attr(feature = "merge", merge(strategy = conflate::option::overwrite_none))]
-    pub keep_within_weekly: Option<humantime::Duration>,
+    pub keep_within_weekly: Option<Span>,
 
     /// Keep monthly snapshots newer than DURATION relative to latest snapshot
     #[cfg_attr(feature = "clap", clap(long, value_name = "DURATION"))]
     #[serde_as(as = "Option<DisplayFromStr>")]
     #[cfg_attr(feature = "merge", merge(strategy = conflate::option::overwrite_none))]
-    pub keep_within_monthly: Option<humantime::Duration>,
+    pub keep_within_monthly: Option<Span>,
 
     /// Keep quarter-yearly snapshots newer than DURATION relative to latest snapshot
     #[cfg_attr(feature = "clap", clap(long, value_name = "DURATION"))]
     #[serde_as(as = "Option<DisplayFromStr>")]
     #[cfg_attr(feature = "merge", merge(strategy = conflate::option::overwrite_none))]
-    pub keep_within_quarter_yearly: Option<humantime::Duration>,
+    pub keep_within_quarter_yearly: Option<Span>,
 
     /// Keep half-yearly snapshots newer than DURATION relative to latest snapshot
     #[cfg_attr(feature = "clap", clap(long, value_name = "DURATION"))]
     #[serde_as(as = "Option<DisplayFromStr>")]
     #[cfg_attr(feature = "merge", merge(strategy = conflate::option::overwrite_none))]
-    pub keep_within_half_yearly: Option<humantime::Duration>,
+    pub keep_within_half_yearly: Option<Span>,
 
     /// Keep yearly snapshots newer than DURATION relative to latest snapshot
     #[cfg_attr(feature = "clap", clap(long, value_name = "DURATION"))]
     #[serde_as(as = "Option<DisplayFromStr>")]
     #[cfg_attr(feature = "merge", merge(strategy = conflate::option::overwrite_none))]
-    pub keep_within_yearly: Option<humantime::Duration>,
+    pub keep_within_yearly: Option<Span>,
 
     /// Allow to keep no snapshot
     #[cfg_attr(feature = "clap", clap(long))]
@@ -282,8 +282,7 @@ const fn always_false(_sn1: &SnapshotFile, _sn2: &SnapshotFile) -> bool {
 ///
 /// Whether the year of the snapshots is equal
 fn equal_year(sn1: &SnapshotFile, sn2: &SnapshotFile) -> bool {
-    let (t1, t2) = (sn1.time, sn2.time);
-    t1.year() == t2.year()
+    sn1.time.year() == sn2.time.year()
 }
 
 /// Evaluate the half year of the given snapshots
@@ -297,8 +296,7 @@ fn equal_year(sn1: &SnapshotFile, sn2: &SnapshotFile) -> bool {
 ///
 /// Whether the half year of the snapshots is equal
 fn equal_half_year(sn1: &SnapshotFile, sn2: &SnapshotFile) -> bool {
-    let (t1, t2) = (sn1.time, sn2.time);
-    t1.year() == t2.year() && t1.month0() / 6 == t2.month0() / 6
+    equal_year(sn1, sn2) && (sn1.time.month() - 1) / 6 == (sn2.time.month() - 1) / 6
 }
 
 /// Evaluate the quarter year of the given snapshots
@@ -312,8 +310,7 @@ fn equal_half_year(sn1: &SnapshotFile, sn2: &SnapshotFile) -> bool {
 ///
 /// Whether the quarter year of the snapshots is equal
 fn equal_quarter_year(sn1: &SnapshotFile, sn2: &SnapshotFile) -> bool {
-    let (t1, t2) = (sn1.time, sn2.time);
-    t1.year() == t2.year() && t1.month0() / 3 == t2.month0() / 3
+    equal_year(sn1, sn2) && (sn1.time.month() - 1) / 3 == (sn2.time.month() - 1) / 3
 }
 
 /// Evaluate the month of the given snapshots
@@ -327,8 +324,7 @@ fn equal_quarter_year(sn1: &SnapshotFile, sn2: &SnapshotFile) -> bool {
 ///
 /// Whether the month of the snapshots is equal
 fn equal_month(sn1: &SnapshotFile, sn2: &SnapshotFile) -> bool {
-    let (t1, t2) = (sn1.time, sn2.time);
-    t1.year() == t2.year() && t1.month() == t2.month()
+    equal_year(sn1, sn2) && sn1.time.month() == sn2.time.month()
 }
 
 /// Evaluate the week of the given snapshots
@@ -342,8 +338,8 @@ fn equal_month(sn1: &SnapshotFile, sn2: &SnapshotFile) -> bool {
 ///
 /// Whether the week of the snapshots is equal
 fn equal_week(sn1: &SnapshotFile, sn2: &SnapshotFile) -> bool {
-    let (t1, t2) = (sn1.time, sn2.time);
-    t1.year() == t2.year() && t1.iso_week().week() == t2.iso_week().week()
+    equal_year(sn1, sn2)
+        && sn1.time.clone().iso_week_date().week() == sn2.time.clone().iso_week_date().week()
 }
 
 /// Evaluate the day of the given snapshots
@@ -357,8 +353,7 @@ fn equal_week(sn1: &SnapshotFile, sn2: &SnapshotFile) -> bool {
 ///
 /// Whether the day of the snapshots is equal
 fn equal_day(sn1: &SnapshotFile, sn2: &SnapshotFile) -> bool {
-    let (t1, t2) = (sn1.time, sn2.time);
-    t1.year() == t2.year() && t1.ordinal() == t2.ordinal()
+    equal_year(sn1, sn2) && sn1.time.day_of_year() == sn2.time.day_of_year()
 }
 
 /// Evaluate the hours of the given snapshots
@@ -372,8 +367,7 @@ fn equal_day(sn1: &SnapshotFile, sn2: &SnapshotFile) -> bool {
 ///
 /// Whether the hours of the snapshots are equal
 fn equal_hour(sn1: &SnapshotFile, sn2: &SnapshotFile) -> bool {
-    let (t1, t2) = (sn1.time, sn2.time);
-    t1.year() == t2.year() && t1.ordinal() == t2.ordinal() && t1.hour() == t2.hour()
+    equal_day(sn1, sn2) && sn1.time.hour() == sn2.time.hour()
 }
 
 /// Evaluate the minutes of the given snapshots
@@ -387,11 +381,7 @@ fn equal_hour(sn1: &SnapshotFile, sn2: &SnapshotFile) -> bool {
 ///
 /// Whether the minutes of the snapshots are equal
 fn equal_minute(sn1: &SnapshotFile, sn2: &SnapshotFile) -> bool {
-    let (t1, t2) = (sn1.time, sn2.time);
-    t1.year() == t2.year()
-        && t1.ordinal() == t2.ordinal()
-        && t1.hour() == t2.hour()
-        && t1.minute() == t2.minute()
+    equal_half_year(sn1, sn2) && sn1.time.minute() == sn2.time.minute()
 }
 
 impl KeepOptions {
@@ -438,13 +428,13 @@ impl KeepOptions {
         sn: &SnapshotFile,
         last: Option<&SnapshotFile>,
         has_next: bool,
-        latest_time: DateTime<Local>,
+        latest_time: &Zoned,
     ) -> Vec<&str> {
         type MatchParameters<'a> = (
             CheckFunction,
             &'a mut Option<i32>,
             &'a str,
-            Option<humantime::Duration>,
+            Option<Span>,
             &'a str,
         );
 
@@ -540,7 +530,7 @@ impl KeepOptions {
                     }
                 }
                 if let Some(within) = within {
-                    if sn.time + Duration::from_std(*within).unwrap() > latest_time {
+                    if sn.time.saturating_add(within) > *latest_time {
                         reason.push(reason2);
                     }
                 }
@@ -568,7 +558,7 @@ impl KeepOptions {
     pub fn apply(
         &self,
         mut snapshots: Vec<SnapshotFile>,
-        now: DateTime<Local>,
+        now: &Zoned,
     ) -> RusticResult<Vec<ForgetSnapshot>> {
         if !self.is_valid() {
             return Err(RusticError::new(
@@ -584,7 +574,7 @@ impl KeepOptions {
         }
 
         snapshots.sort_unstable_by(|sn1, sn2| sn1.cmp(sn2).reverse());
-        let latest_time = snapshots[0].time;
+        let latest_time = snapshots[0].time.clone();
         let mut last = None;
 
         let mut iter = snapshots.into_iter().peekable();
@@ -601,7 +591,7 @@ impl KeepOptions {
                     (false, vec!["unchanged"])
                 } else {
                     let reasons =
-                        group_keep.matches(&sn, last.as_ref(), iter.peek().is_some(), latest_time);
+                        group_keep.matches(&sn, last.as_ref(), iter.peek().is_some(), &latest_time);
                     let keep = !reasons.is_empty();
                     (keep, reasons)
                 }
@@ -626,20 +616,18 @@ mod tests {
 
     use super::*;
     use anyhow::Result;
-    use chrono::{Local, NaiveDateTime, TimeZone, Utc};
-    use humantime::Duration;
     use insta::{Settings, assert_ron_snapshot};
+    use jiff::{Timestamp, civil::DateTime, tz::TimeZone};
     use rstest::{fixture, rstest};
     use serde_json;
 
     /// for more readable insta output
     #[derive(Serialize)]
-    struct ForgetResult(Vec<(DateTime<Utc>, bool, Vec<String>)>);
+    struct ForgetResult(Vec<(Timestamp, bool, Vec<String>)>);
 
     // helper for parsing times
-    fn parse_time(time: &str) -> Result<DateTime<Local>> {
-        let time = NaiveDateTime::parse_from_str(time, "%Y-%m-%d %H:%M:%S")?;
-        Ok(Local::from_utc_datetime(&Local, &time))
+    fn parse_time(time: &str) -> Result<Zoned> {
+        Ok(DateTime::from_str(time)?.to_zoned(TimeZone::UTC)?)
     }
 
     #[fixture]
@@ -817,9 +805,9 @@ mod tests {
 
     #[test]
     fn apply_empty_snapshots() -> Result<()> {
-        let now = Local::now();
+        let now = Zoned::now();
         let options = KeepOptions::default().keep_last(10);
-        let result = options.apply(vec![], now)?;
+        let result = options.apply(vec![], &now)?;
         assert!(result.is_empty());
         Ok(())
     }
@@ -827,8 +815,8 @@ mod tests {
     #[rstest]
     #[case(KeepOptions::default())]
     fn test_apply_fails(#[case] options: KeepOptions, test_snapshots: Vec<SnapshotFile>) {
-        let now = Local::now();
-        let result = options.apply(test_snapshots, now);
+        let now = Zoned::now();
+        let result = options.apply(test_snapshots, &now);
         assert!(result.is_err());
     }
 
@@ -854,23 +842,23 @@ mod tests {
     #[case(KeepOptions::default().keep_daily(7).keep_weekly(2).keep_monthly(3).keep_yearly(10))]
     #[case(KeepOptions::default().keep_tags(vec![StringList::from_str("foo")?]))]
     #[case(KeepOptions::default().keep_tags(vec![StringList::from_str("foo,bar")?]))]
-    #[case(KeepOptions::default().keep_within(Duration::from_str("1d").unwrap()))]
-    #[case(KeepOptions::default().keep_within(Duration::from_str("2d").unwrap()))]
-    #[case(KeepOptions::default().keep_within(Duration::from_str("7d").unwrap()))]
-    #[case(KeepOptions::default().keep_within(Duration::from_str("1m").unwrap()))]
-    #[case(KeepOptions::default().keep_within(Duration::from_str("1M14d").unwrap()))]
-    #[case(KeepOptions::default().keep_within(Duration::from_str("1y1d1M").unwrap()))]
-    #[case(KeepOptions::default().keep_within(Duration::from_str("13d23h").unwrap()))]
-    #[case(KeepOptions::default().keep_within(Duration::from_str("2M2h").unwrap()))]
-    #[case(KeepOptions::default().keep_within(Duration::from_str("1y2M3d3h").unwrap()))]
-    #[case(KeepOptions::default().keep_within_hourly(Duration::from_str("1y2M3d3h").unwrap()))]
-    #[case(KeepOptions::default().keep_within_daily(Duration::from_str("1y2M3d3h").unwrap()))]
-    #[case(KeepOptions::default().keep_within_weekly(Duration::from_str("1y2M3d3h").unwrap()))]
-    #[case(KeepOptions::default().keep_within_monthly(Duration::from_str("1y2M3d3h").unwrap()))]
-    #[case(KeepOptions::default().keep_within_quarter_yearly(Duration::from_str("1y2M3d3h").unwrap()))]
-    #[case(KeepOptions::default().keep_within_half_yearly(Duration::from_str("1y2M3d3h").unwrap()))]
-    #[case(KeepOptions::default().keep_within_yearly(Duration::from_str("1y2M3d3h").unwrap()))]
-    #[case(KeepOptions::default().keep_within(Duration::from_str("1h").unwrap()).keep_within_hourly(Duration::from_str("1d").unwrap()).keep_within_daily(Duration::from_str("1w").unwrap()).keep_within_weekly(Duration::from_str("1M").unwrap()).keep_within_monthly(Duration::from_str("1y").unwrap()).keep_within_yearly(Duration::from_str("9999y").unwrap()))]
+    #[case(KeepOptions::default().keep_within(Span::from_str("1d").unwrap()))]
+    #[case(KeepOptions::default().keep_within(Span::from_str("2d").unwrap()))]
+    #[case(KeepOptions::default().keep_within(Span::from_str("7d").unwrap()))]
+    #[case(KeepOptions::default().keep_within(Span::from_str("1m").unwrap()))]
+    #[case(KeepOptions::default().keep_within(Span::from_str("1mo14d").unwrap()))]
+    #[case(KeepOptions::default().keep_within(Span::from_str("1y1mo1d").unwrap()))]
+    #[case(KeepOptions::default().keep_within(Span::from_str("13d23h").unwrap()))]
+    #[case(KeepOptions::default().keep_within(Span::from_str("2mo2h").unwrap()))]
+    #[case(KeepOptions::default().keep_within(Span::from_str("1y2mo3d3h").unwrap()))]
+    #[case(KeepOptions::default().keep_within_hourly(Span::from_str("1y2mo3d3h").unwrap()))]
+    #[case(KeepOptions::default().keep_within_daily(Span::from_str("1y2mo3d3h").unwrap()))]
+    #[case(KeepOptions::default().keep_within_weekly(Span::from_str("1y2mo3d3h").unwrap()))]
+    #[case(KeepOptions::default().keep_within_monthly(Span::from_str("1y2mo3d3h").unwrap()))]
+    #[case(KeepOptions::default().keep_within_quarter_yearly(Span::from_str("1y2mo3d3h").unwrap()))]
+    #[case(KeepOptions::default().keep_within_half_yearly(Span::from_str("1y2mo3d3h").unwrap()))]
+    #[case(KeepOptions::default().keep_within_yearly(Span::from_str("1y2mo3d3h").unwrap()))]
+    #[case(KeepOptions::default().keep_within(Span::from_str("1h").unwrap()).keep_within_hourly(Span::from_str("1d").unwrap()).keep_within_daily(Span::from_str("1w").unwrap()).keep_within_weekly(Span::from_str("1mo").unwrap()).keep_within_monthly(Span::from_str("1y").unwrap()).keep_within_yearly(Span::from_str("9999y").unwrap()))]
     #[case(KeepOptions::default().keep_last(-1))]
     #[case(KeepOptions::default().keep_last(-1).keep_hourly(-1))]
     #[case(KeepOptions::default().keep_hourly(-1))]
@@ -883,18 +871,18 @@ mod tests {
         insta_forget_snapshots_redaction: Settings,
     ) -> Result<()> {
         let now = parse_time("2016-01-18 12:02:03")?;
-        let result = options.apply(test_snapshots.clone(), now)?;
+        let result = options.apply(test_snapshots.clone(), &now)?;
 
         // check that a changed current time doesn't change the forget result (note that DeleteOptions are set accordingly)
         let now = parse_time("2020-01-18 12:02:03")?;
-        let result2 = options.apply(test_snapshots, now)?;
+        let result2 = options.apply(test_snapshots, &now)?;
         assert_eq!(result, result2);
 
         // more readable output format
         let result = ForgetResult(
             result
                 .into_iter()
-                .map(|s| (s.snapshot.time.into(), s.keep, s.reasons))
+                .map(|s| (s.snapshot.time.timestamp(), s.keep, s.reasons))
                 .collect(),
         );
 

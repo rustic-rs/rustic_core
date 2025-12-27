@@ -1,6 +1,5 @@
-use std::time::Duration;
-
 use anyhow::Result;
+use jiff::Span;
 use rstest::rstest;
 
 use rustic_core::{
@@ -50,7 +49,7 @@ fn test_prune(
     let prune_opts = PruneOptions::default()
         .instant_delete(instant_delete)
         .max_unused(max_unused)
-        .keep_delete(Duration::ZERO);
+        .keep_delete(Span::default());
     let plan = repo.prune_plan(&prune_opts)?;
     // TODO: Snapshot-test the plan (currently doesn't impl Serialize)
     // assert_ron_snapshot!("prune", plan);

@@ -31,21 +31,21 @@ impl FormatKey for FormattedSnapshot<'_> {
         match key {
             "id" => write!(f, "{}", self.snap.id),
             "long_id" => write!(f, "{:?}", self.snap.id),
-            "time" => write!(f, "{}", self.snap.time.format(self.time_format)),
+            "time" => write!(f, "{}", self.snap.time.strftime(self.time_format)),
             "username" => write!(f, "{}", self.snap.username),
             "hostname" => write!(f, "{}", self.snap.hostname),
             "label" => write!(f, "{}", self.snap.label),
             "tags" => write!(f, "{}", self.snap.tags),
             "backup_start" => {
                 if let Some(summary) = &self.snap.summary {
-                    write!(f, "{}", summary.backup_start.format(self.time_format))
+                    write!(f, "{}", summary.backup_start.strftime(self.time_format))
                 } else {
                     write!(f, "no_backup_start")
                 }
             }
             "backup_end" => {
                 if let Some(summary) = &self.snap.summary {
-                    write!(f, "{}", summary.backup_end.format(self.time_format))
+                    write!(f, "{}", summary.backup_end.strftime(self.time_format))
                 } else {
                     write!(f, "no_backup_end")
                 }

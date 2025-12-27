@@ -1,8 +1,9 @@
+use crate::repofile::RusticTime;
 use std::{cmp::Ordering, num::NonZeroU32};
 
-use chrono::{DateTime, Local};
+use jiff::Zoned;
 use serde_derive::{Deserialize, Serialize};
-use serde_with::skip_serializing_none;
+use serde_with::{serde_as, skip_serializing_none};
 
 use crate::{
     backend::FileType,
@@ -59,6 +60,7 @@ impl IndexFile {
     }
 }
 
+#[serde_as]
 #[skip_serializing_none]
 #[derive(Serialize, Deserialize, Default, Debug, Clone)]
 /// Index information about a `pack`
@@ -67,8 +69,9 @@ pub struct IndexPack {
     pub id: PackId,
     /// Index information about contained blobs
     pub blobs: Vec<IndexBlob>,
+    #[serde_as(as = "Option<RusticTime>")]
     /// The pack creation time or time when the pack was marked for deletion
-    pub time: Option<DateTime<Local>>,
+    pub time: Option<Zoned>,
     /// The pack size
     pub size: Option<u32>,
 }

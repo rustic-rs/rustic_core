@@ -1,4 +1,4 @@
-use chrono::{DateTime, Local};
+use jiff::Zoned;
 use rand::{RngCore, rng};
 use scrypt::Params;
 use serde_derive::{Deserialize, Serialize};
@@ -9,7 +9,7 @@ use crate::{
     crypto::{CryptoKey, aespoly1305::Key},
     error::{ErrorKind, RusticError, RusticResult},
     impl_repoid,
-    repofile::RepoFile,
+    repofile::{RepoFile, RusticTime},
 };
 
 /// [`KeyFileErrorKind`] describes the errors that can be returned for `KeyFile`s
@@ -51,8 +51,9 @@ pub struct KeyFile {
     /// User which created the key
     pub username: Option<String>,
 
+    #[serde_as(as = "Option<RusticTime>")]
     /// Creation time of the key
-    pub created: Option<DateTime<Local>>,
+    pub created: Option<Zoned>,
 
     /// The used key derivation function (currently only `scrypt`)
     pub kdf: String,
@@ -237,7 +238,7 @@ impl KeyFile {
             n: 2_u32.pow(u32::from(params.log_n())),
             r: params.r(),
             p: params.p(),
-            created: with_created.then(Local::now),
+            created: with_created.then(Zoned::now),
             data,
             salt,
         })

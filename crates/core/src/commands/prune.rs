@@ -10,11 +10,11 @@ use std::{
 };
 
 use bytesize::ByteSize;
-use chrono::{DateTime, Duration, Local};
 use derive_more::Add;
 use derive_setters::Setters;
 use enumset::{EnumSet, EnumSetType};
 use itertools::Itertools;
+use jiff::{Span, ToSpan, Zoned};
 use log::{info, warn};
 use rayon::prelude::{IntoParallelIterator, ParallelIterator};
 use serde::{Deserialize, Serialize};
@@ -76,7 +76,7 @@ pub struct PruneOptions {
         feature = "clap",
         clap(long, value_name = "DURATION", default_value = "0d")
     )]
-    pub keep_pack: humantime::Duration,
+    pub keep_pack: Span,
 
     /// Minimum duration (e.g. 10m) to keep packs marked for deletion. More recently marked packs won't be
     /// deleted within this prune run.
@@ -84,7 +84,7 @@ pub struct PruneOptions {
         feature = "clap",
         clap(long, value_name = "DURATION", default_value = "23h")
     )]
-    pub keep_delete: humantime::Duration,
+    pub keep_delete: Span,
 
     /// Delete files immediately instead of marking them. This also removes all files already marked for deletion.
     ///
@@ -139,8 +139,8 @@ impl Default for PruneOptions {
         Self {
             max_repack: LimitOption::Percentage(10),
             max_unused: LimitOption::Percentage(5),
-            keep_pack: std::time::Duration::from_secs(0).into(),
-            keep_delete: std::time::Duration::from_secs(82800).into(), // = 23h
+            keep_pack: 0.seconds(),
+            keep_delete: 23.hours(),
             instant_delete: false,
             early_delete_index: false,
             fast_repack: false,
@@ -444,7 +444,7 @@ struct PrunePack {
     /// The task to be executed on the pack
     to_do: PackToDo,
     /// The time the pack was created
-    time: Option<DateTime<Local>>,
+    time: Option<Zoned>,
     /// The blobs in the pack
     blobs: Vec<IndexBlob>,
 }
@@ -487,10 +487,10 @@ impl PrunePack {
     }
 
     /// Convert the `PrunePack` into an `IndexPack`
-    fn into_index_pack(self) -> IndexPack {
+    fn into_index_pack(self, time: &Zoned) -> IndexPack {
         IndexPack {
             id: self.id,
-            time: self.time,
+            time: self.time.or(Some(time.clone())),
             size: None,
             blobs: self.blobs,
         }
@@ -501,10 +501,10 @@ impl PrunePack {
     /// # Arguments
     ///
     /// * `time` - The time to set
-    fn into_index_pack_with_time(self, time: DateTime<Local>) -> IndexPack {
+    fn into_index_pack_with_time(self, time: &Zoned) -> IndexPack {
         IndexPack {
             id: self.id,
-            time: Some(time),
+            time: Some(time.clone()),
             size: None,
             blobs: self.blobs,
         }
@@ -583,7 +583,7 @@ enum RepackReason {
 #[derive(Debug)]
 pub struct PrunePlan {
     /// The time the plan was created
-    time: DateTime<Local>,
+    time: Zoned,
     /// The ids of the blobs which are used
     used_ids: BTreeMap<BlobId, u8>,
     /// The ids of the existing packs
@@ -662,7 +662,7 @@ impl PrunePlan {
         }
 
         Self {
-            time: Local::now(),
+            time: Zoned::now(),
             used_ids,
             existing_packs,
             repack_candidates: Vec::new(),
@@ -746,22 +746,8 @@ impl PrunePlan {
             total_size.map(|tpe, size| PackSizer::from_config(repo.config(), tpe, size));
 
         pruner.decide_packs(
-            Duration::from_std(*opts.keep_pack).map_err(|err| {
-                RusticError::with_source(
-                    ErrorKind::Internal,
-                    "Failed to convert keep_pack duration `{keep_pack}` to std::time::Duration.",
-                    err,
-                )
-                .attach_context("keep_pack", opts.keep_pack.to_string())
-            })?,
-            Duration::from_std(*opts.keep_delete).map_err(|err| {
-                RusticError::with_source(
-                    ErrorKind::Internal,
-                    "Failed to convert keep_delete duration `{keep_delete}` to std::time::Duration.",
-                    err,
-                )
-                .attach_context("keep_delete", opts.keep_delete.to_string())
-            })?,
+            opts.keep_pack,
+            opts.keep_delete,
             repack_cacheable_only,
             opts.repack_uncompressed,
             opts.repack_all,
@@ -837,8 +823,8 @@ impl PrunePlan {
     #[allow(clippy::unnecessary_wraps)]
     fn decide_packs(
         &mut self,
-        keep_pack: Duration,
-        keep_delete: Duration,
+        keep_pack: Span,
+        keep_delete: Span,
         repack_cacheable_only: bool,
         repack_uncompressed: bool,
         repack_all: bool,
@@ -865,7 +851,7 @@ impl PrunePlan {
                     let mut status = EnumSet::empty();
 
                     // Various checks to determine if packs need to be kept
-                    let too_young = pack.time > Some(self.time - keep_pack);
+                    let too_young = pack.time > Some(self.time.saturating_sub(keep_pack));
                     if too_young && !pack.delete_mark {
                         _ = status.insert(PackStatus::TooYoung);
                     }
@@ -943,10 +929,10 @@ impl PrunePlan {
                         }
                         (true, 0, _) => {
                             _ = status.insert(PackStatus::Marked);
-                            match pack.time {
+                            match &pack.time {
                                 // unneeded and marked pack => check if we can remove it.
                                 Some(local_date_time)
-                                    if self.time - local_date_time >= keep_delete =>
+                                    if self.time >= local_date_time.saturating_add(keep_delete) =>
                                 {
                                     _ = status.insert(PackStatus::TooYoung);
                                     pack.set_todo(PackToDo::Delete, &pi, status, &mut self.stats);
@@ -1289,7 +1275,7 @@ pub(crate) fn prune_repository<P: ProgressBars, S: Open>(
                 let pack = IndexPack {
                     id,
                     size: Some(size),
-                    time: Some(Local::now()),
+                    time: Some(Zoned::now()),
                     blobs: Vec::new(),
                 };
                 indexer.write().unwrap().add_remove(pack)?;
@@ -1358,8 +1344,8 @@ pub(crate) fn prune_repository<P: ProgressBars, S: Open>(
                     .ask_report());
                 }
                 PackToDo::Keep => {
-                    // keep pack: add to new index
-                    let pack = pack.into_index_pack();
+                    // keep pack: add to new index; correct time if not set
+                    let pack = pack.into_index_pack(&prune_plan.time);
                     indexer.write().unwrap().add(pack)?;
                 }
                 PackToDo::Repack => {
@@ -1385,7 +1371,7 @@ pub(crate) fn prune_repository<P: ProgressBars, S: Open>(
                         delete_pack(pack);
                     } else {
                         // mark pack for removal
-                        let pack = pack.into_index_pack_with_time(prune_plan.time);
+                        let pack = pack.into_index_pack_with_time(&prune_plan.time);
                         indexer.write().unwrap().add_remove(pack)?;
                     }
                 }
@@ -1394,7 +1380,7 @@ pub(crate) fn prune_repository<P: ProgressBars, S: Open>(
                         delete_pack(pack);
                     } else {
                         // mark pack for removal
-                        let pack = pack.into_index_pack_with_time(prune_plan.time);
+                        let pack = pack.into_index_pack_with_time(&prune_plan.time);
                         indexer.write().unwrap().add_remove(pack)?;
                     }
                 }
@@ -1403,15 +1389,14 @@ pub(crate) fn prune_repository<P: ProgressBars, S: Open>(
                         delete_pack(pack);
                     } else {
                         // keep pack: add to new index; keep the timestamp.
-                        // Note the timestamp shouldn't be None here, however if it is not not set, use the current time to heal the entry!
-                        let time = pack.time.unwrap_or(prune_plan.time);
-                        let pack = pack.into_index_pack_with_time(time);
+                        // Note the timestamp shouldn be set here, however if it is not, we use the current time to heal the entry!
+                        let pack = pack.into_index_pack(&prune_plan.time);
                         indexer.write().unwrap().add_remove(pack)?;
                     }
                 }
                 PackToDo::Recover => {
                     // recover pack: add to new index in section packs
-                    let pack = pack.into_index_pack_with_time(prune_plan.time);
+                    let pack = pack.into_index_pack_with_time(&prune_plan.time);
                     indexer.write().unwrap().add(pack)?;
                 }
                 PackToDo::Delete => delete_pack(pack),

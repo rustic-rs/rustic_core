@@ -10,9 +10,9 @@ use std::{
 
 use bytes::Bytes;
 use bytesize::ByteSize;
-use chrono::{Datelike, Local, NaiveDateTime, Timelike};
 use derive_setters::Setters;
 use displaydoc::Display;
+use jiff::Zoned;
 use log::{debug, error, warn};
 use rand::{Rng, prelude::SliceRandom, rng};
 use rayon::prelude::{IntoParallelIterator, ParallelIterator};
@@ -103,38 +103,24 @@ impl ReadSubsetOption {
 }
 
 /// parses n/m including named settings depending on current date
-fn parse_n_m(now: NaiveDateTime, n_in: &str, m_in: &str) -> Result<(u32, u32), ParseIntError> {
-    let is_leap_year = |dt: NaiveDateTime| {
-        let year = dt.year();
-        year % 4 == 0 && (year % 25 != 0 || year % 16 == 0)
-    };
-
-    let days_of_month = |dt: NaiveDateTime| match dt.month() {
-        1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
-        4 | 6 | 9 | 11 => 30,
-        2 if is_leap_year(dt) => 29,
-        2 => 28,
-        _ => panic!("invalid month, should not happen"),
-    };
-
-    let days_of_year = |dt: NaiveDateTime| if is_leap_year(dt) { 366 } else { 365 };
-
+#[allow(clippy::cast_sign_loss)] // we only use safe casts
+fn parse_n_m(now: &Zoned, n_in: &str, m_in: &str) -> Result<(u32, u32), ParseIntError> {
     let n = match n_in {
-        "hourly" => now.ordinal0() * 24 + now.hour(),
-        "daily" => now.ordinal0(),
-        "weekly" => now.iso_week().week0(),
-        "monthly" => now.month0(),
+        "hourly" => (now.day_of_year() as u32 - 1) * 24 + (now.hour() as u32),
+        "daily" => now.day_of_year() as u32 - 1,
+        "weekly" => now.clone().iso_week_date().week() as u32 - 1,
+        "monthly" => now.month() as u32 - 1,
         n => n.parse()?,
     };
 
     let m = match (n_in, m_in) {
         ("hourly", "day") => 24,
         ("hourly", "week") => 24 * 7,
-        ("hourly", "month") | (_, "month_hours") => 24 * days_of_month(now),
-        ("hourly", "year") | (_, "year_hours") => 24 * days_of_year(now),
+        ("hourly", "month") | (_, "month_hours") => 24 * now.days_in_month() as u32,
+        ("hourly", "year") | (_, "year_hours") => 24 * now.days_in_year() as u32,
         ("daily", "week") => 7,
-        ("daily", "month") | (_, "month_days") => days_of_month(now),
-        ("daily", "year") | (_, "year_days") => days_of_year(now),
+        ("daily", "month") | (_, "month_days") => now.days_in_month() as u32,
+        ("daily", "year") | (_, "year_days") => now.days_in_year() as u32,
         ("weekly", "month") => 4,
         ("weekly", "year") => 52,
         ("monthly", "year") => 12,
@@ -161,8 +147,8 @@ impl FromStr for ReadSubsetOption {
 
             Self::Percentage(percentage)
         } else if let Some((n, m)) = s.split_once('/') {
-            let now = Local::now().naive_local();
-            let subset = parse_n_m(now, n, m).map_err(
+            let now = Zoned::now();
+            let subset = parse_n_m(&now, n, m).map_err(
                 |err|
                     RusticError::with_source(
                         ErrorKind::InvalidInput,
@@ -1000,6 +986,8 @@ impl CheckResultsCollector {
 
 #[cfg(test)]
 mod tests {
+    use crate::repofile::RusticTime;
+
     use super::*;
     use insta::assert_ron_snapshot;
     use rand::{Rng, SeedableRng, rngs::StdRng};
@@ -1074,20 +1062,20 @@ mod tests {
     #[case("monthly", "year")]
     #[case("monthly", "5")]
     fn test_parse_n_m(#[case] n: &str, #[case] m: &str) {
-        let now: NaiveDateTime = "2024-10-11T12:00:00".parse().unwrap();
-        let res = parse_n_m(now, n, m).unwrap();
-        let now: NaiveDateTime = "2024-10-11T13:00:00".parse().unwrap();
-        let res_1h = parse_n_m(now, n, m).unwrap();
-        let now: NaiveDateTime = "2024-10-12T12:00:00".parse().unwrap();
-        let res_1d = parse_n_m(now, n, m).unwrap();
-        let now: NaiveDateTime = "2024-10-18T12:00:00".parse().unwrap();
-        let res_1w = parse_n_m(now, n, m).unwrap();
-        let now: NaiveDateTime = "2024-11-11T12:00:00".parse().unwrap();
-        let res_1m = parse_n_m(now, n, m).unwrap();
-        let now: NaiveDateTime = "2025-10-11T12:00:00".parse().unwrap();
-        let res_1y = parse_n_m(now, n, m).unwrap();
-        let now: NaiveDateTime = "2020-02-02T12:00:00".parse().unwrap();
-        let res2 = parse_n_m(now, n, m).unwrap();
+        let now = RusticTime::parse_utc("2024-10-11T12:00:00").unwrap();
+        let res = parse_n_m(&now, n, m).unwrap();
+        let now = RusticTime::parse_utc("2024-10-11T13:00:00").unwrap();
+        let res_1h = parse_n_m(&now, n, m).unwrap();
+        let now = RusticTime::parse_utc("2024-10-12T12:00:00").unwrap();
+        let res_1d = parse_n_m(&now, n, m).unwrap();
+        let now = RusticTime::parse_utc("2024-10-18T12:00:00").unwrap();
+        let res_1w = parse_n_m(&now, n, m).unwrap();
+        let now = RusticTime::parse_utc("2024-11-11T12:00:00").unwrap();
+        let res_1m = parse_n_m(&now, n, m).unwrap();
+        let now = RusticTime::parse_utc("2025-10-11T12:00:00").unwrap();
+        let res_1y = parse_n_m(&now, n, m).unwrap();
+        let now = RusticTime::parse_utc("2020-02-02T12:00:00").unwrap();
+        let res2 = parse_n_m(&now, n, m).unwrap();
 
         assert_ron_snapshot!(
             format!("n_m_{n}_{m}"),
