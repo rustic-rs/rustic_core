@@ -32,6 +32,7 @@ mod integration {
     mod ls;
     mod prune;
     mod restore;
+    mod rewrite;
     mod snapshots;
     mod vfs;
     use super::*;
@@ -66,6 +67,10 @@ struct TestSource(TempDir);
 impl TestSource {
     fn new(tmp: TempDir) -> Self {
         Self(tmp)
+    }
+
+    fn path(&self) -> &Path {
+        self.0.path()
     }
 
     fn path_list(&self) -> PathList {
