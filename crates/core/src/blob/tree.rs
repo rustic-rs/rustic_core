@@ -1,5 +1,6 @@
 pub mod excludes;
 pub mod modify;
+pub mod rewrite;
 
 use std::{
     cmp::Ordering,
