@@ -1,3 +1,5 @@
+pub mod excludes;
+
 use std::{
     cmp::Ordering,
     collections::{BTreeMap, BTreeSet, BinaryHeap},
@@ -10,7 +12,7 @@ use std::{
 use crossbeam_channel::{Receiver, Sender, bounded, unbounded};
 use derive_setters::Setters;
 use ignore::Match;
-use ignore::overrides::{Override, OverrideBuilder};
+use ignore::overrides::Override;
 use serde::{Deserialize, Deserializer};
 use serde_derive::Serialize;
 
@@ -19,7 +21,7 @@ use crate::{
         decrypt::DecryptReadBackend,
         node::{Metadata, Node, NodeType},
     },
-    blob::BlobType,
+    blob::{BlobType, tree::excludes::Excludes},
     crypto::hasher::hash,
     error::{ErrorKind, RusticError, RusticResult},
     impl_blobid,
@@ -463,30 +465,9 @@ impl IntoIterator for Tree {
 #[non_exhaustive]
 /// Options for listing the `Nodes` of a `Tree`
 pub struct TreeStreamerOptions {
-    /// Glob pattern to exclude/include (can be specified multiple times)
-    #[cfg_attr(feature = "clap", clap(long, help_heading = "Exclude options"))]
-    pub glob: Vec<String>,
-
-    /// Same as --glob pattern but ignores the casing of filenames
-    #[cfg_attr(
-        feature = "clap",
-        clap(long, value_name = "GLOB", help_heading = "Exclude options")
-    )]
-    pub iglob: Vec<String>,
-
-    /// Read glob patterns to exclude/include from this file (can be specified multiple times)
-    #[cfg_attr(
-        feature = "clap",
-        clap(long, value_name = "FILE", help_heading = "Exclude options")
-    )]
-    pub glob_file: Vec<String>,
-
-    /// Same as --glob-file ignores the casing of filenames in patterns
-    #[cfg_attr(
-        feature = "clap",
-        clap(long, value_name = "FILE", help_heading = "Exclude options")
-    )]
-    pub iglob_file: Vec<String>,
+    #[cfg_attr(feature = "clap", clap(flatten, next_help_heading = "Exclude options"))]
+    /// exclude options
+    pub excludes: Excludes,
 
     /// recursively list the dir
     #[cfg_attr(feature = "clap", clap(long))]
@@ -496,10 +477,7 @@ pub struct TreeStreamerOptions {
 impl Default for TreeStreamerOptions {
     fn default() -> Self {
         Self {
-            glob: Vec::default(),
-            iglob: Vec::default(),
-            glob_file: Vec::default(),
-            iglob_file: Vec::default(),
+            excludes: Excludes::default(),
             recursive: true,
         }
     }
@@ -605,100 +583,7 @@ where
         node: &Node,
         opts: &TreeStreamerOptions,
     ) -> RusticResult<Self> {
-        let mut override_builder = OverrideBuilder::new("");
-
-        // FIXME: Refactor this to a function to be reused
-        // This is the same of `backend::ignore::Localsource::new`
-        for g in &opts.glob {
-            _ = override_builder.add(g).map_err(|err| {
-                RusticError::with_source(
-                    ErrorKind::Internal,
-                    "Failed to add glob pattern `{glob}` to override builder.",
-                    err,
-                )
-                .attach_context("glob", g)
-                .ask_report()
-            })?;
-        }
-
-        for file in &opts.glob_file {
-            for line in std::fs::read_to_string(file)
-                .map_err(|err| {
-                    RusticError::with_source(
-                        ErrorKind::Internal,
-                        "Failed to read string from glob file `{glob_file}` ",
-                        err,
-                    )
-                    .attach_context("glob_file", file)
-                    .ask_report()
-                })?
-                .lines()
-            {
-                _ = override_builder.add(line).map_err(|err| {
-                    RusticError::with_source(
-                        ErrorKind::Internal,
-                        "Failed to add glob pattern line `{glob_pattern_line}` to override builder.",
-                        err,
-                    )
-                    .attach_context("glob_pattern_line", line.to_string())
-                    .ask_report()
-                })?;
-            }
-        }
-
-        _ = override_builder.case_insensitive(true).map_err(|err| {
-            RusticError::with_source(
-                ErrorKind::Internal,
-                "Failed to set case insensitivity in override builder.",
-                err,
-            )
-            .ask_report()
-        })?;
-        for g in &opts.iglob {
-            _ = override_builder.add(g).map_err(|err| {
-                RusticError::with_source(
-                    ErrorKind::Internal,
-                    "Failed to add iglob pattern `{iglob}` to override builder.",
-                    err,
-                )
-                .attach_context("iglob", g)
-                .ask_report()
-            })?;
-        }
-
-        for file in &opts.iglob_file {
-            for line in std::fs::read_to_string(file)
-                .map_err(|err| {
-                    RusticError::with_source(
-                        ErrorKind::Internal,
-                        "Failed to read string from iglob file `{iglob_file}`",
-                        err,
-                    )
-                    .attach_context("iglob_file", file)
-                    .ask_report()
-                })?
-                .lines()
-            {
-                _ = override_builder.add(line).map_err(|err| {
-                    RusticError::with_source(
-                        ErrorKind::Internal,
-                        "Failed to add iglob pattern line `{iglob_pattern_line}` to override builder.",
-                        err,
-                    )
-                    .attach_context("iglob_pattern_line", line.to_string())
-                    .ask_report()
-                })?;
-            }
-        }
-        let overrides = override_builder.build().map_err(|err| {
-            RusticError::with_source(
-                ErrorKind::Internal,
-                "Failed to build matcher for a set of glob overrides.",
-                err,
-            )
-            .ask_report()
-        })?;
-
+        let overrides = opts.excludes.as_override()?;
         Self::new_streamer(be, index, node, Some(overrides), opts.recursive)
     }
 }
