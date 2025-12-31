@@ -35,6 +35,8 @@ pub(crate) mod constants {
     /// The maximum size of pack-part which is read at once from the backend.
     /// (needed to limit the memory size used for large backends)
     pub(crate) const LIMIT_PACK_READ: u32 = 40 * 1024 * 1024; // 40 MiB
+    /// The maximum size of holes which are still read when repacking
+    pub(crate) const MAX_HOLESIZE: u32 = 256 * 1024; // 256 kiB
 }
 
 type RestoreInfo = BTreeMap<(PackId, BlobLocation), Vec<FileLocation>>;
@@ -448,6 +450,14 @@ fn restore_contents<P: ProgressBars, S: Open>(
     dest: &LocalDestination,
     file_infos: RestorePlan,
 ) -> RusticResult<()> {
+    struct PackInfo {
+        pack_id: PackId,
+        offset: u32,
+        length: u32,
+        from_file: Option<(usize, u64, u32)>,
+        name_dests: Vec<(BlobLocation, usize, u64)>,
+    }
+
     let RestorePlan {
         names: filenames,
         file_lengths,
@@ -478,9 +488,9 @@ fn restore_contents<P: ProgressBars, S: Open>(
     let p = repo.pb.progress_bytes("restoring file contents...");
     p.set_length(total_size);
 
-    let blobs: Vec<_> = restore_info
+    let packs = restore_info
         .into_iter()
-        .map(|((pack, bl), fls)| {
+        .map(|((pack_id, bl), fls)| {
             let from_file = fls
                 .iter()
                 .find(|fl| fl.matches)
@@ -491,24 +501,29 @@ fn restore_contents<P: ProgressBars, S: Open>(
                 .filter(|fl| !fl.matches)
                 .map(|fl| (bl.clone(), fl.file_idx, fl.file_start))
                 .collect();
-            (pack, bl.offset, bl.length, from_file, name_dests)
+            PackInfo {
+                pack_id,
+                offset: bl.offset,
+                length: bl.length,
+                from_file,
+                name_dests,
+            }
         })
         // optimize reading from backend by reading many blobs in a row
         .coalesce(|mut x, mut y| {
-            if x.0 == y.0 // if the pack is identical
-                && x.3.is_none() // and we don't read from a present file
-                && y.1 == x.1 + x.2 // and the blobs are contiguous
+            if x.pack_id == y.pack_id // if the pack is identical
+                && x.from_file.is_none() // and we don't read from a present file
+                && y.offset <= x.offset + x.length + constants::MAX_HOLESIZE
                 // and we don't trespass the limit
-                && x.2 + y.2 < constants::LIMIT_PACK_READ
+                && y.offset + y.length - x.offset <= constants::LIMIT_PACK_READ
             {
-                x.2 += y.2;
-                x.4.append(&mut y.4);
+                x.length = y.offset + y.length - x.offset; // read till the end of y
+                x.name_dests.append(&mut y.name_dests);
                 Ok(x)
             } else {
                 Err((x, y))
             }
-        })
-        .collect();
+        });
 
     let threads = constants::MAX_READER_THREADS_NUM;
 
@@ -525,7 +540,14 @@ fn restore_contents<P: ProgressBars, S: Open>(
         })?;
 
     pool.in_place_scope(|s| {
-        for (pack, offset, length, from_file, name_dests) in blobs {
+        for PackInfo {
+            pack_id,
+            offset,
+            length,
+            from_file,
+            name_dests,
+        } in packs
+        {
             let p = &p;
 
             if !name_dests.is_empty() {
@@ -539,7 +561,7 @@ fn restore_contents<P: ProgressBars, S: Open>(
                         }
                         None => {
                             // read needed part of the pack
-                            be.read_partial(FileType::Pack, &pack, false, offset, length)
+                            be.read_partial(FileType::Pack, &pack_id, false, offset, length)
                                 .unwrap()
                         }
                     };
