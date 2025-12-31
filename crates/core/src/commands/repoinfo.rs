@@ -52,7 +52,7 @@ impl BlobInfo {
     // TODO: What happens if the [`IndexEntry`] is not of the same [`BlobType`] as this [`BlobInfo`]?
     pub(crate) fn add(&mut self, ie: IndexEntry) {
         self.count += 1;
-        self.size += u64::from(ie.length);
+        self.size += u64::from(ie.location.length);
         self.data_size += u64::from(ie.data_length());
     }
 }

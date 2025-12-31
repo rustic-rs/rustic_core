@@ -10,6 +10,7 @@ pub use zstd::compression_level_range;
 use crate::{
     Progress,
     backend::{FileType, ReadBackend, WriteBackend},
+    blob::BlobLocation,
     crypto::{CryptoKey, hasher::hash},
     error::{ErrorKind, RusticError, RusticResult},
     id::Id,
@@ -114,13 +115,11 @@ pub trait DecryptReadBackend: ReadBackend + Clone + 'static {
         tpe: FileType,
         id: &Id,
         cacheable: bool,
-        offset: u32,
-        length: u32,
-        uncompressed_length: Option<NonZeroU32>,
+        location: BlobLocation,
     ) -> RusticResult<Bytes> {
         self.read_encrypted_from_partial(
-            &self.read_partial(tpe, id, cacheable, offset, length)?,
-            uncompressed_length,
+            &self.read_partial(tpe, id, cacheable, location.offset, location.length)?,
+            location.uncompressed_length,
         )
     }
 

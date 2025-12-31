@@ -5,7 +5,7 @@ use log::trace;
 
 use crate::{
     backend::{FileType, decrypt::DecryptReadBackend},
-    blob::BlobType,
+    blob::{BlobLocation, BlobType},
     error::{ErrorKind, RusticError, RusticResult},
     id::Id,
     impl_repoid,
@@ -142,24 +142,20 @@ impl HeaderEntry {
     ///
     /// * `blob` - The [`IndexBlob`] to read from
     fn from_blob(blob: &IndexBlob) -> Self {
-        match (blob.uncompressed_length, blob.tpe) {
-            (None, BlobType::Data) => Self::Data {
-                len: blob.length,
-                id: *blob.id,
+        let len = blob.location.length;
+        let id = *blob.id;
+        match (blob.location.uncompressed_length, blob.tpe) {
+            (None, BlobType::Data) => Self::Data { len, id },
+            (None, BlobType::Tree) => Self::Tree { len, id },
+            (Some(len_data), BlobType::Data) => Self::CompData {
+                len,
+                len_data: len_data.get(),
+                id,
             },
-            (None, BlobType::Tree) => Self::Tree {
-                len: blob.length,
-                id: *blob.id,
-            },
-            (Some(len), BlobType::Data) => Self::CompData {
-                len: blob.length,
-                len_data: len.get(),
-                id: *blob.id,
-            },
-            (Some(len), BlobType::Tree) => Self::CompTree {
-                len: blob.length,
-                len_data: len.get(),
-                id: *blob.id,
+            (Some(len_data), BlobType::Tree) => Self::CompTree {
+                len,
+                len_data: len_data.get(),
+                id,
             },
         }
     }
@@ -172,40 +168,44 @@ impl HeaderEntry {
         }
     }
 
+    /// Convert this header entry into a [`BlobLocation`]
+    ///
+    /// # Arguments
+    ///
+    /// * `offset` - The offset of the blob
+    fn into_location(self, offset: u32) -> BlobLocation {
+        match self {
+            Self::Data { len, .. } | Self::Tree { len, .. } => BlobLocation {
+                offset,
+                length: len,
+                uncompressed_length: None,
+            },
+            Self::CompData { len, len_data, .. } | Self::CompTree { len, len_data, .. } => {
+                BlobLocation {
+                    offset,
+                    length: len,
+                    uncompressed_length: NonZeroU32::new(len_data),
+                }
+            }
+        }
+    }
+
     /// Convert this header entry into a [`IndexBlob`]
     ///
     /// # Arguments
     ///
-    /// * `offset` - The offset to read from
+    /// * `offset` - The offset of the blob
     fn into_blob(self, offset: u32) -> IndexBlob {
         match self {
-            Self::Data { len, id } => IndexBlob {
+            Self::Tree { id, .. } | Self::CompTree { id, .. } => IndexBlob {
                 id: id.into(),
-                length: len,
-                tpe: BlobType::Data,
-                uncompressed_length: None,
-                offset,
-            },
-            Self::Tree { len, id } => IndexBlob {
-                id: id.into(),
-                length: len,
                 tpe: BlobType::Tree,
-                uncompressed_length: None,
-                offset,
+                location: self.into_location(offset),
             },
-            Self::CompData { len, id, len_data } => IndexBlob {
+            Self::Data { id, .. } | Self::CompData { id, .. } => IndexBlob {
                 id: id.into(),
-                length: len,
                 tpe: BlobType::Data,
-                uncompressed_length: NonZeroU32::new(len_data),
-                offset,
-            },
-            Self::CompTree { len, id, len_data } => IndexBlob {
-                id: id.into(),
-                length: len,
-                tpe: BlobType::Tree,
-                uncompressed_length: NonZeroU32::new(len_data),
-                offset,
+                location: self.into_location(offset),
             },
         }
     }
@@ -235,7 +235,7 @@ impl PackHeader {
                 Err(err) if err.is_eof() => break,
                 Err(err) => return Err(PackFileErrorKind::ReadingBinaryRepresentationFailed(err)),
             };
-            offset += blob.length;
+            offset += blob.location.length;
             blobs.push(blob);
         }
         Ok(Self(blobs))
@@ -376,7 +376,7 @@ impl<'a> PackHeaderRef<'a> {
     pub(crate) fn pack_size(&self) -> u32 {
         self.0.iter().fold(
             constants::COMP_OVERHEAD + constants::LENGTH_LEN,
-            |acc, blob| acc + blob.length + HeaderEntry::from_blob(blob).length(),
+            |acc, blob| acc + blob.location.length + HeaderEntry::from_blob(blob).length(),
         )
     }
 
