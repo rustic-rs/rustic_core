@@ -13,8 +13,8 @@ use std::num::ParseIntError;
 #[cfg(not(windows))]
 use std::os::unix::ffi::OsStrExt;
 
-use chrono::{DateTime, Local};
 use derive_more::Constructor;
+use jiff::Timestamp;
 use serde_aux::prelude::*;
 use serde_derive::{Deserialize, Serialize};
 use serde_with::{
@@ -25,6 +25,7 @@ use serde_with::{
 };
 
 use crate::blob::{DataId, tree::TreeId};
+use crate::repofile::RusticTime;
 
 #[cfg(not(windows))]
 /// [`NodeErrorKind`] describes the errors that can be returned by an action utilizing a node in Backends
@@ -239,6 +240,7 @@ impl NodeType {
 }
 
 /// Metadata of a [`Node`]
+#[serde_as]
 #[skip_serializing_none]
 #[serde_with::apply(
     u64 => #[serde(default, skip_serializing_if = "is_default")],
@@ -248,11 +250,14 @@ pub struct Metadata {
     /// Unix file mode
     pub mode: Option<u32>,
     /// Unix mtime (last modification time)
-    pub mtime: Option<DateTime<Local>>,
+    #[serde_as(as = "Option<RusticTime>")]
+    pub mtime: Option<Timestamp>,
     /// Unix atime (last access time)
-    pub atime: Option<DateTime<Local>>,
+    #[serde_as(as = "Option<RusticTime>")]
+    pub atime: Option<Timestamp>,
     /// Unix ctime (last status change time)
-    pub ctime: Option<DateTime<Local>>,
+    #[serde_as(as = "Option<RusticTime>")]
+    pub ctime: Option<Timestamp>,
     /// Unix uid (user id)
     pub uid: Option<u32>,
     /// Unix gid (group id)

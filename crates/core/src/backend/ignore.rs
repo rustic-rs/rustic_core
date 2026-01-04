@@ -1,28 +1,23 @@
-#[cfg(not(windows))]
-use std::num::TryFromIntError;
-#[cfg(not(windows))]
-use std::os::unix::fs::{FileTypeExt, MetadataExt};
-
 use std::{
     fs::{File, read_link},
     path::{Path, PathBuf},
 };
 
 use bytesize::ByteSize;
-#[cfg(not(windows))]
-use cached::proc_macro::cached;
-#[cfg(not(windows))]
-use chrono::TimeZone;
-use chrono::{DateTime, Local, Utc};
 use derive_setters::Setters;
 use ignore::{DirEntry, Walk, WalkBuilder, overrides::OverrideBuilder};
+use jiff::Timestamp;
 use log::warn;
-#[cfg(not(windows))]
-use nix::unistd::{Gid, Group, Uid, User};
 use serde_with::{DisplayFromStr, serde_as};
 
 #[cfg(not(windows))]
-use crate::backend::node::ExtendedAttribute;
+use {
+    crate::backend::node::ExtendedAttribute,
+    cached::proc_macro::cached,
+    nix::unistd::{Gid, Group, Uid, User},
+    std::num::TryFromIntError,
+    std::os::unix::fs::{FileTypeExt, MetadataExt},
+};
 
 use crate::{
     backend::{
@@ -58,6 +53,8 @@ pub enum IgnoreErrorKind {
     #[cfg(not(windows))]
     /// Error acquiring metadata for `{name}`: `{source:?}`
     AcquiringMetadataFailed { name: String, source: ignore::Error },
+    /// time error
+    JiffError(#[from] jiff::Error),
 }
 
 pub(crate) type IgnoreResult<T> = Result<T, IgnoreErrorKind>;
@@ -461,22 +458,14 @@ fn map_entry(
     let device_id = 0;
     let links = 0;
 
-    let mtime = m
-        .modified()
-        .ok()
-        .map(|t| DateTime::<Utc>::from(t).with_timezone(&Local));
+    let mtime = m.modified().ok().and_then(|t| Timestamp::try_from(t).ok());
     let atime = if with_atime {
-        m.accessed()
-            .ok()
-            .map(|t| DateTime::<Utc>::from(t).with_timezone(&Local))
+        m.accessed().ok().and_then(|t| Timestamp::try_from(t).ok())
     } else {
         // TODO: Use None here?
         mtime
     };
-    let ctime = m
-        .created()
-        .ok()
-        .map(|t| DateTime::<Utc>::from(t).with_timezone(&Local));
+    let ctime = m.created().ok().and_then(|t| Timestamp::try_from(t).ok());
 
     let meta = Metadata {
         size,
@@ -623,31 +612,23 @@ fn map_entry(
     let user = get_user_by_uid(uid);
     let group = get_group_by_gid(gid);
 
-    let mtime = m
-        .modified()
-        .ok()
-        .map(|t| DateTime::<Utc>::from(t).with_timezone(&Local));
+    let mtime = m.modified().ok().and_then(|t| Timestamp::try_from(t).ok());
     let atime = if with_atime {
-        m.accessed()
-            .ok()
-            .map(|t| DateTime::<Utc>::from(t).with_timezone(&Local))
+        m.accessed().ok().and_then(|t| Timestamp::try_from(t).ok())
     } else {
         // TODO: Use None here?
         mtime
     };
-    let ctime = Utc
-        .timestamp_opt(
-            m.ctime(),
-            m.ctime_nsec().try_into().map_err(|err| {
-                IgnoreErrorKind::CtimeConversionToTimestampFailed {
-                    ctime: m.ctime(),
-                    ctime_nsec: m.ctime_nsec(),
-                    source: err,
-                }
-            })?,
-        )
-        .single()
-        .map(|dt| dt.with_timezone(&Local));
+    let ctime = Some(Timestamp::new(
+        m.ctime(),
+        m.ctime_nsec().try_into().map_err(|err| {
+            IgnoreErrorKind::CtimeConversionToTimestampFailed {
+                ctime: m.ctime(),
+                ctime_nsec: m.ctime_nsec(),
+                source: err,
+            }
+        })?,
+    )?);
 
     let size = if m.is_dir() { 0 } else { m.len() };
     let mode = mapper::map_mode_to_go(m.mode());

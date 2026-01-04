@@ -5,7 +5,7 @@ pub(crate) mod tree_archiver;
 
 use std::path::{Path, PathBuf};
 
-use chrono::Local;
+use jiff::Zoned;
 use log::warn;
 use pariter::{IteratorExt, scope};
 
@@ -17,7 +17,7 @@ use crate::{
     },
     backend::{ReadSource, ReadSourceEntry, decrypt::DecryptFullBackend},
     blob::BlobType,
-    error::{ErrorKind, RusticError, RusticResult},
+    error::RusticResult,
     index::{
         ReadGlobalIndex,
         indexer::{Indexer, SharedIndexer},
@@ -85,7 +85,7 @@ impl<'a, BE: DecryptFullBackend, I: ReadGlobalIndex> Archiver<'a, BE, I> {
     ) -> RusticResult<Self> {
         let indexer = Indexer::new(be.clone()).into_shared();
         let mut summary = snap.summary.take().unwrap_or_default();
-        summary.backup_start = Local::now();
+        summary.backup_start = Zoned::now();
 
         let file_archiver = FileArchiver::new(be.clone(), index, indexer.clone(), config)?;
         let tree_archiver = TreeArchiver::new(be.clone(), index, indexer.clone(), config, summary)?;
@@ -219,13 +219,7 @@ impl<'a, BE: DecryptFullBackend, I: ReadGlobalIndex> Archiver<'a, BE, I> {
 
         self.indexer.write().unwrap().finalize()?;
 
-        summary.finalize(self.snap.time).map_err(|err| {
-            RusticError::with_source(
-                ErrorKind::Internal,
-                "Could not finalize summary, please check the logs for more information.",
-                err,
-            )
-        })?;
+        summary.finalize(&self.snap.time);
         self.snap.summary = Some(summary);
 
         if !skip_identical_parent || Some(self.snap.tree) != self.parent.tree_id() {
