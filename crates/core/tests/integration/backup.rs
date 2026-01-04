@@ -88,7 +88,7 @@ fn test_backup_with_tar_gz_passes(
         .tags([StringList::from_str("a,b")?])
         .to_snapshot()?;
     let opts =
-        opts.parent_opts(ParentOptions::default().parent(vec![second_snapshot.id.to_string()]));
+        opts.parent_opts(ParentOptions::default().parents(vec![second_snapshot.id.to_string()]));
     let third_snapshot = repo.backup(&opts, paths, snap)?;
 
     insta_snapshotfile_redaction.bind(|| {
