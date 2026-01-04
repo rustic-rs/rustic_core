@@ -97,16 +97,14 @@ fn warm_up_command<P: ProgressBars>(
     });
     p.set_length(packs.len() as u64);
     for pack in packs {
-        let args: Vec<_> = command
+        let args = command
             .args()
             .iter()
-            .map(|c| c.replace("%id", &pack.to_hex()))
-            .collect();
-
+            .map(|c| c.replace("%id", &pack.to_hex()));
         debug!("calling {command:?}...");
 
         let status = Command::new(command.command())
-            .args(&args)
+            .args(args)
             .status()
             .map_err(|err| {
                 RusticError::with_source(

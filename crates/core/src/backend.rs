@@ -6,6 +6,7 @@ pub(crate) mod dry_run;
 pub(crate) mod hotcold;
 pub(crate) mod ignore;
 pub(crate) mod local_destination;
+pub(crate) mod lock;
 pub(crate) mod node;
 pub(crate) mod stdin;
 pub(crate) mod warm_up;
@@ -13,8 +14,9 @@ pub(crate) mod warm_up;
 use std::{io::Read, ops::Deref, path::PathBuf, sync::Arc};
 
 use bytes::Bytes;
+use chrono::{DateTime, Local};
 use enum_map::Enum;
-use log::trace;
+use log::{debug, trace};
 
 #[cfg(test)]
 use mockall::mock;
@@ -301,6 +303,35 @@ pub trait WriteBackend: ReadBackend {
     ///
     /// The result of the removal.
     fn remove(&self, tpe: FileType, id: &Id, cacheable: bool) -> RusticResult<()>;
+
+    /// Specify if the backend is able to lock files
+    fn can_lock(&self) -> bool {
+        false
+    }
+
+    /// Lock the given file.
+    ///
+    /// # Arguments
+    ///
+    /// * `tpe` - The type of the file.
+    /// * `id` - The id of the file.
+    /// * `until` - The date until when to lock. May be `None` which usually specifies a unlimited lock
+    ///
+    /// # Errors
+    ///
+    /// If the file could not be read.
+    fn lock(&self, tpe: FileType, id: &Id, until: Option<DateTime<Local>>) -> RusticResult<()> {
+        debug!("no locking implemented. {tpe:?}, {id}, {until:?}");
+
+        if self.can_lock() {
+            unimplemented!("Using default implementation. No locking implemented in backend.");
+        } else {
+            Err(RusticError::new(
+                ErrorKind::Backend,
+                "No locking configured on backend.",
+            ))
+        }
+    }
 }
 
 #[cfg(test)]
@@ -337,6 +368,12 @@ impl WriteBackend for Arc<dyn WriteBackend> {
     }
     fn remove(&self, tpe: FileType, id: &Id, cacheable: bool) -> RusticResult<()> {
         self.deref().remove(tpe, id, cacheable)
+    }
+    fn can_lock(&self) -> bool {
+        self.deref().can_lock()
+    }
+    fn lock(&self, tpe: FileType, id: &Id, until: Option<DateTime<Local>>) -> RusticResult<()> {
+        self.deref().lock(tpe, id, until)
     }
 }
 
