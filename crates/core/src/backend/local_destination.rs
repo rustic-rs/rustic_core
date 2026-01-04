@@ -119,14 +119,20 @@ pub struct LocalDestination {
 #[cfg(not(windows))]
 #[cached]
 fn uid_from_name(name: String) -> Option<Uid> {
-    User::from_name(&name).unwrap().map(|u| u.uid)
+    User::from_name(&name)
+        .inspect_err(|err| warn!("Cannot determine UID from name {name}: {err}. Using UID 0."))
+        .unwrap_or_default()
+        .map(|u| u.uid)
 }
 
 // Helper function to cache mapping group name -> gid
 #[cfg(not(windows))]
 #[cached]
 fn gid_from_name(name: String) -> Option<Gid> {
-    Group::from_name(&name).unwrap().map(|g| g.gid)
+    Group::from_name(&name)
+        .inspect_err(|err| warn!("Cannot determine GID from name {name}: {err}. Using UID 0."))
+        .unwrap_or_default()
+        .map(|g| g.gid)
 }
 
 impl LocalDestination {
