@@ -47,10 +47,10 @@ pub struct ParentOptions {
     #[cfg_attr(feature = "merge", merge(strategy = conflate::option::overwrite_none))]
     pub group_by: Option<SnapshotGroupCriterion>,
 
-    /// Snapshot to use as parent (can be specified multiple times; default: latest)
+    /// Snapshot to use as parent (can be specified multiple times)
     #[cfg_attr(
         feature = "clap",
-        clap(long = "parent", value_name = "SNAPSHOT", conflicts_with = "force",)
+        clap(long = "parent", value_name = "SNAPSHOT", conflicts_with = "force")
     )]
     #[cfg_attr(feature = "merge", merge(strategy = conflate::vec::append))]
     pub parents: Vec<String>,
@@ -61,17 +61,17 @@ pub struct ParentOptions {
     pub skip_if_unchanged: bool,
 
     /// Use no parent, read all files
-    #[cfg_attr(feature = "clap", clap(long, short, conflicts_with = "parent",))]
+    #[cfg_attr(feature = "clap", clap(long, short))]
     #[cfg_attr(feature = "merge", merge(strategy = conflate::bool::overwrite_false))]
     pub force: bool,
 
     /// Ignore ctime changes when checking for modified files
-    #[cfg_attr(feature = "clap", clap(long, conflicts_with = "force",))]
+    #[cfg_attr(feature = "clap", clap(long, conflicts_with = "force"))]
     #[cfg_attr(feature = "merge", merge(strategy = conflate::bool::overwrite_false))]
     pub ignore_ctime: bool,
 
     /// Ignore inode number changes when checking for modified files
-    #[cfg_attr(feature = "clap", clap(long, conflicts_with = "force",))]
+    #[cfg_attr(feature = "clap", clap(long, conflicts_with = "force"))]
     #[cfg_attr(feature = "merge", merge(strategy = conflate::bool::overwrite_false))]
     pub ignore_inode: bool,
 }
