@@ -47,13 +47,13 @@ pub struct ParentOptions {
     #[cfg_attr(feature = "merge", merge(strategy = conflate::option::overwrite_none))]
     pub group_by: Option<SnapshotGroupCriterion>,
 
-    /// Snapshot to use as parent
+    /// Snapshot to use as parent (can be specified multiple times; default: latest)
     #[cfg_attr(
         feature = "clap",
-        clap(long, value_name = "SNAPSHOT", conflicts_with = "force",)
+        clap(long = "parent", value_name = "SNAPSHOT", conflicts_with = "force",)
     )]
     #[cfg_attr(feature = "merge", merge(strategy = conflate::vec::append))]
-    pub parent: Vec<String>,
+    pub parents: Vec<String>,
 
     /// Skip writing of snapshot if nothing changed w.r.t. the parent snapshot.
     #[cfg_attr(feature = "clap", clap(long))]
@@ -99,11 +99,11 @@ impl ParentOptions {
         snap: &SnapshotFile,
         backup_stdin: bool,
     ) -> (Vec<SnapshotId>, Parent) {
+        let group = SnapshotGroup::from_snapshot(snap, self.group_by.unwrap_or_default());
         let parent = if backup_stdin || self.force {
             Vec::new()
-        } else if self.parent.is_empty() {
+        } else if self.parents.is_empty() {
             // get suitable snapshot group from snapshot and opts.group_by. This is used to filter snapshots for the parent detection
-            let group = SnapshotGroup::from_snapshot(snap, self.group_by.unwrap_or_default());
             SnapshotFile::latest(
                 repo.dbe(),
                 |snap| snap.has_group(&group),
@@ -113,10 +113,13 @@ impl ParentOptions {
             .into_iter()
             .collect()
         } else {
-            self.parent
-                .iter()
-                .filter_map(|parent| SnapshotFile::from_id(repo.dbe(), parent).ok())
-                .collect()
+            SnapshotFile::from_strs(
+                repo.dbe(),
+                &self.parents,
+                |snap| snap.has_group(&group),
+                &repo.pb.progress_counter(""),
+            )
+            .unwrap_or_default()
         };
 
         let (parent_trees, parent_ids): (Vec<_>, _) = parent
