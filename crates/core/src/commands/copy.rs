@@ -23,7 +23,7 @@ use crate::{
 
 /// This struct enhances `[SnapshotFile]` with the attribute `relevant`
 /// which indicates if the snapshot is relevant for copying.
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct CopySnapshot {
     /// The snapshot
     pub sn: SnapshotFile,

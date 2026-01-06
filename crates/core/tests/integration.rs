@@ -27,6 +27,7 @@ mod integration {
     mod backup;
     mod check;
     mod chunker;
+    mod copy;
     mod find;
     mod key;
     mod ls;

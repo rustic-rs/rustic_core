@@ -937,7 +937,7 @@ impl<BE: DecryptFullBackend> BlobCopier<BE> {
                 .add_raw(
                     &data[start..end],
                     &blob_id,
-                    blob.length,
+                    u64::from(blob.length),
                     blob.uncompressed_length,
                 )
                 .map_err(|err| {
