@@ -98,7 +98,7 @@ pub struct PruneOptions {
     #[cfg_attr(feature = "clap", clap(long))]
     pub instant_delete: bool,
 
-    /// Delete index files early. This allows to run prune if there is few or no space left.
+    /// Delete index files early if instant-delete is chosen. This allows to run prune if there is few or no space left.
     ///
     /// # Warning
     ///
@@ -1273,8 +1273,10 @@ pub(crate) fn prune_repository<P: ProgressBars, S: Open>(
         .map(|index| index.id)
         .collect();
 
+    let early_delete_index = opts.early_delete_index && opts.instant_delete;
+
     // remove old index files early if requested
-    if !indexes_remove.is_empty() && opts.early_delete_index {
+    if !indexes_remove.is_empty() && early_delete_index {
         let p = pb.progress_counter("removing old index files...");
         be.delete_list(true, indexes_remove.iter(), p)?;
     }
@@ -1440,7 +1442,7 @@ pub(crate) fn prune_repository<P: ProgressBars, S: Open>(
     }
 
     // remove old index files first as they may reference pack files which are removed soon.
-    if !indexes_remove.is_empty() && !opts.early_delete_index {
+    if !indexes_remove.is_empty() && !early_delete_index {
         let p = pb.progress_counter("removing old index files...");
         be.delete_list(true, indexes_remove.iter(), p)?;
     }
