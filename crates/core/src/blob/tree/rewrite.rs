@@ -181,9 +181,11 @@ impl Summary {
     pub fn update(&mut self, node: &Node) {
         if node.is_dir() {
             self.dirs += 1;
-        }
-        if node.is_file() {
+        } else {
             self.files += 1;
+        }
+
+        if node.is_file() {
             self.size += node.meta.size;
         }
     }
