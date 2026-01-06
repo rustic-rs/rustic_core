@@ -137,14 +137,14 @@ impl PackSizer {
 
     /// Computes the size of the pack file.
     #[must_use]
-    // The cast actually shouldn't pose any problems.
-    // `current_size` is `u64`, the maximum value is `2^64-1`.
-    // `isqrt(2^64-1) = 2^32-1` which fits into a `u32`. (@aawsome)
     #[allow(clippy::cast_possible_truncation)]
     pub fn pack_size(&self) -> u32 {
-        let size = if self.grow_factor != 0 {
+        let size = if self.grow_factor == 0 {
             self.default_size
         } else {
+            // The cast actually shouldn't pose any problems.
+            // `current_size` is `u64`, the maximum value is `2^64-1`.
+            // `isqrt(2^64-1) = 2^32-1` which fits into a `u32`. (@aawsome)
             self.current_size.integer_sqrt() as u32 * self.grow_factor + self.default_size
         };
         size.min(self.size_limit).min(constants::MAX_SIZE)
@@ -937,7 +937,7 @@ impl<BE: DecryptFullBackend> BlobCopier<BE> {
                 .add_raw(
                     &data[start..end],
                     &blob_id,
-                    blob.length,
+                    u64::from(blob.length),
                     blob.uncompressed_length,
                 )
                 .map_err(|err| {
@@ -1000,5 +1000,50 @@ impl<BE: DecryptFullBackend> BlobCopier<BE> {
     /// Finalizes the repacker and returns the stats
     pub fn finalize(self) -> RusticResult<PackerStats> {
         self.packer.finalize()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use insta::assert_ron_snapshot;
+
+    #[test]
+    fn pack_sizers() {
+        let config = ConfigFile {
+            treepack_size_limit: Some(5 * 1024 * 1024),
+            ..Default::default()
+        };
+        let mut pack_sizers = [
+            PackSizer::from_config(&config, BlobType::Tree, 0),
+            PackSizer::from_config(&config, BlobType::Data, 0),
+            PackSizer::fixed(12345),
+        ];
+
+        let output: Vec<_> = [
+            0,
+            10,
+            1000,
+            100_000,
+            100_000,
+            100_000,
+            10_000_000,
+            10_000_000,
+            1_000_000_000,
+            1_000_000_000,
+        ]
+        .into_iter()
+        .map(|i| {
+            pack_sizers
+                .iter_mut()
+                .map(|ps| {
+                    ps.add_size(i);
+                    (ps.current_size, ps.pack_size())
+                })
+                .collect::<Vec<_>>()
+        })
+        .collect();
+
+        assert_ron_snapshot!(output);
     }
 }
