@@ -12,6 +12,7 @@ use log::warn;
 use pariter::{IteratorExt, scope};
 
 use crate::{
+    Progress,
     backend::{
         FileType,
         decrypt::{DecryptFullBackend, DecryptWriteBackend},
@@ -19,7 +20,7 @@ use crate::{
     blob::{BlobId, BlobLocations, BlobType},
     crypto::{CryptoKey, hasher::hash},
     error::{ErrorKind, RusticError, RusticResult},
-    index::indexer::SharedIndexer,
+    index::{IndexEntry, indexer::SharedIndexer},
     repofile::{
         configfile::ConfigFile,
         indexfile::{IndexBlob, IndexPack},
@@ -38,12 +39,11 @@ pub enum PackerErrorKind {
         from: &'static str,
         source: std::num::TryFromIntError,
     },
-    /// Sending crossbeam message failed: `size_limit`: `{size_limit:?}`, `id`: `{id:?}`, `data`: `{data:?}` : `{source}`
+    /// Sending crossbeam message failed: `id`: `{id:?}`, `data`: `{data:?}` : `{source}`
     SendingCrossbeamMessage {
-        size_limit: Option<u32>,
         id: BlobId,
         data: Bytes,
-        source: crossbeam_channel::SendError<(Bytes, BlobId, Option<u32>)>,
+        source: crossbeam_channel::SendError<(Bytes, BlobId)>,
     },
     /// Sending crossbeam data message failed: `data`: `{data:?}`, `index_pack`: `{index_pack:?}` : `{source}`
     SendingCrossbeamDataMessage {
@@ -114,6 +114,27 @@ impl PackSizer {
         }
     }
 
+    /// Creates a new `PackSizer` with a fixed size
+    ///
+    /// # Arguments
+    ///
+    /// * `size` - The fixed size to use.
+    ///
+    /// # Returns
+    ///
+    /// A new `PackSizer`.
+    #[must_use]
+    pub fn fixed(size: u32) -> Self {
+        Self {
+            default_size: size,
+            grow_factor: 0,
+            size_limit: size,
+            current_size: 0,
+            min_packsize_tolerate_percent: 100,
+            max_packsize_tolerate_percent: 100,
+        }
+    }
+
     /// Computes the size of the pack file.
     #[must_use]
     // The cast actually shouldn't pose any problems.
@@ -121,9 +142,12 @@ impl PackSizer {
     // `isqrt(2^64-1) = 2^32-1` which fits into a `u32`. (@aawsome)
     #[allow(clippy::cast_possible_truncation)]
     pub fn pack_size(&self) -> u32 {
-        (self.current_size.integer_sqrt() as u32 * self.grow_factor + self.default_size)
-            .min(self.size_limit)
-            .min(constants::MAX_SIZE)
+        let size = if self.grow_factor != 0 {
+            self.default_size
+        } else {
+            self.current_size.integer_sqrt() as u32 * self.grow_factor + self.default_size
+        };
+        size.min(self.size_limit).min(constants::MAX_SIZE)
     }
 
     /// Evaluates whether the given size is not too small or too large
@@ -171,7 +195,7 @@ impl PackSizer {
     /// # Panics
     ///
     /// * If the size is too large
-    fn add_size(&mut self, added: u32) {
+    pub fn add_size(&mut self, added: u32) {
         self.current_size += u64::from(added);
     }
 }
@@ -192,7 +216,7 @@ pub struct Packer<BE: DecryptWriteBackend> {
     /// The shared indexer containing the backend.
     indexer: SharedIndexer<BE>,
     /// The sender to send blobs to the raw packer.
-    sender: Sender<(Bytes, BlobId, Option<u32>)>,
+    sender: Sender<(Bytes, BlobId)>,
     /// The receiver to receive the status from the raw packer.
     finish: Receiver<RusticResult<PackerStats>>,
 }
@@ -221,15 +245,13 @@ impl<BE: DecryptWriteBackend> Packer<BE> {
         be: BE,
         blob_type: BlobType,
         indexer: SharedIndexer<BE>,
-        config: &ConfigFile,
-        total_size: u64,
+        pack_sizer: PackSizer,
     ) -> RusticResult<Self> {
         let raw_packer = Arc::new(RwLock::new(RawPacker::new(
             be.clone(),
             blob_type,
             indexer.clone(),
-            config,
-            total_size,
+            pack_sizer,
         )));
 
         let (tx, rx) = bounded(0);
@@ -247,37 +269,26 @@ impl<BE: DecryptWriteBackend> Packer<BE> {
                     .into_iter()
                     .readahead_scoped(scope)
                     // early check if id is already contained
-                    .filter(|(_, id, _)| !indexer.read().unwrap().has(id))
-                    .filter(|(_, id, _)| !raw_packer.read().unwrap().has(id))
+                    .filter(|(_, id)| !indexer.read().unwrap().has(id))
+                    .filter(|(_, id)| !raw_packer.read().unwrap().has(id))
                     .readahead_scoped(scope)
-                    .parallel_map_scoped(
-                        scope,
-                        |(data, id, size_limit): (Bytes, BlobId, Option<u32>)| {
-                            let (data, data_len, uncompressed_length) = be.process_data(&data)?;
-                            Ok((
-                                data,
-                                id,
-                                u64::from(data_len),
-                                uncompressed_length,
-                                size_limit,
-                            ))
-                        },
-                    )
+                    .parallel_map_scoped(scope, |(data, id): (Bytes, BlobId)| {
+                        let (data, data_len, uncompressed_length) = be.process_data(&data)?;
+                        Ok((data, id, u64::from(data_len), uncompressed_length))
+                    })
                     .readahead_scoped(scope)
                     // check again if id is already contained
                     // TODO: We may still save duplicate blobs - the indexer is only updated when the packfile write has completed
                     .filter(|res| {
-                        res.as_ref().map_or_else(
-                            |_| true,
-                            |(_, id, _, _, _)| !indexer.read().unwrap().has(id),
-                        )
+                        res.as_ref()
+                            .map_or_else(|_| true, |(_, id, _, _)| !indexer.read().unwrap().has(id))
                     })
                     .try_for_each(|item: RusticResult<_>| -> RusticResult<()> {
-                        let (data, id, data_len, ul, size_limit) = item?;
+                        let (data, id, data_len, ul) = item?;
                         raw_packer
                             .write()
                             .unwrap()
-                            .add_raw(&data, &id, data_len, ul, size_limit)
+                            .add_raw(&data, &id, data_len, ul)
                     })
                     .and_then(|()| raw_packer.write().unwrap().finalize());
                 _ = finish_tx.send(status);
@@ -299,43 +310,15 @@ impl<BE: DecryptWriteBackend> Packer<BE> {
     ///
     /// * If sending the message to the raw packer fails.
     pub fn add(&self, data: Bytes, id: BlobId) -> RusticResult<()> {
-        // compute size limit based on total size and size bounds
-        self.add_with_sizelimit(data, id, None).map_err(|err| {
+        self.sender.send((data, id)).map_err(|err| {
             RusticError::with_source(
                 ErrorKind::Internal,
-                "Failed to add blob `{id}` to packfile.",
+                "Sending crossbeam message failed: `id`: `{id}`",
                 err,
             )
-            .attach_context("id", id.to_string())
             .ask_report()
-        })
-    }
-
-    /// Adds the blob to the packfile, allows specifying a size limit for the pack file
-    ///
-    /// # Arguments
-    ///
-    /// * `data` - The blob data
-    /// * `id` - The blob id
-    /// * `size_limit` - The size limit for the pack file
-    ///
-    /// # Errors
-    ///
-    /// * If sending the message to the raw packer fails.
-    fn add_with_sizelimit(
-        &self,
-        data: Bytes,
-        id: BlobId,
-        size_limit: Option<u32>,
-    ) -> PackerResult<()> {
-        self.sender
-            .send((data.clone(), id, size_limit))
-            .map_err(|err| PackerErrorKind::SendingCrossbeamMessage {
-                size_limit,
-                id,
-                data,
-                source: err,
-            })?;
+            .attach_context("id", id.to_hex().to_string())
+        })?;
         Ok(())
     }
 
@@ -359,19 +342,15 @@ impl<BE: DecryptWriteBackend> Packer<BE> {
         id: &BlobId,
         data_len: u64,
         uncompressed_length: Option<NonZeroU32>,
-        size_limit: Option<u32>,
     ) -> RusticResult<()> {
         // only add if this blob is not present
         if self.indexer.read().unwrap().has(id) {
             Ok(())
         } else {
-            self.raw_packer.write().unwrap().add_raw(
-                data,
-                id,
-                data_len,
-                uncompressed_length,
-                size_limit,
-            )
+            self.raw_packer
+                .write()
+                .unwrap()
+                .add_raw(data, id, data_len, uncompressed_length)
         }
     }
 
@@ -473,13 +452,7 @@ impl<BE: DecryptWriteBackend> RawPacker<BE> {
     /// * `indexer` - The indexer to write to.
     /// * `config` - The config file.
     /// * `total_size` - The total size of the pack file.
-    fn new(
-        be: BE,
-        blob_type: BlobType,
-        indexer: SharedIndexer<BE>,
-        config: &ConfigFile,
-        total_size: u64,
-    ) -> Self {
+    fn new(be: BE, blob_type: BlobType, indexer: SharedIndexer<BE>, pack_sizer: PackSizer) -> Self {
         let file_writer = Some(Actor::new(
             FileWriterHandle {
                 be: be.clone(),
@@ -489,8 +462,6 @@ impl<BE: DecryptWriteBackend> RawPacker<BE> {
             1,
             1,
         ));
-
-        let pack_sizer = PackSizer::from_config(config, blob_type, total_size);
 
         Self {
             be,
@@ -565,7 +536,6 @@ impl<BE: DecryptWriteBackend> RawPacker<BE> {
         id: &BlobId,
         data_len: u64,
         uncompressed_length: Option<NonZeroU32>,
-        size_limit: Option<u32>,
     ) -> RusticResult<()> {
         if self.has(id) {
             return Ok(());
@@ -585,7 +555,7 @@ impl<BE: DecryptWriteBackend> RawPacker<BE> {
 
         self.stats.data_packed += data_len_packed;
 
-        let size_limit = size_limit.unwrap_or_else(|| self.pack_sizer.pack_size());
+        let size_limit = self.pack_sizer.pack_size();
 
         let offset = self.size;
 
@@ -846,13 +816,13 @@ impl Actor {
     }
 }
 
-#[derive(Debug)]
-pub struct RepackPackBlobs {
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub struct CopyPackBlobs {
     pub pack_id: PackId,
     pub locations: BlobLocations<BlobId>,
 }
 
-impl RepackPackBlobs {
+impl CopyPackBlobs {
     pub fn from_index_blob(pack_id: PackId, blob: IndexBlob) -> Self {
         Self {
             pack_id,
@@ -860,10 +830,17 @@ impl RepackPackBlobs {
         }
     }
 
+    pub fn from_index_entry(entry: IndexEntry, id: BlobId) -> Self {
+        Self {
+            pack_id: entry.pack,
+            locations: BlobLocations::from_blob_location(entry.location, id),
+        }
+    }
+
     #[allow(clippy::result_large_err)]
     /// coalesce two `RepackBlobs` if possible
     pub fn coalesce(self, other: Self) -> Result<Self, (Self, Self)> {
-        if self.locations.can_coalesce(&other.locations) {
+        if self.pack_id == other.pack_id && self.locations.can_coalesce(&other.locations) {
             Ok(Self {
                 pack_id: self.pack_id,
                 locations: self.locations.append(other.locations),
@@ -874,18 +851,18 @@ impl RepackPackBlobs {
     }
 }
 
-/// The `Repacker` is responsible for repacking blobs into pack files.
+/// The `BlobCopier` is responsible for copying or repacking blobs into pack files.
 ///
 /// # Type Parameters
 ///
 /// * `BE` - The backend to read from.
 #[allow(missing_debug_implementations)]
-pub struct Repacker<BE>
+pub struct BlobCopier<BE>
 where
     BE: DecryptFullBackend,
 {
     /// The backend to read from.
-    be: BE,
+    be_src: BE,
     /// The packer to write to.
     packer: Packer<BE>,
     /// The size limit of the pack file.
@@ -894,8 +871,8 @@ where
     blob_type: BlobType,
 }
 
-impl<BE: DecryptFullBackend> Repacker<BE> {
-    /// Creates a new `Repacker`.
+impl<BE: DecryptFullBackend> BlobCopier<BE> {
+    /// Creates a new `BlobCopier`.
     ///
     /// # Type Parameters
     ///
@@ -913,16 +890,16 @@ impl<BE: DecryptFullBackend> Repacker<BE> {
     ///
     /// * If the Packer could not be created
     pub fn new(
-        be: BE,
+        be_src: BE,
+        be_dst: BE,
         blob_type: BlobType,
         indexer: SharedIndexer<BE>,
-        config: &ConfigFile,
-        total_size: u64,
+        pack_sizer: PackSizer,
     ) -> RusticResult<Self> {
-        let packer = Packer::new(be.clone(), blob_type, indexer, config, total_size)?;
-        let size_limit = PackSizer::from_config(config, blob_type, total_size).pack_size();
+        let packer = Packer::new(be_dst, blob_type, indexer, pack_sizer)?;
+        let size_limit = pack_sizer.pack_size();
         Ok(Self {
-            be,
+            be_src,
             packer,
             size_limit,
             blob_type,
@@ -940,9 +917,9 @@ impl<BE: DecryptFullBackend> Repacker<BE> {
     ///
     /// * If the blob could not be added
     /// * If reading the blob from the backend fails
-    pub fn add_fast(&self, pack_blobs: RepackPackBlobs) -> RusticResult<()> {
+    pub fn copy_fast(&self, pack_blobs: CopyPackBlobs, p: &impl Progress) -> RusticResult<()> {
         let offset = pack_blobs.locations.offset;
-        let data = self.be.read_partial(
+        let data = self.be_src.read_partial(
             FileType::Pack,
             &pack_blobs.pack_id,
             self.blob_type.is_cacheable(),
@@ -960,9 +937,8 @@ impl<BE: DecryptFullBackend> Repacker<BE> {
                 .add_raw(
                     &data[start..end],
                     &blob_id,
-                    0,
+                    blob.length,
                     blob.uncompressed_length,
-                    Some(self.size_limit),
                 )
                 .map_err(|err| {
                     err.overwrite_kind(ErrorKind::Internal)
@@ -971,6 +947,7 @@ impl<BE: DecryptFullBackend> Repacker<BE> {
                         )
                         .attach_context("blob_id", blob_id.to_string())
                 })?;
+            p.inc(blob.length.into());
         }
 
         Ok(())
@@ -987,9 +964,9 @@ impl<BE: DecryptFullBackend> Repacker<BE> {
     ///
     /// * If the blob could not be added
     /// * If reading the blob from the backend fails
-    pub fn add(&self, pack_blobs: RepackPackBlobs) -> RusticResult<()> {
+    pub fn copy(&self, pack_blobs: CopyPackBlobs, p: &impl Progress) -> RusticResult<()> {
         let offset = pack_blobs.locations.offset;
-        let read_data = self.be.read_partial(
+        let read_data = self.be_src.read_partial(
             FileType::Pack,
             &pack_blobs.pack_id,
             self.blob_type.is_cacheable(),
@@ -1004,18 +981,17 @@ impl<BE: DecryptFullBackend> Repacker<BE> {
             let end = usize::try_from(blob.offset + blob.length - offset)
                 .expect("convert from u32 to usize should not fail!");
             let data = self
-                .be
+                .be_src
                 .read_encrypted_from_partial(&read_data[start..end], blob.uncompressed_length)?;
 
-            self.packer
-                .add_with_sizelimit(data, blob_id, Some(self.size_limit))
-                .map_err(|err| {
-                    RusticError::with_source(
-                        ErrorKind::Internal,
-                        "Failed to add blob to packfile.",
-                        err,
-                    )
-                })?;
+            self.packer.add(data, blob_id).map_err(|err| {
+                RusticError::with_source(
+                    ErrorKind::Internal,
+                    "Failed to add blob to packfile.",
+                    err,
+                )
+            })?;
+            p.inc(blob.length.into());
         }
 
         Ok(())

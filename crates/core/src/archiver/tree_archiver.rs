@@ -8,7 +8,7 @@ use crate::{
     backend::{decrypt::DecryptWriteBackend, node::Node},
     blob::{
         BlobType,
-        packer::Packer,
+        packer::{PackSizer, Packer},
         tree::{Tree, TreeId},
     },
     error::{ErrorKind, RusticError, RusticResult},
@@ -66,13 +66,9 @@ impl<'a, BE: DecryptWriteBackend, I: ReadGlobalIndex> TreeArchiver<'a, BE, I> {
         config: &ConfigFile,
         summary: SnapshotSummary,
     ) -> RusticResult<Self> {
-        let tree_packer = Packer::new(
-            be,
-            BlobType::Tree,
-            indexer,
-            config,
-            index.total_size(BlobType::Tree),
-        )?;
+        let pack_sizer =
+            PackSizer::from_config(config, BlobType::Tree, index.total_size(BlobType::Tree));
+        let tree_packer = Packer::new(be, BlobType::Tree, indexer, pack_sizer)?;
 
         Ok(Self {
             tree: Tree::new(),

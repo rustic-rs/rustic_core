@@ -1,14 +1,22 @@
 use std::collections::BTreeSet;
 
-use log::trace;
-use rayon::prelude::{IntoParallelRefIterator, ParallelBridge, ParallelIterator};
+use itertools::Itertools;
+use rayon::prelude::{IntoParallelIterator, ParallelIterator};
 
 use crate::{
-    backend::{decrypt::DecryptWriteBackend, node::NodeType},
-    blob::{BlobId, BlobType, packer::Packer, tree::TreeStreamerOnce},
+    DataId, Progress, TreeId,
+    backend::{
+        decrypt::{DecryptFullBackend, DecryptWriteBackend},
+        node::NodeType,
+    },
+    blob::{
+        BlobType,
+        packer::{BlobCopier, CopyPackBlobs, PackSizer},
+        tree::TreeStreamerOnce,
+    },
     error::RusticResult,
     index::{ReadIndex, indexer::Indexer},
-    progress::{Progress, ProgressBars},
+    progress::ProgressBars,
     repofile::SnapshotFile,
     repository::{IndexedFull, IndexedIds, IndexedTree, Open, Repository},
 };
@@ -58,80 +66,111 @@ pub(crate) fn copy<'a, Q, R: IndexedFull, P: ProgressBars, S: IndexedIds>(
     let be = repo.dbe();
     let index = repo.index();
     let index_dest = repo_dest.index();
+
+    let filter_tree = |id: &TreeId| !index_dest.has_tree(id);
+    let filter_data = |id: &DataId| !index_dest.has_data(id);
+    let mut tree_ids: BTreeSet<_> = snap_trees.iter().copied().filter(filter_tree).collect();
+    let mut data_ids = BTreeSet::new();
+
+    let p = pb.progress_counter("finding needed blobs...");
+
+    let mut tree_streamer = TreeStreamerOnce::new(be, index, snap_trees, p)?;
+    while let Some(item) = tree_streamer.next().transpose()? {
+        let (_, tree) = item;
+        for node in tree.nodes {
+            match node.node_type {
+                NodeType::File => {
+                    data_ids.extend(node.content.into_iter().flatten().filter(filter_data));
+                }
+                NodeType::Dir => {
+                    tree_ids.extend(node.subtree.into_iter().filter(filter_tree));
+                }
+                _ => {} // nothing to do
+            }
+        }
+    }
+
     let indexer = Indexer::new(be_dest.clone()).into_shared();
 
-    let data_packer = Packer::new(
+    let p = pb.progress_bytes("copying data blobs...");
+    let pack_sizer = PackSizer::from_config(
+        repo_dest.config(),
+        BlobType::Data,
+        repo_dest.index().total_size(BlobType::Data),
+    );
+    let data_repacker = BlobCopier::new(
+        be.clone(),
         be_dest.clone(),
         BlobType::Data,
         indexer.clone(),
-        repo_dest.config(),
-        index_dest.total_size(BlobType::Data),
+        pack_sizer,
     )?;
-    let tree_packer = Packer::new(
+    let data_blobs: Vec<_> = data_ids
+        .into_iter()
+        .filter_map(|id| {
+            index
+                .get_data(&id)
+                .map(|entry| CopyPackBlobs::from_index_entry(entry, id.into()))
+        })
+        .collect();
+
+    copy_blobs(data_blobs, data_repacker, p)?;
+
+    let p = pb.progress_bytes("copying tree blobs...");
+    let pack_sizer = PackSizer::from_config(
+        repo_dest.config(),
+        BlobType::Tree,
+        repo_dest.index().total_size(BlobType::Tree),
+    );
+    let tree_repacker = BlobCopier::new(
+        be.clone(),
         be_dest.clone(),
         BlobType::Tree,
         indexer.clone(),
-        repo_dest.config(),
-        index_dest.total_size(BlobType::Tree),
+        pack_sizer,
     )?;
 
-    let p = pb.progress_bytes("copying blobs...");
+    let trees: Vec<_> = tree_ids
+        .into_iter()
+        .filter_map(|id| {
+            index
+                .get_tree(&id)
+                .map(|entry| CopyPackBlobs::from_index_entry(entry, id.into()))
+        })
+        .collect();
 
-    snap_trees
-        .par_iter()
-        .try_for_each(|id| -> RusticResult<_> {
-            trace!("copy tree blob {id}");
-            if !index_dest.has_tree(id) {
-                let data = index.get_tree(id).unwrap().read_data(be)?;
-                p.inc(data.len() as u64);
-                tree_packer.add(data, BlobId::from(**id))?;
-            }
-            Ok(())
-        })?;
+    copy_blobs(trees, tree_repacker, p)?;
 
-    let tree_streamer = TreeStreamerOnce::new(be, index, snap_trees, pb.progress_hidden())?;
-    tree_streamer
-        .par_bridge()
-        .try_for_each(|item| -> RusticResult<_> {
-            let (_, tree) = item?;
-            tree.nodes.par_iter().try_for_each(|node| {
-                match node.node_type {
-                    NodeType::File => {
-                        node.content.par_iter().flatten().try_for_each(
-                            |id| -> RusticResult<_> {
-                                trace!("copy data blob {id}");
-                                if !index_dest.has_data(id) {
-                                    let data = index.get_data(id).unwrap().read_data(be)?;
-                                    p.inc(data.len() as u64);
-                                    data_packer.add(data, BlobId::from(**id))?;
-                                }
-                                Ok(())
-                            },
-                        )?;
-                    }
-
-                    NodeType::Dir => {
-                        let id = node.subtree.unwrap();
-                        trace!("copy tree blob {id}");
-                        if !index_dest.has_tree(&id) {
-                            let data = index.get_tree(&id).unwrap().read_data(be)?;
-                            p.inc(data.len() as u64);
-                            tree_packer.add(data, BlobId::from(*id))?;
-                        }
-                    }
-
-                    _ => {} // nothing to copy
-                }
-                Ok(())
-            })
-        })?;
-
-    _ = data_packer.finalize()?;
-    _ = tree_packer.finalize()?;
     indexer.write().unwrap().finalize()?;
 
     let p = pb.progress_counter("saving snapshots...");
     be_dest.save_list(snaps.iter(), p)?;
+    Ok(())
+}
+
+#[allow(clippy::needless_pass_by_value)]
+fn copy_blobs<BE: DecryptFullBackend>(
+    mut blobs: Vec<CopyPackBlobs>,
+    copier: BlobCopier<BE>,
+    p: impl Progress,
+) -> RusticResult<()> {
+    blobs.sort_unstable();
+    let blobs: Vec<_> = blobs
+        .into_iter()
+        .coalesce(CopyPackBlobs::coalesce)
+        .collect();
+
+    let length = blobs
+        .iter()
+        .map(|blob| u64::from(blob.locations.length()))
+        .sum();
+    p.set_length(length);
+
+    blobs
+        .into_par_iter()
+        .try_for_each(|blobs| -> RusticResult<_> { copier.copy(blobs, &p) })?;
+    _ = copier.finalize()?;
+    p.finish();
     Ok(())
 }
 

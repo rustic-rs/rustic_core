@@ -25,8 +25,8 @@ use crate::{
         node::NodeType,
     },
     blob::{
-        BlobId, BlobType, BlobTypeMap, Initialize,
-        packer::{PackSizer, RepackPackBlobs, Repacker},
+        BlobId, BlobLocations, BlobType, BlobTypeMap, Initialize,
+        packer::{BlobCopier, CopyPackBlobs, PackSizer},
         tree::TreeStreamerOnce,
     },
     error::{ErrorKind, RusticError, RusticResult},
@@ -1376,20 +1376,25 @@ pub(crate) fn prune_repository<P: ProgressBars, S: Open>(
                     * u64::from(HeaderEntry::ENTRY_LEN_COMPRESSED)
         });
 
-        let tree_repacker = Repacker::new(
+        // use a fixed pack size corresponding to the estimated size after pruning.
+        let pack_sizer = size_after_prune.map(|blob_type, size| {
+            PackSizer::fixed(PackSizer::from_config(repo.config(), blob_type, size).pack_size())
+        });
+
+        let tree_repacker = BlobCopier::new(
+            be.clone(),
             be.clone(),
             BlobType::Tree,
             indexer.clone(),
-            repo.config(),
-            size_after_prune[BlobType::Tree],
+            pack_sizer[BlobType::Tree],
         )?;
 
-        let data_repacker = Repacker::new(
+        let data_repacker = BlobCopier::new(
+            be.clone(),
             be.clone(),
             BlobType::Data,
             indexer.clone(),
-            repo.config(),
-            size_after_prune[BlobType::Data],
+            pack_sizer[BlobType::Data],
         )?;
 
         // write new pack files and index files
@@ -1400,22 +1405,24 @@ pub(crate) fn prune_repository<P: ProgressBars, S: Open>(
                     BlobType::Data => &data_repacker,
                     BlobType::Tree => &tree_repacker,
                 };
-                let blobs: Vec<_> = pack
+                let blob_chunks: Vec<_> = pack
                     .blobs
                     .into_iter()
-                    .map(|blob| RepackPackBlobs::from_index_blob(pack.id, blob))
-                    .coalesce(RepackPackBlobs::coalesce)
+                    .map(|blob| BlobLocations::from_blob_location(blob.location, blob.id))
+                    .coalesce(BlobLocations::coalesce)
+                    .map(|locations| CopyPackBlobs {
+                        pack_id: pack.id,
+                        locations,
+                    })
                     .collect();
 
                 // TODO: repack in parallel
-                for blobs in blobs {
-                    let length = u64::from(blobs.locations.length);
+                for blobs in blob_chunks {
                     if opts.fast_repack {
-                        repacker.add_fast(blobs)?;
+                        repacker.copy_fast(blobs, &p)?;
                     } else {
-                        repacker.add(blobs)?;
+                        repacker.copy(blobs, &p)?;
                     }
-                    p.inc(length);
                 }
                 Ok(())
             })?;
