@@ -1,7 +1,7 @@
 use crate::repofile::RusticTime;
 use std::{cmp::Ordering, num::NonZeroU32};
 
-use jiff::Zoned;
+use jiff::Timestamp;
 use serde_derive::{Deserialize, Serialize};
 use serde_with::{serde_as, skip_serializing_none};
 
@@ -71,7 +71,7 @@ pub struct IndexPack {
     pub blobs: Vec<IndexBlob>,
     #[serde_as(as = "Option<RusticTime>")]
     /// The pack creation time or time when the pack was marked for deletion
-    pub time: Option<Zoned>,
+    pub time: Option<Timestamp>,
     /// The pack size
     pub size: Option<u32>,
 }

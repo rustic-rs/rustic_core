@@ -13,7 +13,7 @@ use derive_more::Add;
 use derive_setters::Setters;
 use enumset::{EnumSet, EnumSetType};
 use itertools::Itertools;
-use jiff::{Span, ToSpan, Zoned};
+use jiff::{Span, Timestamp, Zoned};
 use log::{info, warn};
 use rayon::prelude::{IntoParallelIterator, ParallelIterator};
 use serde::{Deserialize, Serialize};
@@ -143,8 +143,8 @@ impl Default for PruneOptions {
         Self {
             max_repack: LimitOption::Percentage(10),
             max_unused: LimitOption::Percentage(5),
-            keep_pack: 0.seconds(),
-            keep_delete: 23.hours(),
+            keep_pack: Span::new(),
+            keep_delete: Span::new().hours(23),
             instant_delete: false,
             early_delete_index: false,
             fast_repack: false,
@@ -448,7 +448,7 @@ struct PrunePack {
     /// The task to be executed on the pack
     to_do: PackToDo,
     /// The time the pack was created
-    time: Option<Zoned>,
+    time: Option<Timestamp>,
     /// The blobs in the pack
     blobs: Vec<IndexBlob>,
 }
@@ -490,11 +490,11 @@ impl PrunePack {
         Self::from_index_pack(p, true)
     }
 
-    /// Convert the `PrunePack` into an `IndexPack`
-    fn into_index_pack(self, time: &Zoned) -> IndexPack {
+    /// Convert the `PrunePack` into an `IndexPack`. Set time of not already set.
+    fn into_index_pack(self, time: Timestamp) -> IndexPack {
         IndexPack {
             id: self.id,
-            time: self.time.or(Some(time.clone())),
+            time: self.time.or(Some(time)),
             size: None,
             blobs: self.blobs,
         }
@@ -505,10 +505,10 @@ impl PrunePack {
     /// # Arguments
     ///
     /// * `time` - The time to set
-    fn into_index_pack_with_time(self, time: &Zoned) -> IndexPack {
+    fn into_index_pack_with_time(self, time: Timestamp) -> IndexPack {
         IndexPack {
             id: self.id,
-            time: Some(time.clone()),
+            time: Some(time),
             size: None,
             blobs: self.blobs,
         }
@@ -855,7 +855,7 @@ impl PrunePlan {
                     let mut status = EnumSet::empty();
 
                     // Various checks to determine if packs need to be kept
-                    let too_young = pack.time > Some(self.time.saturating_sub(keep_pack));
+                    let too_young = pack.time > Some(self.time.saturating_sub(keep_pack).into());
                     if too_young && !pack.delete_mark {
                         _ = status.insert(PackStatus::TooYoung);
                     }
@@ -933,10 +933,11 @@ impl PrunePlan {
                         }
                         (true, 0, _) => {
                             _ = status.insert(PackStatus::Marked);
-                            match &pack.time {
+                            match pack.time {
                                 // unneeded and marked pack => check if we can remove it.
                                 Some(local_date_time)
-                                    if self.time >= local_date_time.saturating_add(keep_delete) =>
+                                    if self.time.saturating_sub(keep_delete).timestamp()
+                                        >= local_date_time =>
                                 {
                                     _ = status.insert(PackStatus::TooYoung);
                                     pack.set_todo(PackToDo::Delete, &pi, status, &mut self.stats);
@@ -1231,6 +1232,7 @@ pub(crate) fn prune_repository<P: ProgressBars, S: Open>(
     repo.warm_up_wait(prune_plan.repack_packs().into_iter())?;
     let be = repo.dbe();
     let pb = &repo.pb;
+    let prune_time = prune_plan.time.timestamp();
 
     let mut indexer = Indexer::new_unindexed(be.clone());
     // mark unreferenced packs for deletion
@@ -1252,7 +1254,7 @@ pub(crate) fn prune_repository<P: ProgressBars, S: Open>(
                 let pack = IndexPack {
                     id,
                     size: Some(size),
-                    time: Some(prune_plan.time.clone()),
+                    time: Some(prune_time),
                     blobs: Vec::new(),
                 };
                 indexer.add_remove(pack)?;
@@ -1310,8 +1312,8 @@ pub(crate) fn prune_repository<P: ProgressBars, S: Open>(
                     .ask_report());
                 }
                 PackToDo::Keep => {
-                    // keep pack: add to new index
-                    let pack = pack.into_index_pack(&prune_plan.time);
+                    // keep pack: add to new index; correct time if not set
+                    let pack = pack.into_index_pack(prune_time);
                     indexer.add(pack)?;
                 }
                 PackToDo::Repack => {
@@ -1319,7 +1321,7 @@ pub(crate) fn prune_repository<P: ProgressBars, S: Open>(
                         delete_pack(&pack);
                     } else {
                         // mark pack for removal
-                        let pack = pack.clone().into_index_pack_with_time(&prune_plan.time);
+                        let pack = pack.clone().into_index_pack_with_time(prune_time);
                         indexer.add_remove(pack)?;
                     }
                     pack.blobs
@@ -1331,7 +1333,7 @@ pub(crate) fn prune_repository<P: ProgressBars, S: Open>(
                         delete_pack(&pack);
                     } else {
                         // mark pack for removal
-                        let pack = pack.into_index_pack_with_time(&prune_plan.time);
+                        let pack = pack.into_index_pack_with_time(prune_time);
                         indexer.add_remove(pack)?;
                     }
                 }
@@ -1341,14 +1343,13 @@ pub(crate) fn prune_repository<P: ProgressBars, S: Open>(
                     } else {
                         // keep pack: add to new index; keep the timestamp.
                         // Note the timestamp shouldn't be None here, however if it is not not set, use the current time to heal the entry!
-                        let time = pack.time.clone().unwrap_or_else(|| prune_plan.time.clone());
-                        let pack = pack.into_index_pack_with_time(&time);
+                        let pack = pack.into_index_pack(prune_time);
                         indexer.add_remove(pack)?;
                     }
                 }
                 PackToDo::Recover => {
                     // recover pack: add to new index in section packs
-                    let pack = pack.into_index_pack_with_time(&prune_plan.time);
+                    let pack = pack.into_index_pack_with_time(prune_time);
                     indexer.add(pack)?;
                 }
                 PackToDo::Delete => delete_pack(&pack),

@@ -7,7 +7,7 @@ use std::{
 use bytes::{Bytes, BytesMut};
 use crossbeam_channel::{Receiver, Sender, bounded};
 use integer_sqrt::IntegerSquareRoot;
-use jiff::Zoned;
+use jiff::Timestamp;
 use log::warn;
 use pariter::{IteratorExt, scope};
 
@@ -751,7 +751,7 @@ impl<BE: DecryptWriteBackend> FileWriterHandle<BE> {
         index.id = id;
         self.be
             .write_bytes(FileType::Pack, &id, self.cacheable, file)?;
-        index.time = Some(Zoned::now());
+        index.time = Some(Timestamp::now());
         Ok(index)
     }
 
