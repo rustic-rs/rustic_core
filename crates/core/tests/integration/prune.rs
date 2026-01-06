@@ -1,9 +1,11 @@
 use anyhow::Result;
+use bytesize::ByteSize;
 use jiff::Span;
 use rstest::rstest;
 
 use rustic_core::{
-    BackupOptions, CheckOptions, LimitOption, PathList, PruneOptions, repofile::SnapshotFile,
+    BackupOptions, CheckOptions, ConfigOptions, LimitOption, PathList, PruneOptions,
+    repofile::{Chunker, SnapshotFile},
 };
 
 use super::{RepoOpen, TestSource, set_up_repo, tar_gz_testdata};
@@ -12,6 +14,13 @@ use super::{RepoOpen, TestSource, set_up_repo, tar_gz_testdata};
 fn test_prune(
     tar_gz_testdata: Result<TestSource>,
     set_up_repo: Result<RepoOpen>,
+    #[values(
+        ConfigOptions::default(),
+        ConfigOptions::default()
+        .set_chunker(Chunker::FixedSize)
+        .set_chunk_size(ByteSize::b(2))
+    )]
+    opts: ConfigOptions,
     #[values(true, false)] instant_delete: bool,
     #[values(
         LimitOption::Percentage(0),
@@ -19,9 +28,11 @@ fn test_prune(
         LimitOption::Unlimited
     )]
     max_unused: LimitOption,
+    #[values(true, false)] fast_repack: bool,
 ) -> Result<()> {
     // Fixtures
-    let (source, repo) = (tar_gz_testdata?, set_up_repo?.to_indexed_ids()?);
+    let (source, mut repo) = (tar_gz_testdata?, set_up_repo?.to_indexed_ids()?);
+    _ = repo.apply_config(&opts)?;
 
     let opts = BackupOptions::default();
 
@@ -49,7 +60,8 @@ fn test_prune(
     let prune_opts = PruneOptions::default()
         .instant_delete(instant_delete)
         .max_unused(max_unused)
-        .keep_delete(Span::default());
+        .keep_delete(Span::default())
+        .fast_repack(fast_repack);
     let plan = repo.prune_plan(&prune_opts)?;
     // TODO: Snapshot-test the plan (currently doesn't impl Serialize)
     // assert_ron_snapshot!("prune", plan);

@@ -846,6 +846,25 @@ impl Actor {
     }
 }
 
+#[derive(Debug)]
+pub struct RepackPackBlobs {
+    pub pack_id: PackId,
+    pub offset: u32,
+    pub length: u32,
+    pub blobs: Vec<IndexBlob>,
+}
+
+impl RepackPackBlobs {
+    pub fn from_index_blob(pack_id: PackId, blob: IndexBlob) -> Self {
+        Self {
+            pack_id,
+            offset: blob.offset,
+            length: blob.length,
+            blobs: vec![blob],
+        }
+    }
+}
+
 /// The `Repacker` is responsible for repacking blobs into pack files.
 ///
 /// # Type Parameters
@@ -862,6 +881,8 @@ where
     packer: Packer<BE>,
     /// The size limit of the pack file.
     size_limit: u32,
+    /// the blob type
+    blob_type: BlobType,
 }
 
 impl<BE: DecryptFullBackend> Repacker<BE> {
@@ -895,6 +916,7 @@ impl<BE: DecryptFullBackend> Repacker<BE> {
             be,
             packer,
             size_limit,
+            blob_type,
         })
     }
 
@@ -909,30 +931,38 @@ impl<BE: DecryptFullBackend> Repacker<BE> {
     ///
     /// * If the blob could not be added
     /// * If reading the blob from the backend fails
-    pub fn add_fast(&self, pack_id: &PackId, blob: &IndexBlob) -> RusticResult<()> {
+    pub fn add_fast(&self, pack_blobs: RepackPackBlobs) -> RusticResult<()> {
+        let offset = pack_blobs.offset;
         let data = self.be.read_partial(
             FileType::Pack,
-            pack_id,
-            blob.tpe.is_cacheable(),
-            blob.offset,
-            blob.length,
+            &pack_blobs.pack_id,
+            self.blob_type.is_cacheable(),
+            offset,
+            pack_blobs.length,
         )?;
 
-        self.packer
-            .add_raw(
-                &data,
-                &blob.id,
-                0,
-                blob.uncompressed_length,
-                Some(self.size_limit),
-            )
-            .map_err(|err| {
-                err.overwrite_kind(ErrorKind::Internal)
-                    .prepend_guidance_line(
-                        "Failed to fast-add (unchecked) blob `{blob_id}` to packfile.",
-                    )
-                    .attach_context("blob_id", blob.id.to_string())
-            })?;
+        // TODO: write in parallel
+        for blob in pack_blobs.blobs {
+            let start = usize::try_from(blob.offset - offset)
+                .expect("convert from u32 to usize should not fail!");
+            let end = usize::try_from(blob.offset + blob.length - offset)
+                .expect("convert from u32 to usize should not fail!");
+            self.packer
+                .add_raw(
+                    &data[start..end],
+                    &blob.id,
+                    0,
+                    blob.uncompressed_length,
+                    Some(self.size_limit),
+                )
+                .map_err(|err| {
+                    err.overwrite_kind(ErrorKind::Internal)
+                        .prepend_guidance_line(
+                            "Failed to fast-add (unchecked) blob `{blob_id}` to packfile.",
+                        )
+                        .attach_context("blob_id", blob.id.to_string())
+                })?;
+        }
 
         Ok(())
     }
@@ -948,25 +978,36 @@ impl<BE: DecryptFullBackend> Repacker<BE> {
     ///
     /// * If the blob could not be added
     /// * If reading the blob from the backend fails
-    pub fn add(&self, pack_id: &PackId, blob: &IndexBlob) -> RusticResult<()> {
-        let data = self.be.read_encrypted_partial(
+    pub fn add(&self, pack_blobs: RepackPackBlobs) -> RusticResult<()> {
+        let offset = pack_blobs.offset;
+        let read_data = self.be.read_partial(
             FileType::Pack,
-            pack_id,
-            blob.tpe.is_cacheable(),
-            blob.offset,
-            blob.length,
-            blob.uncompressed_length,
+            &pack_blobs.pack_id,
+            self.blob_type.is_cacheable(),
+            offset,
+            pack_blobs.length,
         )?;
 
-        self.packer
-            .add_with_sizelimit(data, blob.id, Some(self.size_limit))
-            .map_err(|err| {
-                RusticError::with_source(
-                    ErrorKind::Internal,
-                    "Failed to add blob to packfile.",
-                    err,
-                )
-            })?;
+        // TODO: write in parallel
+        for blob in pack_blobs.blobs {
+            let start = usize::try_from(blob.offset - offset)
+                .expect("convert from u32 to usize should not fail!");
+            let end = usize::try_from(blob.offset + blob.length - offset)
+                .expect("convert from u32 to usize should not fail!");
+            let data = self
+                .be
+                .read_encrypted_from_partial(&read_data[start..end], blob.uncompressed_length)?;
+
+            self.packer
+                .add_with_sizelimit(data, blob.id, Some(self.size_limit))
+                .map_err(|err| {
+                    RusticError::with_source(
+                        ErrorKind::Internal,
+                        "Failed to add blob to packfile.",
+                        err,
+                    )
+                })?;
+        }
 
         Ok(())
     }
