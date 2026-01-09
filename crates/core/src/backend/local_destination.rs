@@ -403,7 +403,7 @@ impl LocalDestination {
     /// * `item` - The item to set the permissions for
     /// * `node` - The node to get the permissions from
     ///
-    /// # Errors        
+    /// # Errors
     ///
     /// * If the permissions could not be set.
     #[allow(clippy::unused_self, clippy::unnecessary_wraps)]
@@ -423,7 +423,7 @@ impl LocalDestination {
     /// * `item` - The item to set the permissions for
     /// * `node` - The node to get the permissions from
     ///
-    /// # Errors        
+    /// # Errors
     ///
     /// * If the permissions could not be set.
     #[allow(clippy::similar_names)]
@@ -647,24 +647,12 @@ impl LocalDestination {
                 })?;
             }
             NodeType::Dev { device } => {
-                #[cfg(not(any(
-                    target_os = "macos",
-                    target_os = "openbsd",
-                    target_os = "freebsd"
-                )))]
+                #[cfg(not(any(target_os = "macos", target_os = "openbsd")))]
                 let device = *device;
                 #[cfg(any(target_os = "macos", target_os = "openbsd"))]
                 let device = i32::try_from(*device).map_err(|err| {
                     LocalDestinationErrorKind::DeviceIdConversionFailed {
                         target: "i32".to_string(),
-                        device: *device,
-                        source: err,
-                    }
-                })?;
-                #[cfg(target_os = "freebsd")]
-                let device = u32::try_from(*device).map_err(|err| {
-                    LocalDestinationErrorKind::DeviceIdConversionFailed {
-                        target: "u32".to_string(),
                         device: *device,
                         source: err,
                     }
@@ -673,24 +661,12 @@ impl LocalDestination {
                     .map_err(LocalDestinationErrorKind::FromErrnoError)?;
             }
             NodeType::Chardev { device } => {
-                #[cfg(not(any(
-                    target_os = "macos",
-                    target_os = "openbsd",
-                    target_os = "freebsd"
-                )))]
+                #[cfg(not(any(target_os = "macos", target_os = "openbsd")))]
                 let device = *device;
                 #[cfg(any(target_os = "macos", target_os = "openbsd"))]
                 let device = i32::try_from(*device).map_err(|err| {
                     LocalDestinationErrorKind::DeviceIdConversionFailed {
                         target: "i32".to_string(),
-                        device: *device,
-                        source: err,
-                    }
-                })?;
-                #[cfg(target_os = "freebsd")]
-                let device = u32::try_from(*device).map_err(|err| {
-                    LocalDestinationErrorKind::DeviceIdConversionFailed {
-                        target: "u32".to_string(),
                         device: *device,
                         source: err,
                     }
