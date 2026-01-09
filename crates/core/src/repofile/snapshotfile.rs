@@ -714,7 +714,7 @@ impl SnapshotFile {
                         &requests.starts_with,
                     );
                 });
-                let latest = Self::latest_n_from_iter(max_n, iter);
+                let latest = Self::latest_n_from_iter(max_n, iter)?;
                 let vec_ids_starts_with = ids_starts_with.assert_found(&requests.starts_with)?;
                 Ok(requests.map_results(&latest, vec_ids_starts_with, vec_ids))
             }
@@ -740,11 +740,29 @@ impl SnapshotFile {
         Self::latest_n(be, predicate, p, 0)
     }
 
-    fn latest_n_from_iter(n: usize, iter: impl IntoIterator<Item = Self>) -> Vec<Self> {
-        iter.into_iter()
+    fn latest_n_from_iter(
+        n: usize,
+        iter: impl IntoIterator<Item = Self>,
+    ) -> RusticResult<Vec<Self>> {
+        let latest: Vec<_> = iter
+            .into_iter()
             // find n+1 smallest elements when sorting in decreasing time order
             .k_smallest_by(n + 1, |s1, s2| s2.time.cmp(&s1.time))
-            .collect()
+            .collect();
+
+        if latest.len() > n {
+            Ok(latest)
+        } else if n == 0 {
+            Err(RusticError::new(
+                ErrorKind::Repository,
+                "No snapshots found. Please make sure there are snapshots in the repository.",
+            ))
+        } else {
+            Err(RusticError::new(
+                ErrorKind::Repository,
+                "No snapshots found for latest~{n}. Please make sure there are more than {n} snapshots in the repository.",
+            ).attach_context("n", n.to_string()))
+        }
     }
 
     /// Get the latest [`SnapshotFile`] from the backend
@@ -771,26 +789,10 @@ impl SnapshotFile {
             p.set_title("getting latest~N snapshot...");
         }
         let mut snapshots =
-            Self::latest_n_from_iter(n, Self::iter_all_from_backend(be, predicate, p)?);
-
-        let len = snapshots.len();
-        let latest = (len > n).then_some(snapshots.pop()).flatten(); // we want the latest element if we found n+1 snapshots
+            Self::latest_n_from_iter(n, Self::iter_all_from_backend(be, predicate, p)?)?;
 
         p.finish();
-
-        latest.ok_or_else(|| {
-            if n == 0 {
-                RusticError::new(
-                    ErrorKind::Repository,
-                    "No snapshots found. Please make sure there are snapshots in the repository.",
-                )
-            } else {
-                RusticError::new(
-                    ErrorKind::Repository,
-                    "No snapshots found for latest~{n}. Please make sure there are more than {n} snapshots in the repository.",
-                ).attach_context("n", n.to_string())
-            }
-        })
+        Ok(snapshots.pop().unwrap()) // we want the latest element if we found n+1 snapshots
     }
 
     /// Get a [`SnapshotFile`] from the backend by (part of the) id
@@ -1844,6 +1846,15 @@ mod tests {
             SnapshotFile::from_strs(&be, &["latest", "latest~1"], |_sn| true, &NoProgress).unwrap();
         let ids: Vec<_> = snaps.iter().map(|sn| *sn.id).collect();
         assert_eq!(ids, vec![id3, id2]);
+
+        // not enough latest snapshots
+        let latest_n3 = SnapshotFile::from_strs(&be, &["003", "latest~3"], |_sn| true, &NoProgress);
+        let latest_n3_err = latest_n3.unwrap_err().to_string();
+        let expected = "No snapshots found for latest~3.";
+        assert!(
+            latest_n3_err.contains(expected),
+            "Err is: {latest_n3_err}\n\nShould contain: {expected}",
+        );
 
         // only (parts of) ids
         let snaps = SnapshotFile::from_strs(
