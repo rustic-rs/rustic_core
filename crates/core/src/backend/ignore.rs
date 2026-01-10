@@ -8,6 +8,7 @@ use derive_setters::Setters;
 use ignore::{DirEntry, Walk, WalkBuilder, overrides::OverrideBuilder};
 use jiff::Timestamp;
 use log::warn;
+use serde::{Deserialize, Serialize};
 use serde_with::{DisplayFromStr, serde_as};
 
 #[cfg(not(windows))]
@@ -68,6 +69,16 @@ pub struct LocalSource {
     save_opts: LocalSourceSaveOptions,
 }
 
+#[cfg_attr(feature = "clap", derive(clap::ValueEnum))]
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum SaveDevId {
+    Always,
+    #[default]
+    Hardlink,
+    Never,
+}
+
 #[serde_as]
 #[cfg_attr(feature = "clap", derive(clap::Parser))]
 #[cfg_attr(feature = "merge", derive(conflate::Merge))]
@@ -82,10 +93,10 @@ pub struct LocalSourceSaveOptions {
     #[cfg_attr(feature = "merge", merge(strategy = conflate::bool::overwrite_false))]
     pub with_atime: bool,
 
-    /// Don't save device ID for files and directories
+    /// Select whether the device ID should be saved [default: hardlink]
     #[cfg_attr(feature = "clap", clap(long))]
-    #[cfg_attr(feature = "merge", merge(strategy = conflate::bool::overwrite_false))]
-    pub ignore_devid: bool,
+    #[cfg_attr(feature = "merge", merge(strategy = conflate::option::overwrite_none))]
+    pub with_devid: Option<SaveDevId>,
 }
 
 #[serde_as]
@@ -408,7 +419,7 @@ impl Iterator for LocalSourceWalker {
                     .ask_report()
                 })?,
                 self.save_opts.with_atime,
-                self.save_opts.ignore_devid,
+                self.save_opts.with_devid,
             )
             .map_err(|err| {
                 RusticError::with_source(
@@ -428,7 +439,7 @@ impl Iterator for LocalSourceWalker {
 ///
 /// * `entry` - The [`DirEntry`] to map.
 /// * `with_atime` - Whether to save access time for files and directories.
-/// * `ignore_devid` - Whether to save device ID for files and directories.
+/// * `with_devid` - Whether to save device ID for files and directories.
 ///
 /// # Errors
 ///
@@ -439,7 +450,7 @@ impl Iterator for LocalSourceWalker {
 fn map_entry(
     entry: DirEntry,
     with_atime: bool,
-    _ignore_devid: bool,
+    _with_devid: Option<SaveDevId>,
 ) -> IgnoreResult<ReadSourceEntry<OpenFile>> {
     let name = entry.file_name();
     let m = entry
@@ -585,7 +596,7 @@ fn list_extended_attributes(path: &Path) -> IgnoreResult<Vec<ExtendedAttribute>>
 ///
 /// * `entry` - The [`DirEntry`] to map.
 /// * `with_atime` - Whether to save access time for files and directories.
-/// * `ignore_devid` - Whether to save device ID for files and directories.
+/// * `with_devid` - Whether to save device ID for files and directories.
 ///
 /// # Errors
 ///
@@ -597,7 +608,7 @@ fn list_extended_attributes(path: &Path) -> IgnoreResult<Vec<ExtendedAttribute>>
 fn map_entry(
     entry: DirEntry,
     with_atime: bool,
-    ignore_devid: bool,
+    with_devid: Option<SaveDevId>,
 ) -> IgnoreResult<ReadSourceEntry<OpenFile>> {
     let name = entry.file_name();
     let m = entry
@@ -633,8 +644,11 @@ fn map_entry(
     let size = if m.is_dir() { 0 } else { m.len() };
     let mode = mapper::map_mode_to_go(m.mode());
     let inode = m.ino();
-    let device_id = if ignore_devid { 0 } else { m.dev() };
     let links = if m.is_dir() { 0 } else { m.nlink() };
+    let device_id = match with_devid.unwrap_or_default() {
+        SaveDevId::Always | SaveDevId::Hardlink if links > 1 => m.dev(),
+        _ => 0,
+    };
 
     let extended_attributes = match list_extended_attributes(entry.path()) {
         Err(err) => {
