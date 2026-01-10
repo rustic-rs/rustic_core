@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.5.5](https://github.com/rustic-rs/rustic_core/compare/rustic_backend-v0.5.4...rustic_backend-v0.5.5) - 2026-01-10
+
+### Added
+
+- *(backend/opendal)* include scheme in location() and bump opendal to 0.55.0 ([#446](https://github.com/rustic-rs/rustic_core/pull/446))
+
 ## [0.5.4](https://github.com/rustic-rs/rustic_core/compare/rustic_backend-v0.5.3...rustic_backend-v0.5.4) - 2025-11-08
 
 ### Added
