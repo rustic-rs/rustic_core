@@ -1,6 +1,6 @@
 ---
 source: crates/core/tests/integration.rs
-expression: tree
+expression: snap
 ---
 Tree(
   nodes: [
@@ -16,7 +16,6 @@ Tree(
       "user": "[user]",
       "group": "[group]",
       "inode": "[inode]",
-      "device_id": "[device_id]",
       "links": 1,
       "content": Some([]),
     },
@@ -71,7 +70,6 @@ Tree(
       "user": "[user]",
       "group": "[group]",
       "inode": "[inode]",
-      "device_id": "[device_id]",
       "size": 8,
       "links": 1,
       "content": None,
