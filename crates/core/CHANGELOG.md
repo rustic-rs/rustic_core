@@ -2,6 +2,29 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.10.0](https://github.com/rustic-rs/rustic_core/compare/rustic_core-v0.9.0...rustic_core-v0.10.0) - 2026-01-10
+
+### Added
+
+- [**breaking**] change ignore-devid to with-devid ([#460](https://github.com/rustic-rs/rustic_core/pull/460))
+- Use Timestamp in index ([#458](https://github.com/rustic-rs/rustic_core/pull/458))
+- Optimize prune rewrite ([#448](https://github.com/rustic-rs/rustic_core/pull/448))
+- [**breaking**] Add support for multiple parents ([#427](https://github.com/rustic-rs/rustic_core/pull/427))
+
+### Fixed
+
+- Return error if too few snapshots for latest~N ([#459](https://github.com/rustic-rs/rustic_core/pull/459))
+- Use early-delete-index only if instant-delete is selected ([#457](https://github.com/rustic-rs/rustic_core/pull/457))
+- fix clap runtime errors for parent options ([#456](https://github.com/rustic-rs/rustic_core/pull/456))
+- Use parents instead of parent; allow latest ([#455](https://github.com/rustic-rs/rustic_core/pull/455))
+- improve error handling for missing UID/GID name ([#454](https://github.com/rustic-rs/rustic_core/pull/454))
+- fix clippy lints ([#449](https://github.com/rustic-rs/rustic_core/pull/449))
+
+### Other
+
+- FreeBSD build ([#440](https://github.com/rustic-rs/rustic_core/pull/440))
+- refactor! use jiff instead of chrono ([#452](https://github.com/rustic-rs/rustic_core/pull/452))
+
 ## [0.9.0](https://github.com/rustic-rs/rustic_core/compare/rustic_core-v0.8.0...rustic_core-v0.9.0) - 2025-11-08
 
 ### Added
