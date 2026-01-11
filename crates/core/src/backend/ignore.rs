@@ -79,6 +79,15 @@ pub enum SaveDevId {
     Never,
 }
 
+#[cfg_attr(feature = "clap", derive(clap::ValueEnum))]
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum BlockdevOption {
+    #[default]
+    Blockdev,
+    NormalFile,
+}
+
 #[serde_as]
 #[cfg_attr(feature = "clap", derive(clap::Parser))]
 #[cfg_attr(feature = "merge", derive(conflate::Merge))]
@@ -97,6 +106,11 @@ pub struct LocalSourceSaveOptions {
     #[cfg_attr(feature = "clap", clap(long))]
     #[cfg_attr(feature = "merge", merge(strategy = conflate::option::overwrite_none))]
     pub with_devid: Option<SaveDevId>,
+
+    /// How block devices should be stored [default: blockdev]
+    #[cfg_attr(feature = "clap", clap(long))]
+    #[cfg_attr(feature = "merge", merge(strategy = conflate::option::overwrite_none))]
+    pub with_blockdev: Option<BlockdevOption>,
 }
 
 #[serde_as]
@@ -418,8 +432,7 @@ impl Iterator for LocalSourceWalker {
                     )
                     .ask_report()
                 })?,
-                self.save_opts.with_atime,
-                self.save_opts.with_devid,
+                self.save_opts,
             )
             .map_err(|err| {
                 RusticError::with_source(
@@ -607,8 +620,7 @@ fn list_extended_attributes(path: &Path) -> IgnoreResult<Vec<ExtendedAttribute>>
 #[allow(clippy::similar_names)]
 fn map_entry(
     entry: DirEntry,
-    with_atime: bool,
-    with_devid: Option<SaveDevId>,
+    options: LocalSourceSaveOptions,
 ) -> IgnoreResult<ReadSourceEntry<OpenFile>> {
     let name = entry.file_name();
     let m = entry
@@ -624,7 +636,7 @@ fn map_entry(
     let group = get_group_by_gid(gid);
 
     let mtime = m.modified().ok().and_then(|t| Timestamp::try_from(t).ok());
-    let atime = if with_atime {
+    let atime = if options.with_atime {
         m.accessed().ok().and_then(|t| Timestamp::try_from(t).ok())
     } else {
         // TODO: Use None here?
@@ -645,7 +657,7 @@ fn map_entry(
     let mode = mapper::map_mode_to_go(m.mode());
     let inode = m.ino();
     let links = if m.is_dir() { 0 } else { m.nlink() };
-    let device_id = match with_devid.unwrap_or_default() {
+    let device_id = match options.with_devid.unwrap_or_default() {
         SaveDevId::Always | SaveDevId::Hardlink if links > 1 => m.dev(),
         _ => 0,
     };
@@ -686,8 +698,15 @@ fn map_entry(
         let node_type = NodeType::from_link(&target);
         Node::new_node(name, node_type, meta)
     } else if filetype.is_block_device() {
-        let node_type = NodeType::Dev { device: m.rdev() };
-        Node::new_node(name, node_type, meta)
+        if matches!(
+            options.with_blockdev.unwrap_or_default(),
+            BlockdevOption::NormalFile
+        ) {
+            Node::new_node(name, NodeType::File, meta)
+        } else {
+            let node_type = NodeType::Dev { device: m.rdev() };
+            Node::new_node(name, node_type, meta)
+        }
     } else if filetype.is_char_device() {
         let node_type = NodeType::Chardev { device: m.rdev() };
         Node::new_node(name, node_type, meta)
