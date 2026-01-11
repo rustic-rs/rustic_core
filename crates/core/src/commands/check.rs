@@ -493,15 +493,15 @@ fn check_packs(
                     });
                 }
 
-                if blob.offset != expected_offset {
+                if blob.location.offset != expected_offset {
                     collector.add_error(CheckError::PackBlobOffsetMismatch {
                         id: p.id,
                         blob_id: blob.id,
-                        offset: blob.offset,
+                        offset: blob.location.offset,
                         expected: expected_offset,
                     });
                 }
-                expected_offset += blob.length;
+                expected_offset += blob.location.length;
             }
         }
     }
@@ -765,7 +765,7 @@ fn check_pack(
         })?
         .into_blobs();
     let mut blobs = index_pack.blobs;
-    blobs.sort_unstable_by_key(|b| b.offset);
+    blobs.sort_unstable();
     if pack_blobs != blobs {
         collector.add_error(CheckError::PackHeaderMismatchIndex { id });
         debug!("pack file header: {pack_blobs:?}");
@@ -777,10 +777,10 @@ fn check_pack(
     // check blobs
     for blob in blobs {
         let blob_id = blob.id;
-        let mut blob_data = be.decrypt(&data.split_to(blob.length as usize))?;
+        let mut blob_data = be.decrypt(&data.split_to(blob.location.length as usize))?;
 
         // TODO: this is identical to backend/decrypt.rs; unify these two parts!
-        if let Some(length) = blob.uncompressed_length {
+        if let Some(length) = blob.location.uncompressed_length {
             blob_data = decode_all(&*blob_data).unwrap();
             if blob_data.len() != length.get() as usize {
                 collector.add_error(CheckError::PackBlobLengthMismatch { id, blob_id });
@@ -795,7 +795,7 @@ fn check_pack(
                 comp_id,
             });
         }
-        p.inc(blob.length.into());
+        p.inc(blob.location.length.into());
     }
 
     Ok(())

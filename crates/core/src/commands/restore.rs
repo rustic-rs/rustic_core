@@ -7,7 +7,6 @@ use log::{debug, error, info, trace, warn};
 use std::{
     cmp::Ordering,
     collections::BTreeMap,
-    num::NonZeroU32,
     path::{Path, PathBuf},
     sync::Mutex,
 };
@@ -23,6 +22,7 @@ use crate::{
         local_destination::LocalDestination,
         node::{Node, NodeType},
     },
+    blob::{BlobLocation, BlobLocations},
     error::{ErrorKind, RusticError, RusticResult},
     progress::{Progress, ProgressBars},
     repofile::packfile::PackId,
@@ -32,9 +32,6 @@ use crate::{
 pub(crate) mod constants {
     /// The maximum number of reader threads to use for restoring.
     pub(crate) const MAX_READER_THREADS_NUM: usize = 20;
-    /// The maximum size of pack-part which is read at once from the backend.
-    /// (needed to limit the memory size used for large backends)
-    pub(crate) const LIMIT_PACK_READ: u32 = 40 * 1024 * 1024; // 40 MiB
 }
 
 type RestoreInfo = BTreeMap<(PackId, BlobLocation), Vec<FileLocation>>;
@@ -424,6 +421,32 @@ pub(crate) fn set_metadata(
         .unwrap_or_else(|_| warn!("restore {}: setting file times failed.", path.display()));
 }
 
+struct PackInfo {
+    pack_id: PackId,
+    from_file: Option<(usize, u64, u32)>,
+    locations: BlobLocations<Vec<(usize, u64)>>,
+}
+
+impl PackInfo {
+    #[allow(clippy::result_large_err)]
+    /// coalesce two `PackInfo` if possible
+    fn coalesce(self, other: Self) -> Result<Self, (Self, Self)> {
+        if self.pack_id == other.pack_id // if the pack is identical
+           && self.from_file.is_none() // and we don't read from a present file
+           // and the blobs can be coalesced
+           && self.locations.can_coalesce(&other.locations)
+        {
+            Ok(Self {
+                pack_id: self.pack_id,
+                from_file: self.from_file,
+                locations: self.locations.append(other.locations),
+            })
+        } else {
+            Err((self, other))
+        }
+    }
+}
+
 /// [`restore_contents`] restores all files contents as described by `file_infos`
 /// using the [`DecryptReadBackend`] `be` and writing them into the [`LocalDestination`] `dest`.
 ///
@@ -478,9 +501,9 @@ fn restore_contents<P: ProgressBars, S: Open>(
     let p = repo.pb.progress_bytes("restoring file contents...");
     p.set_length(total_size);
 
-    let blobs: Vec<_> = restore_info
+    let packs: Vec<_> = restore_info
         .into_iter()
-        .map(|((pack, bl), fls)| {
+        .map(|((pack_id, bl), fls)| {
             let from_file = fls
                 .iter()
                 .find(|fl| fl.matches)
@@ -489,25 +512,17 @@ fn restore_contents<P: ProgressBars, S: Open>(
             let name_dests: Vec<_> = fls
                 .iter()
                 .filter(|fl| !fl.matches)
-                .map(|fl| (bl.clone(), fl.file_idx, fl.file_start))
+                .map(|fl| (fl.file_idx, fl.file_start))
                 .collect();
-            (pack, bl.offset, bl.length, from_file, name_dests)
-        })
-        // optimize reading from backend by reading many blobs in a row
-        .coalesce(|mut x, mut y| {
-            if x.0 == y.0 // if the pack is identical
-                && x.3.is_none() // and we don't read from a present file
-                && y.1 == x.1 + x.2 // and the blobs are contiguous
-                // and we don't trespass the limit
-                && x.2 + y.2 < constants::LIMIT_PACK_READ
-            {
-                x.2 += y.2;
-                x.4.append(&mut y.4);
-                Ok(x)
-            } else {
-                Err((x, y))
+
+            PackInfo {
+                pack_id,
+                from_file,
+                locations: BlobLocations::from_blob_location(bl, name_dests),
             }
         })
+        // optimize reading from backend by reading many blobs in a row
+        .coalesce(PackInfo::coalesce)
         .collect();
 
     let threads = constants::MAX_READER_THREADS_NUM;
@@ -525,10 +540,20 @@ fn restore_contents<P: ProgressBars, S: Open>(
         })?;
 
     pool.in_place_scope(|s| {
-        for (pack, offset, length, from_file, name_dests) in blobs {
+        for PackInfo {
+            pack_id,
+            from_file,
+            locations:
+                BlobLocations {
+                    offset,
+                    length,
+                    blobs,
+                },
+        } in packs
+        {
             let p = &p;
 
-            if !name_dests.is_empty() {
+            if !blobs.is_empty() {
                 // TODO: error handling!
                 s.spawn(move |s1| {
                     let read_data = match &from_file {
@@ -539,13 +564,13 @@ fn restore_contents<P: ProgressBars, S: Open>(
                         }
                         None => {
                             // read needed part of the pack
-                            be.read_partial(FileType::Pack, &pack, false, offset, length)
+                            be.read_partial(FileType::Pack, &pack_id, false, offset, length)
                                 .unwrap()
                         }
                     };
 
                     // save into needed files in parallel
-                    for (bl, group) in &name_dests.into_iter().chunk_by(|item| item.0.clone()) {
+                    for (bl, name_dests) in blobs {
                         let size = bl.data_length().into();
                         let data = if from_file.is_some() {
                             read_data.clone()
@@ -560,7 +585,7 @@ fn restore_contents<P: ProgressBars, S: Open>(
                             )
                             .unwrap()
                         };
-                        for (_, file_idx, start) in group {
+                        for (file_idx, start) in name_dests {
                             let data = data.clone();
                             s1.spawn(move |_| {
                                 let path = &filenames[file_idx];
@@ -608,27 +633,6 @@ pub struct RestorePlan {
     pub matched_size: u64,
     /// Statistics about the restore.
     pub stats: RestoreStats,
-}
-
-/// `BlobLocation` contains information about a blob within a pack
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
-struct BlobLocation {
-    /// The offset of the blob within the pack
-    offset: u32,
-    /// The length of the blob
-    length: u32,
-    /// The uncompressed length of the blob
-    uncompressed_length: Option<NonZeroU32>,
-}
-
-impl BlobLocation {
-    /// Get the length of the data contained in this blob
-    fn data_length(&self) -> u32 {
-        self.uncompressed_length.map_or(
-            self.length - 32, // crypto overhead
-            NonZeroU32::get,
-        )
-    }
 }
 
 /// [`FileLocation`] contains information about a file within a blob
@@ -737,11 +741,7 @@ impl RestorePlan {
         let mut has_unmatched = false;
         for id in file.content.iter().flatten() {
             let ie = repo.get_index_entry(id)?;
-            let bl = BlobLocation {
-                offset: ie.offset,
-                length: ie.length,
-                uncompressed_length: ie.uncompressed_length,
-            };
+            let bl = ie.location;
             let length: u64 = bl.data_length().into();
 
             let matches = open_file

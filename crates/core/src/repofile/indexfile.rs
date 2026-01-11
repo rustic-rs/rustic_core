@@ -1,4 +1,4 @@
-use crate::repofile::RusticTime;
+use crate::{blob::BlobLocation, repofile::RusticTime};
 use std::{cmp::Ordering, num::NonZeroU32};
 
 use jiff::Timestamp;
@@ -97,9 +97,11 @@ impl IndexPack {
         self.blobs.push(IndexBlob {
             id,
             tpe,
-            offset,
-            length,
-            uncompressed_length,
+            location: BlobLocation {
+                offset,
+                length,
+                uncompressed_length,
+            },
         });
     }
 
@@ -134,13 +136,10 @@ pub struct IndexBlob {
     #[serde(rename = "type")]
     /// Type of the blob
     pub tpe: BlobType,
-    /// Offset of the blob within the `pack` file
-    pub offset: u32,
-    /// Length of the blob as stored within the `pack` file
-    pub length: u32,
-    /// Data length of the blob. This is only set if the blob is compressed.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub uncompressed_length: Option<NonZeroU32>,
+
+    #[serde(flatten)]
+    /// Location of the blob within the `pack` file
+    pub location: BlobLocation,
 }
 
 impl PartialOrd<Self> for IndexBlob {
@@ -169,6 +168,6 @@ impl Ord for IndexBlob {
     ///
     /// The ordering of the two blobs
     fn cmp(&self, other: &Self) -> Ordering {
-        self.offset.cmp(&other.offset)
+        self.location.cmp(&other.location)
     }
 }

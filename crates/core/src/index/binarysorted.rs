@@ -1,8 +1,7 @@
 use rayon::prelude::*;
-use std::num::NonZeroU32;
 
 use crate::{
-    blob::{BlobId, BlobType, BlobTypeMap},
+    blob::{BlobId, BlobLocation, BlobType, BlobTypeMap},
     index::{IndexEntry, ReadIndex},
     repofile::{
         indexfile::{IndexBlob, IndexPack},
@@ -17,12 +16,8 @@ pub(crate) struct SortedEntry {
     id: BlobId,
     /// The index of the pack containing the entry.
     pack_idx: usize,
-    /// The offset of the entry in the pack.
-    offset: u32,
-    /// The length of the entry in the pack.
-    length: u32,
-    /// The uncompressed length of the entry.
-    uncompressed_length: Option<NonZeroU32>,
+    /// The location of the entry in the pack.
+    location: BlobLocation,
 }
 
 /// `IndexType` determines which information is stored in the index.
@@ -159,9 +154,7 @@ impl Extend<IndexPack> for IndexCollector {
                 let be = SortedEntry {
                     id: blob.id,
                     pack_idx: idx,
-                    offset: blob.offset,
-                    length: blob.length,
-                    uncompressed_length: blob.uncompressed_length,
+                    location: blob.location,
                 };
                 match &mut self.0[blob_type].entries {
                     EntriesVariants::None => {}
@@ -200,9 +193,7 @@ impl Iterator for PackIndexes {
                 pack.blobs.push(IndexBlob {
                     id: entry.id,
                     tpe: self.tpe,
-                    offset: entry.offset,
-                    length: entry.length,
-                    uncompressed_length: entry.uncompressed_length,
+                    location: entry.location,
                 });
                 *idx += 1;
             }
@@ -247,13 +238,7 @@ impl ReadIndex for Index {
 
         vec.binary_search_by_key(id, |e| e.id).ok().map(|index| {
             let be = &vec[index];
-            IndexEntry::new(
-                blob_type,
-                self.0[blob_type].packs[be.pack_idx],
-                be.offset,
-                be.length,
-                be.uncompressed_length,
-            )
+            IndexEntry::new(blob_type, self.0[blob_type].packs[be.pack_idx], be.location)
         })
     }
 
@@ -275,6 +260,8 @@ impl ReadIndex for Index {
 
 #[cfg(test)]
 mod tests {
+    use std::num::NonZeroU32;
+
     use super::*;
     use crate::{RusticResult, repofile::indexfile::IndexFile};
 
@@ -366,9 +353,11 @@ mod tests {
                     blob_type: BlobType::Tree,
                     pack: "8431a27d38dd7d192dc37abd43a85d6dc4298de72fc8f583c5d7cdd09fa47274"
                         .parse()?,
-                    offset: 794,
-                    length: 592,
-                    uncompressed_length: Some(NonZeroU32::new(1912).unwrap()),
+                    location: BlobLocation {
+                        offset: 794,
+                        length: 592,
+                        uncompressed_length: Some(NonZeroU32::new(1912).unwrap()),
+                    }
                 }),
             );
         }
@@ -422,9 +411,11 @@ mod tests {
             Some(IndexEntry {
                 blob_type: BlobType::Data,
                 pack: "217f145b63fbc10267f5a686186689ea3389bed0d6a54b50ffc84d71f99eb7fa".parse()?,
-                offset: 5185,
-                length: 2095,
-                uncompressed_length: Some(NonZeroU32::new(6411).unwrap()),
+                location: BlobLocation {
+                    offset: 5185,
+                    length: 2095,
+                    uncompressed_length: Some(NonZeroU32::new(6411).unwrap()),
+                }
             }),
         );
         assert!(!index.has(BlobType::Tree, &id));
@@ -437,9 +428,11 @@ mod tests {
             Some(IndexEntry {
                 blob_type: BlobType::Data,
                 pack: "3b25ec6d16401c31099c259311562160b1b5efbcf70bd69d0463104d3b8148fc".parse()?,
-                offset: 6324,
-                length: 1413,
-                uncompressed_length: Some(NonZeroU32::new(3752).unwrap()),
+                location: BlobLocation {
+                    offset: 6324,
+                    length: 1413,
+                    uncompressed_length: Some(NonZeroU32::new(3752).unwrap()),
+                }
             }),
         );
         assert!(!index.has(BlobType::Tree, &id));

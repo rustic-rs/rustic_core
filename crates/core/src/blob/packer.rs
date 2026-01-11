@@ -16,7 +16,7 @@ use crate::{
         FileType,
         decrypt::{DecryptFullBackend, DecryptWriteBackend},
     },
-    blob::{BlobId, BlobType},
+    blob::{BlobId, BlobLocations, BlobType},
     crypto::{CryptoKey, hasher::hash},
     error::{ErrorKind, RusticError, RusticResult},
     index::indexer::SharedIndexer,
@@ -849,18 +849,27 @@ impl Actor {
 #[derive(Debug)]
 pub struct RepackPackBlobs {
     pub pack_id: PackId,
-    pub offset: u32,
-    pub length: u32,
-    pub blobs: Vec<IndexBlob>,
+    pub locations: BlobLocations<BlobId>,
 }
 
 impl RepackPackBlobs {
     pub fn from_index_blob(pack_id: PackId, blob: IndexBlob) -> Self {
         Self {
             pack_id,
-            offset: blob.offset,
-            length: blob.length,
-            blobs: vec![blob],
+            locations: BlobLocations::from_blob_location(blob.location, blob.id),
+        }
+    }
+
+    #[allow(clippy::result_large_err)]
+    /// coalesce two `RepackBlobs` if possible
+    pub fn coalesce(self, other: Self) -> Result<Self, (Self, Self)> {
+        if self.locations.can_coalesce(&other.locations) {
+            Ok(Self {
+                pack_id: self.pack_id,
+                locations: self.locations.append(other.locations),
+            })
+        } else {
+            Err((self, other))
         }
     }
 }
@@ -932,17 +941,17 @@ impl<BE: DecryptFullBackend> Repacker<BE> {
     /// * If the blob could not be added
     /// * If reading the blob from the backend fails
     pub fn add_fast(&self, pack_blobs: RepackPackBlobs) -> RusticResult<()> {
-        let offset = pack_blobs.offset;
+        let offset = pack_blobs.locations.offset;
         let data = self.be.read_partial(
             FileType::Pack,
             &pack_blobs.pack_id,
             self.blob_type.is_cacheable(),
             offset,
-            pack_blobs.length,
+            pack_blobs.locations.length,
         )?;
 
         // TODO: write in parallel
-        for blob in pack_blobs.blobs {
+        for (blob, blob_id) in pack_blobs.locations.blobs {
             let start = usize::try_from(blob.offset - offset)
                 .expect("convert from u32 to usize should not fail!");
             let end = usize::try_from(blob.offset + blob.length - offset)
@@ -950,7 +959,7 @@ impl<BE: DecryptFullBackend> Repacker<BE> {
             self.packer
                 .add_raw(
                     &data[start..end],
-                    &blob.id,
+                    &blob_id,
                     0,
                     blob.uncompressed_length,
                     Some(self.size_limit),
@@ -960,7 +969,7 @@ impl<BE: DecryptFullBackend> Repacker<BE> {
                         .prepend_guidance_line(
                             "Failed to fast-add (unchecked) blob `{blob_id}` to packfile.",
                         )
-                        .attach_context("blob_id", blob.id.to_string())
+                        .attach_context("blob_id", blob_id.to_string())
                 })?;
         }
 
@@ -979,17 +988,17 @@ impl<BE: DecryptFullBackend> Repacker<BE> {
     /// * If the blob could not be added
     /// * If reading the blob from the backend fails
     pub fn add(&self, pack_blobs: RepackPackBlobs) -> RusticResult<()> {
-        let offset = pack_blobs.offset;
+        let offset = pack_blobs.locations.offset;
         let read_data = self.be.read_partial(
             FileType::Pack,
             &pack_blobs.pack_id,
             self.blob_type.is_cacheable(),
             offset,
-            pack_blobs.length,
+            pack_blobs.locations.length,
         )?;
 
         // TODO: write in parallel
-        for blob in pack_blobs.blobs {
+        for (blob, blob_id) in pack_blobs.locations.blobs {
             let start = usize::try_from(blob.offset - offset)
                 .expect("convert from u32 to usize should not fail!");
             let end = usize::try_from(blob.offset + blob.length - offset)
@@ -999,7 +1008,7 @@ impl<BE: DecryptFullBackend> Repacker<BE> {
                 .read_encrypted_from_partial(&read_data[start..end], blob.uncompressed_length)?;
 
             self.packer
-                .add_with_sizelimit(data, blob.id, Some(self.size_limit))
+                .add_with_sizelimit(data, blob_id, Some(self.size_limit))
                 .map_err(|err| {
                     RusticError::with_source(
                         ErrorKind::Internal,
