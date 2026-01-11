@@ -171,13 +171,21 @@ impl Parent {
 
         p_node
             .find(|p_node| {
+                let p_meta = &p_node.meta;
+                let meta = &node.meta;
+
+                let match_ctime =
+                    ignore_ctime || p_meta.ctime.zip(meta.ctime).is_none_or(|(x, y)| x == y);
+                let match_inode = !ignore_inode
+                    || p_meta.inode == 0
+                    || meta.inode == 0
+                    || p_meta.inode == meta.inode;
+
                 p_node.node_type == node.node_type
-                    && p_node.meta.size == node.meta.size
-                    && p_node.meta.mtime == node.meta.mtime
-                    && (ignore_ctime || p_node.meta.ctime == node.meta.ctime)
-                    && (ignore_inode
-                        || p_node.meta.inode == 0
-                        || p_node.meta.inode == node.meta.inode)
+                    && p_meta.size == meta.size
+                    && p_meta.mtime == meta.mtime
+                    && match_ctime
+                    && match_inode
             })
             .map_or(ParentResult::NotMatched, ParentResult::Matched)
     }
