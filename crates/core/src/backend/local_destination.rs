@@ -25,7 +25,7 @@ use nix::{
 };
 
 #[cfg(not(windows))]
-use crate::backend::ignore::mapper::map_mode_from_go;
+use crate::backend::ignore::mapper::nix_mapper::map_mode_from_go;
 #[cfg(not(windows))]
 use crate::backend::node::NodeType;
 use crate::{
