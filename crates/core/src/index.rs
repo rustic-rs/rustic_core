@@ -1,11 +1,11 @@
-use std::{num::NonZeroU32, sync::Arc, thread::sleep, time::Duration};
+use std::{sync::Arc, thread::sleep, time::Duration};
 
 use bytes::Bytes;
 use derive_more::Constructor;
 
 use crate::{
     backend::{FileType, decrypt::DecryptReadBackend},
-    blob::{BlobId, BlobType, DataId, tree::TreeId},
+    blob::{BlobId, BlobLocation, BlobType, DataId, tree::TreeId},
     error::{ErrorKind, RusticError, RusticResult},
     index::binarysorted::{Index, IndexCollector, IndexType},
     progress::Progress,
@@ -25,12 +25,8 @@ pub struct IndexEntry {
     blob_type: BlobType,
     /// The pack the blob is in
     pub pack: PackId,
-    /// The offset of the blob in the pack
-    pub offset: u32,
-    /// The length of the blob in the pack
-    pub length: u32,
-    /// The uncompressed length of the blob
-    pub uncompressed_length: Option<NonZeroU32>,
+    /// The location of the blob in the pack
+    pub location: BlobLocation,
 }
 
 impl IndexEntry {
@@ -45,9 +41,7 @@ impl IndexEntry {
         Self {
             blob_type: blob.tpe,
             pack,
-            offset: blob.offset,
-            length: blob.length,
-            uncompressed_length: blob.uncompressed_length,
+            location: blob.location,
         }
     }
 
@@ -65,9 +59,7 @@ impl IndexEntry {
             FileType::Pack,
             &self.pack,
             self.blob_type.is_cacheable(),
-            self.offset,
-            self.length,
-            self.uncompressed_length,
+            self.location,
         )?;
 
         Ok(data)
@@ -76,10 +68,7 @@ impl IndexEntry {
     /// Get the length of the data described by the [`IndexEntry`]
     #[must_use]
     pub const fn data_length(&self) -> u32 {
-        match self.uncompressed_length {
-            None => self.length - 32, // crypto overhead
-            Some(length) => length.get(),
-        }
+        self.location.data_length()
     }
 }
 

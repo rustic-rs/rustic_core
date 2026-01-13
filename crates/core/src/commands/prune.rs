@@ -46,11 +46,6 @@ use crate::{
 pub(super) mod constants {
     /// Minimum size of an index file to be considered for pruning
     pub(super) const MIN_INDEX_LEN: usize = 10_000;
-    /// The maximum size of pack-part which is read at once from the backend.
-    /// (needed to limit the memory size used for large backends)
-    pub(crate) const LIMIT_PACK_READ: u32 = 40 * 1024 * 1024; // 40 MiB
-    /// The maximum size of holes which are still read when repacking
-    pub(crate) const MAX_HOLESIZE: u32 = 256 * 1024; // 256 kiB
 }
 
 #[allow(clippy::struct_excessive_bools)]
@@ -568,7 +563,7 @@ impl PrunePack {
     fn is_compressed(&self) -> bool {
         self.blobs
             .iter()
-            .all(|blob| blob.uncompressed_length.is_some())
+            .all(|blob| blob.location.uncompressed_length.is_some())
     }
 }
 
@@ -1409,24 +1404,12 @@ pub(crate) fn prune_repository<P: ProgressBars, S: Open>(
                     .blobs
                     .into_iter()
                     .map(|blob| RepackPackBlobs::from_index_blob(pack.id, blob))
-                    .coalesce(|mut x, mut y| {
-                        // if the blobs are (almost) contiguous and we don't trespass the limit, read blobs one partial read
-                        if y.offset <= x.offset + x.length + constants::MAX_HOLESIZE
-                            && y.offset > x.offset
-                            && y.offset + y.length - x.offset <= constants::LIMIT_PACK_READ
-                        {
-                            x.length = y.offset + y.length - x.offset; // read till the end of y
-                            x.blobs.append(&mut y.blobs);
-                            Ok(x)
-                        } else {
-                            Err((x, y))
-                        }
-                    })
+                    .coalesce(RepackPackBlobs::coalesce)
                     .collect();
 
                 // TODO: repack in parallel
                 for blobs in blobs {
-                    let length = u64::from(blobs.length);
+                    let length = u64::from(blobs.locations.length);
                     if opts.fast_repack {
                         repacker.add_fast(blobs)?;
                     } else {
@@ -1518,9 +1501,10 @@ impl PackInfo {
         // correctly.
         // If we found a needed blob, we stop and process the information that the pack is actually needed.
         let first_needed = pack.blobs.iter().position(|blob| {
+            let length = blob.location.length;
             match used_ids.get_mut(&blob.id) {
                 None | Some(0) => {
-                    pi.unused_size += blob.length;
+                    pi.unused_size += length;
                     pi.unused_blobs += 1;
                 }
                 Some(count) => {
@@ -1528,12 +1512,12 @@ impl PackInfo {
                     *count -= 1;
                     if *count == 0 {
                         // blob is actually needed
-                        pi.used_size += blob.length;
+                        pi.used_size += length;
                         pi.used_blobs += 1;
                         return true; // break the search
                     }
                     // blob is not needed
-                    pi.unused_size += blob.length;
+                    pi.unused_size += length;
                     pi.unused_blobs += 1;
                 }
             }
@@ -1548,9 +1532,9 @@ impl PackInfo {
                     None | Some(0) => {} // already correctly marked
                     Some(count) => {
                         // remark blob as used
-                        pi.unused_size -= blob.length;
+                        pi.unused_size -= blob.location.length;
                         pi.unused_blobs -= 1;
-                        pi.used_size += blob.length;
+                        pi.used_size += blob.location.length;
                         pi.used_blobs += 1;
                         *count = 0; // count = 0 indicates to other packs that the blob is not needed anymore.
                     }
@@ -1560,12 +1544,12 @@ impl PackInfo {
             for blob in &pack.blobs[first_needed + 1..] {
                 match used_ids.get_mut(&blob.id) {
                     None | Some(0) => {
-                        pi.unused_size += blob.length;
+                        pi.unused_size += blob.location.length;
                         pi.unused_blobs += 1;
                     }
                     Some(count) => {
                         // blob is used in this pack
-                        pi.used_size += blob.length;
+                        pi.used_size += blob.location.length;
                         pi.used_blobs += 1;
                         *count = 0; // count = 0 indicates to other packs that the blob is not needed anymore.
                     }

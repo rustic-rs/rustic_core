@@ -1,11 +1,21 @@
 pub(crate) mod packer;
 pub(crate) mod tree;
 
+use std::{cmp::Ordering, num::NonZeroU32};
+
 use derive_more::Constructor;
 use enum_map::{Enum, EnumMap};
 use serde_derive::{Deserialize, Serialize};
 
 use crate::define_new_id_struct;
+
+pub(super) mod constants {
+    /// The maximum size of pack-part which is read at once from the backend.
+    /// (needed to limit the memory size used for large backends)
+    pub(crate) const LIMIT_PACK_READ: u32 = 40 * 1024 * 1024; // 40 MiB
+    /// The maximum size of holes which are still read when repacking
+    pub(crate) const MAX_HOLESIZE: u32 = 256 * 1024; // 256 kiB
+}
 
 /// All [`BlobType`]s which are supported by the repository
 pub const ALL_BLOB_TYPES: [BlobType; 2] = [BlobType::Tree, BlobType::Data];
@@ -121,4 +131,76 @@ pub(crate) struct Blob {
 
     /// The id of the blob
     id: BlobId,
+}
+
+/// `BlobLocation` contains information about a blob within a pack
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BlobLocation {
+    /// The offset of the blob within the pack
+    pub offset: u32,
+    /// The length of the blob
+    pub length: u32,
+    /// The uncompressed length of the blob
+    pub uncompressed_length: Option<NonZeroU32>,
+}
+
+impl PartialOrd<Self> for BlobLocation {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for BlobLocation {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.offset.cmp(&other.offset)
+    }
+}
+
+impl BlobLocation {
+    /// Get the length of the data contained in this blob
+    pub const fn data_length(&self) -> u32 {
+        match self.uncompressed_length {
+            None => self.length - 32,
+            Some(length) => NonZeroU32::get(length),
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct BlobLocations<T> {
+    pub offset: u32,
+    pub length: u32,
+    pub blobs: Vec<(BlobLocation, T)>,
+}
+
+impl<T> BlobLocations<T> {
+    pub fn from_blob_location(location: BlobLocation, target: T) -> Self {
+        Self {
+            offset: location.offset,
+            length: location.length,
+            blobs: vec![(location, target)],
+        }
+    }
+    pub fn can_coalesce(&self, other: &Self) -> bool {
+        // if the blobs are (almost) contiguous and we don't trespass the limit, blobs can be read in one partial read
+        other.offset <= self.offset + self.length + constants::MAX_HOLESIZE
+            && other.offset > self.offset
+            && other.offset + other.length - self.offset <= constants::LIMIT_PACK_READ
+    }
+
+    pub fn append(mut self, mut other: Self) -> Self {
+        self.length = other.offset + other.length - self.offset; // read till the end of other
+        self.blobs.append(&mut other.blobs);
+        self
+    }
+
+    #[allow(clippy::result_large_err)]
+    /// coalesce two `BlobLocations` if possible
+    pub fn coalesce(self, other: Self) -> Result<Self, (Self, Self)> {
+        if self.can_coalesce(&other) {
+            Ok(self.append(other))
+        } else {
+            Err((self, other))
+        }
+    }
 }
