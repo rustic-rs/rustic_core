@@ -17,7 +17,7 @@ use log::{debug, error, info};
 use serde_with::{DisplayFromStr, serde_as};
 
 use crate::{
-    RepositoryBackends, RusticError,
+    Excludes, RepositoryBackends, RusticError,
     backend::{
         FileType, FindInBackend, ReadBackend, WriteBackend,
         cache::{Cache, CachedBackend},
@@ -46,6 +46,7 @@ use crate::{
         },
         repoinfo::{IndexInfos, RepoFileInfos},
         restore::{RestoreOptions, RestorePlan, collect_and_prepare, restore_repository},
+        rewrite::{rewrite_snapshots, rewrite_snapshots_with_excludes},
     },
     crypto::aespoly1305::Key,
     error::{ErrorKind, RusticResult},
@@ -55,7 +56,8 @@ use crate::{
     },
     progress::{NoProgressBars, Progress, ProgressBars},
     repofile::{
-        ConfigFile, KeyId, PathList, RepoFile, RepoId, SnapshotFile, SnapshotSummary, Tree,
+        ConfigFile, KeyId, PathList, RepoFile, RepoId, SnapshotFile, SnapshotModification,
+        SnapshotSummary, Tree,
         configfile::ConfigId,
         keyfile::find_key_in_backend,
         packfile::PackId,
@@ -1498,6 +1500,28 @@ impl<P: ProgressBars, S: Open> Repository<P, S> {
     pub fn repair_index(&self, opts: &RepairIndexOptions, dry_run: bool) -> RusticResult<()> {
         repair_index(self, *opts, dry_run)
     }
+
+    /// Rewrite snapshots using snapshot modifications.
+    ///
+    /// # Arguments
+    ///
+    /// * `snapshots` - The snapshots to rewrite
+    /// * `modification` - The modification(s) to apply to each snapshot
+    /// * `remove` - If true, remove old snapshots
+    /// * `dry_run` - If true, only print what would be done
+    ///  
+    /// # Errors
+    ///
+    // TODO: Document errors
+    pub fn rewrite_snapshots(
+        &self,
+        snapshots: Vec<SnapshotFile>,
+        modification: &SnapshotModification,
+        dry_run: bool,
+        delete: bool,
+    ) -> RusticResult<Vec<SnapshotFile>> {
+        rewrite_snapshots(self, snapshots, modification, dry_run, delete)
+    }
 }
 
 /// A repository which is indexed such that all tree blobs are contained in the index.
@@ -2181,5 +2205,35 @@ impl<P: ProgressBars, S: IndexedFull> Repository<P, S> {
         dry_run: bool,
     ) -> RusticResult<()> {
         repair_snapshots(self, opts, snapshots, dry_run)
+    }
+
+    /// Rewrite snapshots and trees using snapshot modifications and excludes.
+    ///
+    /// This traverses all trees of all given snapshots.
+    ///
+    /// # Arguments
+    ///
+    /// * `snapshots` - The snapshots to rewrite
+    /// * `modification` - The modification(s) to apply to each snapshot
+    /// * `excludes` - The excludes to apply to each snapshot tree
+    /// * `remove` - If true, remove old snapshots
+    /// * `dry_run` - If true, only print what would be done
+    ///  
+    /// # Warning
+    ///
+    /// * If you remove the original snapshots, you may loose data!
+    ///
+    /// # Errors
+    ///
+    // TODO: Document errors
+    pub fn rewrite_snapshots_with_excludes(
+        &self,
+        snapshots: Vec<SnapshotFile>,
+        modification: &SnapshotModification,
+        excludes: &Excludes,
+        dry_run: bool,
+        delete: bool,
+    ) -> RusticResult<Vec<SnapshotFile>> {
+        rewrite_snapshots_with_excludes(self, snapshots, modification, excludes, dry_run, delete)
     }
 }

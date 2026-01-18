@@ -1,3 +1,6 @@
+mod modification;
+pub use modification::SnapshotModification;
+
 use std::{
     cmp::Ordering,
     collections::{BTreeMap, BTreeSet},
@@ -163,7 +166,7 @@ impl SnapshotOptions {
 /// This is an extended version of the summaryOutput structure of restic in
 /// restic/internal/ui/backup$/json.go
 #[serde_as]
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 #[serde(default)]
 #[non_exhaustive]
 pub struct SnapshotSummary {
@@ -194,10 +197,10 @@ pub struct SnapshotSummary {
     /// Total processed directories
     pub total_dirs_processed: u64,
 
-    /// Total number of data blobs added by this snapshot
+    /// Total size of all processed dirs
     pub total_dirsize_processed: u64,
 
-    /// Total size of all processed dirs
+    /// Total number of data blobs added by this snapshot
     pub data_blobs: u64,
 
     /// Total number of tree blobs added by this snapshot
@@ -1101,42 +1104,20 @@ impl SnapshotFile {
         }
     }
 
-    /// Modifies the snapshot setting/adding/removing tag(s) and modifying [`DeleteOption`]s.
+    /// Modifies the snapshot according to a [`SnapshotModification`].
     ///
     /// # Arguments
     ///
-    /// * `set` - The tags to set
-    /// * `add` - The tags to add
-    /// * `remove` - The tags to remove
-    /// * `delete` - The delete option to set
+    /// * `modification` - The modification(s) to make
     ///
     /// # Returns
     ///
-    /// `None` if the snapshot was not changed and
-    /// `Some(snap)` with a copy of the changed snapshot if it was changed.
-    pub fn modify_sn(
-        &mut self,
-        set: Vec<StringList>,
-        add: Vec<StringList>,
-        remove: &[StringList],
-        delete: &Option<DeleteOption>,
-    ) -> Option<Self> {
-        let mut changed = false;
-
-        if !set.is_empty() {
-            changed |= self.set_tags(set);
-        }
-        changed |= self.add_tags(add);
-        changed |= self.remove_tags(remove);
-
-        if let Some(delete) = delete {
-            if &self.delete != delete {
-                self.delete = delete.clone();
-                changed = true;
-            }
-        }
-
-        changed.then_some(self.clone())
+    /// `true` if the snapshot was changed.
+    ///
+    /// # Errors
+    /// if reading a description from a file failed
+    pub fn modify(&mut self, modification: &SnapshotModification) -> RusticResult<bool> {
+        modification.apply_to(self)
     }
 
     /// Clear ids which are not saved by the copy command (and not compared when checking if snapshots already exist in the copy target)

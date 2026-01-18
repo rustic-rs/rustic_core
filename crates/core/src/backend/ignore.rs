@@ -8,7 +8,7 @@ use std::{
 
 use bytesize::ByteSize;
 use derive_setters::Setters;
-use ignore::{Walk, WalkBuilder, overrides::OverrideBuilder};
+use ignore::{Walk, WalkBuilder};
 use log::warn;
 use serde_with::{DisplayFromStr, serde_as};
 
@@ -16,6 +16,7 @@ use serde_with::{DisplayFromStr, serde_as};
 use std::num::TryFromIntError;
 
 use crate::{
+    Excludes,
     backend::{ReadSource, ReadSourceEntry, ReadSourceOpen},
     error::{ErrorKind, RusticError, RusticResult},
 };
@@ -67,26 +68,6 @@ pub struct LocalSource {
 #[non_exhaustive]
 /// [`LocalSourceFilterOptions`] allow to filter a local source by various criteria.
 pub struct LocalSourceFilterOptions {
-    /// Glob pattern to exclude/include (can be specified multiple times)
-    #[cfg_attr(feature = "clap", clap(long = "glob", value_name = "GLOB"))]
-    #[cfg_attr(feature = "merge", merge(strategy = conflate::vec::overwrite_empty))]
-    pub globs: Vec<String>,
-
-    /// Same as --glob pattern but ignores the casing of filenames
-    #[cfg_attr(feature = "clap", clap(long = "iglob", value_name = "GLOB"))]
-    #[cfg_attr(feature = "merge", merge(strategy = conflate::vec::overwrite_empty))]
-    pub iglobs: Vec<String>,
-
-    /// Read glob patterns to exclude/include from this file (can be specified multiple times)
-    #[cfg_attr(feature = "clap", clap(long = "glob-file", value_name = "FILE"))]
-    #[cfg_attr(feature = "merge", merge(strategy = conflate::vec::overwrite_empty))]
-    pub glob_files: Vec<String>,
-
-    /// Same as --glob-file ignores the casing of filenames in patterns
-    #[cfg_attr(feature = "clap", clap(long = "iglob-file", value_name = "FILE"))]
-    #[cfg_attr(feature = "merge", merge(strategy = conflate::vec::overwrite_empty))]
-    pub iglob_files: Vec<String>,
-
     /// Ignore files based on .gitignore files
     #[cfg_attr(feature = "clap", clap(long))]
     #[cfg_attr(feature = "merge", merge(strategy = conflate::bool::overwrite_false))]
@@ -142,6 +123,7 @@ impl LocalSource {
     #[allow(clippy::too_many_lines)]
     pub fn new(
         save_opts: LocalSourceSaveOptions,
+        excludes: &Excludes,
         filter_opts: &LocalSourceFilterOptions,
         backup_paths: &[impl AsRef<Path>],
     ) -> RusticResult<Self> {
@@ -151,91 +133,7 @@ impl LocalSource {
             _ = walk_builder.add(path);
         }
 
-        let mut override_builder = OverrideBuilder::new("");
-
-        // FIXME: Refactor this to a function to be reused
-        // This is the same of `tree::NodeStreamer::new_with_glob()`
-        for g in &filter_opts.globs {
-            _ = override_builder.add(g).map_err(|err| {
-                RusticError::with_source(
-                    ErrorKind::Internal,
-                    "Failed to add glob pattern `{glob}` to override builder.",
-                    err,
-                )
-                .attach_context("glob", g)
-                .ask_report()
-            })?;
-        }
-
-        for file in &filter_opts.glob_files {
-            for line in std::fs::read_to_string(file)
-                .map_err(|err| {
-                    RusticError::with_source(
-                        ErrorKind::Internal,
-                        "Failed to read string from glob file at `{glob_file}`",
-                        err,
-                    )
-                    .attach_context("glob_file", file)
-                    .ask_report()
-                })?
-                .lines()
-            {
-                _ = override_builder.add(line).map_err(|err| {
-                    RusticError::with_source(
-                        ErrorKind::Internal,
-                        "Failed to add glob pattern line `{glob_pattern_line}` to override builder.",
-                        err,
-                    )
-                    .attach_context("glob_pattern_line", line.to_string())
-                    .ask_report()
-                })?;
-            }
-        }
-
-        _ = override_builder.case_insensitive(true).map_err(|err| {
-            RusticError::with_source(
-                ErrorKind::Internal,
-                "Failed to set case insensitivity in override builder.",
-                err,
-            )
-            .ask_report()
-        })?;
-        for g in &filter_opts.iglobs {
-            _ = override_builder.add(g).map_err(|err| {
-                RusticError::with_source(
-                    ErrorKind::Internal,
-                    "Failed to add iglob pattern `{iglob}` to override builder.",
-                    err,
-                )
-                .attach_context("iglob", g)
-                .ask_report()
-            })?;
-        }
-
-        for file in &filter_opts.iglob_files {
-            for line in std::fs::read_to_string(file)
-                .map_err(|err| {
-                    RusticError::with_source(
-                        ErrorKind::Internal,
-                        "Failed to read string from iglob file at `{iglob_file}`",
-                        err,
-                    )
-                    .attach_context("iglob_file", file)
-                    .ask_report()
-                })?
-                .lines()
-            {
-                _ = override_builder.add(line).map_err(|err| {
-                    RusticError::with_source(
-                        ErrorKind::Internal,
-                        "Failed to add iglob pattern line `{iglob_pattern_line}` to override builder.",
-                        err,
-                    )
-                    .attach_context("iglob_pattern_line", line.to_string())
-                    .ask_report()
-                })?;
-            }
-        }
+        let overrides = excludes.as_override()?;
 
         for file in &filter_opts.custom_ignorefiles {
             _ = walk_builder.add_custom_ignore_filename(file);
@@ -250,14 +148,7 @@ impl LocalSource {
             .sort_by_file_path(Path::cmp)
             .same_file_system(filter_opts.one_file_system)
             .max_filesize(filter_opts.exclude_larger_than.map(|s| s.as_u64()))
-            .overrides(override_builder.build().map_err(|err| {
-                RusticError::with_source(
-                    ErrorKind::Internal,
-                    "Failed to build matcher for a set of glob overrides.",
-                    err,
-                )
-                .ask_report()
-            })?);
+            .overrides(overrides);
 
         let exclude_if_present = filter_opts.exclude_if_present.clone();
         if !filter_opts.exclude_if_present.is_empty() {

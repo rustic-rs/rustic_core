@@ -132,7 +132,9 @@ pub use crate::{
     },
     blob::{
         BlobId, DataId, PackedId,
-        tree::{FindMatches, FindNode, TreeId, TreeStreamerOptions as LsOptions},
+        tree::{
+            FindMatches, FindNode, TreeId, TreeStreamerOptions as LsOptions, excludes::Excludes,
+        },
     },
     commands::{
         backup::{BackupOptions, ParentOptions},
