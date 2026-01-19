@@ -38,10 +38,9 @@ pub enum TreeAction {
 
 #[derive(Debug)]
 pub enum NodeAction {
-    UnchangedNode(Node),
-    ChangedNode(Node),
+    Node(Node, bool), // bool is change indicator; true: node has been changed
     Removed,
-    VisitTree(TreeId, Node),
+    VisitTree(TreeId, Node, bool), // bool is change indicator; true: node has been changed
     CreateTree(Node),
 }
 
@@ -56,9 +55,9 @@ pub trait Visitor {
         if node.is_dir()
             && let Some(subtree) = node.subtree
         {
-            NodeAction::VisitTree(subtree, node)
+            NodeAction::VisitTree(subtree, node, false)
         } else {
-            NodeAction::UnchangedNode(node)
+            NodeAction::Node(node, false)
         }
     }
     fn post_process_tree(
@@ -70,14 +69,7 @@ pub trait Visitor {
     ) -> ModifierChange {
         modify_result
     }
-    fn post_process(
-        &mut self,
-        _path: PathBuf,
-        _id: TreeId,
-        _changed: bool,
-        _new_id: Option<TreeId>,
-        _tree: &Tree,
-    ) {
+    fn post_process(&mut self, _path: PathBuf, _id: TreeId, _new_id: Option<TreeId>, _tree: &Tree) {
     }
 }
 
@@ -140,11 +132,8 @@ impl<'a, BE: DecryptFullBackend, I: ReadGlobalIndex> TreeModifier<'a, BE, I> {
         for node in tree {
             let node_path = path.join(node.name());
             match visitor.process_node(&node_path, node, id) {
-                NodeAction::UnchangedNode(node) => {
-                    new_tree.add(node);
-                }
-                NodeAction::ChangedNode(node) => {
-                    changed = true;
+                NodeAction::Node(node, node_changed) => {
+                    changed |= node_changed;
                     new_tree.add(node);
                 }
                 NodeAction::Removed => {
@@ -155,7 +144,8 @@ impl<'a, BE: DecryptFullBackend, I: ReadGlobalIndex> TreeModifier<'a, BE, I> {
                     node.subtree = Some(self.save_tree(&Tree::new())?);
                     new_tree.add(node);
                 }
-                NodeAction::VisitTree(tree, mut node) => {
+                NodeAction::VisitTree(tree, mut node, tree_changed) => {
+                    changed |= tree_changed;
                     let modify_result = self.modify_tree(node_path.clone(), tree, visitor)?;
                     let modify_result =
                         visitor.post_process_tree(node_path, tree, id, modify_result);
@@ -175,18 +165,19 @@ impl<'a, BE: DecryptFullBackend, I: ReadGlobalIndex> TreeModifier<'a, BE, I> {
                 }
             }
         }
-        if changed {
+
+        let new_id = if changed {
             let new_id = self.save_tree(&new_tree)?;
-            visitor.post_process(path, id, changed, Some(new_id), &new_tree);
-            Ok(ModifierChange::Changed(new_id))
+            (new_id != id).then_some(new_id)
         } else {
-            visitor.post_process(path, id, changed, None, &new_tree);
-            Ok(ModifierChange::Unchanged)
-        }
+            None
+        };
+
+        visitor.post_process(path, id, new_id, &new_tree);
+        Ok(new_id.map_or_else(|| ModifierChange::Unchanged, ModifierChange::Changed))
     }
 
     pub fn save_tree(&self, new_tree: &Tree) -> RusticResult<TreeId> {
-        // the tree has been changed => save it
         let (chunk, new_id) = new_tree.serialize().map_err(|err| {
             RusticError::with_source(ErrorKind::Internal, "Failed to serialize tree.", err)
                 .ask_report()

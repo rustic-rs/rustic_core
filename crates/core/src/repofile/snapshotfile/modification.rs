@@ -15,7 +15,7 @@ use crate::{
 #[cfg_attr(feature = "clap", derive(clap::Parser))]
 #[cfg_attr(feature = "merge", derive(conflate::Merge))]
 #[serde_as]
-#[derive(Debug, Default, Setters, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Setters, Serialize, Deserialize)]
 #[setters(into)]
 #[non_exhaustive]
 pub struct SnapshotModification {
