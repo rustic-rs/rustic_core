@@ -10,7 +10,7 @@ use serde_derive::{Deserialize, Serialize};
 use serde_with::{DisplayFromStr, serde_as};
 
 use crate::{
-    CommandInput,
+    CommandInput, Excludes,
     archiver::{Archiver, parent::Parent},
     backend::{
         childstdout::ChildStdoutSource,
@@ -188,6 +188,11 @@ pub struct BackupOptions {
 
     #[cfg_attr(feature = "clap", clap(flatten))]
     #[serde(flatten)]
+    /// excludes
+    pub excludes: Excludes,
+
+    #[cfg_attr(feature = "clap", clap(flatten))]
+    #[serde(flatten)]
     /// Options how to filter from a local source
     pub ignore_filter_opts: LocalSourceFilterOptions,
 }
@@ -312,6 +317,7 @@ pub(crate) fn backup<P: ProgressBars, S: IndexedIds>(
     } else {
         let src = LocalSource::new(
             opts.ignore_save_opts,
+            &opts.excludes,
             &opts.ignore_filter_opts,
             &backup_path,
         )?;

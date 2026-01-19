@@ -162,5 +162,8 @@ pub use {
     indexfile::{IndexBlob, IndexFile, IndexId, IndexPack},
     keyfile::{KeyFile, KeyId},
     packfile::{HeaderEntry, PackHeader, PackHeaderLength, PackHeaderRef, PackId},
-    snapshotfile::{DeleteOption, PathList, SnapshotFile, SnapshotId, SnapshotSummary, StringList},
+    snapshotfile::{
+        DeleteOption, PathList, SnapshotFile, SnapshotId, SnapshotModification, SnapshotSummary,
+        StringList,
+    },
 };
