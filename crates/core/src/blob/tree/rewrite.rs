@@ -6,37 +6,66 @@ use std::{
 };
 
 use derive_more::Add;
+use derive_setters::Setters;
 use ignore::{Match, overrides::Override};
+use serde::{Deserialize, Serialize};
 
 use crate::{
     RusticResult, TreeId,
-    backend::decrypt::{DecryptFullBackend, DecryptWriteBackend},
+    backend::{
+        decrypt::{DecryptFullBackend, DecryptWriteBackend},
+        node::modification::NodeModification,
+    },
     blob::tree::{
         excludes::Excludes,
-        modify::{
-            DefaultVisitor, ModifierAction, ModifierChange, NodeAction, TreeModifier, Visitor,
-        },
+        modify::{ModifierAction, ModifierChange, NodeAction, TreeModifier, Visitor},
     },
     index::ReadGlobalIndex,
     repofile::{ConfigFile, Node, Tree},
 };
 
+#[cfg_attr(feature = "clap", derive(clap::Parser))]
+#[cfg_attr(feature = "merge", derive(conflate::Merge))]
+#[derive(Clone, Debug, Default, Setters, Serialize, Deserialize)]
+#[serde(default, rename_all = "kebab-case", deny_unknown_fields)]
+#[setters(into)]
+#[non_exhaustive]
+/// Parameters used for rewriting
+pub struct RewriteTreesOptions {
+    /// Exclude options
+    #[cfg_attr(feature = "clap", clap(flatten))]
+    pub excludes: Excludes,
+
+    /// Node modifications
+    #[cfg_attr(feature = "clap", clap(flatten))]
+    pub node_modification: NodeModification,
+
+    /// rewrite all trees
+    #[cfg_attr(feature = "clap", clap(long))]
+    #[cfg_attr(feature = "merge", merge(strategy = conflate::bool::overwrite_false))]
+    pub all_trees: bool,
+}
+
 #[derive(Debug)]
 pub struct RewriteVisitor<'a, I: ReadGlobalIndex> {
     index: &'a I,
+    overrides: Override,
+    node_modification: NodeModification,
+    all_trees: bool,
     changed: BTreeMap<(PathBuf, TreeId), TreeId>,
     unchanged: BTreeSet<(PathBuf, TreeId)>,
-    overrides: Override,
     summary: BTreeMap<TreeId, Summary>,
 }
 
 impl<'a, I: ReadGlobalIndex> RewriteVisitor<'a, I> {
-    pub fn new(index: &'a I, excludes: &Excludes) -> RusticResult<Self> {
+    pub fn new(index: &'a I, opts: &RewriteTreesOptions) -> RusticResult<Self> {
         Ok(Self {
             index,
+            overrides: opts.excludes.as_override()?,
+            node_modification: opts.node_modification.clone(),
+            all_trees: opts.all_trees,
             changed: BTreeMap::new(),
             unchanged: BTreeSet::new(),
-            overrides: excludes.as_override()?,
             summary: BTreeMap::new(),
         })
     }
@@ -44,9 +73,7 @@ impl<'a, I: ReadGlobalIndex> RewriteVisitor<'a, I> {
 
 impl<I: ReadGlobalIndex> Visitor for RewriteVisitor<'_, I> {
     fn pre_process(&self, path: &PathBuf, id: TreeId) -> ModifierAction {
-        if let Match::Ignore(_) = self.overrides.matched(path, false) {
-            ModifierAction::Change(ModifierChange::Removed)
-        } else if self.unchanged.contains(&(path.clone(), id)) {
+        if self.unchanged.contains(&(path.clone(), id)) {
             ModifierAction::Change(ModifierChange::Unchanged)
         } else if let Some(r) = self.changed.get(&(path.clone(), id)) {
             ModifierAction::Change(ModifierChange::Changed(*r))
@@ -55,41 +82,23 @@ impl<I: ReadGlobalIndex> Visitor for RewriteVisitor<'_, I> {
         }
     }
 
-    fn process_node(&mut self, path: &PathBuf, node: Node, id: TreeId) -> NodeAction {
+    fn process_node(&mut self, path: &PathBuf, mut node: Node, id: TreeId) -> NodeAction {
         self.summary.entry(id).or_default().update(&node);
         if let Match::Ignore(_) = self.overrides.matched(path, node.is_dir()) {
             NodeAction::Removed
         } else {
-            DefaultVisitor.process_node(path, node, id)
+            let changed = self.node_modification.modify_node(&mut node) | self.all_trees;
+            if node.is_dir()
+                && let Some(subtree) = node.subtree
+            {
+                NodeAction::VisitTree(subtree, node, changed)
+            } else {
+                NodeAction::Node(node, changed)
+            }
         }
     }
-    fn post_process_tree(
-        &mut self,
-        path: PathBuf,
-        tree: TreeId,
-        parent_tree: TreeId,
-        modify_result: ModifierChange,
-    ) -> ModifierChange {
-        let summary = self
-            .summary
-            .get(&tree)
-            .map_or_else(Default::default, Clone::clone);
-        self.summary
-            .entry(parent_tree)
-            .or_default()
-            .add_assign(summary);
 
-        DefaultVisitor.post_process_tree(path, tree, parent_tree, modify_result)
-    }
-
-    fn post_process(
-        &mut self,
-        path: PathBuf,
-        id: TreeId,
-        changed: bool,
-        new_id: Option<TreeId>,
-        tree: &Tree,
-    ) {
+    fn post_process(&mut self, path: PathBuf, id: TreeId, new_id: Option<TreeId>, tree: &Tree) {
         let mut summary = Summary::default();
         summary.dirs += 1;
         for node in &tree.nodes {
@@ -106,10 +115,8 @@ impl<I: ReadGlobalIndex> Visitor for RewriteVisitor<'_, I> {
             }
         }
         let _ = self.summary.insert(new_id.unwrap_or(id), summary);
-        if changed {
-            if let Some(new_id) = new_id {
-                _ = self.changed.insert((path, id), new_id);
-            }
+        if let Some(new_id) = new_id {
+            _ = self.changed.insert((path, id), new_id);
         } else {
             _ = self.unchanged.insert((path, id));
         }
@@ -126,16 +133,20 @@ impl<'a, BE: DecryptFullBackend, I: ReadGlobalIndex> Rewriter<'a, BE, I> {
         be: &'a BE,
         index: &'a I,
         config: &ConfigFile,
+        opts: &RewriteTreesOptions,
         dry_run: bool,
-        excludes: &Excludes,
     ) -> RusticResult<Self> {
         let modifier = TreeModifier::new(be, index, config, dry_run)?;
-        let visitor = RewriteVisitor::new(index, excludes)?;
+        let visitor = RewriteVisitor::new(index, opts)?;
         Ok(Self { modifier, visitor })
     }
 
     pub fn rewrite_tree(&mut self, path: PathBuf, id: TreeId) -> RusticResult<ModifierChange> {
-        self.modifier.modify_tree(path, id, &mut self.visitor)
+        if let Match::Ignore(_) = self.visitor.overrides.matched(&path, true) {
+            Ok(ModifierChange::Removed)
+        } else {
+            self.modifier.modify_tree(path, id, &mut self.visitor)
+        }
     }
 
     pub fn summary(&self, tree_id: &TreeId) -> Option<&Summary> {

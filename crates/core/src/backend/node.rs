@@ -1,3 +1,5 @@
+pub mod modification;
+
 use std::{
     cmp::Ordering,
     ffi::{OsStr, OsString},

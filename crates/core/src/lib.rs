@@ -128,12 +128,18 @@ pub use crate::{
         decrypt::{compression_level_range, max_compression_level},
         ignore::{LocalSource, LocalSourceFilterOptions, LocalSourceSaveOptions},
         local_destination::LocalDestination,
-        node::last_modified_node,
+        node::{
+            last_modified_node,
+            modification::{
+                BlockdevOption, DevIdOption, NodeModification, TimeOption, XattrOption,
+            },
+        },
     },
     blob::{
         BlobId, DataId, PackedId,
         tree::{
             FindMatches, FindNode, TreeId, TreeStreamerOptions as LsOptions, excludes::Excludes,
+            rewrite::RewriteTreesOptions,
         },
     },
     commands::{
@@ -147,6 +153,7 @@ pub use crate::{
         repair::{index::RepairIndexOptions, snapshots::RepairSnapshotsOptions},
         repoinfo::{BlobInfo, IndexInfos, PackInfo, RepoFileInfo, RepoFileInfos},
         restore::{FileDirStats, RestoreOptions, RestorePlan, RestoreStats},
+        rewrite::RewriteOptions,
     },
     error::{ErrorKind, RusticError, RusticResult, Severity, Status},
     id::{HexId, Id},

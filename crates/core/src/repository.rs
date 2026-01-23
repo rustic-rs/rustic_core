@@ -17,7 +17,7 @@ use log::{debug, error, info};
 use serde_with::{DisplayFromStr, serde_as};
 
 use crate::{
-    Excludes, RepositoryBackends, RusticError,
+    RepositoryBackends, RusticError,
     backend::{
         FileType, FindInBackend, ReadBackend, WriteBackend,
         cache::{Cache, CachedBackend},
@@ -29,7 +29,10 @@ use crate::{
     },
     blob::{
         BlobId, BlobType, PackedId,
-        tree::{FindMatches, FindNode, NodeStreamer, TreeId, TreeStreamerOptions as LsOptions},
+        tree::{
+            FindMatches, FindNode, NodeStreamer, TreeId, TreeStreamerOptions as LsOptions,
+            rewrite::RewriteTreesOptions,
+        },
     },
     commands::{
         self,
@@ -46,7 +49,7 @@ use crate::{
         },
         repoinfo::{IndexInfos, RepoFileInfos},
         restore::{RestoreOptions, RestorePlan, collect_and_prepare, restore_repository},
-        rewrite::{rewrite_snapshots, rewrite_snapshots_with_excludes},
+        rewrite::{RewriteOptions, rewrite_snapshots, rewrite_snapshots_and_trees},
     },
     crypto::aespoly1305::Key,
     error::{ErrorKind, RusticResult},
@@ -56,8 +59,7 @@ use crate::{
     },
     progress::{NoProgressBars, Progress, ProgressBars},
     repofile::{
-        ConfigFile, KeyId, PathList, RepoFile, RepoId, SnapshotFile, SnapshotModification,
-        SnapshotSummary, Tree,
+        ConfigFile, KeyId, PathList, RepoFile, RepoId, SnapshotFile, SnapshotSummary, Tree,
         configfile::ConfigId,
         keyfile::find_key_in_backend,
         packfile::PackId,
@@ -1516,11 +1518,9 @@ impl<P: ProgressBars, S: Open> Repository<P, S> {
     pub fn rewrite_snapshots(
         &self,
         snapshots: Vec<SnapshotFile>,
-        modification: &SnapshotModification,
-        dry_run: bool,
-        delete: bool,
+        opts: &RewriteOptions,
     ) -> RusticResult<Vec<SnapshotFile>> {
-        rewrite_snapshots(self, snapshots, modification, dry_run, delete)
+        rewrite_snapshots(self, snapshots, opts)
     }
 }
 
@@ -2226,14 +2226,12 @@ impl<P: ProgressBars, S: IndexedFull> Repository<P, S> {
     /// # Errors
     ///
     // TODO: Document errors
-    pub fn rewrite_snapshots_with_excludes(
+    pub fn rewrite_snapshots_and_trees(
         &self,
         snapshots: Vec<SnapshotFile>,
-        modification: &SnapshotModification,
-        excludes: &Excludes,
-        dry_run: bool,
-        delete: bool,
+        opts: &RewriteOptions,
+        tree_opts: &RewriteTreesOptions,
     ) -> RusticResult<Vec<SnapshotFile>> {
-        rewrite_snapshots_with_excludes(self, snapshots, modification, excludes, dry_run, delete)
+        rewrite_snapshots_and_trees(self, snapshots, opts, tree_opts)
     }
 }
