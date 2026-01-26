@@ -394,6 +394,26 @@ impl ReadBackend for RestBackend {
         })
         .map_err(construct_backoff_error)
     }
+
+    fn warmup_path(&self, tpe: FileType, id: &Id) -> RusticResult<String> {
+        // For REST backends, return the URL path that could be used for warmup
+        // Though warmup is typically handled by the REST server itself
+        let url = self
+            .url
+            .join(&format!("{}/{}", tpe.dirname(), id))
+            .map_err(|err| {
+                RusticError::with_source(
+                    ErrorKind::Backend,
+                    "Failed to construct warmup URL for REST backend",
+                    err,
+                )
+            })?;
+        Ok(url.to_string())
+    }
+
+    fn needs_warm_up(&self) -> bool {
+        false // REST backends typically don't need explicit warmup
+    }
 }
 
 fn construct_join_url_error(

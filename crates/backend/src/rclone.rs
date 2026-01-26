@@ -356,6 +356,16 @@ impl ReadBackend for RcloneBackend {
     ) -> RusticResult<Bytes> {
         self.rest.read_partial(tpe, id, cacheable, offset, length)
     }
+
+    fn warmup_path(&self, tpe: FileType, id: &Id) -> RusticResult<String> {
+        // Delegate to the underlying REST backend
+        self.rest.warmup_path(tpe, id)
+    }
+
+    fn needs_warm_up(&self) -> bool {
+        // Delegate to the underlying REST backend
+        self.rest.needs_warm_up()
+    }
 }
 
 impl WriteBackend for RcloneBackend {

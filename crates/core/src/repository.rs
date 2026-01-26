@@ -83,11 +83,90 @@ mod constants {
     pub(super) const WEIGHT_CAPACITY: u64 = 32_000_000;
 }
 
+/// Mode for warm-up command based on placeholders in the command string
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PlaceholderMode {
+    /// Single item mode: spawn multiple commands, one per pack
+    /// Replaces %id and/or %path placeholders with single values
+    Single { use_ids: bool, use_paths: bool },
+    /// Multiple items mode: single command with all items as arguments
+    /// Replaces %ids and/or %paths placeholders with all values
+    Multiple { use_ids: bool, use_paths: bool },
+}
+
+/// Flags for detected placeholders in warm-up command string
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[allow(clippy::struct_excessive_bools)]
+struct PlaceholderFlags {
+    has_id: bool,
+    has_ids: bool,
+    has_path: bool,
+    has_paths: bool,
+}
+
+/// Detect placeholders in warm-up command string
+///
+/// Returns a tuple of (`has_id`, `has_ids`, `has_path`, `has_paths`)
+fn detect_placeholders(command: &CommandInput) -> PlaceholderFlags {
+    let cmd_str = command.to_string();
+    // Use precise matching to avoid false positives like "test_warm_up" containing "%id"
+    PlaceholderFlags {
+        has_id: cmd_str.contains("%id") && !cmd_str.contains("%ids"),
+        has_ids: cmd_str.contains("%ids"),
+        has_path: cmd_str.contains("%path") && !cmd_str.contains("%paths"),
+        has_paths: cmd_str.contains("%paths"),
+    }
+}
+
+/// Validate placeholder combinations and determine mode
+///
+/// # Errors
+///
+/// * If no placeholders are found
+/// * If mixing singular and plural placeholders (e.g., %ids with %path)
+fn validate_placeholders(
+    flags: PlaceholderFlags,
+    command: &CommandInput,
+) -> RusticResult<PlaceholderMode> {
+    // Check for at least one placeholder
+    if !flags.has_id && !flags.has_ids && !flags.has_path && !flags.has_paths {
+        return Err(RusticError::new(
+            ErrorKind::MissingInput,
+            "No placeholder found in warm-up command. Please specify at least one of: %id, %ids, %path, %paths",
+        )
+        .attach_context("command", command.to_string()));
+    }
+
+    // Check for mixing singular and plural placeholders
+    let has_singular = flags.has_id || flags.has_path;
+    let has_plural = flags.has_ids || flags.has_paths;
+
+    if has_singular && has_plural {
+        return Err(RusticError::new(
+            ErrorKind::InvalidInput,
+            "Cannot mix singular (%id, %path) and plural (%ids, %paths) placeholders in warm-up command",
+        )
+        .attach_context("command", command.to_string()));
+    }
+
+    if has_singular {
+        Ok(PlaceholderMode::Single {
+            use_ids: flags.has_id,
+            use_paths: flags.has_path,
+        })
+    } else {
+        Ok(PlaceholderMode::Multiple {
+            use_ids: flags.has_ids,
+            use_paths: flags.has_paths,
+        })
+    }
+}
+
 /// Options for using and opening a [`Repository`]
 #[serde_as]
 #[cfg_attr(feature = "clap", derive(clap::Parser))]
 #[cfg_attr(feature = "merge", derive(conflate::Merge))]
-#[derive(Clone, Default, Debug, serde::Deserialize, serde::Serialize, Setters)]
+#[derive(Clone, Debug, serde::Deserialize, serde::Serialize, Setters)]
 #[serde(default, rename_all = "kebab-case", deny_unknown_fields)]
 #[setters(into, strip_option)]
 #[non_exhaustive]
@@ -175,6 +254,34 @@ pub struct RepositoryOptions {
     #[serde_as(as = "Option<DisplayFromStr>")]
     #[cfg_attr(feature = "merge", merge(strategy = conflate::option::overwrite_none))]
     pub warm_up_wait: Option<SignedDuration>,
+
+    /// Batch size for warm-up command invocations
+    #[cfg_attr(feature = "clap", clap(long, global = true, default_value = "1"))]
+    #[cfg_attr(feature = "merge", merge(skip))]
+    #[serde(default = "default_warm_up_batch")]
+    pub warm_up_batch: usize,
+}
+
+/// Default value for `warm_up_batch`
+const fn default_warm_up_batch() -> usize {
+    1
+}
+
+impl Default for RepositoryOptions {
+    fn default() -> Self {
+        Self {
+            password: None,
+            password_file: None,
+            password_command: None,
+            no_cache: false,
+            cache_dir: None,
+            warm_up: false,
+            warm_up_command: None,
+            warm_up_wait_command: None,
+            warm_up_wait: None,
+            warm_up_batch: default_warm_up_batch(),
+        }
+    }
 }
 
 impl RepositoryOptions {
@@ -370,14 +477,13 @@ impl<P> Repository<P, ()> {
         let be_hot = backends.repo_hot();
 
         if let Some(warm_up) = &opts.warm_up_command {
-            if warm_up.args().iter().all(|c| !c.contains("%id")) {
-                return Err(RusticError::new(
-                    ErrorKind::MissingInput,
-                    "No `%id` specified in warm-up command `{command}`. Please specify `%id` in the command.",
-                )
-                .attach_context("command", warm_up.to_string()));
-            }
-            info!("using warm-up command {warm_up}");
+            let flags = detect_placeholders(warm_up);
+            let _mode = validate_placeholders(flags, warm_up)?;
+
+            info!(
+                "using warm-up command {warm_up} with batch size {}",
+                opts.warm_up_batch
+            );
         }
 
         if opts.warm_up {
