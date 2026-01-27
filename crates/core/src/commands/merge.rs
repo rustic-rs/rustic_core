@@ -8,7 +8,7 @@ use crate::{
     backend::{decrypt::DecryptWriteBackend, node::Node},
     blob::{
         BlobId, BlobType,
-        packer::Packer,
+        packer::{PackSizer, Packer},
         tree::{self, Tree, TreeId},
     },
     error::{ErrorKind, RusticError, RusticResult},
@@ -102,12 +102,16 @@ pub(crate) fn merge_trees<P: ProgressBars, S: IndexedTree>(
     let be = repo.dbe();
     let index = repo.index();
     let indexer = Indexer::new(repo.dbe().clone()).into_shared();
+    let pack_sizer = PackSizer::from_config(
+        repo.config(),
+        BlobType::Tree,
+        index.total_size(BlobType::Tree),
+    );
     let packer = Packer::new(
         repo.dbe().clone(),
         BlobType::Tree,
         indexer.clone(),
-        repo.config(),
-        index.total_size(BlobType::Tree),
+        pack_sizer,
     )?;
 
     let save = |tree: Tree| -> RusticResult<_> {

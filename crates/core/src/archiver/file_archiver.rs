@@ -13,7 +13,7 @@ use crate::{
     },
     blob::{
         BlobId, BlobType, DataId,
-        packer::{Packer, PackerStats},
+        packer::{PackSizer, Packer, PackerStats},
     },
     chunker::ChunkIter,
     crypto::hasher::hash,
@@ -62,13 +62,9 @@ impl<'a, BE: DecryptWriteBackend, I: ReadGlobalIndex> FileArchiver<'a, BE, I> {
         indexer: SharedIndexer<BE>,
         config: &ConfigFile,
     ) -> RusticResult<Self> {
-        let data_packer = Packer::new(
-            be,
-            BlobType::Data,
-            indexer,
-            config,
-            index.total_size(BlobType::Data),
-        )?;
+        let pack_sizer =
+            PackSizer::from_config(config, BlobType::Data, index.total_size(BlobType::Data));
+        let data_packer = Packer::new(be, BlobType::Data, indexer, pack_sizer)?;
 
         Ok(Self {
             index,
