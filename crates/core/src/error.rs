@@ -132,8 +132,8 @@ pub enum ErrorKind {
     /// general operations
     #[default]
     Other,
-    /// password handling
-    Password,
+    /// credentials handling
+    Credentials,
     /// the repository
     Repository,
     /// unsupported operations

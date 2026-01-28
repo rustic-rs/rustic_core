@@ -8,7 +8,7 @@ use tar::Archive;
 use tempfile::tempdir;
 
 use rustic_backend::LocalBackend;
-use rustic_core::{CheckOptions, Repository, RepositoryBackends, RepositoryOptions};
+use rustic_core::{CheckOptions, Credentials, Repository, RepositoryBackends, RepositoryOptions};
 
 #[rstest]
 #[case("repo-data-missing.tar.gz")]
@@ -30,8 +30,8 @@ fn test_check(#[case] repo_file: String) -> Result<()> {
 
     let be = LocalBackend::new(dir.path().join("repo").to_str().unwrap(), None)?;
     let be = RepositoryBackends::new(Arc::new(be), None);
-    let options = RepositoryOptions::default().password("geheim");
-    let repo = Repository::new(&options, &be)?.open()?;
+    let options = RepositoryOptions::default();
+    let repo = Repository::new(&options, &be)?.open(&Credentials::password("geheim"))?;
 
     let opts = CheckOptions::default().read_data(true);
     let check_results = repo.check(opts)?;

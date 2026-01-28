@@ -1,6 +1,8 @@
 //! `merge` example
 use rustic_backend::BackendOptions;
-use rustic_core::{last_modified_node, repofile::SnapshotFile, Repository, RepositoryOptions};
+use rustic_core::{
+    last_modified_node, repofile::SnapshotFile, Credentials, Repository, RepositoryOptions,
+};
 use simplelog::{Config, LevelFilter, SimpleLogger};
 use std::error::Error;
 
@@ -14,10 +16,10 @@ fn main() -> Result<(), Box<dyn Error>> {
         .to_backends()?;
 
     // Open repository
-    let repo_opts = RepositoryOptions::default().password("test");
+    let repo_opts = RepositoryOptions::default();
 
     let repo = Repository::new(&repo_opts, &backends)?
-        .open()?
+        .open(&Credentials::password("test"))?
         .to_indexed_ids()?;
 
     // Merge all snapshots using the latest entry for duplicate entries

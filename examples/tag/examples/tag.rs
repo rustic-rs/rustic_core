@@ -1,6 +1,6 @@
 //! `tag` example
 use rustic_backend::BackendOptions;
-use rustic_core::{Repository, RepositoryOptions, StringList};
+use rustic_core::{Credentials, Repository, RepositoryOptions, StringList};
 use simplelog::{Config, LevelFilter, SimpleLogger};
 use std::error::Error;
 use std::str::FromStr;
@@ -15,8 +15,8 @@ fn main() -> Result<(), Box<dyn Error>> {
         .to_backends()?;
 
     // Open repository
-    let repo_opts = RepositoryOptions::default().password("test");
-    let repo = Repository::new(&repo_opts, &backends)?.open()?;
+    let repo_opts = RepositoryOptions::default();
+    let repo = Repository::new(&repo_opts, &backends)?.open(&Credentials::password("test"))?;
 
     // Set tag "test" to all snapshots, filtering out unchanged (i.e. tag was already preset) snapshots
     let snaps = repo.get_all_snapshots()?;

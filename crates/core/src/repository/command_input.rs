@@ -3,7 +3,7 @@ use std::{
     ffi::OsStr,
     fmt::{Debug, Display},
     iter::Iterator,
-    process::{Command, ExitStatus},
+    process::{Command, ExitStatus, Stdio},
     str::FromStr,
 };
 
@@ -150,6 +150,65 @@ impl CommandInput {
 
         self.on_failure().handle_status(status, context, what)?;
         Ok(())
+    }
+
+    /// Runs the command and get its stdout
+    ///
+    /// # Returns
+    /// The stdout as `Vec<u8>`
+    ///
+    /// # Errors
+    ///
+    /// * If command cannot be executed
+    pub fn stdout(&self) -> RusticResult<Vec<u8>> {
+        debug!("commands: {self:?}");
+        let run_command = Command::new(self.command())
+            .args(self.args())
+            .stdout(Stdio::piped())
+            .spawn();
+
+        let process = match run_command {
+            Ok(process) => process,
+            Err(err) => {
+                error!("password-command could not be executed: {err}");
+                return Err(RusticError::with_source(
+                    ErrorKind::Credentials,
+                    "Password command `{command}` could not be executed",
+                    err,
+                )
+                .attach_context("command", self.to_string()));
+            }
+        };
+
+        let output = match process.wait_with_output() {
+            Ok(output) => output,
+            Err(err) => {
+                error!("error reading output from password-command: {err}");
+                return Err(RusticError::with_source(
+                    ErrorKind::Credentials,
+                    "Error reading output from password command `{command}`",
+                    err,
+                )
+                .attach_context("command", self.to_string()));
+            }
+        };
+
+        if !output.status.success() {
+            #[allow(clippy::option_if_let_else)]
+            let s = match output.status.code() {
+                Some(c) => format!("exited with status code {c}"),
+                None => "was terminated".into(),
+            };
+            error!("password-command {s}");
+            return Err(RusticError::new(
+                ErrorKind::Credentials,
+                "Password command `{command}` did not exit successfully: `{status}`",
+            )
+            .attach_context("command", self.to_string())
+            .attach_context("status", s));
+        }
+
+        Ok(output.stdout)
     }
 }
 

@@ -1,19 +1,18 @@
 pub(crate) mod command_input;
+pub(crate) mod credentials;
 pub(crate) mod warm_up;
 
 use std::{
     cmp::Ordering,
-    fs::File,
-    io::{BufRead, BufReader, Write},
+    io::Write,
     path::{Path, PathBuf},
-    process::{Command, Stdio},
     sync::Arc,
 };
 
 use bytes::Bytes;
 use derive_setters::Setters;
 use jiff::SignedDuration;
-use log::{debug, error, info};
+use log::info;
 use serde_with::{DisplayFromStr, serde_as};
 
 use crate::{
@@ -61,12 +60,13 @@ use crate::{
     repofile::{
         ConfigFile, KeyId, PathList, RepoFile, RepoId, SnapshotFile, SnapshotSummary, Tree,
         configfile::ConfigId,
-        keyfile::find_key_in_backend,
+        keyfile::{MasterKey, find_key_in_backend},
         packfile::PackId,
         snapshotfile::{SnapshotGroup, SnapshotGroupCriterion, SnapshotId},
     },
     repository::{
         command_input::CommandInput,
+        credentials::Credentials,
         warm_up::{warm_up, warm_up_wait},
     },
     vfs::OpenFile,
@@ -92,44 +92,6 @@ mod constants {
 #[setters(into, strip_option)]
 #[non_exhaustive]
 pub struct RepositoryOptions {
-    /// Password of the repository
-    ///
-    /// # Warning
-    ///
-    /// * Using --password can reveal the password in the process list!
-    #[cfg_attr(
-        feature = "clap",
-        clap(long, global = true, env = "RUSTIC_PASSWORD", hide_env_values = true)
-    )]
-    // TODO: Security related: use `secrecy` library (#663)
-    #[cfg_attr(feature = "merge", merge(strategy = conflate::option::overwrite_none))]
-    pub password: Option<String>,
-
-    /// File to read the password from
-    #[cfg_attr(
-        feature = "clap",
-        clap(
-            short,
-            long,
-            global = true,
-            env = "RUSTIC_PASSWORD_FILE",
-            conflicts_with = "password",
-            value_hint = ValueHint::FilePath,
-        )
-    )]
-    #[cfg_attr(feature = "merge", merge(strategy = conflate::option::overwrite_none))]
-    pub password_file: Option<PathBuf>,
-
-    /// Command to read the password from. Password is read from stdout
-    #[cfg_attr(feature = "clap", clap(
-        long,
-        global = true,
-        env = "RUSTIC_PASSWORD_COMMAND",
-        conflicts_with_all = &["password", "password_file"],
-    ))]
-    #[cfg_attr(feature = "merge", merge(strategy = conflate::option::overwrite_none))]
-    pub password_command: Option<CommandInput>,
-
     /// Don't use a cache.
     #[cfg_attr(feature = "clap", clap(long, global = true, env = "RUSTIC_NO_CACHE"))]
     #[cfg_attr(feature = "merge", merge(strategy = conflate::bool::overwrite_false))]
@@ -171,127 +133,10 @@ pub struct RepositoryOptions {
     pub warm_up_wait_command: Option<CommandInput>,
 
     /// Duration (e.g. 10m) to wait after warm up
-    #[cfg_attr(feature = "clap", clap(long, global = true, value_name = "DURATION"))]
     #[serde_as(as = "Option<DisplayFromStr>")]
+    #[cfg_attr(feature = "clap", clap(long, global = true, value_name = "DURATION"))]
     #[cfg_attr(feature = "merge", merge(strategy = conflate::option::overwrite_none))]
     pub warm_up_wait: Option<SignedDuration>,
-}
-
-impl RepositoryOptions {
-    /// Evaluates the password given by the repository options
-    ///
-    /// # Errors
-    ///
-    /// * If opening the password file failed
-    /// * If reading the password failed
-    /// * If splitting the password command failed
-    /// * If executing the password command failed
-    /// * If reading the password from the command failed
-    ///
-    /// # Returns
-    ///
-    /// The password or `None` if no password is given
-    pub fn evaluate_password(&self) -> RusticResult<Option<String>> {
-        match (&self.password, &self.password_file, &self.password_command) {
-            (Some(pwd), _, _) => Ok(Some(pwd.clone())),
-            (_, Some(file), _) => {
-                let mut file = BufReader::new(File::open(file).map_err(|err| {
-                    RusticError::with_source(
-                        ErrorKind::Password,
-                        "Opening password file failed. Is the path `{path}` correct?",
-                        err,
-                    )
-                    .attach_context("path", file.display().to_string())
-                })?);
-                Ok(Some(read_password_from_reader(&mut file)?))
-            }
-            (_, _, Some(command)) if command.is_set() => {
-                debug!("commands: {command:?}");
-                let run_command = Command::new(command.command())
-                    .args(command.args())
-                    .stdout(Stdio::piped())
-                    .spawn();
-
-                let process = match run_command {
-                    Ok(process) => process,
-                    Err(err) => {
-                        error!("password-command could not be executed: {err}");
-                        return Err(RusticError::with_source(
-                            ErrorKind::Password,
-                            "Password command `{command}` could not be executed",
-                            err,
-                        )
-                        .attach_context("command", command.to_string()));
-                    }
-                };
-
-                let output = match process.wait_with_output() {
-                    Ok(output) => output,
-                    Err(err) => {
-                        error!("error reading output from password-command: {err}");
-                        return Err(RusticError::with_source(
-                            ErrorKind::Password,
-                            "Error reading output from password command `{command}`",
-                            err,
-                        )
-                        .attach_context("command", command.to_string()));
-                    }
-                };
-
-                if !output.status.success() {
-                    #[allow(clippy::option_if_let_else)]
-                    let s = match output.status.code() {
-                        Some(c) => format!("exited with status code {c}"),
-                        None => "was terminated".into(),
-                    };
-                    error!("password-command {s}");
-                    return Err(RusticError::new(
-                        ErrorKind::Password,
-                        "Password command `{command}` did not exit successfully: `{status}`",
-                    )
-                    .attach_context("command", command.to_string())
-                    .attach_context("status", s));
-                }
-
-                let mut pwd = BufReader::new(&*output.stdout);
-                Ok(Some(read_password_from_reader(&mut pwd)?))
-            }
-            (None, None, _) => Ok(None),
-        }
-    }
-}
-
-/// Read a password from a reader
-///
-/// # Arguments
-///
-/// * `file` - The reader to read the password from
-///
-/// # Errors
-///
-/// * If reading the password failed
-pub fn read_password_from_reader(file: &mut impl BufRead) -> RusticResult<String> {
-    let mut password = String::new();
-    _ = file.read_line(&mut password).map_err(|err| {
-        RusticError::with_source(
-            ErrorKind::Password,
-            "Reading password from reader failed. Is the file empty? Please check the file and the password.",
-            err
-        )
-        .attach_context("password", password.clone())
-    })?;
-
-    // Remove the \n from the line if present
-    if password.ends_with('\n') {
-        _ = password.pop();
-    }
-
-    // Remove the \r from the line if present
-    if password.ends_with('\r') {
-        _ = password.pop();
-    }
-
-    Ok(password)
 }
 
 #[derive(Debug, Clone)]
@@ -403,23 +248,6 @@ impl<P> Repository<P, ()> {
 }
 
 impl<P, S> Repository<P, S> {
-    /// Evaluates the password given by the repository options
-    ///
-    /// # Errors
-    ///
-    /// * If opening the password file failed
-    /// * If reading the password failed
-    /// * If splitting the password command failed
-    /// * If parsing the password command failed
-    /// * If reading the password from the command failed
-    ///
-    /// # Returns
-    ///
-    /// The password or `None` if no password is given
-    pub fn password(&self) -> RusticResult<Option<String>> {
-        self.opts.evaluate_password()
-    }
-
     /// Returns the Id of the config file
     ///
     /// # Errors
@@ -461,40 +289,7 @@ impl<P, S> Repository<P, S> {
         }
     }
 
-    /// Open the repository.
-    ///
-    /// This gets the decryption key and reads the config file
-    ///
-    /// # Errors
-    ///
-    /// * If no password is given
-    /// * If reading the password failed
-    /// * If opening the password file failed
-    /// * If parsing the password command failed
-    /// * If reading the password from the command failed
-    /// * If splitting the password command failed
-    /// * If no repository config file is found
-    /// * If the keys of the hot and cold backend don't match
-    /// * If the password is incorrect
-    /// * If no suitable key is found
-    /// * If listing the repository config file failed
-    /// * If there is more than one repository config file
-    ///
-    /// # Returns
-    ///
-    /// The open repository
-    pub fn open(self) -> RusticResult<Repository<P, OpenStatus>> {
-        let password = self.password()?.ok_or_else(|| {
-            RusticError::new(
-                ErrorKind::Password,
-                "No password given, or Password was empty. Please specify a valid password.",
-            )
-        })?;
-
-        self.open_with_password(&password)
-    }
-
-    /// Open the repository with a given password.
+    /// Open the repository with a given credentials.
     ///
     /// This gets the decryption key and reads the config file
     ///
@@ -510,7 +305,7 @@ impl<P, S> Repository<P, S> {
     /// * If no suitable key is found
     /// * If listing the repository config file failed
     /// * If there is more than one repository config file
-    pub fn open_with_password(self, password: &str) -> RusticResult<Repository<P, OpenStatus>> {
+    pub fn open(self, credentials: &Credentials) -> RusticResult<Repository<P, OpenStatus>> {
         let config_id = self.config_id()?.ok_or_else(|| {
             RusticError::new(
                 ErrorKind::Configuration,
@@ -533,53 +328,21 @@ impl<P, S> Repository<P, S> {
             }
         }
 
-        let (key, key_id) = find_key_in_backend(&self.be, &password, None)?;
-
-        info!("repository {}: password is correct.", self.name);
+        let (key, key_id) = match credentials {
+            Credentials::Password(password) => {
+                let (key, key_id) = find_key_in_backend(&self.be, &password, None)?;
+                info!("repository {}: password is correct.", self.name);
+                (key, Some(key_id))
+            }
+            Credentials::Masterkey(key) => (key.key(), None),
+        };
 
         let dbe = DecryptBackend::new(self.be.clone(), key);
         let config: ConfigFile = dbe.get_file(&config_id)?;
         self.open_raw(key, key_id, config)
     }
 
-    /// Initialize a new repository with given options using the password defined in `RepositoryOptions`
-    ///
-    /// This returns an open repository which can be directly used.
-    ///
-    /// # Type Parameters
-    ///
-    /// * `P` - The type of the progress bar
-    ///
-    /// # Arguments
-    ///
-    /// * `key_opts` - The options to use for the key
-    /// * `config_opts` - The options to use for the config
-    ///
-    /// # Errors
-    ///
-    /// * If no password is given
-    /// * If reading the password failed
-    /// * If opening the password file failed
-    /// * If parsing the password command failed
-    /// * If reading the password from the command failed
-    /// * If splitting the password command failed
-    pub fn init(
-        self,
-        key_opts: &KeyOptions,
-        config_opts: &ConfigOptions,
-    ) -> RusticResult<Repository<P, OpenStatus>> {
-        let password = self.password()?.ok_or_else(|| {
-            RusticError::new(
-                ErrorKind::Password,
-                "No password given, or Password was empty. Please specify a valid password for `{name}`.",
-            )
-            .attach_context("name", self.name.clone())
-        })?;
-
-        self.init_with_password(&password, key_opts, config_opts)
-    }
-
-    /// Initialize a new repository with given password and options.
+    /// Initialize a new repository with given credentials and options.
     ///
     /// This returns an open repository which can be directly used.
     ///
@@ -598,9 +361,9 @@ impl<P, S> Repository<P, S> {
     /// * If a config file already exists
     /// * If listing the repository config file failed
     /// * If there is more than one repository config file
-    pub fn init_with_password(
+    pub fn init(
         self,
-        pass: &str,
+        credentials: &Credentials,
         key_opts: &KeyOptions,
         config_opts: &ConfigOptions,
     ) -> RusticResult<Repository<P, OpenStatus>> {
@@ -617,7 +380,8 @@ impl<P, S> Repository<P, S> {
             .attach_context("name", self.name));
         }
 
-        let (key, key_id, config) = commands::init::init(&self, pass, key_opts, config_opts)?;
+        let (key, key_id, config) =
+            commands::init::init(&self, credentials, key_opts, config_opts)?;
 
         self.open_raw(key, key_id, config)
     }
@@ -641,11 +405,12 @@ impl<P, S> Repository<P, S> {
     // TODO: Document errors
     pub fn init_with_config(
         self,
-        password: &str,
+        credentials: &Credentials,
         key_opts: &KeyOptions,
         config: ConfigFile,
     ) -> RusticResult<Repository<P, OpenStatus>> {
-        let (key, key_id) = commands::init::init_with_config(&self, password, key_opts, &config)?;
+        let (key, key_id) =
+            commands::init::init_with_config(&self, credentials, key_opts, &config)?;
         info!("repository {} successfully created.", config.id);
         self.open_raw(key, key_id, config)
     }
@@ -668,7 +433,7 @@ impl<P, S> Repository<P, S> {
     fn open_raw(
         mut self,
         key: Key,
-        key_id: KeyId,
+        key_id: Option<KeyId>,
         config: ConfigFile,
     ) -> RusticResult<Repository<P, OpenStatus>> {
         match (config.is_hot == Some(true), self.be_hot.is_some()) {
@@ -823,7 +588,7 @@ pub struct OpenStatus {
     /// The [`ConfigFile`]
     config: ConfigFile,
     /// The [`KeyId`] of the used key
-    key_id: KeyId,
+    key_id: Option<KeyId>,
 }
 
 impl Open for OpenStatus {
@@ -902,8 +667,13 @@ impl<P, S: Open> Repository<P, S> {
     }
 
     /// Get the [`KeyId`] of the key used to open the repository
-    pub fn key_id(&self) -> &KeyId {
+    pub fn key_id(&self) -> &Option<KeyId> {
         &self.open_status().key_id
+    }
+
+    /// Get the [`MasterKey`] used to open the repository
+    pub fn key(&self) -> MasterKey {
+        MasterKey::from_key(*self.open_status().dbe.key())
     }
 
     /// Delete the key with the given id
@@ -912,7 +682,7 @@ impl<P, S: Open> Repository<P, S> {
     ///
     /// * If the key could not be removed.
     pub fn delete_key(&self, id: &KeyId) -> RusticResult<()> {
-        if self.key_id() == id {
+        if self.key_id().as_ref() == Some(id) {
             return Err(RusticError::new(
                 ErrorKind::Repository,
                 "Cannot remove the currently used key",

@@ -160,7 +160,7 @@ pub use {
     },
     configfile::{Chunker, ConfigFile},
     indexfile::{IndexBlob, IndexFile, IndexId, IndexPack},
-    keyfile::{KeyFile, KeyId},
+    keyfile::{KeyFile, KeyId, MasterKey},
     packfile::{HeaderEntry, PackHeader, PackHeaderLength, PackHeaderRef, PackId},
     snapshotfile::{
         DeleteOption, PathList, SnapshotFile, SnapshotId, SnapshotModification, SnapshotSummary,

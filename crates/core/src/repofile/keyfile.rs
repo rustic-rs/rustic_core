@@ -306,31 +306,43 @@ fn log_2(x: u32) -> KeyFileResult<u8> {
 ///
 /// This is used to verify the integrity of the key
 #[serde_as]
-#[derive(Serialize, Deserialize, Debug)]
-pub(crate) struct Mac {
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct Mac {
     /// The key used for the mac
     #[serde_as(as = "Base64")]
-    k: Vec<u8>,
+    pub k: Vec<u8>,
 
     /// The random value used for the mac
     #[serde_as(as = "Base64")]
-    r: Vec<u8>,
+    pub r: Vec<u8>,
 }
 
 /// The master key of a [`Key`]
 ///
 /// This is used to encrypt the key
 #[serde_as]
-#[derive(Serialize, Deserialize, Debug)]
-pub(crate) struct MasterKey {
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct MasterKey {
     /// The mac of the key
-    mac: Mac,
+    pub mac: Mac,
     /// The encrypted key
     #[serde_as(as = "Base64")]
-    encrypt: Vec<u8>,
+    pub encrypt: Vec<u8>,
+}
+
+impl Default for MasterKey {
+    fn default() -> Self {
+        Self::from_key(Key::new())
+    }
 }
 
 impl MasterKey {
+    /// Create a random [`MasterKey`]
+    #[must_use]
+    pub fn new() -> Self {
+        Self::default()
+    }
+
     /// Create a [`MasterKey`] from a [`Key`]
     ///
     /// # Arguments
@@ -340,7 +352,7 @@ impl MasterKey {
     /// # Returns
     ///
     /// The created [`MasterKey`]
-    fn from_key(key: Key) -> Self {
+    pub(crate) fn from_key(key: Key) -> Self {
         let (encrypt, k, r) = key.to_keys();
         Self {
             encrypt,
@@ -349,7 +361,7 @@ impl MasterKey {
     }
 
     /// Get the [`Key`] from the [`MasterKey`]
-    fn key(&self) -> Key {
+    pub(crate) fn key(&self) -> Key {
         Key::from_keys(&self.encrypt, &self.mac.k, &self.mac.r)
     }
 }
@@ -407,7 +419,7 @@ pub(crate) fn find_key_in_backend<B: ReadBackend>(
         }
 
         Err(RusticError::new(
-            ErrorKind::Password,
+            ErrorKind::Credentials,
             "The password that has been entered, seems to be incorrect. No suitable key found for the given password. Please check your password and try again.",
         ).attach_error_code("C002"))
     }

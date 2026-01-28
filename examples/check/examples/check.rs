@@ -1,6 +1,6 @@
 //! `check` example
 use rustic_backend::BackendOptions;
-use rustic_core::{CheckOptions, Repository, RepositoryOptions};
+use rustic_core::{CheckOptions, Credentials, Repository, RepositoryOptions};
 use simplelog::{Config, LevelFilter, SimpleLogger};
 use std::error::Error;
 
@@ -14,8 +14,9 @@ fn main() -> Result<(), Box<dyn Error>> {
         .to_backends()?;
 
     // Open repository
-    let repo_opts = RepositoryOptions::default().password("test");
-    let repo = Repository::new(&repo_opts, &backends)?.open()?;
+    let repo_opts = RepositoryOptions::default();
+    let credentials = Credentials::password("test");
+    let repo = Repository::new(&repo_opts, &backends)?.open(&credentials)?;
 
     // Check repository with standard options but omitting cache checks
     let opts = CheckOptions::default().trust_cache(true);
