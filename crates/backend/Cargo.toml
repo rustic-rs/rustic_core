@@ -58,8 +58,8 @@ log = { workspace = true }
 # other dependencies
 bytes = { workspace = true }
 derive_setters = "0.1.8"
-humantime = "2.3.0"
 itertools = "0.14.0"
+jiff = "0.2.16"
 strum = "0.27"
 strum_macros = "0.27"
 
