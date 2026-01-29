@@ -4,7 +4,10 @@ use super::TreeId;
 use crate::{
     BlobId, ErrorKind, RusticError, RusticResult,
     backend::decrypt::{DecryptFullBackend, DecryptWriteBackend},
-    blob::{BlobType, packer::Packer},
+    blob::{
+        BlobType,
+        packer::{PackSizer, Packer},
+    },
     index::{
         ReadGlobalIndex,
         indexer::{Indexer, SharedIndexer},
@@ -87,13 +90,9 @@ pub struct TreeModifier<'a, BE: DecryptWriteBackend, I: ReadGlobalIndex> {
 impl<'a, BE: DecryptFullBackend, I: ReadGlobalIndex> TreeModifier<'a, BE, I> {
     pub fn new(be: &'a BE, index: &'a I, config: &ConfigFile, dry_run: bool) -> RusticResult<Self> {
         let indexer = Indexer::new(be.clone()).into_shared();
-        let packer = Packer::new(
-            be.clone(),
-            BlobType::Tree,
-            indexer.clone(),
-            config,
-            index.total_size(BlobType::Tree),
-        )?;
+        let pack_sizer =
+            PackSizer::from_config(config, BlobType::Tree, index.total_size(BlobType::Tree));
+        let packer = Packer::new(be.clone(), BlobType::Tree, indexer.clone(), pack_sizer)?;
 
         Ok(Self {
             be,

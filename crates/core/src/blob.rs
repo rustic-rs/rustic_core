@@ -166,14 +166,34 @@ impl BlobLocation {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct BlobLocations<T> {
     pub offset: u32,
     pub length: u32,
     pub blobs: Vec<(BlobLocation, T)>,
 }
 
+impl<T: Eq + PartialEq> PartialOrd<Self> for BlobLocations<T> {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl<T: Eq> Ord for BlobLocations<T> {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.offset.cmp(&other.offset)
+    }
+}
+
 impl<T> BlobLocations<T> {
+    pub fn length(&self) -> u32 {
+        self.blobs.iter().map(|bl| bl.0.length).sum()
+    }
+
+    pub fn data_length(&self) -> u32 {
+        self.blobs.iter().map(|bl| bl.0.data_length()).sum()
+    }
+
     pub fn from_blob_location(location: BlobLocation, target: T) -> Self {
         Self {
             offset: location.offset,
