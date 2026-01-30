@@ -43,7 +43,7 @@ pub(crate) fn warm_up_wait<P: ProgressBars, S>(
             wait.try_into()
                 // ignore conversation errors, but print out warning
                 .inspect_err(|err| warn!("cannot wait for warm-up: {err}"))
-                .unwrap(),
+                .unwrap_or_default(),
         );
         p.finish();
     }

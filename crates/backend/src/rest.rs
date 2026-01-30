@@ -4,6 +4,7 @@ use std::time::Duration;
 
 use backon::{BlockingRetryable, ExponentialBuilder};
 use bytes::Bytes;
+use jiff::SignedDuration;
 use log::{trace, warn};
 use reqwest::{
     Url,
@@ -186,15 +187,18 @@ impl RestBackend {
                 };
                 backoff = backoff.with_max_times(max_retries);
             } else if option == "timeout" {
-                timeout = *humantime::Duration::from_str(&value).map_err(|err| {
+                timeout = SignedDuration::from_str(&value).map_err(|err| {
                     RusticError::with_source(
                         ErrorKind::InvalidInput,
-                        "Could not parse value `{value}` as `humantime` duration. Invalid value for option `{option}`.",
+                        "Could not parse value `{value}` as duration. Invalid value for option `{option}`.",
                         err,
                     )
                     .attach_context("value", value)
                     .attach_context("option", "timeout")
-                })?;
+                })?.try_into()
+                // ignore conversation errors, but print out warning
+                .inspect_err(|err| warn!("cannot use timeout: {err}"))
+                .unwrap_or_default();
             } else if option == "cacert" {
                 client_builder = client_builder.add_root_certificate(get_cacert(&value)?);
             } else if option == "tls-client-cert" {
