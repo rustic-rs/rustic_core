@@ -25,15 +25,16 @@ implement [`serde::Serialize`] and [`serde::Deserialize`].
 
 ```rust
     use rustic_backend::BackendOptions;
-    use rustic_core::{BackupOptions, ConfigOptions, KeyOptions, PathList,
-        Repository, RepositoryOptions, SnapshotOptions
+    use rustic_core::{repofile::MasterKey, BackupOptions, ConfigOptions, Credentials,
+        KeyOptions, PathList, Repository, RepositoryOptions, SnapshotOptions,
     };
 
     // Initialize the repository in a temporary dir
     let repo_dir = tempfile::tempdir().unwrap();
 
-    let repo_opts = RepositoryOptions::default()
-        .password("test");
+    let repo_opts = RepositoryOptions::default();
+     // In real life, make sure to save this credential!
+    let credentials = Credentials::Masterkey(MasterKey::new());
 
     // Initialize Backends
     let backends = BackendOptions::default()
@@ -45,10 +46,13 @@ implement [`serde::Serialize`] and [`serde::Deserialize`].
 
     let config_opts = ConfigOptions::default();
 
-    let _repo = Repository::new(&repo_opts, &backends.clone()).unwrap().init(&key_opts, &config_opts).unwrap();
+    let _repo = Repository::new(&repo_opts, &backends)
+        .unwrap()
+        .init(&credentials, &key_opts, &config_opts)
+        .unwrap();
 
     // We could have used _repo directly, but open the repository again to show how to open it...
-    let repo = Repository::new(&repo_opts, &backends).unwrap().open().unwrap();
+    let repo = Repository::new(&repo_opts, &backends).unwrap().open(&credentials).unwrap();
 
     // Get all snapshots from the repository
     let snaps = repo.get_all_snapshots().unwrap();
@@ -165,5 +169,6 @@ pub use crate::{
         FullIndex, IdIndex, IndexedFull, IndexedIds, IndexedStatus, IndexedTree, Open, OpenStatus,
         Repository, RepositoryOptions,
         command_input::{CommandInput, CommandInputErrorKind},
+        credentials::{CredentialOptions, Credentials},
     },
 };

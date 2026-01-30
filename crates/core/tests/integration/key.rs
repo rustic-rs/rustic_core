@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use rustic_core::{
-    KeyOptions,
+    Credentials, KeyOptions,
     repofile::{KeyFile, KeyId},
 };
 
@@ -12,11 +12,18 @@ use rstest::rstest;
 #[rstest]
 fn test_key_commands(set_up_repo: Result<RepoOpen>) -> Result<()> {
     let repo = set_up_repo?;
-    let key_id = repo.key_id();
+    // add key
+    let opts = KeyOptions::default();
+    let key_id = repo.add_key("test", &opts)?;
+    // re-open with password
+    let repo = repo.open(&Credentials::password("test"))?;
+
+    let key_id_repo = repo.key_id();
+    assert_eq!(Some(key_id), *key_id_repo);
 
     // we should have just a single key now
     let keys: Vec<KeyId> = repo.list()?.collect();
-    assert_eq!(&keys, &[*key_id]);
+    assert_eq!(&keys, &[key_id]);
 
     // add key
     let opts = KeyOptions::default()
@@ -24,12 +31,12 @@ fn test_key_commands(set_up_repo: Result<RepoOpen>) -> Result<()> {
         .username("my_user".to_string())
         .with_created(true);
     let key_id2 = repo.add_key("my_pass", &opts)?;
-    assert_ne!(key_id, &key_id2);
+    assert_ne!(key_id, key_id2);
 
     // check if we have the correct 2 keys
     let keys: HashMap<_, KeyFile> = repo.stream_files()?.filter_map(Result::ok).collect();
     assert_eq!(keys.len(), 2);
-    assert!(keys.contains_key(key_id));
+    assert!(keys.contains_key(&key_id));
     let keyfile2 = keys.get(&key_id2).unwrap();
     assert_eq!(keyfile2.hostname, Some("my_host".to_string()));
     assert_eq!(keyfile2.username, Some("my_user".to_string()));
@@ -46,14 +53,14 @@ fn test_key_commands(set_up_repo: Result<RepoOpen>) -> Result<()> {
     assert_eq!(&found_keys[0], keyfile2);
 
     // try to remove the used repository key - which should fail
-    assert!(repo.delete_key(key_id).is_err());
+    assert!(repo.delete_key(&key_id).is_err());
 
     // try to remove the added key
     repo.delete_key(&key_id2)?;
 
     // we should have just a single key now
     let keys: Vec<KeyId> = repo.list()?.collect();
-    assert_eq!(&keys, &[*key_id]);
+    assert_eq!(&keys, &[key_id]);
 
     Ok(())
 }

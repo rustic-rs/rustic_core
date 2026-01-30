@@ -3,7 +3,9 @@ use std::{fs::File, io::Read, sync::Arc};
 
 use anyhow::Result;
 use rstest::rstest;
-use rustic_core::{FileType, Id, Repository, RepositoryBackends, RepositoryOptions, WriteBackend};
+use rustic_core::{
+    Credentials, FileType, Id, Repository, RepositoryBackends, RepositoryOptions, WriteBackend,
+};
 use rustic_testing::backend::in_memory_backend::InMemoryBackend;
 use sha2::{Digest, Sha256};
 
@@ -18,12 +20,16 @@ fn test_working_keys_passes(#[case] password: &str, #[case] should_work: bool) -
     add_to_be(&be, FileType::Key, "tests/fixtures/key2")?;
 
     let be = RepositoryBackends::new(Arc::new(be), None);
-    let options = RepositoryOptions::default().password(password);
+    let options = RepositoryOptions::default();
+    let credentials = Credentials::password(password);
     let repo = Repository::new(&options, &be)?;
     if should_work {
-        assert!(repo.open().is_ok());
+        assert!(repo.open(&credentials).is_ok());
     } else {
-        assert!(repo.open().is_err_and(|err| err.is_incorrect_password()));
+        assert!(
+            repo.open(&credentials)
+                .is_err_and(|err| err.is_incorrect_password())
+        );
     }
     Ok(())
 }
@@ -36,9 +42,12 @@ fn test_keys_failing_passes() -> Result<()> {
     add_to_be(&be, FileType::Key, "tests/fixtures/key-failing")?;
 
     let be = RepositoryBackends::new(Arc::new(be), None);
-    let options = RepositoryOptions::default().password("test");
+    let options = RepositoryOptions::default();
     let repo = Repository::new(&options, &be)?;
-    assert!(repo.open().is_err_and(|err| !err.is_incorrect_password()));
+    assert!(
+        repo.open(&Credentials::password("test"))
+            .is_err_and(|err| !err.is_incorrect_password())
+    );
     Ok(())
 }
 

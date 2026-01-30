@@ -55,8 +55,9 @@ use tempfile::{TempDir, tempdir};
 // use simplelog::{Config, SimpleLogger};
 
 use rustic_core::{
-    CommandInput, ConfigOptions, FullIndex, IndexedFull, IndexedStatus, KeyOptions, NoProgressBars,
-    OpenStatus, PathList, Repository, RepositoryBackends, RepositoryOptions,
+    CommandInput, ConfigOptions, CredentialOptions, Credentials, FullIndex, IndexedFull,
+    IndexedStatus, KeyOptions, NoProgressBars, OpenStatus, PathList, Repository,
+    RepositoryBackends, RepositoryOptions, repofile::MasterKey,
 };
 use rustic_testing::backend::in_memory_backend::InMemoryBackend;
 
@@ -83,11 +84,15 @@ impl TestSource {
 fn set_up_repo() -> Result<RepoOpen> {
     let be = InMemoryBackend::new();
     let be = RepositoryBackends::new(Arc::new(be), None);
-    let options = RepositoryOptions::default().password("test");
+    let options = RepositoryOptions::default();
     let repo = Repository::new(&options, &be)?;
     let key_opts = KeyOptions::default();
     let config_opts = &ConfigOptions::default();
-    let repo = repo.init(&key_opts, config_opts)?;
+    let repo = repo.init(
+        &Credentials::Masterkey(MasterKey::new()),
+        &key_opts,
+        config_opts,
+    )?;
     Ok(repo)
 }
 
@@ -184,13 +189,15 @@ fn repo_with_commands() -> Result<()> {
     let be = RepositoryBackends::new(Arc::new(be), None);
     let command: CommandInput = "echo test".parse()?;
     let warm_up: CommandInput = "echo %id".parse()?;
-    let options = RepositoryOptions::default()
+    let options = RepositoryOptions::default().warm_up_command(warm_up);
+    let credentials = CredentialOptions::default()
         .password_command(command)
-        .warm_up_command(warm_up);
+        .credentials()?
+        .unwrap();
     let repo = Repository::new(&options, &be)?;
     let key_opts = KeyOptions::default();
     let config_opts = &ConfigOptions::default();
-    let _repo = repo.init(&key_opts, config_opts)?;
+    let _repo = repo.init(&credentials, &key_opts, config_opts)?;
     Ok(())
 }
 

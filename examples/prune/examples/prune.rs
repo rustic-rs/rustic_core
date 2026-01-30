@@ -1,6 +1,6 @@
 //! `prune` example
 use rustic_backend::BackendOptions;
-use rustic_core::{PruneOptions, Repository, RepositoryOptions};
+use rustic_core::{Credentials, PruneOptions, Repository, RepositoryOptions};
 use simplelog::{Config, LevelFilter, SimpleLogger};
 use std::error::Error;
 
@@ -14,9 +14,9 @@ fn main() -> Result<(), Box<dyn Error>> {
         .to_backends()?;
 
     // Open repository
-    let repo_opts = RepositoryOptions::default().password("test");
+    let repo_opts = RepositoryOptions::default();
 
-    let repo = Repository::new(&repo_opts, &backends)?.open()?;
+    let repo = Repository::new(&repo_opts, &backends)?.open(&Credentials::password("test"))?;
 
     let prune_opts = PruneOptions::default();
     let prune_plan = repo.prune_plan(&prune_opts)?;

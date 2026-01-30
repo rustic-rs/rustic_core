@@ -1,6 +1,8 @@
 //! `forget` example
 use rustic_backend::BackendOptions;
-use rustic_core::{KeepOptions, Repository, RepositoryOptions, SnapshotGroupCriterion};
+use rustic_core::{
+    Credentials, KeepOptions, Repository, RepositoryOptions, SnapshotGroupCriterion,
+};
 use simplelog::{Config, LevelFilter, SimpleLogger};
 use std::error::Error;
 
@@ -14,9 +16,9 @@ fn main() -> Result<(), Box<dyn Error>> {
         .to_backends()?;
 
     // Open repository
-    let repo_opts = RepositoryOptions::default().password("test");
+    let repo_opts = RepositoryOptions::default();
 
-    let repo = Repository::new(&repo_opts, &backends)?.open()?;
+    let repo = Repository::new(&repo_opts, &backends)?.open(&Credentials::password("test"))?;
 
     // Check repository with standard options
     let group_by = SnapshotGroupCriterion::default();

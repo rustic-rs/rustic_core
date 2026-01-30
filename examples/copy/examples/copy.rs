@@ -1,6 +1,6 @@
 //! `copy` example
 use rustic_backend::BackendOptions;
-use rustic_core::{CopySnapshot, Repository, RepositoryOptions};
+use rustic_core::{CopySnapshot, Credentials, Repository, RepositoryOptions};
 use simplelog::{Config, LevelFilter, SimpleLogger};
 use std::error::Error;
 
@@ -14,10 +14,11 @@ fn main() -> Result<(), Box<dyn Error>> {
         .to_backends()?;
 
     // Open repository
-    let src_repo_opts = RepositoryOptions::default().password("test");
+    let src_repo_opts = RepositoryOptions::default();
+    let credentials = Credentials::password("test");
 
     let src_repo = Repository::new(&src_repo_opts, &src_backends)?
-        .open()?
+        .open(&credentials)?
         .to_indexed()?;
 
     // Initialize dst backends
@@ -25,10 +26,10 @@ fn main() -> Result<(), Box<dyn Error>> {
         .repository("/tmp/repo")
         .to_backends()?;
 
-    let dst_repo_opts = RepositoryOptions::default().password("test");
+    let dst_repo_opts = RepositoryOptions::default();
 
     let dst_repo = Repository::new(&dst_repo_opts, &dst_backends)?
-        .open()?
+        .open(&credentials)?
         .to_indexed_ids()?;
 
     // get snapshots which are missing in dst_repo

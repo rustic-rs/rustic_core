@@ -1,6 +1,8 @@
 //! `restore` example
 use rustic_backend::BackendOptions;
-use rustic_core::{LocalDestination, LsOptions, Repository, RepositoryOptions, RestoreOptions};
+use rustic_core::{
+    Credentials, LocalDestination, LsOptions, Repository, RepositoryOptions, RestoreOptions,
+};
 use simplelog::{Config, LevelFilter, SimpleLogger};
 use std::error::Error;
 
@@ -14,9 +16,9 @@ fn main() -> Result<(), Box<dyn Error>> {
         .to_backends()?;
 
     // Open repository
-    let repo_opts = RepositoryOptions::default().password("test");
+    let repo_opts = RepositoryOptions::default();
     let repo = Repository::new(&repo_opts, &backends)?
-        .open()?
+        .open(&Credentials::password("test"))?
         .to_indexed()?;
 
     // use latest snapshot without filtering snapshots
