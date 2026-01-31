@@ -389,6 +389,10 @@ impl ReadBackend for OpenDALBackend {
             )?
             .to_bytes())
     }
+
+    fn warmup_path(&self, tpe: FileType, id: &Id) -> RusticResult<String> {
+        Ok(self.path(tpe, id))
+    }
 }
 
 impl WriteBackend for OpenDALBackend {
