@@ -57,19 +57,19 @@ log = { workspace = true }
 
 # other dependencies
 bytes = { workspace = true }
-derive_setters = "0.1.8"
+derive_setters = "0.1.9"
 itertools = "0.14.0"
-jiff = "0.2.16"
+jiff = "0.2.19"
 strum = "0.27"
 strum_macros = "0.27"
 
 # general / backend choosing
 hex = { version = "0.4.3", features = ["serde"] }
 serde = { version = "1.0.228" }
-url = "2.5.7"
+url = "2.5.8"
 
 # cli support
-clap = { version = "4.5.51", optional = true, features = ["derive", "env", "wrap_help"] }
+clap = { version = "4.5.57", optional = true, features = ["derive", "env", "wrap_help"] }
 conflate = { version = "0.3.3", optional = true }
 
 # local backend
@@ -78,17 +78,17 @@ walkdir = "2.5.0"
 
 # rest backend
 backon = { version = "1.6.0", optional = true }
-reqwest = { version = "0.12.24", default-features = false, features = ["json", "rustls-tls-native-roots", "stream", "blocking"], optional = true }
+reqwest = { version = "0.12.28", default-features = false, features = ["json", "rustls-tls-native-roots", "stream", "blocking"], optional = true }
 
 # rclone backend
 rand = { version = "0.9.2", optional = true }
 semver = { version = "1.0.27", optional = true }
 
 # opendal backend
-bytesize = "2.1.0"
+bytesize = "2.3.1"
 rayon = { version = "1.11.0", optional = true }
-tokio = { version = "1.48.0", optional = true, default-features = false }
-typed-path = { version = "0.12.0", optional = true }
+tokio = { version = "1.49.0", optional = true, default-features = false }
+typed-path = { version = "0.12.2", optional = true }
 
 [target.'cfg(not(windows))'.dependencies]
 # opendal backend
@@ -104,7 +104,7 @@ opendal = { version = "0.55.0", features = ["blocking", "services-b2", "services
 [dev-dependencies]
 anyhow = { workspace = true }
 rstest = { workspace = true }
-toml = "0.9.8"
+toml = "0.9.11"
 
 [lints]
 workspace = true

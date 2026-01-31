@@ -1,6 +1,7 @@
 use std::{
     num::NonZeroU32,
     sync::{Arc, RwLock},
+    thread::scope,
     time::{Duration, SystemTime},
 };
 
@@ -9,7 +10,7 @@ use crossbeam_channel::{Receiver, Sender, bounded};
 use integer_sqrt::IntegerSquareRoot;
 use jiff::Timestamp;
 use log::warn;
-use pariter::{IteratorExt, scope};
+use pariter::IteratorExt;
 
 use crate::{
     Progress,
@@ -292,8 +293,7 @@ impl<BE: DecryptWriteBackend> Packer<BE> {
                     })
                     .and_then(|()| raw_packer.write().unwrap().finalize());
                 _ = finish_tx.send(status);
-            })
-            .unwrap();
+            });
         });
 
         Ok(packer)
@@ -773,8 +773,7 @@ impl Actor {
                     .readahead_scoped(scope)
                     .try_for_each(|index| fwh.index(index?));
                 _ = finish_tx.send(status);
-            })
-            .unwrap();
+            });
         });
 
         Self {

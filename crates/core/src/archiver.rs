@@ -4,10 +4,11 @@ pub(crate) mod tree;
 pub(crate) mod tree_archiver;
 
 use std::path::{Path, PathBuf};
+use std::thread::scope;
 
 use jiff::Zoned;
 use log::warn;
-use pariter::{IteratorExt, scope};
+use pariter::IteratorExt;
 
 use crate::{
     Progress,
@@ -137,7 +138,7 @@ impl<'a, BE: DecryptFullBackend, I: ReadGlobalIndex> Archiver<'a, BE, I> {
         <R as ReadSource>::Open: Send,
         <R as ReadSource>::Iter: Send,
     {
-        std::thread::scope(|s| -> RusticResult<_> {
+        scope(|s| -> RusticResult<_> {
             // determine backup size in parallel to running backup
             let src_size_handle = s.spawn(|| {
                 if !no_scan && !p.is_hidden() {
@@ -180,30 +181,27 @@ impl<'a, BE: DecryptFullBackend, I: ReadGlobalIndex> Archiver<'a, BE, I> {
             // handle beginning and ending of trees
             let iter = TreeIterator::new(iter);
 
-            scope(|scope| -> RusticResult<_> {
-                // use parent snapshot
-                iter.filter_map(
-                    |item| match self.parent.process(&self.be, self.index, item) {
-                        Ok(item) => Some(item),
-                        Err(err) => {
-                            warn!("ignoring error reading parent snapshot: {err:?}");
-                            None
-                        }
-                    },
-                )
-                // archive files in parallel
-                .parallel_map_scoped(scope, |item| self.file_archiver.process(item, p))
-                .readahead_scoped(scope)
-                .filter_map(|item| match item {
+            // use parent snapshot
+            iter.filter_map(
+                |item| match self.parent.process(&self.be, self.index, item) {
                     Ok(item) => Some(item),
                     Err(err) => {
-                        warn!("ignoring error: {}", err.display_log());
+                        warn!("ignoring error reading parent snapshot: {err:?}");
                         None
                     }
-                })
-                .try_for_each(|item| self.tree_archiver.add(item))
+                },
+            )
+            // archive files in parallel
+            .parallel_map_scoped(s, |item| self.file_archiver.process(item, p))
+            .readahead_scoped(s)
+            .filter_map(|item| match item {
+                Ok(item) => Some(item),
+                Err(err) => {
+                    warn!("ignoring error: {}", err.display_log());
+                    None
+                }
             })
-            .expect("Scoped Archiver thread should not panic!")?;
+            .try_for_each(|item| self.tree_archiver.add(item))?;
 
             src_size_handle
                 .join()
