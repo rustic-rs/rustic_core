@@ -13,7 +13,6 @@ use crate::{
     },
     error::{ErrorKind, RusticError, RusticResult},
     index::{ReadIndex, indexer::Indexer},
-    progress::{Progress, ProgressBars},
     repofile::{PathList, SnapshotFile, SnapshotSummary},
     repository::{IndexedTree, Repository},
 };
@@ -30,8 +29,8 @@ use crate::{
 /// # Returns
 ///
 /// The merged snapshot
-pub(crate) fn merge_snapshots<P: ProgressBars, S: IndexedTree>(
-    repo: &Repository<P, S>,
+pub(crate) fn merge_snapshots<S: IndexedTree>(
+    repo: &Repository<S>,
     snapshots: &[SnapshotFile],
     cmp: &impl Fn(&Node, &Node) -> Ordering,
     mut snap: SnapshotFile,
@@ -93,8 +92,8 @@ pub(crate) fn merge_snapshots<P: ProgressBars, S: IndexedTree>(
 /// # Returns
 ///
 /// The merged tree
-pub(crate) fn merge_trees<P: ProgressBars, S: IndexedTree>(
-    repo: &Repository<P, S>,
+pub(crate) fn merge_trees<S: IndexedTree>(
+    repo: &Repository<S>,
     trees: &[TreeId],
     cmp: &impl Fn(&Node, &Node) -> Ordering,
     summary: &mut SnapshotSummary,
@@ -135,7 +134,7 @@ pub(crate) fn merge_trees<P: ProgressBars, S: IndexedTree>(
         Ok((new_id, size))
     };
 
-    let p = repo.pb.progress_spinner("merging snapshots...");
+    let p = repo.progress_spinner("merging snapshots...");
     let tree_merged = tree::merge_trees(be, index, trees, cmp, &save, summary)?;
     let stats = packer.finalize()?;
     indexer.write().unwrap().finalize()?;

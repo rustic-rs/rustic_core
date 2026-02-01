@@ -264,7 +264,7 @@ impl GlobalIndex {
     /// * If the index could not be read
     fn new_from_collector(
         be: &impl DecryptReadBackend,
-        p: &impl Progress,
+        p: &Progress,
         mut collector: IndexCollector,
     ) -> RusticResult<Self> {
         p.set_title("reading index...");
@@ -283,7 +283,7 @@ impl GlobalIndex {
     ///
     /// * `be` - The backend to read from
     /// * `p` - The progress tracker
-    pub fn new(be: &impl DecryptReadBackend, p: &impl Progress) -> RusticResult<Self> {
+    pub fn new(be: &impl DecryptReadBackend, p: &Progress) -> RusticResult<Self> {
         Self::new_from_collector(be, p, IndexCollector::new(IndexType::Full))
     }
 
@@ -297,7 +297,7 @@ impl GlobalIndex {
     /// # Errors
     ///
     /// * If the index could not be read
-    pub fn only_full_trees(be: &impl DecryptReadBackend, p: &impl Progress) -> RusticResult<Self> {
+    pub fn only_full_trees(be: &impl DecryptReadBackend, p: &Progress) -> RusticResult<Self> {
         Self::new_from_collector(be, p, IndexCollector::new(IndexType::DataIds))
     }
 

@@ -160,7 +160,7 @@ pub trait DecryptReadBackend: ReadBackend + Clone + 'static {
     /// # Errors
     ///
     /// If the files could not be read.
-    fn stream_all<F: RepoFile>(&self, p: &impl Progress) -> StreamResult<F::Id, F> {
+    fn stream_all<F: RepoFile>(&self, p: &Progress) -> StreamResult<F::Id, F> {
         let list = self.list(F::TYPE)?;
         let list: Vec<_> = list.into_iter().map(F::Id::from).collect();
         self.stream_list(&list, p)
@@ -178,11 +178,7 @@ pub trait DecryptReadBackend: ReadBackend + Clone + 'static {
     /// # Errors
     ///
     /// If the files could not be read.
-    fn stream_list<F: RepoFile>(
-        &self,
-        list: &[F::Id],
-        p: &impl Progress,
-    ) -> StreamResult<F::Id, F> {
+    fn stream_list<F: RepoFile>(&self, list: &[F::Id], p: &Progress) -> StreamResult<F::Id, F> {
         p.set_length(list.len() as u64);
         let (tx, rx) = unbounded();
 
@@ -319,7 +315,7 @@ pub trait DecryptWriteBackend: WriteBackend + Clone + 'static {
     fn save_list<'a, F: RepoFile, I: ExactSizeIterator<Item = &'a F> + Send>(
         &self,
         list: I,
-        p: impl Progress,
+        p: Progress,
     ) -> RusticResult<()> {
         p.set_length(list.len() as u64);
         list.par_bridge().try_for_each(|file| -> RusticResult<_> {
@@ -343,7 +339,7 @@ pub trait DecryptWriteBackend: WriteBackend + Clone + 'static {
         &self,
         cacheable: bool,
         list: I,
-        p: impl Progress,
+        p: Progress,
     ) -> RusticResult<()> {
         p.set_length(list.len() as u64);
         list.par_bridge().try_for_each(|id| -> RusticResult<_> {

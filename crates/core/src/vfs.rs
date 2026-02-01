@@ -357,9 +357,9 @@ impl Vfs {
     /// The [`Node`] at the specified path
     ///
     /// [`Tree`]: crate::repofile::Tree
-    pub fn node_from_path<P, S: IndexedFull>(
+    pub fn node_from_path<S: IndexedFull>(
         &self,
-        repo: &Repository<P, S>,
+        repo: &Repository<S>,
         path: &Path,
     ) -> RusticResult<Node> {
         let meta = Metadata::default();
@@ -406,9 +406,9 @@ impl Vfs {
     /// # Panics
     ///
     /// * Panics if the path is not a directory.
-    pub fn dir_entries_from_path<P, S: IndexedFull>(
+    pub fn dir_entries_from_path<S: IndexedFull>(
         &self,
-        repo: &Repository<P, S>,
+        repo: &Repository<S>,
         path: &Path,
     ) -> RusticResult<Vec<Node>> {
         let result = match self.tree.get_path(path).map_err(|err| {
@@ -473,8 +473,8 @@ impl OpenFile {
     /// # Returns
     ///
     /// The created `OpenFile`
-    pub(crate) fn from_node<P, S: IndexedFull>(
-        repo: &Repository<P, S>,
+    pub(crate) fn from_node<S: IndexedFull>(
+        repo: &Repository<S>,
         node: &Node,
     ) -> RusticResult<Self> {
         let content: Vec<_> = node.content.clone().unwrap_or_default();
@@ -513,9 +513,9 @@ impl OpenFile {
     /// The read bytes from the given offset and length.
     /// If offset is behind the end of the file, an empty `Bytes` is returned.
     /// If length is too large, the result up to the end of the file is returned.
-    pub fn read_at<P, S: IndexedFull>(
+    pub fn read_at<S: IndexedFull>(
         &self,
-        repo: &Repository<P, S>,
+        repo: &Repository<S>,
         offset: usize,
         mut length: usize,
     ) -> RusticResult<Bytes> {

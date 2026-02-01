@@ -3,9 +3,7 @@
 use itertools::Itertools;
 
 use crate::{
-    Progress,
     error::RusticResult,
-    progress::ProgressBars,
     repofile::{
         SnapshotFile,
         snapshotfile::{SnapshotGroup, SnapshotGroupCriterion},
@@ -31,15 +29,14 @@ use crate::{
 /// # Returns
 ///
 /// The snapshots grouped by the given criterion.
-pub(crate) fn get_snapshot_group<P: ProgressBars, S: Open>(
-    repo: &Repository<P, S>,
+pub(crate) fn get_snapshot_group<S: Open>(
+    repo: &Repository<S>,
     ids: &[String],
     group_by: SnapshotGroupCriterion,
     filter: impl FnMut(&SnapshotFile) -> bool + Send + Sync,
 ) -> RusticResult<Vec<(SnapshotGroup, Vec<SnapshotFile>)>> {
-    let pb = &repo.pb;
     let dbe = repo.dbe();
-    let p = pb.progress_counter("getting snapshots...");
+    let p = repo.progress_counter("getting snapshots...");
     let groups = if ids.is_empty() {
         SnapshotFile::group_from_backend(dbe, filter, group_by, &p)?
     } else {

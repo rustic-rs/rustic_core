@@ -23,8 +23,8 @@ use crate::{
 /// # Errors
 ///
 /// * If the node is not a file.
-pub(crate) fn dump<P, S: IndexedFull>(
-    repo: &Repository<P, S>,
+pub(crate) fn dump<S: IndexedFull>(
+    repo: &Repository<S>,
     node: &Node,
     w: &mut impl Write,
 ) -> RusticResult<()> {

@@ -6,7 +6,6 @@ use crate::{
     blob::{BlobType, BlobTypeMap},
     error::RusticResult,
     index::IndexEntry,
-    progress::{Progress, ProgressBars},
     repofile::indexfile::{IndexFile, IndexPack},
     repository::{Open, Repository},
 };
@@ -104,9 +103,7 @@ impl PackInfo {
 /// # Arguments
 ///
 /// * `repo` - The repository to collect the infos from.
-pub(crate) fn collect_index_infos<P: ProgressBars, S: Open>(
-    repo: &Repository<P, S>,
-) -> RusticResult<IndexInfos> {
+pub(crate) fn collect_index_infos<S: Open>(repo: &Repository<S>) -> RusticResult<IndexInfos> {
     let mut blob_info = BlobTypeMap::<()>::default().map(|blob_type, ()| BlobInfo {
         blob_type,
         count: 0,
@@ -122,7 +119,7 @@ pub(crate) fn collect_index_infos<P: ProgressBars, S: Open>(
     });
     let mut pack_info_delete = pack_info;
 
-    let p = repo.pb.progress_counter("scanning index...");
+    let p = repo.progress_counter("scanning index...");
     for index in repo.dbe().stream_all::<IndexFile>(&p)? {
         let index = index?.1;
         for pack in &index.packs {
@@ -213,10 +210,8 @@ pub(crate) fn collect_file_info(be: &impl ReadBackend) -> RusticResult<Vec<RepoF
 /// # Errors
 ///
 // TODO: Document errors
-pub(crate) fn collect_file_infos<P: ProgressBars, S>(
-    repo: &Repository<P, S>,
-) -> RusticResult<RepoFileInfos> {
-    let p = repo.pb.progress_spinner("scanning files...");
+pub(crate) fn collect_file_infos<S>(repo: &Repository<S>) -> RusticResult<RepoFileInfos> {
+    let p = repo.progress_spinner("scanning files...");
     let files = collect_file_info(&repo.be)?;
     let files_hot = repo.be_hot.as_ref().map(collect_file_info).transpose()?;
     p.finish();

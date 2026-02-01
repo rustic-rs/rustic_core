@@ -161,7 +161,10 @@ pub use crate::{
     },
     error::{ErrorKind, RusticError, RusticResult, Severity, Status},
     id::{HexId, Id},
-    progress::{NoProgress, NoProgressBars, Progress, ProgressBars},
+    progress::{
+        HiddenProgress, NoProgress, NoProgressBars, Progress, ProgressBars, ProgressType,
+        RusticProgress,
+    },
     repofile::snapshotfile::{
         PathList, SnapshotGroup, SnapshotGroupCriterion, SnapshotOptions, StringList,
     },

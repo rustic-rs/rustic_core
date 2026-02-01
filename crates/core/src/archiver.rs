@@ -130,7 +130,7 @@ impl<'a, BE: DecryptFullBackend, I: ReadGlobalIndex> Archiver<'a, BE, I> {
         as_path: Option<&PathBuf>,
         skip_identical_parent: bool,
         no_scan: bool,
-        p: &impl Progress,
+        p: &Progress,
     ) -> RusticResult<SnapshotFile>
     where
         R: ReadSource + 'static,

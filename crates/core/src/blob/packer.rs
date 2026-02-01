@@ -917,7 +917,7 @@ impl<BE: DecryptFullBackend> BlobCopier<BE> {
     ///
     /// * If the blob could not be added
     /// * If reading the blob from the backend fails
-    pub fn copy_fast(&self, pack_blobs: CopyPackBlobs, p: &impl Progress) -> RusticResult<()> {
+    pub fn copy_fast(&self, pack_blobs: CopyPackBlobs, p: &Progress) -> RusticResult<()> {
         let offset = pack_blobs.locations.offset;
         let data = self.be_src.read_partial(
             FileType::Pack,
@@ -964,7 +964,7 @@ impl<BE: DecryptFullBackend> BlobCopier<BE> {
     ///
     /// * If the blob could not be added
     /// * If reading the blob from the backend fails
-    pub fn copy(&self, pack_blobs: CopyPackBlobs, p: &impl Progress) -> RusticResult<()> {
+    pub fn copy(&self, pack_blobs: CopyPackBlobs, p: &Progress) -> RusticResult<()> {
         let offset = pack_blobs.locations.offset;
         let read_data = self.be_src.read_partial(
             FileType::Pack,

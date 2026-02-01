@@ -642,7 +642,7 @@ impl SnapshotFile {
         be: &B,
         string: &str,
         predicate: impl FnMut(&Self) -> bool + Send + Sync,
-        p: &impl Progress,
+        p: &Progress,
     ) -> RusticResult<Self> {
         match string.parse()? {
             SnapshotRequest::Latest(n) => Self::latest_n(be, predicate, p, n),
@@ -672,7 +672,7 @@ impl SnapshotFile {
         be: &B,
         strings: &[S],
         predicate: impl FnMut(&Self) -> bool + Send + Sync,
-        p: &impl Progress,
+        p: &Progress,
     ) -> RusticResult<Vec<Self>> {
         let requests = SnapshotRequests::from_strs(strings)?;
 
@@ -738,7 +738,7 @@ impl SnapshotFile {
     pub(crate) fn latest<B: DecryptReadBackend>(
         be: &B,
         predicate: impl FnMut(&Self) -> bool + Send + Sync,
-        p: &impl Progress,
+        p: &Progress,
     ) -> RusticResult<Self> {
         Self::latest_n(be, predicate, p, 0)
     }
@@ -783,7 +783,7 @@ impl SnapshotFile {
     pub(crate) fn latest_n<B: DecryptReadBackend>(
         be: &B,
         predicate: impl FnMut(&Self) -> bool + Send + Sync,
-        p: &impl Progress,
+        p: &Progress,
         n: usize,
     ) -> RusticResult<Self> {
         if n == 0 {
@@ -832,7 +832,7 @@ impl SnapshotFile {
     pub(crate) fn from_ids<B: DecryptReadBackend, T: AsRef<str>>(
         be: &B,
         ids: &[T],
-        p: &impl Progress,
+        p: &Progress,
     ) -> RusticResult<Vec<Self>> {
         Self::update_from_ids(be, Vec::new(), ids, p)
     }
@@ -854,7 +854,7 @@ impl SnapshotFile {
         be: &B,
         current: Vec<Self>,
         ids: &[T],
-        p: &impl Progress,
+        p: &Progress,
     ) -> RusticResult<Vec<Self>> {
         let ids = be.find_ids(FileType::Snapshot, ids)?;
         Self::fill_missing(be, current, &ids, |_| true, p)
@@ -866,7 +866,7 @@ impl SnapshotFile {
         current: Vec<Self>,
         ids: &[Id],
         mut filter: F,
-        p: &impl Progress,
+        p: &Progress,
     ) -> RusticResult<Vec<Self>>
     where
         B: DecryptReadBackend,
@@ -963,7 +963,7 @@ impl SnapshotFile {
         be: &B,
         filter: F,
         crit: SnapshotGroupCriterion,
-        p: &impl Progress,
+        p: &Progress,
     ) -> RusticResult<Vec<(SnapshotGroup, Vec<Self>)>>
     where
         B: DecryptReadBackend,
@@ -977,7 +977,7 @@ impl SnapshotFile {
         current: Vec<(SnapshotGroup, Vec<Self>)>,
         filter: F,
         crit: SnapshotGroupCriterion,
-        p: &impl Progress,
+        p: &Progress,
     ) -> RusticResult<Vec<(SnapshotGroup, Vec<Self>)>>
     where
         B: DecryptReadBackend,
@@ -1002,7 +1002,7 @@ impl SnapshotFile {
     pub(crate) fn iter_all_from_backend<B, F>(
         be: &B,
         filter: F,
-        p: &impl Progress,
+        p: &Progress,
     ) -> RusticResult<impl Iterator<Item = Self>>
     where
         B: DecryptReadBackend,
@@ -1022,7 +1022,7 @@ impl SnapshotFile {
         be: &B,
         current: Vec<Self>,
         filter: F,
-        p: &impl Progress,
+        p: &Progress,
     ) -> RusticResult<Vec<Self>>
     where
         B: DecryptReadBackend,
@@ -1570,12 +1570,12 @@ mod tests {
 
     use super::*;
     use crate::{
-        NoProgress,
         backend::{
             MockBackend,
             decrypt::{DecryptBackend, DecryptWriteBackend},
         },
         crypto::{CryptoKey, aespoly1305::Key},
+        progress::NoProgress,
     };
     use anyhow::Result;
     use bytes::Bytes;
@@ -1720,20 +1720,21 @@ mod tests {
 
     #[rstest]
     fn test_snapshot_file_latest() {
+        let p = Progress::new(NoProgress);
         let (be, [id1, id2, id3]) = setup_mock_backend();
-        let latest = SnapshotFile::latest(&be, |_sn| true, &NoProgress).unwrap();
+        let latest = SnapshotFile::latest(&be, |_sn| true, &p).unwrap();
         assert_eq!(latest.id, SnapshotId(id3));
 
-        let latest_n0 = SnapshotFile::latest_n(&be, |_sn| true, &NoProgress, 0).unwrap();
+        let latest_n0 = SnapshotFile::latest_n(&be, |_sn| true, &p, 0).unwrap();
         assert_eq!(latest_n0, latest);
 
-        let latest_n1 = SnapshotFile::latest_n(&be, |_sn| true, &NoProgress, 1).unwrap();
+        let latest_n1 = SnapshotFile::latest_n(&be, |_sn| true, &p, 1).unwrap();
         assert_eq!(latest_n1.id, SnapshotId(id2));
 
-        let latest_n2 = SnapshotFile::latest_n(&be, |_sn| true, &NoProgress, 2).unwrap();
+        let latest_n2 = SnapshotFile::latest_n(&be, |_sn| true, &p, 2).unwrap();
         assert_eq!(latest_n2.id, SnapshotId(id1));
 
-        let latest_n3 = SnapshotFile::latest_n(&be, |_sn| true, &NoProgress, 3);
+        let latest_n3 = SnapshotFile::latest_n(&be, |_sn| true, &p, 3);
         let latest_n3_err = latest_n3.unwrap_err().to_string();
         let expected = "No snapshots found for latest~3.";
         assert!(
@@ -1744,33 +1745,34 @@ mod tests {
 
     #[rstest]
     fn test_snapshot_file_from_str() {
+        let p = Progress::new(NoProgress);
         let (be, [id1, id2, id3]) = setup_mock_backend();
 
-        let latest = SnapshotFile::from_str(&be, "latest", |_sn| true, &NoProgress).unwrap();
+        let latest = SnapshotFile::from_str(&be, "latest", |_sn| true, &p).unwrap();
         assert_eq!(latest.id, SnapshotId(id3));
 
-        let latest_n0 = SnapshotFile::from_str(&be, "latest~0", |_sn| true, &NoProgress).unwrap();
+        let latest_n0 = SnapshotFile::from_str(&be, "latest~0", |_sn| true, &p).unwrap();
         assert_eq!(latest_n0, latest);
 
         let snap_id3 = SnapshotFile::from_str(
             &be,
             "0031223344556677001122334455667700112233445566770000000000000003",
             |_sn| true,
-            &NoProgress,
+            &p,
         )
         .unwrap();
         assert_eq!(latest, snap_id3);
 
-        let snap_id3 = SnapshotFile::from_str(&be, "003", |_sn| true, &NoProgress).unwrap();
+        let snap_id3 = SnapshotFile::from_str(&be, "003", |_sn| true, &p).unwrap();
         assert_eq!(latest, snap_id3);
 
-        let latest_n1 = SnapshotFile::from_str(&be, "latest~1", |_sn| true, &NoProgress).unwrap();
+        let latest_n1 = SnapshotFile::from_str(&be, "latest~1", |_sn| true, &p).unwrap();
         assert_eq!(latest_n1.id, SnapshotId(id2));
 
-        let latest_n2 = SnapshotFile::from_str(&be, "latest~2", |_sn| true, &NoProgress).unwrap();
+        let latest_n2 = SnapshotFile::from_str(&be, "latest~2", |_sn| true, &p).unwrap();
         assert_eq!(latest_n2.id, SnapshotId(id1));
 
-        let latest_n3 = SnapshotFile::from_str(&be, "latest~3", |_sn| true, &NoProgress);
+        let latest_n3 = SnapshotFile::from_str(&be, "latest~3", |_sn| true, &p);
         let latest_n3_err = latest_n3.unwrap_err().to_string();
         let expected = "No snapshots found for latest~3.";
         assert!(
@@ -1778,7 +1780,7 @@ mod tests {
             "Err is: {latest_n3_err}\n\nShould contain: {expected}",
         );
 
-        let latest_syntax_err = SnapshotFile::from_str(&be, "laztet~1", |_sn| true, &NoProgress)
+        let latest_syntax_err = SnapshotFile::from_str(&be, "laztet~1", |_sn| true, &p)
             .unwrap_err()
             .to_string();
         let expected = "No suitable id found for `laztet~1`.";
@@ -1790,6 +1792,7 @@ mod tests {
 
     #[rstest]
     fn test_snapshot_file_from_strs() {
+        let p = Progress::new(NoProgress);
         let (be, [id1, id2, id3]) = setup_mock_backend();
 
         // all kind of requests mixed
@@ -1801,7 +1804,7 @@ mod tests {
                 "0031223344556677001122334455667700112233445566770000000000000003",
             ],
             |_sn| true,
-            &NoProgress,
+            &p,
         )
         .unwrap();
         let ids: Vec<_> = snaps.iter().map(|sn| *sn.id).collect();
@@ -1816,20 +1819,19 @@ mod tests {
                 "001",
             ],
             |_sn| true,
-            &NoProgress,
+            &p,
         )
         .unwrap();
         let ids: Vec<_> = snaps.iter().map(|sn| *sn.id).collect();
         assert_eq!(ids, vec![id2, id2, id1]);
 
         // typical "last two" request
-        let snaps =
-            SnapshotFile::from_strs(&be, &["latest", "latest~1"], |_sn| true, &NoProgress).unwrap();
+        let snaps = SnapshotFile::from_strs(&be, &["latest", "latest~1"], |_sn| true, &p).unwrap();
         let ids: Vec<_> = snaps.iter().map(|sn| *sn.id).collect();
         assert_eq!(ids, vec![id3, id2]);
 
         // not enough latest snapshots
-        let latest_n3 = SnapshotFile::from_strs(&be, &["003", "latest~3"], |_sn| true, &NoProgress);
+        let latest_n3 = SnapshotFile::from_strs(&be, &["003", "latest~3"], |_sn| true, &p);
         let latest_n3_err = latest_n3.unwrap_err().to_string();
         let expected = "No snapshots found for latest~3.";
         assert!(
@@ -1845,7 +1847,7 @@ mod tests {
                 "001",
             ],
             |_sn| true,
-            &NoProgress,
+            &p,
         )
         .unwrap();
         let ids: Vec<_> = snaps.iter().map(|sn| *sn.id).collect();
@@ -1860,7 +1862,7 @@ mod tests {
                 "0031223344556677001122334455667700112233445566770000000000000003",
             ],
             |_sn| true,
-            &NoProgress,
+            &p,
         )
         .unwrap();
         let ids: Vec<_> = snaps.iter().map(|sn| *sn.id).collect();

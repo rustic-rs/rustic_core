@@ -642,7 +642,7 @@ where
 ///
 /// * `P` - The progress indicator
 #[derive(Debug)]
-pub struct TreeStreamerOnce<P> {
+pub struct TreeStreamerOnce {
     /// The visited tree IDs
     visited: BTreeSet<TreeId>,
     /// The queue to send tree IDs to
@@ -650,14 +650,14 @@ pub struct TreeStreamerOnce<P> {
     /// The queue to receive trees from
     queue_out: Receiver<RusticResult<(PathBuf, Tree, usize)>>,
     /// The progress indicator
-    p: P,
+    p: Progress,
     /// The number of trees that are not yet finished
     counter: Vec<usize>,
     /// The number of finished trees
     finished_ids: usize,
 }
 
-impl<P: Progress> TreeStreamerOnce<P> {
+impl TreeStreamerOnce {
     /// Creates a new `TreeStreamerOnce`.
     ///
     /// # Type Parameters
@@ -678,7 +678,7 @@ impl<P: Progress> TreeStreamerOnce<P> {
         be: &BE,
         index: &I,
         ids: Vec<TreeId>,
-        p: P,
+        p: Progress,
     ) -> RusticResult<Self> {
         p.set_length(ids.len() as u64);
 
@@ -765,7 +765,7 @@ impl<P: Progress> TreeStreamerOnce<P> {
     }
 }
 
-impl<P: Progress> Iterator for TreeStreamerOnce<P> {
+impl Iterator for TreeStreamerOnce {
     type Item = TreeStreamItem;
 
     fn next(&mut self) -> Option<Self::Item> {

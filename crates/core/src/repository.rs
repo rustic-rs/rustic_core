@@ -56,7 +56,7 @@ use crate::{
         GlobalIndex, IndexEntry, ReadGlobalIndex, ReadIndex,
         binarysorted::{IndexCollector, IndexType},
     },
-    progress::{NoProgressBars, Progress, ProgressBars},
+    progress::{HiddenProgress, NoProgressBars, Progress, ProgressBars, ProgressType},
     repofile::{
         ConfigFile, KeyId, PathList, RepoFile, RepoId, SnapshotFile, SnapshotSummary, Tree,
         configfile::ConfigId,
@@ -212,7 +212,7 @@ pub struct RepositoryOptions {
 /// # Notes
 ///
 /// A repository can be in different states and allows some actions only when in certain state(s).
-pub struct Repository<P, S> {
+pub struct Repository<S> {
     /// The name of the repository
     pub name: String,
 
@@ -226,13 +226,13 @@ pub struct Repository<P, S> {
     opts: RepositoryOptions,
 
     /// The progress bar to use
-    pub(crate) pb: P,
+    pb: Arc<dyn ProgressBars>,
 
     /// The status
     status: S,
 }
 
-impl Repository<NoProgressBars, ()> {
+impl Repository<()> {
     /// Create a new repository from the given [`RepositoryOptions`] (without progress bars)
     ///
     /// # Arguments
@@ -248,9 +248,7 @@ impl Repository<NoProgressBars, ()> {
     pub fn new(opts: &RepositoryOptions, backends: &RepositoryBackends) -> RusticResult<Self> {
         Self::new_with_progress(opts, backends, NoProgressBars {})
     }
-}
 
-impl<P> Repository<P, ()> {
     /// Create a new repository from the given [`RepositoryOptions`] with given progress bars
     ///
     /// # Type Parameters
@@ -268,7 +266,7 @@ impl<P> Repository<P, ()> {
     /// * If no repository is given
     /// * If the warm-up command does not contain `%id`
     /// * If the specified backend cannot be loaded, e.g. is not supported
-    pub fn new_with_progress(
+    pub fn new_with_progress<P: ProgressBars>(
         opts: &RepositoryOptions,
         backends: &RepositoryBackends,
         pb: P,
@@ -301,13 +299,45 @@ impl<P> Repository<P, ()> {
             be,
             be_hot,
             opts: opts.clone(),
-            pb,
+            pb: Arc::new(pb),
             status: (),
         })
     }
 }
 
-impl<P, S> Repository<P, S> {
+impl<S> Repository<S> {
+    /// Start a new progress, which is hidden
+    pub fn progress_hidden(&self) -> Progress {
+        Progress::new(HiddenProgress)
+    }
+
+    /// Start a new progress spinner. Note that this progress doesn't get a length and is not advanced, only finished.
+    ///
+    /// # Arguments
+    ///
+    /// * `prefix` - The prefix of the progress
+    pub fn progress_spinner(&self, prefix: &str) -> Progress {
+        self.pb.progress(ProgressType::Spinner, prefix)
+    }
+
+    /// Start a new progress which counts something
+    ///
+    /// # Arguments
+    ///
+    /// * `prefix` - The prefix of the progress
+    pub fn progress_counter(&self, prefix: &str) -> Progress {
+        self.pb.progress(ProgressType::Counter, prefix)
+    }
+
+    /// Start a new progress which counts bytes
+    ///
+    /// # Arguments
+    ///
+    /// * `prefix` - The prefix of the progress
+    pub fn progress_bytes(&self, prefix: &str) -> Progress {
+        self.pb.progress(ProgressType::Bytes, prefix)
+    }
+
     /// Returns the Id of the config file
     ///
     /// # Errors
@@ -365,7 +395,7 @@ impl<P, S> Repository<P, S> {
     /// * If no suitable key is found
     /// * If listing the repository config file failed
     /// * If there is more than one repository config file
-    pub fn open(self, credentials: &Credentials) -> RusticResult<Repository<P, OpenStatus>> {
+    pub fn open(self, credentials: &Credentials) -> RusticResult<Repository<OpenStatus>> {
         let config_id = self.config_id()?.ok_or_else(|| {
             RusticError::new(
                 ErrorKind::Configuration,
@@ -426,7 +456,7 @@ impl<P, S> Repository<P, S> {
         credentials: &Credentials,
         key_opts: &KeyOptions,
         config_opts: &ConfigOptions,
-    ) -> RusticResult<Repository<P, OpenStatus>> {
+    ) -> RusticResult<Repository<OpenStatus>> {
         let config_exists = self.config_id_with_backend(&self.be)?.is_some();
         let hot_config_exists = match self.be_hot {
             None => false,
@@ -468,7 +498,7 @@ impl<P, S> Repository<P, S> {
         credentials: &Credentials,
         key_opts: &KeyOptions,
         config: ConfigFile,
-    ) -> RusticResult<Repository<P, OpenStatus>> {
+    ) -> RusticResult<Repository<OpenStatus>> {
         let (key, key_id) =
             commands::init::init_with_config(&self, credentials, key_opts, &config)?;
         info!("repository {} successfully created.", config.id);
@@ -495,7 +525,7 @@ impl<P, S> Repository<P, S> {
         key: Key,
         key_id: Option<KeyId>,
         config: ConfigFile,
-    ) -> RusticResult<Repository<P, OpenStatus>> {
+    ) -> RusticResult<Repository<OpenStatus>> {
         match (config.is_hot == Some(true), self.be_hot.is_some()) {
             (true, false) => {
                 return Err(RusticError::new(
@@ -570,7 +600,7 @@ impl<P, S> Repository<P, S> {
     }
 }
 
-impl<P: ProgressBars, S> Repository<P, S> {
+impl<S> Repository<S> {
     /// Collect information about repository files
     ///
     /// # Errors
@@ -614,11 +644,6 @@ impl<P: ProgressBars, S> Repository<P, S> {
     ) -> RusticResult<()> {
         warm_up_wait(self, packs)
     }
-
-    /// The progress bars used for the repository
-    pub fn progress_bars(&self) -> &P {
-        &self.pb
-    }
 }
 
 /// A repository which is open, i.e. the password has been checked and the decryption key is available.
@@ -629,7 +654,7 @@ pub trait Open {
     fn open_status_mut(&mut self) -> &mut OpenStatus;
 }
 
-impl<P, S: Open> Open for Repository<P, S> {
+impl<S: Open> Open for Repository<S> {
     fn open_status(&self) -> &OpenStatus {
         self.status.open_status()
     }
@@ -660,7 +685,7 @@ impl Open for OpenStatus {
     }
 }
 
-impl<P, S: Open> Repository<P, S> {
+impl<S: Open> Repository<S> {
     /// Get the content of the decrypted repository file given by id and [`FileType`]
     ///
     /// # Arguments
@@ -752,7 +777,7 @@ impl<P, S: Open> Repository<P, S> {
     }
 }
 
-impl<P: ProgressBars, S: Open> Repository<P, S> {
+impl<S: Open> Repository<S> {
     /// Get grouped snapshots.
     ///
     /// # Arguments
@@ -800,7 +825,7 @@ impl<P: ProgressBars, S: Open> Repository<P, S> {
         id: &str,
         filter: impl FnMut(&SnapshotFile) -> bool + Send + Sync,
     ) -> RusticResult<SnapshotFile> {
-        let p = self.pb.progress_counter("getting snapshot...");
+        let p = self.progress_counter("getting snapshot...");
         let snap = SnapshotFile::from_str(self.dbe(), id, filter, &p)?;
         p.finish();
         Ok(snap)
@@ -829,7 +854,7 @@ impl<P: ProgressBars, S: Open> Repository<P, S> {
         ids: &[T],
         filter: impl FnMut(&SnapshotFile) -> bool + Send + Sync,
     ) -> RusticResult<Vec<SnapshotFile>> {
-        let p = self.pb.progress_counter("getting snapshots...");
+        let p = self.progress_counter("getting snapshots...");
         let snaps = SnapshotFile::from_strs(self.dbe(), ids, filter, &p)?;
         p.finish();
         Ok(snaps)
@@ -873,7 +898,7 @@ impl<P: ProgressBars, S: Open> Repository<P, S> {
         current: Vec<SnapshotFile>,
         ids: &[T],
     ) -> RusticResult<Vec<SnapshotFile>> {
-        let p = self.pb.progress_counter("getting snapshots...");
+        let p = self.progress_counter("getting snapshots...");
         let result = SnapshotFile::update_from_ids(self.dbe(), current, ids, &p);
         p.finish();
         result
@@ -943,7 +968,7 @@ impl<P: ProgressBars, S: Open> Repository<P, S> {
         current: Vec<SnapshotFile>,
         filter: impl FnMut(&SnapshotFile) -> bool,
     ) -> RusticResult<Vec<SnapshotFile>> {
-        let p = self.pb.progress_counter("getting snapshots...");
+        let p = self.progress_counter("getting snapshots...");
         let result = SnapshotFile::update_from_backend(self.dbe(), current, filter, &p);
         p.finish();
         result
@@ -1017,7 +1042,7 @@ impl<P: ProgressBars, S: Open> Repository<P, S> {
                 "Repository is in append-only mode and snapshots cannot be deleted from it. Aborting.",
             ));
         }
-        let p = self.pb.progress_counter("removing snapshots...");
+        let p = self.progress_counter("removing snapshots...");
         self.dbe().delete_list(true, ids.iter(), p)?;
         Ok(())
     }
@@ -1035,7 +1060,7 @@ impl<P: ProgressBars, S: Open> Repository<P, S> {
         for snap in &mut snaps {
             snap.id = SnapshotId::default();
         }
-        let p = self.pb.progress_counter("saving snapshots...");
+        let p = self.progress_counter("saving snapshots...");
         self.dbe().save_list(snaps.iter(), p)?;
         Ok(())
     }
@@ -1132,8 +1157,8 @@ impl<P: ProgressBars, S: Open> Repository<P, S> {
     /// # Note
     ///
     /// This saves the full index in memory which can be quite memory-consuming!
-    pub fn to_indexed(self) -> RusticResult<Repository<P, IndexedStatus<FullIndex, S>>> {
-        let index = GlobalIndex::new(self.dbe(), &self.pb.progress_counter(""))?;
+    pub fn to_indexed(self) -> RusticResult<Repository<IndexedStatus<FullIndex, S>>> {
+        let index = GlobalIndex::new(self.dbe(), &self.progress_counter(""))?;
         Ok(self.into_indexed_with_index(index))
     }
 
@@ -1149,7 +1174,7 @@ impl<P: ProgressBars, S: Open> Repository<P, S> {
     /// # Note
     ///
     /// This saves the full index in memory which can be quite memory-consuming!
-    pub fn to_indexed_checked(self) -> RusticResult<Repository<P, IndexedStatus<FullIndex, S>>> {
+    pub fn to_indexed_checked(self) -> RusticResult<Repository<IndexedStatus<FullIndex, S>>> {
         let collector = IndexCollector::new(IndexType::Full);
         let index = index_checked_from_collector(&self, collector)?;
         Ok(self.into_indexed_with_index(index))
@@ -1159,7 +1184,7 @@ impl<P: ProgressBars, S: Open> Repository<P, S> {
     fn into_indexed_with_index(
         self,
         index: GlobalIndex,
-    ) -> Repository<P, IndexedStatus<FullIndex, S>> {
+    ) -> Repository<IndexedStatus<FullIndex, S>> {
         let status = IndexedStatus {
             open: self.status,
             index,
@@ -1196,8 +1221,8 @@ impl<P: ProgressBars, S: Open> Repository<P, S> {
     ///
     /// This saves only the `Id`s for data blobs. Therefore, not all operations are possible on the repository.
     /// However, operations which add data are fully functional.
-    pub fn to_indexed_ids(self) -> RusticResult<Repository<P, IndexedStatus<IdIndex, S>>> {
-        let index = GlobalIndex::only_full_trees(self.dbe(), &self.pb.progress_counter(""))?;
+    pub fn to_indexed_ids(self) -> RusticResult<Repository<IndexedStatus<IdIndex, S>>> {
+        let index = GlobalIndex::only_full_trees(self.dbe(), &self.progress_counter(""))?;
         Ok(self.into_indexed_ids_with_index(index))
     }
 
@@ -1218,7 +1243,7 @@ impl<P: ProgressBars, S: Open> Repository<P, S> {
     ///
     /// This saves only the `Id`s for data blobs. Therefore, not all operations are possible on the repository.
     /// However, operations which add data are fully functional.
-    pub fn to_indexed_ids_checked(self) -> RusticResult<Repository<P, IndexedStatus<IdIndex, S>>> {
+    pub fn to_indexed_ids_checked(self) -> RusticResult<Repository<IndexedStatus<IdIndex, S>>> {
         let collector = IndexCollector::new(IndexType::DataIds);
         let index = index_checked_from_collector(&self, collector)?;
         Ok(self.into_indexed_ids_with_index(index))
@@ -1228,7 +1253,7 @@ impl<P: ProgressBars, S: Open> Repository<P, S> {
     fn into_indexed_ids_with_index(
         self,
         index: GlobalIndex,
-    ) -> Repository<P, IndexedStatus<IdIndex, S>> {
+    ) -> Repository<IndexedStatus<IdIndex, S>> {
         let status = IndexedStatus {
             open: self.status,
             index,
@@ -1289,7 +1314,7 @@ impl<P: ProgressBars, S: Open> Repository<P, S> {
     ) -> RusticResult<impl Iterator<Item = RusticResult<(F::Id, F)>>> {
         Ok(self
             .dbe()
-            .stream_all::<F>(&self.pb.progress_hidden())?
+            .stream_all::<F>(&self.progress_hidden())?
             .into_iter())
     }
 
@@ -1312,7 +1337,7 @@ impl<P: ProgressBars, S: Open> Repository<P, S> {
     ) -> RusticResult<impl Iterator<Item = RusticResult<(F::Id, F)>>> {
         Ok(self
             .dbe()
-            .stream_list::<F>(list, &self.pb.progress_hidden())?
+            .stream_list::<F>(list, &self.progress_hidden())?
             .into_iter())
     }
 
@@ -1373,7 +1398,7 @@ pub trait IndexedIds: IndexedTree {
     fn into_indexed_tree(self) -> impl IndexedTree;
 }
 
-impl<P, S: IndexedTree> IndexedTree for Repository<P, S> {
+impl<S: IndexedTree> IndexedTree for Repository<S> {
     type I = S::I;
 
     fn index(&self) -> &Self::I {
@@ -1489,7 +1514,7 @@ impl<S: Open> IndexedIds for IndexedStatus<FullIndex, S> {
     }
 }
 
-impl<P, S: IndexedFull> IndexedIds for Repository<P, S> {
+impl<S: IndexedFull> IndexedIds for Repository<S> {
     fn into_indexed_tree(self) -> impl IndexedTree {
         self.status.into_indexed_tree()
     }
@@ -1505,7 +1530,7 @@ impl<S: Open> IndexedFull for IndexedStatus<FullIndex, S> {
     }
 }
 
-impl<P, S: IndexedFull> IndexedFull for Repository<P, S> {
+impl<S: IndexedFull> IndexedFull for Repository<S> {
     /// Get a blob from the internal cache blob or insert it with the given function
     ///
     /// # Arguments
@@ -1530,7 +1555,7 @@ impl<T, S: Open> Open for IndexedStatus<T, S> {
     }
 }
 
-impl<P, S: IndexedFull> Repository<P, S> {
+impl<S: IndexedFull> Repository<S> {
     /// Get the [`IndexEntry`] of the given blob
     ///
     /// # Arguments
@@ -1595,7 +1620,7 @@ impl<P, S: IndexedFull> Repository<P, S> {
     }
 }
 
-impl<P, S: IndexedTree> Repository<P, S> {
+impl<S: IndexedTree> Repository<S> {
     /// Get a [`Tree`] by [`Id`] from the repository.
     ///
     /// # Arguments
@@ -1670,7 +1695,7 @@ impl<P, S: IndexedTree> Repository<P, S> {
     }
 
     /// drop the `Repository` index leaving an `Open` `Repository`
-    pub fn drop_index(self) -> Repository<P, impl Open> {
+    pub fn drop_index(self) -> Repository<impl Open> {
         Repository {
             name: self.name,
             be: self.be,
@@ -1682,7 +1707,7 @@ impl<P, S: IndexedTree> Repository<P, S> {
     }
 }
 
-impl<P: ProgressBars, S: IndexedTree> Repository<P, S> {
+impl<S: IndexedTree> Repository<S> {
     /// Get a [`Node`] from a "SNAP\[:PATH\]" syntax
     ///
     /// This parses for a snapshot (using the filter when "latest" is used) and then traverses into the path to get the node.
@@ -1704,7 +1729,7 @@ impl<P: ProgressBars, S: IndexedTree> Repository<P, S> {
     ) -> RusticResult<Node> {
         let (id, path) = snap_path.split_once(':').unwrap_or((snap_path, ""));
 
-        let p = &self.pb.progress_counter("getting snapshot...");
+        let p = &self.progress_counter("getting snapshot...");
         let snap = SnapshotFile::from_str(self.dbe(), id, filter, p)?;
 
         Tree::node_from_path(self.dbe(), self.index(), snap.tree, Path::new(path))
@@ -1853,7 +1878,7 @@ impl<P: ProgressBars, S: IndexedTree> Repository<P, S> {
     }
 }
 
-impl<P: ProgressBars, S: IndexedIds> Repository<P, S> {
+impl<S: IndexedIds> Repository<S> {
     /// Run a backup of `source` using the given options.
     ///
     /// You have to give a preflled [`SnapshotFile`] which is modified and saved.
@@ -1881,7 +1906,7 @@ impl<P: ProgressBars, S: IndexedIds> Repository<P, S> {
     }
 }
 
-impl<P, S: IndexedFull> Repository<P, S> {
+impl<S: IndexedFull> Repository<S> {
     /// Get a blob utilizing the internal blob cache
     ///
     /// # Arguments
@@ -1901,7 +1926,7 @@ impl<P, S: IndexedFull> Repository<P, S> {
     }
 
     /// drop the data pack information from the `Repository` index leaving an `IndexedTree` `Repository`
-    pub fn drop_data_from_index(self) -> Repository<P, impl IndexedTree> {
+    pub fn drop_data_from_index(self) -> Repository<impl IndexedTree> {
         Repository {
             name: self.name,
             be: self.be,
@@ -1913,7 +1938,7 @@ impl<P, S: IndexedFull> Repository<P, S> {
     }
 }
 
-impl<P: ProgressBars, S: IndexedFull> Repository<P, S> {
+impl<S: IndexedFull> Repository<S> {
     /// Read a raw blob
     ///
     /// # Arguments
@@ -2003,9 +2028,9 @@ impl<P: ProgressBars, S: IndexedFull> Repository<P, S> {
     /// copy will be created in the destination repository.
     ///
     /// To omit already existing snapshots, use `relevant_copy_snapshots` and filter out the non-relevant ones.
-    pub fn copy<'a, Q: ProgressBars, R: IndexedIds>(
+    pub fn copy<'a, R: IndexedIds>(
         &self,
-        repo_dest: &Repository<Q, R>,
+        repo_dest: &Repository<R>,
         snapshots: impl IntoIterator<Item = &'a SnapshotFile>,
     ) -> RusticResult<()> {
         commands::copy::copy(self, repo_dest, snapshots)
