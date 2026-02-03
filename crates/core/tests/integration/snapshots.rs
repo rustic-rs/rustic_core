@@ -11,16 +11,11 @@ use jiff::Timestamp;
 use jiff::tz::TimeZone;
 use rstest::{fixture, rstest};
 use rustic_core::repofile::SnapshotFile;
-use rustic_core::{
-    BackupOptions, IdIndex, IndexedStatus, OpenStatus, Repository, SnapshotGroupCriterion,
-};
+use rustic_core::{BackupOptions, IndexedIdsStatus, Repository, SnapshotGroupCriterion};
 
 #[fixture]
 #[once]
-fn repo_and_snapshots() -> (
-    Repository<IndexedStatus<IdIndex, OpenStatus>>,
-    Vec<SnapshotFile>,
-) {
+fn repo_and_snapshots() -> (Repository<IndexedIdsStatus>, Vec<SnapshotFile>) {
     let repo = set_up_repo().unwrap().to_indexed_ids().unwrap();
     let source = tar_gz_testdata().unwrap();
 
@@ -58,10 +53,7 @@ fn repo_and_snapshots() -> (
 
 #[rstest]
 fn test_get_snapshot_group_no_ids(
-    repo_and_snapshots: &(
-        Repository<IndexedStatus<IdIndex, OpenStatus>>,
-        Vec<SnapshotFile>,
-    ),
+    repo_and_snapshots: &(Repository<IndexedIdsStatus>, Vec<SnapshotFile>),
 ) -> Result<()> {
     let (repo, snapshots) = repo_and_snapshots;
 
@@ -75,10 +67,7 @@ fn test_get_snapshot_group_no_ids(
 
 #[rstest]
 fn test_get_snapshot_group_wrong_id(
-    repo_and_snapshots: &(
-        Repository<IndexedStatus<IdIndex, OpenStatus>>,
-        Vec<SnapshotFile>,
-    ),
+    repo_and_snapshots: &(Repository<IndexedIdsStatus>, Vec<SnapshotFile>),
 ) {
     let (repo, _snapshots) = repo_and_snapshots;
 
@@ -97,10 +86,7 @@ fn test_get_snapshot_group_wrong_id(
 
 #[rstest]
 fn test_get_snapshot_group_latest_id(
-    repo_and_snapshots: &(
-        Repository<IndexedStatus<IdIndex, OpenStatus>>,
-        Vec<SnapshotFile>,
-    ),
+    repo_and_snapshots: &(Repository<IndexedIdsStatus>, Vec<SnapshotFile>),
 ) -> Result<()> {
     let (repo, snapshots) = repo_and_snapshots;
     let res = repo.get_snapshot_group(
@@ -118,10 +104,7 @@ fn test_get_snapshot_group_latest_id(
 
 #[rstest]
 fn test_get_snapshot_group_latest_n_id(
-    repo_and_snapshots: &(
-        Repository<IndexedStatus<IdIndex, OpenStatus>>,
-        Vec<SnapshotFile>,
-    ),
+    repo_and_snapshots: &(Repository<IndexedIdsStatus>, Vec<SnapshotFile>),
 ) -> Result<()> {
     let (repo, snapshots) = repo_and_snapshots;
 
@@ -151,10 +134,7 @@ fn test_get_snapshot_group_latest_n_id(
 
 #[rstest]
 fn test_get_snapshot_from_str_short_id(
-    repo_and_snapshots: &(
-        Repository<IndexedStatus<IdIndex, OpenStatus>>,
-        Vec<SnapshotFile>,
-    ),
+    repo_and_snapshots: &(Repository<IndexedIdsStatus>, Vec<SnapshotFile>),
 ) -> Result<()> {
     let (repo, _snapshots) = repo_and_snapshots;
 
@@ -171,10 +151,7 @@ fn test_get_snapshot_from_str_short_id(
 
 #[rstest]
 fn test_get_snapshot_from_str_latest(
-    repo_and_snapshots: &(
-        Repository<IndexedStatus<IdIndex, OpenStatus>>,
-        Vec<SnapshotFile>,
-    ),
+    repo_and_snapshots: &(Repository<IndexedIdsStatus>, Vec<SnapshotFile>),
 ) -> Result<()> {
     let (repo, snapshots) = repo_and_snapshots;
 
@@ -187,10 +164,7 @@ fn test_get_snapshot_from_str_latest(
 
 #[rstest]
 fn test_get_snapshots_from_strs_latest(
-    repo_and_snapshots: &(
-        Repository<IndexedStatus<IdIndex, OpenStatus>>,
-        Vec<SnapshotFile>,
-    ),
+    repo_and_snapshots: &(Repository<IndexedIdsStatus>, Vec<SnapshotFile>),
 ) -> Result<()> {
     let (repo, snapshots) = repo_and_snapshots;
 

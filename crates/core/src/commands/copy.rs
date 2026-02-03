@@ -17,7 +17,7 @@ use crate::{
     error::RusticResult,
     index::{ReadIndex, indexer::Indexer},
     repofile::SnapshotFile,
-    repository::{IndexedFull, IndexedIds, IndexedTree, Open, Repository},
+    repository::{IndexedFull, IndexedIds, Open, Repository},
 };
 
 /// This struct enhances `[SnapshotFile]` with the attribute `relevant`

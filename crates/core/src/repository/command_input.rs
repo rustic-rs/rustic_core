@@ -210,6 +210,40 @@ impl CommandInput {
 
         Ok(output.stdout)
     }
+
+    /// Check if the command uses plural placeholders (%ids or %paths)
+    /// Returns true if the command should be executed once with all values,
+    /// false if it should be executed once per pack
+    pub(crate) fn uses_plural_placeholders(&self) -> RusticResult<bool> {
+        let cmd_str = self.to_string();
+        let has_id = contains_exact(&cmd_str, "%id");
+        let has_ids = contains_exact(&cmd_str, "%ids");
+        let has_path = contains_exact(&cmd_str, "%path");
+        let has_paths = contains_exact(&cmd_str, "%paths");
+
+        // Check for at least one placeholder
+        if !has_id && !has_ids && !has_path && !has_paths {
+            return Err(RusticError::new(
+            ErrorKind::MissingInput,
+            "No placeholder found in warm-up command. Please specify at least one of: %id, %ids, %path, %paths",
+        )
+        .attach_context("command", cmd_str));
+        }
+
+        // Check for mixing singular and plural placeholders
+        let has_singular = has_id || has_path;
+        let has_plural = has_ids || has_paths;
+
+        if has_singular && has_plural {
+            return Err(RusticError::new(
+            ErrorKind::InvalidInput,
+            "Cannot mix singular (%id, %path) and plural (%ids, %paths) placeholders in warm-up command",
+        )
+        .attach_context("command", cmd_str));
+        }
+
+        Ok(has_plural)
+    }
 }
 
 impl FromStr for CommandInput {
@@ -354,4 +388,27 @@ fn split(s: &str) -> CommandInputResult<Vec<String>> {
         arguments: s.to_string(),
         source: err,
     })
+}
+
+/// Check if the string contains the exact pattern as a standalone token
+/// (not as a substring of a longer pattern like "%ids" contains "%id")
+fn contains_exact(s: &str, pattern: &str) -> bool {
+    let mut start = 0;
+    while let Some(pos) = s[start..].find(pattern) {
+        let actual_pos = start + pos;
+        let pattern_end = actual_pos + pattern.len();
+
+        // Check what character follows the pattern
+        let is_word_boundary = pattern_end >= s.len()
+            || !s[pattern_end..]
+                .chars()
+                .next()
+                .is_some_and(char::is_alphanumeric);
+
+        if is_word_boundary {
+            return true;
+        }
+        start = pattern_end;
+    }
+    false
 }

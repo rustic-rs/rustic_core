@@ -1,6 +1,9 @@
 pub(crate) mod command_input;
 pub(crate) mod credentials;
+pub(crate) mod status;
 pub(crate) mod warm_up;
+
+pub use status::*;
 
 use std::{
     cmp::Ordering,
@@ -81,63 +84,6 @@ mod constants {
 
     /// Estimated weight capacity used for cache in [`FullIndex`](super::FullIndex) (in bytes)
     pub(super) const WEIGHT_CAPACITY: u64 = 32_000_000;
-}
-
-/// Check if the string contains the exact pattern as a standalone token
-/// (not as a substring of a longer pattern like "%ids" contains "%id")
-fn contains_exact(s: &str, pattern: &str) -> bool {
-    let mut start = 0;
-    while let Some(pos) = s[start..].find(pattern) {
-        let actual_pos = start + pos;
-        let pattern_end = actual_pos + pattern.len();
-
-        // Check what character follows the pattern
-        let is_word_boundary = pattern_end >= s.len()
-            || !s[pattern_end..]
-                .chars()
-                .next()
-                .is_some_and(char::is_alphanumeric);
-
-        if is_word_boundary {
-            return true;
-        }
-        start = pattern_end;
-    }
-    false
-}
-
-/// Check if the command uses plural placeholders (%ids or %paths)
-/// Returns true if the command should be executed once with all values,
-/// false if it should be executed once per pack
-pub(super) fn uses_plural_placeholders(command: &CommandInput) -> RusticResult<bool> {
-    let cmd_str = command.to_string();
-    let has_id = contains_exact(&cmd_str, "%id");
-    let has_ids = contains_exact(&cmd_str, "%ids");
-    let has_path = contains_exact(&cmd_str, "%path");
-    let has_paths = contains_exact(&cmd_str, "%paths");
-
-    // Check for at least one placeholder
-    if !has_id && !has_ids && !has_path && !has_paths {
-        return Err(RusticError::new(
-            ErrorKind::MissingInput,
-            "No placeholder found in warm-up command. Please specify at least one of: %id, %ids, %path, %paths",
-        )
-        .attach_context("command", command.to_string()));
-    }
-
-    // Check for mixing singular and plural placeholders
-    let has_singular = has_id || has_path;
-    let has_plural = has_ids || has_paths;
-
-    if has_singular && has_plural {
-        return Err(RusticError::new(
-            ErrorKind::InvalidInput,
-            "Cannot mix singular (%id, %path) and plural (%ids, %paths) placeholders in warm-up command",
-        )
-        .attach_context("command", command.to_string()));
-    }
-
-    Ok(has_plural)
 }
 
 /// Options for using and opening a [`Repository`]
@@ -275,7 +221,7 @@ impl Repository<()> {
         let be_hot = backends.repo_hot();
 
         if let Some(warm_up) = &opts.warm_up_command {
-            let _ = uses_plural_placeholders(warm_up)?;
+            let _ = warm_up.uses_plural_placeholders()?;
 
             info!(
                 "using warm-up command {warm_up} with batch size {}",
@@ -598,9 +544,7 @@ impl<S> Repository<S> {
     ) -> RusticResult<impl Iterator<Item = I>> {
         Ok(self.be.find_ids(I::TYPE, ids)?.into_iter().map(I::from))
     }
-}
 
-impl<S> Repository<S> {
     /// Collect information about repository files
     ///
     /// # Errors
@@ -643,45 +587,6 @@ impl<S> Repository<S> {
         packs: impl ExactSizeIterator<Item = PackId> + Clone,
     ) -> RusticResult<()> {
         warm_up_wait(self, packs)
-    }
-}
-
-/// A repository which is open, i.e. the password has been checked and the decryption key is available.
-pub trait Open {
-    /// Get the open status
-    fn open_status(&self) -> &OpenStatus;
-    /// Get the mutable open status
-    fn open_status_mut(&mut self) -> &mut OpenStatus;
-}
-
-impl<S: Open> Open for Repository<S> {
-    fn open_status(&self) -> &OpenStatus {
-        self.status.open_status()
-    }
-    fn open_status_mut(&mut self) -> &mut OpenStatus {
-        self.status.open_status_mut()
-    }
-}
-
-/// Open Status: This repository is open, i.e. the password has been checked and the decryption key is available.
-#[derive(Debug)]
-pub struct OpenStatus {
-    /// The cache
-    pub(crate) cache: Option<Cache>,
-    /// The [`DecryptBackend`]
-    dbe: DecryptBackend<Key>,
-    /// The [`ConfigFile`]
-    config: ConfigFile,
-    /// The [`KeyId`] of the used key
-    key_id: Option<KeyId>,
-}
-
-impl Open for OpenStatus {
-    fn open_status(&self) -> &OpenStatus {
-        self
-    }
-    fn open_status_mut(&mut self) -> &mut OpenStatus {
-        self
     }
 }
 
@@ -738,27 +643,31 @@ impl<S: Open> Repository<S> {
 
     /// Get the repository configuration
     pub fn config(&self) -> &ConfigFile {
-        &self.open_status().config
+        &self.status.open_status().config
     }
 
     /// Set the repository configuration
     pub(crate) fn set_config(&mut self, config: ConfigFile) {
-        self.open_status_mut().config = config;
+        self.status.open_status_mut().config = config;
     }
 
     // TODO: add documentation!
     pub(crate) fn dbe(&self) -> &DecryptBackend<Key> {
-        &self.open_status().dbe
+        &self.status.open_status().dbe
+    }
+
+    pub(crate) fn cache(&self) -> Option<&Cache> {
+        self.status.open_status().cache.as_ref()
     }
 
     /// Get the [`KeyId`] of the key used to open the repository
     pub fn key_id(&self) -> &Option<KeyId> {
-        &self.open_status().key_id
+        &self.status.open_status().key_id
     }
 
     /// Get the [`MasterKey`] used to open the repository
     pub fn key(&self) -> MasterKey {
-        MasterKey::from_key(*self.open_status().dbe.key())
+        MasterKey::from_key(*self.status.open_status().dbe.key())
     }
 
     /// Delete the key with the given id
@@ -775,9 +684,7 @@ impl<S: Open> Repository<S> {
         }
         self.dbe().remove(FileType::Key, id, false)
     }
-}
 
-impl<S: Open> Repository<S> {
     /// Get grouped snapshots.
     ///
     /// # Arguments
@@ -1157,7 +1064,7 @@ impl<S: Open> Repository<S> {
     /// # Note
     ///
     /// This saves the full index in memory which can be quite memory-consuming!
-    pub fn to_indexed(self) -> RusticResult<Repository<IndexedStatus<FullIndex, S>>> {
+    pub fn to_indexed(self) -> RusticResult<Repository<IndexedFullStatus>> {
         let index = GlobalIndex::new(self.dbe(), &self.progress_counter(""))?;
         Ok(self.into_indexed_with_index(index))
     }
@@ -1174,28 +1081,23 @@ impl<S: Open> Repository<S> {
     /// # Note
     ///
     /// This saves the full index in memory which can be quite memory-consuming!
-    pub fn to_indexed_checked(self) -> RusticResult<Repository<IndexedStatus<FullIndex, S>>> {
+    pub fn to_indexed_checked(self) -> RusticResult<Repository<IndexedFullStatus>> {
         let collector = IndexCollector::new(IndexType::Full);
         let index = index_checked_from_collector(&self, collector)?;
         Ok(self.into_indexed_with_index(index))
     }
 
     // helper function to deduplicate code
-    fn into_indexed_with_index(
-        self,
-        index: GlobalIndex,
-    ) -> Repository<IndexedStatus<FullIndex, S>> {
-        let status = IndexedStatus {
-            open: self.status,
+    fn into_indexed_with_index(self, index: GlobalIndex) -> Repository<IndexedFullStatus> {
+        let status = IndexedFullStatus {
+            open: self.status.into_open_status(),
             index,
-            index_data: FullIndex {
-                // TODO: Make cache size (32MB currently) customizable!
-                cache: quick_cache::sync::Cache::with_weighter(
-                    constants::ESTIMATED_ITEM_CAPACITY,
-                    constants::WEIGHT_CAPACITY,
-                    BytesWeighter {},
-                ),
-            },
+            // TODO: Make cache size (32MB currently) customizable!
+            cache: quick_cache::sync::Cache::with_weighter(
+                constants::ESTIMATED_ITEM_CAPACITY,
+                constants::WEIGHT_CAPACITY,
+                BytesWeighter {},
+            ),
         };
         Repository {
             name: self.name,
@@ -1221,7 +1123,7 @@ impl<S: Open> Repository<S> {
     ///
     /// This saves only the `Id`s for data blobs. Therefore, not all operations are possible on the repository.
     /// However, operations which add data are fully functional.
-    pub fn to_indexed_ids(self) -> RusticResult<Repository<IndexedStatus<IdIndex, S>>> {
+    pub fn to_indexed_ids(self) -> RusticResult<Repository<IndexedIdsStatus>> {
         let index = GlobalIndex::only_full_trees(self.dbe(), &self.progress_counter(""))?;
         Ok(self.into_indexed_ids_with_index(index))
     }
@@ -1243,21 +1145,17 @@ impl<S: Open> Repository<S> {
     ///
     /// This saves only the `Id`s for data blobs. Therefore, not all operations are possible on the repository.
     /// However, operations which add data are fully functional.
-    pub fn to_indexed_ids_checked(self) -> RusticResult<Repository<IndexedStatus<IdIndex, S>>> {
+    pub fn to_indexed_ids_checked(self) -> RusticResult<Repository<IndexedIdsStatus>> {
         let collector = IndexCollector::new(IndexType::DataIds);
         let index = index_checked_from_collector(&self, collector)?;
         Ok(self.into_indexed_ids_with_index(index))
     }
 
     // helper function to deduplicate code
-    fn into_indexed_ids_with_index(
-        self,
-        index: GlobalIndex,
-    ) -> Repository<IndexedStatus<IdIndex, S>> {
-        let status = IndexedStatus {
-            open: self.status,
+    fn into_indexed_ids_with_index(self, index: GlobalIndex) -> Repository<IndexedIdsStatus> {
+        let status = IndexedIdsStatus {
+            open: self.status.into_open_status(),
             index,
-            index_data: IdIndex {},
         };
         Repository {
             name: self.name,
@@ -1376,182 +1274,6 @@ impl<S: Open> Repository<S> {
         opts: &RewriteOptions,
     ) -> RusticResult<Vec<SnapshotFile>> {
         rewrite_snapshots(self, snapshots, opts)
-    }
-}
-
-/// A repository which is indexed such that all tree blobs are contained in the index.
-pub trait IndexedTree: Open {
-    /// The used index
-    type I: ReadGlobalIndex;
-
-    /// Returns the used indexes
-    fn index(&self) -> &Self::I;
-
-    /// Turn the repository into the `Open` state
-    fn into_open(self) -> impl Open;
-}
-
-/// A repository which is indexed such that all tree blobs are contained in the index
-/// and additionally the `Id`s of data blobs are also contained in the index.
-pub trait IndexedIds: IndexedTree {
-    /// Turn the repository into the `IndexedTree` state by reading and storing a size-optimized index
-    fn into_indexed_tree(self) -> impl IndexedTree;
-}
-
-impl<S: IndexedTree> IndexedTree for Repository<S> {
-    type I = S::I;
-
-    fn index(&self) -> &Self::I {
-        self.status.index()
-    }
-
-    fn into_open(self) -> impl Open {
-        self.status.into_open()
-    }
-}
-
-#[derive(Clone, Copy, Debug)]
-/// Defines a weighted cache with weight equal to the length of the blob size
-pub(crate) struct BytesWeighter;
-
-impl quick_cache::Weighter<BlobId, Bytes> for BytesWeighter {
-    fn weight(&self, _key: &BlobId, val: &Bytes) -> u64 {
-        u64::try_from(val.len())
-            .expect("weight overflow in cache should not happen")
-            // Be cautions out about zero weights!
-            .max(1)
-    }
-}
-
-/// A repository which is indexed such that all blob information is fully contained in the index.
-pub trait IndexedFull: IndexedIds {
-    /// Get a blob from the internal cache blob or insert it with the given function
-    ///
-    /// # Arguments
-    ///
-    /// * `id` - The [`Id`] of the blob to get
-    /// * `with` - The function which fetches the blob from the repository if it is not contained in the cache
-    ///
-    /// # Errors
-    ///
-    /// * If the blob could not be fetched from the repository.
-    ///
-    /// # Returns
-    ///
-    /// The blob with the given id or the result of the given function if the blob is not contained in the cache
-    /// and the function is called.
-    fn get_blob_or_insert_with(
-        &self,
-        id: &BlobId,
-        with: impl FnOnce() -> RusticResult<Bytes>,
-    ) -> RusticResult<Bytes>;
-}
-
-/// The indexed status of a repository
-///
-/// # Type Parameters
-///
-/// * `T` - The type of index
-/// * `S` - The type of the open status
-#[derive(Debug)]
-pub struct IndexedStatus<T, S: Open> {
-    /// The index backend
-    index: GlobalIndex,
-    /// Additional index data used for the specific index status
-    index_data: T,
-    /// The open status
-    open: S,
-}
-
-#[derive(Debug, Clone, Copy)]
-/// A type of an index, that only contains [`Id`]s.
-///
-/// Used for the [`IndexedTrees`] state of a repository in [`IndexedStatus`].
-pub struct TreeIndex;
-
-#[derive(Debug, Clone, Copy)]
-/// A type of an index, that only contains [`Id`]s.
-///
-/// Used for the [`IndexedIds`] state of a repository in [`IndexedStatus`].
-pub struct IdIndex;
-
-#[derive(Debug)]
-/// A full index containing [`Id`]s and locations for tree and data blobs.
-///
-/// As we usually use this to access data blobs from the repository, we also have defined a blob cache for
-/// repositories with full index.
-pub struct FullIndex {
-    cache: quick_cache::sync::Cache<BlobId, Bytes, BytesWeighter>,
-}
-
-impl<T, S: Open> IndexedTree for IndexedStatus<T, S> {
-    type I = GlobalIndex;
-
-    fn index(&self) -> &Self::I {
-        &self.index
-    }
-
-    fn into_open(self) -> impl Open {
-        self.open
-    }
-}
-
-impl<S: Open> IndexedIds for IndexedStatus<IdIndex, S> {
-    fn into_indexed_tree(self) -> impl IndexedTree {
-        Self {
-            index: self.index.drop_data(),
-            ..self
-        }
-    }
-}
-
-impl<S: Open> IndexedIds for IndexedStatus<FullIndex, S> {
-    fn into_indexed_tree(self) -> impl IndexedTree {
-        Self {
-            index: self.index.drop_data(),
-            ..self
-        }
-    }
-}
-
-impl<S: IndexedFull> IndexedIds for Repository<S> {
-    fn into_indexed_tree(self) -> impl IndexedTree {
-        self.status.into_indexed_tree()
-    }
-}
-
-impl<S: Open> IndexedFull for IndexedStatus<FullIndex, S> {
-    fn get_blob_or_insert_with(
-        &self,
-        id: &BlobId,
-        with: impl FnOnce() -> RusticResult<Bytes>,
-    ) -> RusticResult<Bytes> {
-        self.index_data.cache.get_or_insert_with(id, with)
-    }
-}
-
-impl<S: IndexedFull> IndexedFull for Repository<S> {
-    /// Get a blob from the internal cache blob or insert it with the given function
-    ///
-    /// # Arguments
-    ///
-    /// * `id` - The [`Id`] of the blob to get
-    /// * `with` - The function which fetches the blob from the repository if it is not contained in the cache
-    fn get_blob_or_insert_with(
-        &self,
-        id: &BlobId,
-        with: impl FnOnce() -> RusticResult<Bytes>,
-    ) -> RusticResult<Bytes> {
-        self.status.get_blob_or_insert_with(id, with)
-    }
-}
-
-impl<T, S: Open> Open for IndexedStatus<T, S> {
-    fn open_status(&self) -> &OpenStatus {
-        self.open.open_status()
-    }
-    fn open_status_mut(&mut self) -> &mut OpenStatus {
-        self.open.open_status_mut()
     }
 }
 
@@ -1695,19 +1417,23 @@ impl<S: IndexedTree> Repository<S> {
     }
 
     /// drop the `Repository` index leaving an `Open` `Repository`
-    pub fn drop_index(self) -> Repository<impl Open> {
+    pub fn drop_index(self) -> Repository<OpenStatus> {
         Repository {
             name: self.name,
             be: self.be,
             be_hot: self.be_hot,
             opts: self.opts,
             pb: self.pb,
-            status: self.status.into_open(),
+            status: self.status.into_open_status(),
         }
     }
 }
 
 impl<S: IndexedTree> Repository<S> {
+    pub(crate) fn index(&self) -> &impl ReadGlobalIndex {
+        self.status.index()
+    }
+
     /// Get a [`Node`] from a "SNAP\[:PATH\]" syntax
     ///
     /// This parses for a snapshot (using the filter when "latest" is used) and then traverses into the path to get the node.
@@ -1922,7 +1648,8 @@ impl<S: IndexedFull> Repository<S> {
     ///
     /// The cached blob in bytes.
     pub fn get_blob_cached(&self, id: &BlobId, tpe: BlobType) -> RusticResult<Bytes> {
-        self.get_blob_or_insert_with(id, || self.index().blob_from_backend(self.dbe(), tpe, id))
+        self.status
+            .get_blob_or_insert_with(id, || self.index().blob_from_backend(self.dbe(), tpe, id))
     }
 
     /// drop the data pack information from the `Repository` index leaving an `IndexedTree` `Repository`
