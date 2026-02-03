@@ -58,6 +58,17 @@ pub mod in_memory_backend {
         ) -> RusticResult<Bytes> {
             Ok(self.0.read().unwrap()[tpe][id].slice(offset as usize..(offset + length) as usize))
         }
+
+        fn warmup_path(&self, tpe: FileType, id: &Id) -> String {
+            // For in-memory backend, return a simple identifier
+            // Since this is a testing backend, we can return a formatted path
+            let hex_id = id.to_hex();
+            match tpe {
+                FileType::Config => "config".to_string(),
+                FileType::Pack => format!("data/{}/{}", &hex_id[0..2], hex_id.as_str()),
+                _ => format!("{}/{}", tpe.dirname(), hex_id.as_str()),
+            }
+        }
     }
 
     impl WriteBackend for InMemoryBackend {

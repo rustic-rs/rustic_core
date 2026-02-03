@@ -103,6 +103,16 @@ impl<BE: DecryptFullBackend> ReadBackend for DryRunBackend<BE> {
     ) -> RusticResult<Bytes> {
         self.be.read_partial(tpe, id, cacheable, offset, length)
     }
+
+    fn warmup_path(&self, tpe: FileType, id: &Id) -> String {
+        // Delegate to the underlying backend
+        self.be.warmup_path(tpe, id)
+    }
+
+    fn needs_warm_up(&self) -> bool {
+        // Delegate to the underlying backend
+        self.be.needs_warm_up()
+    }
 }
 
 impl<BE: DecryptFullBackend> DecryptWriteBackend for DryRunBackend<BE> {

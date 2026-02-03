@@ -59,6 +59,11 @@ impl ReadBackend for WarmUpAccessBackend {
         _ = self.be.read_partial(tpe, id, false, 0, 1);
         Ok(())
     }
+
+    fn warmup_path(&self, tpe: FileType, id: &Id) -> String {
+        // Delegate to the underlying backend
+        self.be.warmup_path(tpe, id)
+    }
 }
 
 impl WriteBackend for WarmUpAccessBackend {
