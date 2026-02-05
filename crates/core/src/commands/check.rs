@@ -232,19 +232,19 @@ pub(crate) fn check_repository<S: Open>(
     let hot_be = &repo.be_hot;
     let raw_be = repo.dbe();
     let collector = CheckResultsCollector::default().log(true);
-    if !opts.trust_cache {
-        if let Some(cache) = &cache {
-            for file_type in [FileType::Snapshot, FileType::Index] {
-                // list files in order to clean up the cache
-                //
-                // This lists files here and later when reading index / checking snapshots
-                // TODO: Only list the files once...
-                _ = be.list_with_size(file_type)?;
+    if !opts.trust_cache
+        && let Some(cache) = &cache
+    {
+        for file_type in [FileType::Snapshot, FileType::Index] {
+            // list files in order to clean up the cache
+            //
+            // This lists files here and later when reading index / checking snapshots
+            // TODO: Only list the files once...
+            _ = be.list_with_size(file_type)?;
 
-                let p = repo.progress_bytes(&format!("checking {file_type:?} in cache..."));
-                // TODO: Make concurrency (20) customizable
-                check_cache_files(20, cache, raw_be, file_type, &p, &collector)?;
-            }
+            let p = repo.progress_bytes(&format!("checking {file_type:?} in cache..."));
+            // TODO: Make concurrency (20) customizable
+            check_cache_files(20, cache, raw_be, file_type, &p, &collector)?;
         }
     }
 

@@ -685,8 +685,8 @@ impl RestorePlan {
         let mut open_file = dest.get_matching_file(&name, file.meta.size);
 
         // Empty files which exists with correct size should always return Ok(Existing)!
-        if file.meta.size == 0 {
-            if let Some(meta) = open_file
+        if file.meta.size == 0
+            && let Some(meta) = open_file
                 .as_ref()
                 .map(std::fs::File::metadata)
                 .transpose()
@@ -698,16 +698,13 @@ impl RestorePlan {
                     )
                     .attach_context("path", name.display().to_string())
                 )?
-            {
-                if meta.len() == 0 {
+                && meta.len() == 0 {
                     // Empty file exists
                     return Ok(AddFileResult::Existing);
                 }
-            }
-        }
 
-        if !ignore_mtime {
-            if let Some(meta) = open_file
+        if !ignore_mtime
+            && let Some(meta) = open_file
                 .as_ref()
                 .map(std::fs::File::metadata)
                 .transpose()
@@ -732,7 +729,6 @@ impl RestorePlan {
                     return Ok(AddFileResult::Existing);
                 }
             }
-        }
 
         let file_idx = self.names.len();
         self.names.push(name);

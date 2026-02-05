@@ -153,11 +153,11 @@ impl SnapshotModification {
 
 #[allow(clippy::ref_option)]
 fn set_check<T: PartialEq + Clone>(a: &mut T, b: &Option<T>) -> bool {
-    if let Some(b) = b {
-        if *a != *b {
-            *a = b.clone();
-            return true;
-        }
+    if let Some(b) = b
+        && *a != *b
+    {
+        *a = b.clone();
+        return true;
     }
     false
 }

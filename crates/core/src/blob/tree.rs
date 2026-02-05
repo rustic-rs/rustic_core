@@ -603,23 +603,23 @@ where
             match self.inner.next() {
                 Some(node) => {
                     let path = self.path.join(node.name());
-                    if self.recursive {
-                        if let Some(id) = node.subtree {
-                            self.path.push(node.name());
-                            let be = self.be.clone();
-                            let tree = match Tree::from_backend(&be, self.index, id) {
-                                Ok(tree) => tree,
-                                Err(err) => return Some(Err(err)),
-                            };
-                            let old_inner = mem::replace(&mut self.inner, tree.nodes.into_iter());
-                            self.open_iterators.push(old_inner);
-                        }
+                    if self.recursive
+                        && let Some(id) = node.subtree
+                    {
+                        self.path.push(node.name());
+                        let be = self.be.clone();
+                        let tree = match Tree::from_backend(&be, self.index, id) {
+                            Ok(tree) => tree,
+                            Err(err) => return Some(Err(err)),
+                        };
+                        let old_inner = mem::replace(&mut self.inner, tree.nodes.into_iter());
+                        self.open_iterators.push(old_inner);
                     }
 
-                    if let Some(overrides) = &self.overrides {
-                        if let Match::Ignore(_) = overrides.matched(&path, false) {
-                            continue;
-                        }
+                    if let Some(overrides) = &self.overrides
+                        && let Match::Ignore(_) = overrides.matched(&path, false)
+                    {
+                        continue;
                     }
 
                     return Some(Ok((path, node)));
