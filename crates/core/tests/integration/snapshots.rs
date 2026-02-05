@@ -12,14 +12,13 @@ use jiff::tz::TimeZone;
 use rstest::{fixture, rstest};
 use rustic_core::repofile::SnapshotFile;
 use rustic_core::{
-    BackupOptions, IdIndex, IndexedStatus, NoProgressBars, OpenStatus, Repository,
-    SnapshotGroupCriterion,
+    BackupOptions, IdIndex, IndexedStatus, OpenStatus, Repository, SnapshotGroupCriterion,
 };
 
 #[fixture]
 #[once]
 fn repo_and_snapshots() -> (
-    Repository<NoProgressBars, IndexedStatus<IdIndex, OpenStatus>>,
+    Repository<IndexedStatus<IdIndex, OpenStatus>>,
     Vec<SnapshotFile>,
 ) {
     let repo = set_up_repo().unwrap().to_indexed_ids().unwrap();
@@ -60,7 +59,7 @@ fn repo_and_snapshots() -> (
 #[rstest]
 fn test_get_snapshot_group_no_ids(
     repo_and_snapshots: &(
-        Repository<NoProgressBars, IndexedStatus<IdIndex, OpenStatus>>,
+        Repository<IndexedStatus<IdIndex, OpenStatus>>,
         Vec<SnapshotFile>,
     ),
 ) -> Result<()> {
@@ -77,7 +76,7 @@ fn test_get_snapshot_group_no_ids(
 #[rstest]
 fn test_get_snapshot_group_wrong_id(
     repo_and_snapshots: &(
-        Repository<NoProgressBars, IndexedStatus<IdIndex, OpenStatus>>,
+        Repository<IndexedStatus<IdIndex, OpenStatus>>,
         Vec<SnapshotFile>,
     ),
 ) {
@@ -99,7 +98,7 @@ fn test_get_snapshot_group_wrong_id(
 #[rstest]
 fn test_get_snapshot_group_latest_id(
     repo_and_snapshots: &(
-        Repository<NoProgressBars, IndexedStatus<IdIndex, OpenStatus>>,
+        Repository<IndexedStatus<IdIndex, OpenStatus>>,
         Vec<SnapshotFile>,
     ),
 ) -> Result<()> {
@@ -120,7 +119,7 @@ fn test_get_snapshot_group_latest_id(
 #[rstest]
 fn test_get_snapshot_group_latest_n_id(
     repo_and_snapshots: &(
-        Repository<NoProgressBars, IndexedStatus<IdIndex, OpenStatus>>,
+        Repository<IndexedStatus<IdIndex, OpenStatus>>,
         Vec<SnapshotFile>,
     ),
 ) -> Result<()> {
@@ -153,7 +152,7 @@ fn test_get_snapshot_group_latest_n_id(
 #[rstest]
 fn test_get_snapshot_from_str_short_id(
     repo_and_snapshots: &(
-        Repository<NoProgressBars, IndexedStatus<IdIndex, OpenStatus>>,
+        Repository<IndexedStatus<IdIndex, OpenStatus>>,
         Vec<SnapshotFile>,
     ),
 ) -> Result<()> {
@@ -173,7 +172,7 @@ fn test_get_snapshot_from_str_short_id(
 #[rstest]
 fn test_get_snapshot_from_str_latest(
     repo_and_snapshots: &(
-        Repository<NoProgressBars, IndexedStatus<IdIndex, OpenStatus>>,
+        Repository<IndexedStatus<IdIndex, OpenStatus>>,
         Vec<SnapshotFile>,
     ),
 ) -> Result<()> {
@@ -189,7 +188,7 @@ fn test_get_snapshot_from_str_latest(
 #[rstest]
 fn test_get_snapshots_from_strs_latest(
     repo_and_snapshots: &(
-        Repository<NoProgressBars, IndexedStatus<IdIndex, OpenStatus>>,
+        Repository<IndexedStatus<IdIndex, OpenStatus>>,
         Vec<SnapshotFile>,
     ),
 ) -> Result<()> {

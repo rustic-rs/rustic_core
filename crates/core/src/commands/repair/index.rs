@@ -11,7 +11,6 @@ use crate::{
     },
     error::{ErrorKind, RusticError, RusticResult},
     index::{GlobalIndex, binarysorted::IndexCollector, indexer::Indexer},
-    progress::{Progress, ProgressBars},
     repofile::{IndexFile, IndexPack, PackHeader, PackHeaderRef, packfile::PackId},
     repository::{Open, Repository},
 };
@@ -38,8 +37,8 @@ pub struct RepairIndexOptions {
 ///
 /// * `repo` - The repository to repair
 /// * `dry_run` - Whether to actually modify the repository or just print what would be done
-pub(crate) fn repair_index<P: ProgressBars, S: Open>(
-    repo: &Repository<P, S>,
+pub(crate) fn repair_index<S: Open>(
+    repo: &Repository<S>,
     opts: RepairIndexOptions,
     dry_run: bool,
 ) -> RusticResult<()> {
@@ -53,7 +52,7 @@ pub(crate) fn repair_index<P: ProgressBars, S: Open>(
     let be = repo.dbe();
     let mut checker = PackChecker::new(repo)?;
 
-    let p = repo.pb.progress_counter("reading index...");
+    let p = repo.progress_counter("reading index...");
     for index in be.stream_all::<IndexFile>(&p)? {
         let (index_id, index) = index?;
         let (new_index, changed) = checker.check_pack(index, opts.read_all);
@@ -74,7 +73,7 @@ pub(crate) fn repair_index<P: ProgressBars, S: Open>(
     repo.warm_up_wait(pack_read_header.iter().map(|(id, _, _)| *id))?;
 
     let indexer = Indexer::new(be.clone()).into_shared();
-    let p = repo.pb.progress_counter("reading pack headers");
+    let p = repo.progress_counter("reading pack headers");
 
     p.set_length(pack_read_header.len().try_into().map_err(|err| {
         RusticError::with_source(
@@ -119,9 +118,9 @@ struct PackChecker {
 }
 
 impl PackChecker {
-    fn new<P: ProgressBars, S: Open>(repo: &Repository<P, S>) -> RusticResult<Self> {
+    fn new<S: Open>(repo: &Repository<S>) -> RusticResult<Self> {
         let be = repo.dbe();
-        let p = repo.pb.progress_spinner("listing packs...");
+        let p = repo.progress_spinner("listing packs...");
         let packs: HashMap<_, _> = be
             .list_with_size(FileType::Pack)?
             .into_iter()
@@ -179,14 +178,14 @@ impl PackChecker {
     }
 }
 
-pub(crate) fn index_checked_from_collector<P: ProgressBars, S: Open>(
-    repo: &Repository<P, S>,
+pub(crate) fn index_checked_from_collector<S: Open>(
+    repo: &Repository<S>,
     mut collector: IndexCollector,
 ) -> RusticResult<GlobalIndex> {
     let mut checker = PackChecker::new(repo)?;
     let be = repo.dbe();
 
-    let p = repo.pb.progress_counter("reading index...");
+    let p = repo.progress_counter("reading index...");
     for index in be.stream_all::<IndexFile>(&p)? {
         collector.extend(checker.check_pack(index?.1, false).0.packs);
     }
@@ -195,7 +194,7 @@ pub(crate) fn index_checked_from_collector<P: ProgressBars, S: Open>(
     let pack_read_header = checker.into_pack_to_read();
     repo.warm_up_wait(pack_read_header.iter().map(|(id, _, _)| *id))?;
 
-    let p = repo.pb.progress_counter("reading pack headers");
+    let p = repo.progress_counter("reading pack headers");
 
     p.set_length(pack_read_header.len().try_into().map_err(|err| {
         RusticError::with_source(

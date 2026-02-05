@@ -37,8 +37,8 @@ use crate::{
 /// # Returns
 ///
 /// Whether the config was changed
-pub(crate) fn apply_config<P, S: Open>(
-    repo: &mut Repository<P, S>,
+pub(crate) fn apply_config<S: Open>(
+    repo: &mut Repository<S>,
     opts: &ConfigOptions,
 ) -> RusticResult<bool> {
     if repo.config().append_only == Some(true) && opts.set_append_only != Some(false) {
@@ -75,8 +75,8 @@ pub(crate) fn apply_config<P, S: Open>(
 /// # Errors
 ///
 /// * If the file could not be serialized to json.
-pub(crate) fn save_config<P, S>(
-    repo: &Repository<P, S>,
+pub(crate) fn save_config<S>(
+    repo: &Repository<S>,
     mut new_config: ConfigFile,
     key: impl CryptoKey,
 ) -> RusticResult<()> {

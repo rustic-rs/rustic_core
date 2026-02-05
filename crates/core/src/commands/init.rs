@@ -37,8 +37,8 @@ use crate::{
 /// # Returns
 ///
 /// A tuple of the key and the config file.
-pub(crate) fn init<P, S>(
-    repo: &Repository<P, S>,
+pub(crate) fn init<S>(
+    repo: &Repository<S>,
     credentials: &Credentials,
     key_opts: &KeyOptions,
     config_opts: &ConfigOptions,
@@ -77,8 +77,8 @@ pub(crate) fn init<P, S>(
 /// # Returns
 ///
 /// The key used to encrypt the config.
-pub(crate) fn init_with_config<P, S>(
-    repo: &Repository<P, S>,
+pub(crate) fn init_with_config<S>(
+    repo: &Repository<S>,
     credentials: &Credentials,
     key_opts: &KeyOptions,
     config: &ConfigFile,

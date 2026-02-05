@@ -19,7 +19,6 @@ use crate::{
         stdin::StdinSource,
     },
     error::{ErrorKind, RusticError, RusticResult},
-    progress::ProgressBars,
     repofile::{
         PathList, SnapshotFile,
         snapshotfile::{SnapshotGroup, SnapshotGroupCriterion, SnapshotId},
@@ -93,9 +92,9 @@ impl ParentOptions {
     /// # Returns
     ///
     /// The parent snapshot id and the parent object or `None` if no parent is used.
-    pub(crate) fn get_parent<P: ProgressBars, S: IndexedTree>(
+    pub(crate) fn get_parent<S: IndexedTree>(
         &self,
-        repo: &Repository<P, S>,
+        repo: &Repository<S>,
         snap: &SnapshotFile,
         backup_stdin: bool,
     ) -> (Vec<SnapshotId>, Parent) {
@@ -107,7 +106,7 @@ impl ParentOptions {
             SnapshotFile::latest(
                 repo.dbe(),
                 |snap| snap.has_group(&group),
-                &repo.pb.progress_counter(""),
+                &repo.progress_counter(""),
             )
             .ok()
             .into_iter()
@@ -117,7 +116,7 @@ impl ParentOptions {
                 repo.dbe(),
                 &self.parents,
                 |snap| snap.has_group(&group),
-                &repo.pb.progress_counter(""),
+                &repo.progress_counter(""),
             )
             .unwrap_or_default()
         };
@@ -223,8 +222,8 @@ pub struct BackupOptions {
 ///
 /// The snapshot pointing to the backup'ed data.
 #[allow(clippy::too_many_lines)]
-pub(crate) fn backup<P: ProgressBars, S: IndexedIds>(
-    repo: &Repository<P, S>,
+pub(crate) fn backup<S: IndexedIds>(
+    repo: &Repository<S>,
     opts: &BackupOptions,
     source: &PathList,
     mut snap: SnapshotFile,
@@ -287,7 +286,7 @@ pub(crate) fn backup<P: ProgressBars, S: IndexedIds>(
     let be = DryRunBackend::new(repo.dbe().clone(), opts.dry_run);
     info!("starting to backup {source} ...");
     let archiver = Archiver::new(be, index, repo.config(), parent, snap)?;
-    let p = repo.pb.progress_bytes("backing up...");
+    let p = repo.progress_bytes("backing up...");
 
     let snap = if backup_stdin {
         let path = &backup_path[0];

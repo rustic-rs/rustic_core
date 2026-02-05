@@ -24,7 +24,6 @@ use crate::{
     },
     blob::{BlobLocation, BlobLocations},
     error::{ErrorKind, RusticError, RusticResult},
-    progress::{Progress, ProgressBars},
     repofile::packfile::PackId,
     repository::{IndexedFull, IndexedTree, Open, Repository},
 };
@@ -109,9 +108,9 @@ pub struct RestoreStats {
 /// # Errors
 ///
 /// * If the restore failed.
-pub(crate) fn restore_repository<P: ProgressBars, S: IndexedTree>(
+pub(crate) fn restore_repository<S: IndexedTree>(
     file_infos: RestorePlan,
-    repo: &Repository<P, S>,
+    repo: &Repository<S>,
     opts: RestoreOptions,
     node_streamer: impl Iterator<Item = RusticResult<(PathBuf, Node)>>,
     dest: &LocalDestination,
@@ -119,7 +118,7 @@ pub(crate) fn restore_repository<P: ProgressBars, S: IndexedTree>(
     repo.warm_up_wait(file_infos.to_packs().into_iter())?;
     restore_contents(repo, dest, file_infos)?;
 
-    let p = repo.pb.progress_spinner("setting metadata...");
+    let p = repo.progress_spinner("setting metadata...");
     restore_metadata(node_streamer, opts, dest)?;
     p.finish();
 
@@ -145,14 +144,14 @@ pub(crate) fn restore_repository<P: ProgressBars, S: IndexedTree>(
 /// * If a directory could not be created.
 /// * If the restore information could not be collected.
 #[allow(clippy::too_many_lines)]
-pub(crate) fn collect_and_prepare<P: ProgressBars, S: IndexedFull>(
-    repo: &Repository<P, S>,
+pub(crate) fn collect_and_prepare<S: IndexedFull>(
+    repo: &Repository<S>,
     opts: RestoreOptions,
     mut node_streamer: impl Iterator<Item = RusticResult<(PathBuf, Node)>>,
     dest: &LocalDestination,
     dry_run: bool,
 ) -> RusticResult<RestorePlan> {
-    let p = repo.pb.progress_spinner("collecting file information...");
+    let p = repo.progress_spinner("collecting file information...");
     let dest_path = dest.path("");
 
     let mut stats = RestoreStats::default();
@@ -466,8 +465,8 @@ impl PackInfo {
 /// * If the length of a file could not be set.
 /// * If the restore failed.
 #[allow(clippy::too_many_lines)]
-fn restore_contents<P: ProgressBars, S: Open>(
-    repo: &Repository<P, S>,
+fn restore_contents<S: Open>(
+    repo: &Repository<S>,
     dest: &LocalDestination,
     file_infos: RestorePlan,
 ) -> RusticResult<()> {
@@ -498,7 +497,7 @@ fn restore_contents<P: ProgressBars, S: Open>(
 
     let sizes = &Mutex::new(file_lengths);
 
-    let p = repo.pb.progress_bytes("restoring file contents...");
+    let p = repo.progress_bytes("restoring file contents...");
     p.set_length(total_size);
 
     let packs: Vec<_> = restore_info
@@ -675,12 +674,12 @@ impl RestorePlan {
     /// # Errors
     ///
     /// * If the file could not be added.
-    fn add_file<P, S: IndexedFull>(
+    fn add_file<S: IndexedFull>(
         &mut self,
         dest: &LocalDestination,
         file: &Node,
         name: PathBuf,
-        repo: &Repository<P, S>,
+        repo: &Repository<S>,
         ignore_mtime: bool,
     ) -> RusticResult<AddFileResult> {
         let mut open_file = dest.get_matching_file(&name, file.meta.size);

@@ -7,7 +7,6 @@ use serde_with::{DisplayFromStr, serde_as, skip_serializing_none};
 
 use crate::{
     error::{ErrorKind, RusticError, RusticResult},
-    progress::ProgressBars,
     repofile::{
         SnapshotFile, StringList,
         snapshotfile::{SnapshotGroup, SnapshotGroupCriterion, SnapshotId},
@@ -77,8 +76,8 @@ impl ForgetGroups {
 /// # Returns
 ///
 /// The list of snapshot groups with the corresponding snapshots and forget information
-pub(crate) fn get_forget_snapshots<P: ProgressBars, S: Open>(
-    repo: &Repository<P, S>,
+pub(crate) fn get_forget_snapshots<S: Open>(
+    repo: &Repository<S>,
     keep: &KeepOptions,
     group_by: SnapshotGroupCriterion,
     filter: impl FnMut(&SnapshotFile) -> bool + Send + Sync,

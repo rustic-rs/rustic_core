@@ -35,7 +35,7 @@ use crate::{
         binarysorted::{IndexCollector, IndexType},
         indexer::Indexer,
     },
-    progress::{Progress, ProgressBars},
+    progress::ProgressBars,
     repofile::{
         HeaderEntry, IndexBlob, IndexFile, IndexPack, SnapshotFile, SnapshotId, indexfile::IndexId,
         packfile::PackId,
@@ -174,7 +174,7 @@ impl PruneOptions {
     )]
     pub fn get_plan<P: ProgressBars, S: Open>(
         &self,
-        repo: &Repository<P, S>,
+        repo: &Repository<S>,
     ) -> RusticResult<PrunePlan> {
         PrunePlan::from_prune_options(repo, self)
     }
@@ -686,11 +686,10 @@ impl PrunePlan {
     ///
     /// * If `repack_uncompressed` is set and the repository is a version 1 repository
     /// * If `keep_pack` or `keep_delete` is out of range
-    pub fn from_prune_options<P: ProgressBars, S: Open>(
-        repo: &Repository<P, S>,
+    pub fn from_prune_options<S: Open>(
+        repo: &Repository<S>,
         opts: &PruneOptions,
     ) -> RusticResult<Self> {
-        let pb = &repo.pb;
         let be = repo.dbe();
 
         let version = repo.config().version;
@@ -705,7 +704,7 @@ impl PrunePlan {
 
         let mut index_files = Vec::new();
 
-        let p = pb.progress_counter("reading index...");
+        let p = repo.progress_counter("reading index...");
         let mut index_collector = IndexCollector::new(IndexType::OnlyTrees);
 
         for index in be.stream_all::<IndexFile>(&p)? {
@@ -722,12 +721,12 @@ impl PrunePlan {
         let (used_ids, total_size) = {
             let index = GlobalIndex::new_from_index(index_collector.into_index());
             let total_size = BlobTypeMap::init(|blob_type| index.total_size(blob_type));
-            let used_ids = find_used_blobs(be, &index, &opts.ignore_snaps, pb)?;
+            let used_ids = find_used_blobs(repo, be, &index, &opts.ignore_snaps)?;
             (used_ids, total_size)
         };
 
         // list existing pack files
-        let p = pb.progress_spinner("getting packs from repository...");
+        let p = repo.progress_spinner("getting packs from repository...");
         let existing_packs: BTreeMap<_, _> = be
             .list_with_size(FileType::Pack)?
             .into_iter()
@@ -1184,7 +1183,7 @@ impl PrunePlan {
     #[deprecated(since = "0.5.2", note = "Use `Repository::prune()` instead.")]
     pub fn do_prune<P: ProgressBars, S: Open>(
         self,
-        repo: &Repository<P, S>,
+        repo: &Repository<S>,
         opts: &PruneOptions,
     ) -> RusticResult<()> {
         repo.prune(opts, self)
@@ -1213,8 +1212,8 @@ impl PrunePlan {
 /// TODO! In weird circumstances, should be fixed.
 #[allow(clippy::significant_drop_tightening)]
 #[allow(clippy::too_many_lines)]
-pub(crate) fn prune_repository<P: ProgressBars, S: Open>(
-    repo: &Repository<P, S>,
+pub(crate) fn prune_repository<S: Open>(
+    repo: &Repository<S>,
     opts: &PruneOptions,
     prune_plan: PrunePlan,
 ) -> RusticResult<()> {
@@ -1226,18 +1225,17 @@ pub(crate) fn prune_repository<P: ProgressBars, S: Open>(
     }
     repo.warm_up_wait(prune_plan.repack_packs().into_iter())?;
     let be = repo.dbe();
-    let pb = &repo.pb;
     let prune_time = prune_plan.time.timestamp();
 
     let mut indexer = Indexer::new_unindexed(be.clone());
     // mark unreferenced packs for deletion
     if !prune_plan.existing_packs.is_empty() {
         if opts.instant_delete {
-            let p = pb.progress_counter("removing unindexed packs...");
+            let p = repo.progress_counter("removing unindexed packs...");
             let existing_packs: Vec<_> = prune_plan.existing_packs.into_keys().collect();
             be.delete_list(true, existing_packs.iter(), p)?;
         } else {
-            let p = pb.progress_counter("marking unneeded unindexed pack files for deletion...");
+            let p = repo.progress_counter("marking unneeded unindexed pack files for deletion...");
             p.set_length(
                 prune_plan
                     .existing_packs
@@ -1274,7 +1272,7 @@ pub(crate) fn prune_repository<P: ProgressBars, S: Open>(
 
     // remove old index files early if requested
     if !indexes_remove.is_empty() && early_delete_index {
-        let p = pb.progress_counter("removing old index files...");
+        let p = repo.progress_counter("removing old index files...");
         be.delete_list(true, indexes_remove.iter(), p)?;
     }
 
@@ -1293,7 +1291,7 @@ pub(crate) fn prune_repository<P: ProgressBars, S: Open>(
     let mut repack_packs = Vec::new();
 
     // process packs by index_file
-    let p = pb.progress_counter("rebuilding index...");
+    let p = repo.progress_counter("rebuilding index...");
     p.set_length(u64::try_from(prune_plan.index_files.len()).unwrap_or_default());
     for index in prune_plan.index_files {
         for mut pack in index.packs {
@@ -1356,7 +1354,7 @@ pub(crate) fn prune_repository<P: ProgressBars, S: Open>(
     if repack_packs.is_empty() {
         indexer.finalize()?;
     } else {
-        let p = pb.progress_bytes("repacking...");
+        let p = repo.progress_bytes("repacking...");
         p.set_length(prune_plan.stats.size_sum().repack - prune_plan.stats.size_sum().repackrm);
         let indexer = indexer.into_shared();
 
@@ -1434,17 +1432,17 @@ pub(crate) fn prune_repository<P: ProgressBars, S: Open>(
 
     // remove old index files first as they may reference pack files which are removed soon.
     if !indexes_remove.is_empty() && !early_delete_index {
-        let p = pb.progress_counter("removing old index files...");
+        let p = repo.progress_counter("removing old index files...");
         be.delete_list(true, indexes_remove.iter(), p)?;
     }
 
     if !data_packs_remove.is_empty() {
-        let p = pb.progress_counter("removing old data packs...");
+        let p = repo.progress_counter("removing old data packs...");
         be.delete_list(false, data_packs_remove.iter(), p)?;
     }
 
     if !tree_packs_remove.is_empty() {
-        let p = pb.progress_counter("removing old tree packs...");
+        let p = repo.progress_counter("removing old tree packs...");
         be.delete_list(true, tree_packs_remove.iter(), p)?;
     }
 
@@ -1579,15 +1577,15 @@ impl PackInfo {
 /// # Errors
 ///
 // TODO!: add errors!
-fn find_used_blobs(
+fn find_used_blobs<S>(
+    repo: &Repository<S>,
     be: &impl DecryptReadBackend,
     index: &impl ReadGlobalIndex,
     ignore_snaps: &[SnapshotId],
-    pb: &impl ProgressBars,
 ) -> RusticResult<BTreeMap<BlobId, u8>> {
     let ignore_snaps: BTreeSet<_> = ignore_snaps.iter().collect();
 
-    let p = pb.progress_counter("reading snapshots...");
+    let p = repo.progress_counter("reading snapshots...");
     let list: Vec<_> = be
         .list(FileType::Snapshot)?
         .into_iter()
@@ -1605,7 +1603,7 @@ fn find_used_blobs(
         .iter()
         .map(|id| (BlobId::from(**id), 0))
         .collect();
-    let p = pb.progress_counter("finding used blobs...");
+    let p = repo.progress_counter("finding used blobs...");
 
     let mut tree_streamer = TreeStreamerOnce::new(be, index, snap_trees, p)?;
     while let Some(item) = tree_streamer.next().transpose()? {

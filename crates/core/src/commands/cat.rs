@@ -7,7 +7,6 @@ use crate::{
     blob::{BlobId, BlobType, tree::Tree},
     error::{ErrorKind, RusticError, RusticResult},
     index::ReadIndex,
-    progress::ProgressBars,
     repofile::SnapshotFile,
     repository::{IndexedFull, IndexedTree, Open, Repository},
 };
@@ -34,8 +33,8 @@ use crate::{
 /// # Returns
 ///
 /// The data read.
-pub(crate) fn cat_file<P, S: Open>(
-    repo: &Repository<P, S>,
+pub(crate) fn cat_file<S: Open>(
+    repo: &Repository<S>,
     tpe: FileType,
     id: &str,
 ) -> RusticResult<Bytes> {
@@ -60,8 +59,8 @@ pub(crate) fn cat_file<P, S: Open>(
 /// # Errors
 ///
 /// * If the string is not a valid hexadecimal string
-pub(crate) fn cat_blob<P, S: IndexedFull>(
-    repo: &Repository<P, S>,
+pub(crate) fn cat_blob<S: IndexedFull>(
+    repo: &Repository<S>,
     tpe: BlobType,
     id: &str,
 ) -> RusticResult<Bytes> {
@@ -91,8 +90,8 @@ pub(crate) fn cat_blob<P, S: IndexedFull>(
 /// # Returns
 ///
 /// The data read.
-pub(crate) fn cat_tree<P: ProgressBars, S: IndexedTree>(
-    repo: &Repository<P, S>,
+pub(crate) fn cat_tree<S: IndexedTree>(
+    repo: &Repository<S>,
     snap: &str,
     sn_filter: impl FnMut(&SnapshotFile) -> bool + Send + Sync,
 ) -> RusticResult<Bytes> {
@@ -101,7 +100,7 @@ pub(crate) fn cat_tree<P: ProgressBars, S: IndexedTree>(
         repo.dbe(),
         id,
         sn_filter,
-        &repo.pb.progress_counter("getting snapshot..."),
+        &repo.progress_counter("getting snapshot..."),
     )?;
     let node = Tree::node_from_path(repo.dbe(), repo.index(), snap.tree, Path::new(path))?;
     let id = node.subtree.ok_or_else(|| {

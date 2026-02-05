@@ -56,12 +56,12 @@ use tempfile::{TempDir, tempdir};
 
 use rustic_core::{
     CommandInput, ConfigOptions, CredentialOptions, Credentials, FullIndex, IndexedFull,
-    IndexedStatus, KeyOptions, NoProgressBars, OpenStatus, PathList, Repository,
-    RepositoryBackends, RepositoryOptions, repofile::MasterKey,
+    IndexedStatus, KeyOptions, OpenStatus, PathList, Repository, RepositoryBackends,
+    RepositoryOptions, repofile::MasterKey,
 };
 use rustic_testing::backend::in_memory_backend::InMemoryBackend;
 
-type RepoOpen = Repository<NoProgressBars, OpenStatus>;
+type RepoOpen = Repository<OpenStatus>;
 
 #[derive(Debug)]
 struct TestSource(TempDir);
@@ -208,7 +208,7 @@ fn repo_with_commands() -> Result<()> {
 /// See issue #277 for more context.
 #[test]
 fn test_wrapping_in_new_type() -> Result<()> {
-    struct Wrapper(Repository<NoProgressBars, IndexedStatus<FullIndex, OpenStatus>>);
+    struct Wrapper(Repository<IndexedStatus<FullIndex, OpenStatus>>);
 
     impl Wrapper {
         fn new() -> Result<Self> {

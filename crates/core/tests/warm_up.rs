@@ -12,12 +12,10 @@ use rstest::rstest;
 use serde::{Deserialize, Serialize};
 use tempfile::tempdir;
 
-use rustic_core::{
-    CommandInput, Id, NoProgressBars, RepositoryBackends, RepositoryOptions, repofile::PackId,
-};
+use rustic_core::{CommandInput, Id, RepositoryBackends, RepositoryOptions, repofile::PackId};
 use rustic_testing::backend::in_memory_backend::InMemoryBackend;
 
-type RepoOpen = rustic_core::Repository<NoProgressBars, rustic_core::OpenStatus>;
+type RepoOpen = rustic_core::Repository<rustic_core::OpenStatus>;
 
 // Test constants
 const DEFAULT_BATCH_SIZE: usize = 1;
@@ -173,7 +171,7 @@ fn create_test_ids(count: usize) -> Vec<PackId> {
 fn create_test_repo(
     command: CommandInput,
     batch_size: usize,
-) -> Result<rustic_core::Repository<NoProgressBars, ()>> {
+) -> Result<rustic_core::Repository<()>> {
     let be = InMemoryBackend::new();
     let be = RepositoryBackends::new(Arc::new(be), None);
     let options = RepositoryOptions::default()
@@ -400,7 +398,7 @@ fn test_validation_requires_placeholder() -> Result<()> {
     let command: CommandInput = "echo test".parse()?;
     let options = RepositoryOptions::default().warm_up_command(command);
 
-    let result = rustic_core::Repository::<NoProgressBars, ()>::new(&options, &be);
+    let result = rustic_core::Repository::new(&options, &be);
 
     assert!(
         result.is_err(),
@@ -424,7 +422,7 @@ fn test_validation_mixing_singular_and_plural() -> Result<()> {
     let command: CommandInput = "echo %ids %path".parse()?;
     let options = RepositoryOptions::default().warm_up_command(command);
 
-    let result = rustic_core::Repository::<NoProgressBars, ()>::new(&options, &be);
+    let result = rustic_core::Repository::new(&options, &be);
 
     assert!(
         result.is_err(),
@@ -452,7 +450,7 @@ fn test_validation_valid_singular_placeholders() -> Result<()> {
         let command: CommandInput = cmd_str.parse()?;
         let options = RepositoryOptions::default().warm_up_command(command);
 
-        let result = rustic_core::Repository::<NoProgressBars, ()>::new(&options, &be);
+        let result = rustic_core::Repository::new(&options, &be);
         assert!(result.is_ok(), "Command with '{cmd_str}' should succeed");
     }
 
@@ -475,7 +473,7 @@ fn test_validation_valid_plural_placeholders() -> Result<()> {
         let command: CommandInput = cmd_str.parse()?;
         let options = RepositoryOptions::default().warm_up_command(command);
 
-        let result = rustic_core::Repository::<NoProgressBars, ()>::new(&options, &be);
+        let result = rustic_core::Repository::new(&options, &be);
         assert!(result.is_ok(), "Command with '{cmd_str}' should succeed");
     }
 

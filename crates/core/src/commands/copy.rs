@@ -16,7 +16,6 @@ use crate::{
     },
     error::RusticResult,
     index::{ReadIndex, indexer::Indexer},
-    progress::ProgressBars,
     repofile::SnapshotFile,
     repository::{IndexedFull, IndexedIds, IndexedTree, Open, Repository},
 };
@@ -49,13 +48,12 @@ pub struct CopySnapshot {
 /// # Errors
 ///
 // TODO: Document errors
-pub(crate) fn copy<'a, Q, R: IndexedFull, P: ProgressBars, S: IndexedIds>(
-    repo: &Repository<Q, R>,
-    repo_dest: &Repository<P, S>,
+pub(crate) fn copy<'a, R: IndexedFull, S: IndexedIds>(
+    repo: &Repository<R>,
+    repo_dest: &Repository<S>,
     snapshots: impl IntoIterator<Item = &'a SnapshotFile>,
 ) -> RusticResult<()> {
     let be_dest = repo_dest.dbe();
-    let pb = &repo_dest.pb;
 
     let (snap_trees, snaps): (Vec<_>, Vec<_>) = snapshots
         .into_iter()
@@ -72,7 +70,7 @@ pub(crate) fn copy<'a, Q, R: IndexedFull, P: ProgressBars, S: IndexedIds>(
     let mut tree_ids: BTreeSet<_> = snap_trees.iter().copied().filter(filter_tree).collect();
     let mut data_ids = BTreeSet::new();
 
-    let p = pb.progress_counter("finding needed blobs...");
+    let p = repo_dest.progress_counter("finding needed blobs...");
 
     let mut tree_streamer = TreeStreamerOnce::new(be, index, snap_trees, p)?;
     while let Some(item) = tree_streamer.next().transpose()? {
@@ -92,7 +90,7 @@ pub(crate) fn copy<'a, Q, R: IndexedFull, P: ProgressBars, S: IndexedIds>(
 
     let indexer = Indexer::new(be_dest.clone()).into_shared();
 
-    let p = pb.progress_bytes("copying data blobs...");
+    let p = repo_dest.progress_bytes("copying data blobs...");
     let pack_sizer = PackSizer::from_config(
         repo_dest.config(),
         BlobType::Data,
@@ -116,7 +114,7 @@ pub(crate) fn copy<'a, Q, R: IndexedFull, P: ProgressBars, S: IndexedIds>(
 
     copy_blobs(data_blobs, data_repacker, p)?;
 
-    let p = pb.progress_bytes("copying tree blobs...");
+    let p = repo_dest.progress_bytes("copying tree blobs...");
     let pack_sizer = PackSizer::from_config(
         repo_dest.config(),
         BlobType::Tree,
@@ -143,7 +141,7 @@ pub(crate) fn copy<'a, Q, R: IndexedFull, P: ProgressBars, S: IndexedIds>(
 
     indexer.write().unwrap().finalize()?;
 
-    let p = pb.progress_counter("saving snapshots...");
+    let p = repo_dest.progress_counter("saving snapshots...");
     be_dest.save_list(snaps.iter(), p)?;
     Ok(())
 }
@@ -152,7 +150,7 @@ pub(crate) fn copy<'a, Q, R: IndexedFull, P: ProgressBars, S: IndexedIds>(
 fn copy_blobs<BE: DecryptFullBackend>(
     mut blobs: Vec<CopyPackBlobs>,
     copier: BlobCopier<BE>,
-    p: impl Progress,
+    p: Progress,
 ) -> RusticResult<()> {
     blobs.sort_unstable();
     let blobs: Vec<_> = blobs
@@ -195,17 +193,15 @@ fn copy_blobs<BE: DecryptFullBackend>(
 /// # Returns
 ///
 /// A list of snapshots with the attribute `relevant` set to `true` if the snapshot is relevant for copying.
-pub(crate) fn relevant_snapshots<F, P: ProgressBars, S: Open>(
+pub(crate) fn relevant_snapshots<F, S: Open>(
     snaps: &[SnapshotFile],
-    dest_repo: &Repository<P, S>,
+    dest_repo: &Repository<S>,
     filter: F,
 ) -> RusticResult<Vec<CopySnapshot>>
 where
     F: FnMut(&SnapshotFile) -> bool,
 {
-    let p = dest_repo
-        .pb
-        .progress_counter("finding relevant snapshots...");
+    let p = dest_repo.progress_counter("finding relevant snapshots...");
     // save snapshots in destination in BTreeSet, as we want to efficiently search within to filter out already existing snapshots before copying.
     let snapshots_dest: BTreeSet<_> =
         SnapshotFile::iter_all_from_backend(dest_repo.dbe(), filter, &p)?.collect();

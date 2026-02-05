@@ -48,8 +48,8 @@ pub struct KeyOptions {
 /// # Returns
 ///
 /// The id of the key.
-pub(crate) fn add_current_key_to_repo<P, S: Open>(
-    repo: &Repository<P, S>,
+pub(crate) fn add_current_key_to_repo<S: Open>(
+    repo: &Repository<S>,
     opts: &KeyOptions,
     pass: &str,
 ) -> RusticResult<KeyId> {
@@ -73,8 +73,8 @@ pub(crate) fn add_current_key_to_repo<P, S: Open>(
 /// # Returns
 ///
 /// A tuple of the key and the id of the key.
-pub(crate) fn init_key<P, S>(
-    repo: &Repository<P, S>,
+pub(crate) fn init_key<S>(
+    repo: &Repository<S>,
     opts: &KeyOptions,
     pass: &str,
 ) -> RusticResult<(Key, KeyId)> {
@@ -99,8 +99,8 @@ pub(crate) fn init_key<P, S>(
 /// # Returns
 ///
 /// The id of the key.
-pub(crate) fn add_key_to_repo<P, S>(
-    repo: &Repository<P, S>,
+pub(crate) fn add_key_to_repo<S>(
+    repo: &Repository<S>,
     opts: &KeyOptions,
     pass: &str,
     key: Key,

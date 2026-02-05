@@ -16,7 +16,6 @@ use crate::{
     },
     error::{ErrorKind, RusticError, RusticResult},
     index::{ReadGlobalIndex, ReadIndex, indexer::Indexer},
-    progress::ProgressBars,
     repofile::{SnapshotFile, StringList, snapshotfile::SnapshotId},
     repository::{IndexedFull, IndexedTree, Repository},
 };
@@ -88,8 +87,8 @@ pub(crate) struct RepairState {
 /// * `opts` - The repair options to use
 /// * `snapshots` - The snapshots to repair
 /// * `dry_run` - Whether to actually modify the repository or just print what would be done
-pub(crate) fn repair_snapshots<P: ProgressBars, S: IndexedFull>(
-    repo: &Repository<P, S>,
+pub(crate) fn repair_snapshots<S: IndexedFull>(
+    repo: &Repository<S>,
     opts: &RepairSnapshotsOptions,
     snapshots: Vec<SnapshotFile>,
     dry_run: bool,
@@ -168,7 +167,7 @@ pub(crate) fn repair_snapshots<P: ProgressBars, S: IndexedFull>(
             be.delete_list(
                 true,
                 state.delete.iter(),
-                repo.pb.progress_counter("remove defect snapshots"),
+                repo.progress_counter("remove defect snapshots"),
             )?;
         }
     }

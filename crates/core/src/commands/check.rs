@@ -30,7 +30,7 @@ use crate::{
         GlobalIndex, ReadGlobalIndex,
         binarysorted::{IndexCollector, IndexType},
     },
-    progress::{Progress, ProgressBars},
+    progress::Progress,
     repofile::{
         IndexFile, IndexPack, PackHeader, PackHeaderLength, PackHeaderRef, packfile::PackId,
     },
@@ -222,8 +222,8 @@ pub struct CheckOptions {
 /// # Panics
 ///
 // TODO: Add panics
-pub(crate) fn check_repository<P: ProgressBars, S: Open>(
-    repo: &Repository<P, S>,
+pub(crate) fn check_repository<S: Open>(
+    repo: &Repository<S>,
     opts: CheckOptions,
     trees: Vec<TreeId>,
 ) -> RusticResult<CheckResults> {
@@ -231,7 +231,6 @@ pub(crate) fn check_repository<P: ProgressBars, S: Open>(
     let cache = &repo.open_status().cache;
     let hot_be = &repo.be_hot;
     let raw_be = repo.dbe();
-    let pb = &repo.pb;
     let collector = CheckResultsCollector::default().log(true);
     if !opts.trust_cache {
         if let Some(cache) = &cache {
@@ -242,7 +241,7 @@ pub(crate) fn check_repository<P: ProgressBars, S: Open>(
                 // TODO: Only list the files once...
                 _ = be.list_with_size(file_type)?;
 
-                let p = pb.progress_bytes(format!("checking {file_type:?} in cache..."));
+                let p = repo.progress_bytes(&format!("checking {file_type:?} in cache..."));
                 // TODO: Make concurrency (20) customizable
                 check_cache_files(20, cache, raw_be, file_type, &p, &collector)?;
             }
@@ -251,14 +250,15 @@ pub(crate) fn check_repository<P: ProgressBars, S: Open>(
 
     if let Some(hot_be) = hot_be {
         for file_type in [FileType::Snapshot, FileType::Index] {
-            check_hot_files(raw_be, hot_be, file_type, pb, &collector)?;
+            let p = repo.progress_spinner(&format!("checking {file_type:?} in hot repo..."));
+            check_hot_files(raw_be, hot_be, file_type, &p, &collector)?;
         }
     }
 
-    let (index_collector, missing_packs) = check_packs(be, hot_be.as_ref(), pb, &collector)?;
+    let (index_collector, missing_packs) = check_packs(repo, be, hot_be.as_ref(), &collector)?;
 
     if let Some(cache) = &cache {
-        let p = pb.progress_spinner("cleaning up packs from cache...");
+        let p = repo.progress_spinner("cleaning up packs from cache...");
         let ids: Vec<_> = index_collector
             .tree_packs()
             .iter()
@@ -273,7 +273,7 @@ pub(crate) fn check_repository<P: ProgressBars, S: Open>(
         p.finish();
 
         if !opts.trust_cache {
-            let p = pb.progress_bytes("checking packs in cache...");
+            let p = repo.progress_bytes("checking packs in cache...");
             // TODO: Make concurrency (5) customizable
             check_cache_files(5, cache, raw_be, FileType::Pack, &p, &collector)?;
         }
@@ -281,7 +281,7 @@ pub(crate) fn check_repository<P: ProgressBars, S: Open>(
 
     let index_be = GlobalIndex::new_from_index(index_collector.into_index());
 
-    let packs = check_trees(be, &index_be, trees, pb, &collector)
+    let packs = check_trees(repo, be, &index_be, trees, &collector)
         .map_err(|err| collector.add_error(CheckError::ErrorCheckingTrees { source: err }))
         .unwrap_or_default();
 
@@ -298,7 +298,7 @@ pub(crate) fn check_repository<P: ProgressBars, S: Open>(
         repo.warm_up_wait(packs.iter().map(|pack| pack.id))?;
 
         let total_pack_size = packs.iter().map(|pack| u64::from(pack.pack_size())).sum();
-        let p = pb.progress_bytes("reading pack data...");
+        let p = repo.progress_bytes("reading pack data...");
         p.set_length(total_pack_size);
 
         packs.into_par_iter().for_each(|pack| {
@@ -336,10 +336,9 @@ fn check_hot_files(
     be: &impl ReadBackend,
     be_hot: &impl ReadBackend,
     file_type: FileType,
-    pb: &impl ProgressBars,
+    p: &Progress,
     collector: &CheckResultsCollector,
 ) -> RusticResult<()> {
-    let p = pb.progress_spinner(format!("checking {file_type:?} in hot repo..."));
     let mut files = be
         .list_with_size(file_type)?
         .into_iter()
@@ -388,7 +387,7 @@ fn check_cache_files(
     cache: &Cache,
     be: &impl ReadBackend,
     file_type: FileType,
-    p: &impl Progress,
+    p: &Progress,
     collector: &CheckResultsCollector,
 ) -> RusticResult<()> {
     let files = cache.list_with_size(file_type)?;
@@ -402,7 +401,7 @@ fn check_cache_files(
 
     files
         .into_par_iter()
-        .for_each_with((cache, be, p.clone()), |(cache, be, p), (id, size)| {
+        .for_each_with((cache, be, p), |(cache, be, p), (id, size)| {
             // Read file from cache and from backend and compare
             match (
                 cache.read_full(file_type, &id),
@@ -451,17 +450,17 @@ fn check_cache_files(
 /// # Returns
 ///
 /// The index collector
-fn check_packs(
+fn check_packs<S: Open>(
+    repo: &Repository<S>,
     be: &impl DecryptReadBackend,
     hot_be: Option<&impl ReadBackend>,
-    pb: &impl ProgressBars,
     collector: &CheckResultsCollector,
 ) -> RusticResult<(IndexCollector, BTreeMap<PackId, u32>)> {
     let mut packs = BTreeMap::new();
     let mut tree_packs = BTreeMap::new();
     let mut index_collector = IndexCollector::new(IndexType::Full);
 
-    let p = pb.progress_counter("reading index...");
+    let p = repo.progress_counter("reading index...");
     for index in be.stream_all::<IndexFile>(&p)? {
         let index = index?.1;
         index_collector.extend(index.packs.clone());
@@ -509,12 +508,12 @@ fn check_packs(
     p.finish();
 
     if let Some(hot_be) = hot_be {
-        let p = pb.progress_spinner("listing packs in hot repo...");
+        let p = repo.progress_spinner("listing packs in hot repo...");
         check_packs_list_hot(hot_be, tree_packs, &packs, collector)?;
         p.finish();
     }
 
-    let p = pb.progress_spinner("listing packs...");
+    let p = repo.progress_spinner("listing packs...");
     check_packs_list(be, &mut packs, collector)?;
     p.finish();
 
@@ -612,15 +611,15 @@ fn check_packs_list_hot(
 /// # Errors
 ///
 /// * If a snapshot or tree is missing or has a different size
-fn check_trees(
+fn check_trees<S: Open>(
+    repo: &Repository<S>,
     be: &impl DecryptReadBackend,
     index: &impl ReadGlobalIndex,
     snap_trees: Vec<TreeId>,
-    pb: &impl ProgressBars,
     collector: &CheckResultsCollector,
 ) -> RusticResult<BTreeSet<PackId>> {
     let mut packs = BTreeSet::new();
-    let p = pb.progress_counter("checking trees...");
+    let p = repo.progress_counter("checking trees...");
     let mut tree_streamer = TreeStreamerOnce::new(be, index, snap_trees, p)?;
     while let Some(item) = tree_streamer.next().transpose()? {
         let (path, tree) = item;
@@ -707,7 +706,7 @@ fn check_pack(
     be: &impl DecryptReadBackend,
     index_pack: IndexPack,
     mut data: Bytes,
-    p: &impl Progress,
+    p: &Progress,
     collector: &CheckResultsCollector,
 ) -> RusticResult<()> {
     let id = index_pack.id;

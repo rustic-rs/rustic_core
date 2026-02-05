@@ -94,7 +94,7 @@ impl<'a, BE: DecryptWriteBackend, I: ReadGlobalIndex> FileArchiver<'a, BE, I> {
     pub(crate) fn process<O: ReadSourceOpen>(
         &self,
         item: ItemWithParent<Option<O>>,
-        p: &impl Progress,
+        p: &Progress,
     ) -> RusticResult<TreeItem> {
         Ok(match item {
             TreeType::NewTree(item) => TreeType::NewTree(item),
@@ -139,7 +139,7 @@ impl<'a, BE: DecryptWriteBackend, I: ReadGlobalIndex> FileArchiver<'a, BE, I> {
         &self,
         r: impl Read + Send + 'static,
         node: Node,
-        p: &impl Progress,
+        p: &Progress,
     ) -> RusticResult<(Node, u64)> {
         let chunks: Vec<_> = ChunkIter::from_config(
             &self.config,

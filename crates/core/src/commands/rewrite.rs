@@ -4,7 +4,7 @@ use derive_setters::Setters;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    ErrorKind, IndexedFull, Open, ProgressBars, Repository, RusticError, RusticResult, StringList,
+    ErrorKind, IndexedFull, Open, Repository, RusticError, RusticResult, StringList,
     blob::tree::{
         modify::ModifierChange,
         rewrite::{RewriteTreesOptions, Rewriter},
@@ -41,8 +41,8 @@ pub struct RewriteOptions {
     pub dry_run: bool,
 }
 
-pub(crate) fn rewrite_snapshots_and_trees<P: ProgressBars, S: IndexedFull>(
-    repo: &Repository<P, S>,
+pub(crate) fn rewrite_snapshots_and_trees<S: IndexedFull>(
+    repo: &Repository<S>,
     snapshots: Vec<SnapshotFile>,
     opts: &RewriteOptions,
     tree_opts: &RewriteTreesOptions,
@@ -94,8 +94,8 @@ pub(crate) fn rewrite_snapshots_and_trees<P: ProgressBars, S: IndexedFull>(
     process_snapshots(repo, snapshots, opts)
 }
 
-pub(crate) fn rewrite_snapshots<P: ProgressBars, S: Open>(
-    repo: &Repository<P, S>,
+pub(crate) fn rewrite_snapshots<S: Open>(
+    repo: &Repository<S>,
     snapshots: Vec<SnapshotFile>,
     opts: &RewriteOptions,
 ) -> RusticResult<Vec<SnapshotFile>> {
@@ -115,8 +115,8 @@ pub(crate) fn rewrite_snapshots<P: ProgressBars, S: Open>(
     process_snapshots(repo, snapshots, opts)
 }
 
-fn process_snapshots<P: ProgressBars, S: Open>(
-    repo: &Repository<P, S>,
+fn process_snapshots<S: Open>(
+    repo: &Repository<S>,
     mut snapshots: Vec<SnapshotFile>,
     opts: &RewriteOptions,
 ) -> RusticResult<Vec<SnapshotFile>> {

@@ -6,10 +6,9 @@ use log::{debug, error, warn};
 use rayon::ThreadPoolBuilder;
 
 use crate::{
-    CommandInput,
+    CommandInput, Progress,
     backend::{FileType, ReadBackend},
     error::{ErrorKind, RusticError, RusticResult},
-    progress::{Progress, ProgressBars},
     repofile::packfile::PackId,
     repository::{Repository, uses_plural_placeholders},
 };
@@ -30,8 +29,8 @@ pub(super) mod constants {
 ///
 /// * If the command could not be parsed.
 /// * If the thread pool could not be created.
-pub(crate) fn warm_up_wait<P: ProgressBars, S>(
-    repo: &Repository<P, S>,
+pub(crate) fn warm_up_wait<S>(
+    repo: &Repository<S>,
     packs: impl ExactSizeIterator<Item = PackId> + Clone,
 ) -> RusticResult<()> {
     warm_up(repo, packs.clone())?;
@@ -40,13 +39,13 @@ pub(crate) fn warm_up_wait<P: ProgressBars, S>(
         warm_up_command(
             packs,
             warm_up_wait_cmd,
-            &repo.pb,
+            repo,
             &WarmUpType::WaitPack,
             repo.opts.warm_up_batch.unwrap_or(1),
             &repo.be,
         )?;
     } else if let Some(wait) = repo.opts.warm_up_wait {
-        let p = repo.pb.progress_spinner(format!("waiting {wait}..."));
+        let p = repo.progress_spinner(&format!("waiting {wait}..."));
         sleep(
             wait.try_into()
                 // ignore conversation errors, but print out warning
@@ -69,15 +68,15 @@ pub(crate) fn warm_up_wait<P: ProgressBars, S>(
 ///
 /// * If the command could not be parsed.
 /// * If the thread pool could not be created.
-pub(crate) fn warm_up<P: ProgressBars, S>(
-    repo: &Repository<P, S>,
+pub(crate) fn warm_up<S>(
+    repo: &Repository<S>,
     packs: impl ExactSizeIterator<Item = PackId>,
 ) -> RusticResult<()> {
     if let Some(warm_up_cmd) = &repo.opts.warm_up_command {
         warm_up_command(
             packs,
             warm_up_cmd,
-            &repo.pb,
+            repo,
             &WarmUpType::WarmUp,
             repo.opts.warm_up_batch.unwrap_or(1),
             &repo.be,
@@ -108,10 +107,10 @@ enum WarmUpType {
 /// # Errors
 ///
 /// * If the command could not be parsed.
-fn warm_up_command<P: ProgressBars>(
+fn warm_up_command<S>(
     packs: impl ExactSizeIterator<Item = PackId>,
     command: &CommandInput,
-    pb: &P,
+    repo: &Repository<S>,
     ty: &WarmUpType,
     batch_size: usize,
     backend: &impl ReadBackend,
@@ -120,7 +119,7 @@ fn warm_up_command<P: ProgressBars>(
 
     let total = packs.len();
 
-    let p = pb.progress_counter(match ty {
+    let p = repo.progress_counter(match ty {
         WarmUpType::WarmUp => "warming up packs...",
         WarmUpType::WaitPack => "waiting for packs to be ready...",
     });
@@ -159,7 +158,7 @@ fn warm_up_batch_singular(
     command: &CommandInput,
     ty: &WarmUpType,
     backend: &impl ReadBackend,
-    progress: &impl Progress,
+    progress: &Progress,
 ) -> RusticResult<()> {
     let children: Vec<_> = batch
         .iter()
@@ -257,7 +256,7 @@ fn warm_up_batch_plural(
     command: &CommandInput,
     ty: &WarmUpType,
     backend: &impl ReadBackend,
-    progress: &impl Progress,
+    progress: &Progress,
 ) -> RusticResult<()> {
     let cmd_str = command.to_string();
     let use_ids = cmd_str.contains("%ids");
@@ -322,11 +321,11 @@ fn warm_up_batch_plural(
 /// # Errors
 ///
 /// * If the thread pool could not be created.
-fn warm_up_repo<P: ProgressBars, S>(
-    repo: &Repository<P, S>,
+fn warm_up_repo<S>(
+    repo: &Repository<S>,
     packs: impl ExactSizeIterator<Item = PackId>,
 ) -> RusticResult<()> {
-    let progress_bar = repo.pb.progress_counter("warming up packs...");
+    let progress_bar = repo.progress_counter("warming up packs...");
     progress_bar.set_length(packs.len() as u64);
 
     let pool = ThreadPoolBuilder::new()
