@@ -10,7 +10,6 @@ use crate::{
         rewrite::{RewriteTreesOptions, Rewriter},
     },
     repofile::{SnapshotFile, SnapshotModification},
-    repository::IndexedTree,
 };
 
 /// Options for rewrite

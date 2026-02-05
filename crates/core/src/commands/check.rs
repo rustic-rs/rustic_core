@@ -228,7 +228,7 @@ pub(crate) fn check_repository<S: Open>(
     trees: Vec<TreeId>,
 ) -> RusticResult<CheckResults> {
     let be = repo.dbe();
-    let cache = &repo.open_status().cache;
+    let cache = repo.cache();
     let hot_be = &repo.be_hot;
     let raw_be = repo.dbe();
     let collector = CheckResultsCollector::default().log(true);

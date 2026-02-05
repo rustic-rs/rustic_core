@@ -17,7 +17,7 @@ use crate::{
     error::{ErrorKind, RusticError, RusticResult},
     index::{ReadGlobalIndex, ReadIndex, indexer::Indexer},
     repofile::{SnapshotFile, StringList, snapshotfile::SnapshotId},
-    repository::{IndexedFull, IndexedTree, Repository},
+    repository::{IndexedFull, Repository},
 };
 
 #[cfg_attr(feature = "clap", derive(clap::Parser))]

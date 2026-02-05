@@ -15,7 +15,7 @@ use crate::{
     error::{ErrorKind, RusticError, RusticResult},
     index::ReadIndex,
     repofile::{BlobType, Metadata, Node, NodeType, SnapshotFile},
-    repository::{IndexedFull, IndexedTree, Repository},
+    repository::{IndexedFull, Repository},
     vfs::format::FormattedSnapshot,
 };
 

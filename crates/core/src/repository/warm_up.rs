@@ -10,7 +10,7 @@ use crate::{
     backend::{FileType, ReadBackend},
     error::{ErrorKind, RusticError, RusticResult},
     repofile::packfile::PackId,
-    repository::{Repository, uses_plural_placeholders},
+    repository::Repository,
 };
 
 pub(super) mod constants {
@@ -115,7 +115,7 @@ fn warm_up_command<S>(
     batch_size: usize,
     backend: &impl ReadBackend,
 ) -> RusticResult<()> {
-    let use_plural = uses_plural_placeholders(command)?;
+    let use_plural = command.uses_plural_placeholders()?;
 
     let total = packs.len();
 

@@ -55,9 +55,9 @@ use tempfile::{TempDir, tempdir};
 // use simplelog::{Config, SimpleLogger};
 
 use rustic_core::{
-    CommandInput, ConfigOptions, CredentialOptions, Credentials, FullIndex, IndexedFull,
-    IndexedStatus, KeyOptions, OpenStatus, PathList, Repository, RepositoryBackends,
-    RepositoryOptions, repofile::MasterKey,
+    CommandInput, ConfigOptions, CredentialOptions, Credentials, IndexedFull, IndexedFullStatus,
+    KeyOptions, OpenStatus, PathList, Repository, RepositoryBackends, RepositoryOptions,
+    repofile::MasterKey,
 };
 use rustic_testing::backend::in_memory_backend::InMemoryBackend;
 
@@ -208,7 +208,7 @@ fn repo_with_commands() -> Result<()> {
 /// See issue #277 for more context.
 #[test]
 fn test_wrapping_in_new_type() -> Result<()> {
-    struct Wrapper(Repository<IndexedStatus<FullIndex, OpenStatus>>);
+    struct Wrapper(Repository<IndexedFullStatus>);
 
     impl Wrapper {
         fn new() -> Result<Self> {
@@ -218,7 +218,7 @@ fn test_wrapping_in_new_type() -> Result<()> {
 
     /// Fake function that "does something" with a fully indexed repo
     /// (without actually relying on any functionality for the test)
-    fn use_repo(_: &impl IndexedFull) {}
+    fn use_repo(_: &Repository<impl IndexedFull>) {}
 
     let collection: Vec<Wrapper> = vec![Wrapper::new()?, Wrapper::new()?];
 
