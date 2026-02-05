@@ -67,13 +67,13 @@ impl ReadBackend for CachedBackend {
     fn list_with_size(&self, tpe: FileType) -> RusticResult<Vec<(Id, u32)>> {
         let list = self.be.list_with_size(tpe)?;
 
-        if tpe.is_cacheable() {
-            if let Err(err) = self.cache.remove_not_in_list(tpe, &list) {
-                warn!(
-                    "Error in cache backend removing files {tpe:?}: {}",
-                    err.display_log()
-                );
-            }
+        if tpe.is_cacheable()
+            && let Err(err) = self.cache.remove_not_in_list(tpe, &list)
+        {
+            warn!(
+                "Error in cache backend removing files {tpe:?}: {}",
+                err.display_log()
+            );
         }
 
         Ok(list)
@@ -104,13 +104,13 @@ impl ReadBackend for CachedBackend {
                 ),
             }
             let res = self.be.read_full(tpe, id);
-            if let Ok(data) = &res {
-                if let Err(err) = self.cache.write_bytes(tpe, id, data) {
-                    warn!(
-                        "Error in cache backend writing {tpe:?},{id}: {}",
-                        err.display_log()
-                    );
-                }
+            if let Ok(data) = &res
+                && let Err(err) = self.cache.write_bytes(tpe, id, data)
+            {
+                warn!(
+                    "Error in cache backend writing {tpe:?},{id}: {}",
+                    err.display_log()
+                );
             }
             res
         } else {
@@ -201,13 +201,13 @@ impl WriteBackend for CachedBackend {
     /// * `cacheable` - Whether the file is cacheable.
     /// * `buf` - The data to write.
     fn write_bytes(&self, tpe: FileType, id: &Id, cacheable: bool, buf: Bytes) -> RusticResult<()> {
-        if cacheable || tpe.is_cacheable() {
-            if let Err(err) = self.cache.write_bytes(tpe, id, &buf) {
-                warn!(
-                    "Error in cache backend writing {tpe:?},{id}: {}",
-                    err.display_log()
-                );
-            }
+        if (cacheable || tpe.is_cacheable())
+            && let Err(err) = self.cache.write_bytes(tpe, id, &buf)
+        {
+            warn!(
+                "Error in cache backend writing {tpe:?},{id}: {}",
+                err.display_log()
+            );
         }
         self.be.write_bytes(tpe, id, cacheable, buf)
     }
@@ -221,13 +221,13 @@ impl WriteBackend for CachedBackend {
     /// * `tpe` - The type of the file.
     /// * `id` - The id of the file.
     fn remove(&self, tpe: FileType, id: &Id, cacheable: bool) -> RusticResult<()> {
-        if cacheable || tpe.is_cacheable() {
-            if let Err(err) = self.cache.remove(tpe, id) {
-                warn!(
-                    "Error in cache backend removing {tpe:?},{id}: {}",
-                    err.display_log()
-                );
-            }
+        if (cacheable || tpe.is_cacheable())
+            && let Err(err) = self.cache.remove(tpe, id)
+        {
+            warn!(
+                "Error in cache backend removing {tpe:?},{id}: {}",
+                err.display_log()
+            );
         }
         self.be.remove(tpe, id, cacheable)
     }
@@ -359,13 +359,12 @@ impl Cache {
             .into_iter()
             .inspect(|r| {
                 if let Err(err) = r {
-                    if err.depth() == 0 {
-                        if let Some(io_err) = err.io_error() {
-                            if io_err.kind() == io::ErrorKind::NotFound {
-                                // ignore errors if root path doesn't exist => this should return an empty list without error
-                                return;
-                            }
-                        }
+                    if err.depth() == 0
+                        && let Some(io_err) = err.io_error()
+                        && io_err.kind() == io::ErrorKind::NotFound
+                    {
+                        // ignore errors if root path doesn't exist => this should return an empty list without error
+                        return;
                     }
                     warn!("Error while listing files: {err:?}");
                 }
@@ -406,11 +405,11 @@ impl Cache {
         let mut list_cache = self.list_with_size(tpe)?;
         // remove present files from the cache list
         for (id, size) in list {
-            if let Some(cached_size) = list_cache.remove(id) {
-                if &cached_size != size {
-                    // remove cache files with non-matching size
-                    self.remove(tpe, id)?;
-                }
+            if let Some(cached_size) = list_cache.remove(id)
+                && &cached_size != size
+            {
+                // remove cache files with non-matching size
+                self.remove(tpe, id)?;
             }
         }
         // remove all remaining (i.e. not present in repo) cache files

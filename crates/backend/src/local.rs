@@ -561,10 +561,10 @@ impl WriteBackend for LocalBackend {
             .attach_context("path", filename.to_string_lossy())
         })?;
 
-        if let Some(command) = &self.post_create_command {
-            if let Err(err) = Self::call_command(tpe, id, &filename, command) {
-                warn!("post-create: {}", err.display_log());
-            }
+        if let Some(command) = &self.post_create_command
+            && let Err(err) = Self::call_command(tpe, id, &filename, command)
+        {
+            warn!("post-create: {}", err.display_log());
         }
         Ok(())
     }
@@ -591,10 +591,10 @@ impl WriteBackend for LocalBackend {
             )
             .attach_context("path", filename.to_string_lossy())
         )?;
-        if let Some(command) = &self.post_delete_command {
-            if let Err(err) = Self::call_command(tpe, id, &filename, command) {
-                warn!("post-delete: {}", err.display_log());
-            }
+        if let Some(command) = &self.post_delete_command
+            && let Err(err) = Self::call_command(tpe, id, &filename, command)
+        {
+            warn!("post-delete: {}", err.display_log());
         }
         Ok(())
     }

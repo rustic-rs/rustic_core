@@ -527,7 +527,8 @@ impl LocalDestination {
                 None => {
                     if let Err(err) = xattr::remove(&filename, &curr_name) {
                         warn!(
-                            "error removing xattr {curr_name:?} on {}: {err}",
+                            "error removing xattr {} on {}: {err}",
+                            curr_name.display(),
                             filename.display()
                         );
                     }

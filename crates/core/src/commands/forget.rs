@@ -520,18 +520,18 @@ impl KeepOptions {
 
         for (check_fun, counter, reason1, within, reason2) in keep_checks {
             if !has_next || last.is_none() || !check_fun(sn, last.unwrap()) {
-                if let Some(counter) = counter {
-                    if *counter != 0 {
-                        reason.push(reason1);
-                        if *counter > 0 {
-                            *counter -= 1;
-                        }
+                if let Some(counter) = counter
+                    && *counter != 0
+                {
+                    reason.push(reason1);
+                    if *counter > 0 {
+                        *counter -= 1;
                     }
                 }
-                if let Some(within) = within {
-                    if sn.time.saturating_add(within) > *latest_time {
-                        reason.push(reason2);
-                    }
+                if let Some(within) = within
+                    && sn.time.saturating_add(within) > *latest_time
+                {
+                    reason.push(reason2);
                 }
             }
         }

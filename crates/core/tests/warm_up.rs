@@ -81,10 +81,10 @@ done
         fs::set_permissions(&script_path, perms)?;
 
         // Sync the parent directory to ensure metadata changes are committed
-        if let Some(parent) = script_path.parent() {
-            if let Ok(dir_file) = File::open(parent) {
-                let _ = dir_file.sync_all();
-            }
+        if let Some(parent) = script_path.parent()
+            && let Ok(dir_file) = File::open(parent)
+        {
+            let _ = dir_file.sync_all();
         }
     }
 
@@ -115,34 +115,32 @@ fn parse_log_files(log_dir: &Path) -> Result<(usize, Vec<Vec<String>>)> {
         let entry = entry?;
         let path = entry.path();
 
-        if path.is_file() {
-            if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
-                if name.starts_with("warmup_")
-                    && Path::new(name)
-                        .extension()
-                        .is_some_and(|ext| ext.eq_ignore_ascii_case("log"))
-                {
-                    let mut content = String::new();
-                    let _ = File::open(&path)?.read_to_string(&mut content)?;
+        if path.is_file()
+            && let Some(name) = path.file_name().and_then(|n| n.to_str())
+            && name.starts_with("warmup_")
+            && Path::new(name)
+                .extension()
+                .is_some_and(|ext| ext.eq_ignore_ascii_case("log"))
+        {
+            let mut content = String::new();
+            let _ = File::open(&path)?.read_to_string(&mut content)?;
 
-                    let lines: Vec<&str> = content.lines().collect();
-                    let mut current_args = Vec::new();
+            let lines: Vec<&str> = content.lines().collect();
+            let mut current_args = Vec::new();
 
-                    for line in lines {
-                        if line == "CALL" {
-                            if !current_args.is_empty() {
-                                all_args.push(current_args.clone());
-                                current_args.clear();
-                            }
-                        } else if let Some(arg) = line.strip_prefix("ARG:") {
-                            current_args.push(arg.to_string());
-                        }
-                    }
-
+            for line in lines {
+                if line == "CALL" {
                     if !current_args.is_empty() {
-                        all_args.push(current_args);
+                        all_args.push(current_args.clone());
+                        current_args.clear();
                     }
+                } else if let Some(arg) = line.strip_prefix("ARG:") {
+                    current_args.push(arg.to_string());
                 }
+            }
+
+            if !current_args.is_empty() {
+                all_args.push(current_args);
             }
         }
     }
@@ -354,10 +352,10 @@ sleep 0.2
         fs::set_permissions(&script_path, perms)?;
 
         // Sync the parent directory to ensure metadata changes are committed
-        if let Some(parent) = script_path.parent() {
-            if let Ok(dir_file) = File::open(parent) {
-                let _ = dir_file.sync_all();
-            }
+        if let Some(parent) = script_path.parent()
+            && let Ok(dir_file) = File::open(parent)
+        {
+            let _ = dir_file.sync_all();
         }
     }
 
