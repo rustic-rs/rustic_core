@@ -166,7 +166,8 @@ pub use crate::{
         RusticProgress,
     },
     repofile::snapshotfile::{
-        PathList, SnapshotGroup, SnapshotGroupCriterion, SnapshotOptions, StringList,
+        PathList, SnapshotOptions, StringList,
+        grouping::{Group, Grouped, SnapshotGroup, SnapshotGroupCriterion},
     },
     repository::{
         IndexedFull, IndexedFullStatus, IndexedIds, IndexedIdsStatus, IndexedTree,

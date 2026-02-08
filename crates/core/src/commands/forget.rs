@@ -9,16 +9,14 @@ use crate::{
     error::{ErrorKind, RusticError, RusticResult},
     repofile::{
         SnapshotFile, StringList,
-        snapshotfile::{SnapshotGroup, SnapshotGroupCriterion, SnapshotId},
+        snapshotfile::{
+            SnapshotId,
+            grouping::{Group, Grouped, SnapshotGroup},
+        },
     },
-    repository::{Open, Repository},
 };
 
 type CheckFunction = fn(&SnapshotFile, &SnapshotFile) -> bool;
-
-#[derive(Debug, Serialize)]
-/// A newtype for `[Vec<ForgetGroup>]`
-pub struct ForgetGroups(pub Vec<ForgetGroup>);
 
 #[derive(Debug, Serialize)]
 /// All snapshots of a group with group and forget information
@@ -40,62 +38,77 @@ pub struct ForgetSnapshot {
     pub reasons: Vec<String>,
 }
 
+#[derive(Debug, Serialize)]
+/// A newtype for `[Vec<ForgetGroup>]`
+pub struct ForgetGroups(pub Vec<Group<ForgetSnapshot>>);
+
 impl ForgetGroups {
+    /// Determine Snapshots-to-forget from grouped snapshots
+    ///
+    /// # Arguments
+    ///
+    /// * `g` - The grouped snapshots.
+    /// * `keep` - The retention options
+    /// * `now` - Time to be used to evaluate the retention options; typically now
+    ///
+    /// # Errors
+    ///
+    /// * If keep options are not valid
+    pub fn from_grouped_snapshots_with_retention(
+        g: Grouped<SnapshotFile>,
+        keep: &KeepOptions,
+        now: &Zoned,
+    ) -> RusticResult<Self> {
+        let groups = g
+            .groups
+            .into_iter()
+            .map(|group| -> RusticResult<_> {
+                Ok(Group {
+                    group_key: group.group_key,
+                    items: keep.apply(group.items, now)?,
+                })
+            })
+            .collect::<RusticResult<_>>()?;
+
+        Ok(Self(groups))
+    }
+
+    /// Determine Snapshots-to-forget from a list of snapshots by only evaluating delete option in [`SnapshotFile`]
+    ///
+    /// # Arguments
+    ///
+    /// * `g` - The grouped snapshots.
+    /// * `now` - Time to be used to evaluate the delete option; typically now
+    #[must_use]
+    pub fn from_snapshots(snapshots: Vec<SnapshotFile>, now: &Zoned) -> Self {
+        let snapshots = snapshots
+            .into_iter()
+            .map(|sn| {
+                let keep = sn.must_keep(now);
+                ForgetSnapshot {
+                    snapshot: sn,
+                    keep,
+                    reasons: vec![if keep { "snapshot" } else { "if argument" }.to_string()],
+                }
+            })
+            .collect();
+        let group = Group::default_group(snapshots);
+
+        Self(vec![group])
+    }
+
     /// Turn `ForgetGroups` into the list of all snapshot IDs to remove.
     #[must_use]
     pub fn into_forget_ids(self) -> Vec<SnapshotId> {
         self.0
             .into_iter()
             .flat_map(|fg| {
-                fg.snapshots
+                fg.items
                     .into_iter()
                     .filter_map(|fsn| (!fsn.keep).then_some(fsn.snapshot.id))
             })
             .collect()
     }
-}
-
-/// Get the list of snapshots to forget.
-///
-/// # Type Parameters
-///
-/// * `P` - The progress bar type.
-/// * `S` - The state the repository is in.
-///
-/// # Arguments
-///
-/// * `repo` - The repository to use
-/// * `keep` - The keep options to use
-/// * `group_by` - The criterion to group snapshots by
-/// * `filter` - The filter to apply to the snapshots
-///
-/// # Errors
-///
-/// * If keep options are not valid
-///
-/// # Returns
-///
-/// The list of snapshot groups with the corresponding snapshots and forget information
-pub(crate) fn get_forget_snapshots<S: Open>(
-    repo: &Repository<S>,
-    keep: &KeepOptions,
-    group_by: SnapshotGroupCriterion,
-    filter: impl FnMut(&SnapshotFile) -> bool + Send + Sync,
-) -> RusticResult<ForgetGroups> {
-    let now = Zoned::now();
-
-    let groups = repo
-        .get_snapshot_group(&[], group_by, filter)?
-        .into_iter()
-        .map(|(group, snapshots)| -> RusticResult<_> {
-            Ok(ForgetGroup {
-                group,
-                snapshots: keep.apply(snapshots, &now)?,
-            })
-        })
-        .collect::<RusticResult<_>>()?;
-
-    Ok(ForgetGroups(groups))
 }
 
 #[cfg_attr(feature = "clap", derive(clap::Parser))]

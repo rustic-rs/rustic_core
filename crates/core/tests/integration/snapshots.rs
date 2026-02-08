@@ -11,7 +11,7 @@ use jiff::Timestamp;
 use jiff::tz::TimeZone;
 use rstest::{fixture, rstest};
 use rustic_core::repofile::SnapshotFile;
-use rustic_core::{BackupOptions, IndexedIdsStatus, Repository, SnapshotGroupCriterion};
+use rustic_core::{BackupOptions, Grouped, IndexedIdsStatus, Repository, SnapshotGroupCriterion};
 
 #[fixture]
 #[once]
@@ -57,25 +57,22 @@ fn test_get_snapshot_group_no_ids(
 ) -> Result<()> {
     let (repo, snapshots) = repo_and_snapshots;
 
-    let res = repo.get_snapshot_group(&[], SnapshotGroupCriterion::default(), |_| true)?;
+    let res = Grouped::from_items(repo.get_all_snapshots()?, SnapshotGroupCriterion::default());
 
-    assert_eq!(res.len(), 1);
-    assert_eq!(res[0].1.len(), snapshots.len());
+    assert_eq!(res.groups.len(), 1);
+    assert_eq!(res.groups[0].items.len(), snapshots.len());
 
     Ok(())
 }
 
 #[rstest]
-fn test_get_snapshot_group_wrong_id(
+fn test_get_snapshot_wrong_id(
     repo_and_snapshots: &(Repository<IndexedIdsStatus>, Vec<SnapshotFile>),
 ) {
     let (repo, _snapshots) = repo_and_snapshots;
 
-    let res = repo.get_snapshot_group(
-        &[String::from("wrong_id_that_is_out_of_format")],
-        SnapshotGroupCriterion::default(),
-        |_| true,
-    );
+    let res =
+        repo.get_snapshots_from_strs(&[String::from("wrong_id_that_is_out_of_format")], |_| true);
     assert!(res.is_err());
     let err = res.unwrap_err();
     assert!(
@@ -85,20 +82,14 @@ fn test_get_snapshot_group_wrong_id(
 }
 
 #[rstest]
-fn test_get_snapshot_group_latest_id(
+fn test_get_snapshot_latest_id(
     repo_and_snapshots: &(Repository<IndexedIdsStatus>, Vec<SnapshotFile>),
 ) -> Result<()> {
     let (repo, snapshots) = repo_and_snapshots;
-    let res = repo.get_snapshot_group(
-        &[String::from("latest")],
-        SnapshotGroupCriterion::default(),
-        |_| true,
-    )?;
-    assert_eq!(res.len(), 1);
-    assert_eq!(res[0].1.len(), 1);
+    let res = repo.get_snapshots_from_strs(&[String::from("latest")], |_| true)?;
 
     // latest => most recent
-    assert_eq!(res[0].1[0], snapshots[2]);
+    assert_eq!(res, vec![snapshots[2].clone()]);
     Ok(())
 }
 
@@ -108,27 +99,14 @@ fn test_get_snapshot_group_latest_n_id(
 ) -> Result<()> {
     let (repo, snapshots) = repo_and_snapshots;
 
-    let res = repo.get_snapshot_group(
-        &[String::from("latest~2")],
-        SnapshotGroupCriterion::default(),
-        |_| true,
-    )?;
-    assert_eq!(res.len(), 1);
-    assert_eq!(res[0].1.len(), 1);
-    // latest~2 is oldest
-    assert_eq!(res[0].1[0], snapshots[0]);
+    let res = repo.get_snapshots_from_strs(&[String::from("latest~2")], |_| true)?;
+    assert_eq!(res[0], snapshots[0]);
 
-    let res = repo.get_snapshot_group(
+    let res = repo.get_snapshots_from_strs(
         &[String::from("latest~2"), String::from("latest~0")],
-        SnapshotGroupCriterion::default(),
         |_| true,
     )?;
-    assert_eq!(res.len(), 1);
-    assert_eq!(res[0].1.len(), 2);
-    // latest~2 is oldest
-    assert_eq!(res[0].1[0], snapshots[0]);
-    // latest~0 is latest
-    assert_eq!(res[0].1[1], snapshots[2]);
+    assert_eq!(res, vec![snapshots[0].clone(), snapshots[2].clone()]);
     Ok(())
 }
 
