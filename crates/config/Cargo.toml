@@ -1,6 +1,6 @@
 [package]
 name = "rustic_config"
-version = "0.2.3"
+version = "0.2.4"
 authors = ["the rustic-rs team"]
 categories = ["config"]
 documentation = "https://docs.rs/rustic_config"

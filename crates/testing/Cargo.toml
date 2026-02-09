@@ -1,6 +1,6 @@
 [package]
 name = "rustic_testing"
-version = "0.3.4"
+version = "0.4.0"
 edition = "2024"
 license = "Apache-2.0 OR MIT"
 publish = true
