@@ -43,15 +43,15 @@ displaydoc = { workspace = true }
 thiserror = { workspace = true }
 
 # macros
-derive_more = { version = "2.0.1", features = ["add", "constructor", "display", "from", "deref", "from_str"] }
-derive_setters = "0.1.8"
+derive_more = { version = "2.1.1", features = ["add", "constructor", "display", "from", "deref", "from_str"] }
+derive_setters = "0.1.9"
 
 # logging
 log = { workspace = true }
 
 # parallelize
 crossbeam-channel = "0.5.15"
-pariter = "0.5.1"
+pariter = "0.6.0"
 rayon = "1.11.0"
 
 # crypto
@@ -67,15 +67,15 @@ rustic_cdc = "0.3.1"
 serde = { version = "1.0.228" }
 serde-aux = { version = "4.7.0", default-features = false }
 serde_derive = "1.0.228"
-serde_json = "1.0.145"
-serde_with = { version = "3.15.1", features = ["base64"] }
+serde_json = "1.0.149"
+serde_with = { version = "3.16.1", features = ["base64"] }
 
 # local source/destination
 cached = { version = "0.56.0", default-features = false, features = ["proc_macro"] }
 dunce = "1.0.5"
-filetime = "0.2.26"
+filetime = "0.2.27"
 ignore = "0.4.25"
-nix = { version = "0.30.1", default-features = false, features = ["user", "fs"] }
+nix = { version = "0.31.1", default-features = false, features = ["user", "fs"] }
 path-dedot = "3.1.1"
 walkdir = "2.5.0"
 
@@ -84,7 +84,7 @@ cachedir = "0.3.1"
 dirs = "6.0.0"
 
 # cli support
-clap = { version = "4.5.51", optional = true, features = ["derive", "env", "wrap_help"] }
+clap = { version = "4.5.57", optional = true, features = ["derive", "env", "wrap_help"] }
 conflate = { version = "0.3.3", optional = true }
 
 # vfs support
@@ -92,16 +92,16 @@ runtime-format = "0.1.3"
 
 # other dependencies
 bytes = { workspace = true }
-bytesize = "2.1.0"
+bytesize = "2.3.1"
 ecow = "0.2.6"
 enum-map = { workspace = true }
 enum-map-derive = "0.17.0"
 enumset = { version = "1.1.10", features = ["serde"] }
 gethostname = "1.1.0"
 itertools = "0.14.0"
-jiff = { version = "0.2.16", features = ["logging", "serde"] }
+jiff = { version = "0.2.19", features = ["logging", "serde"] }
 quick_cache = "0.6.18"
-shell-words = "1.1.0"
+shell-words = "1.1.1"
 strum = { version = "0.27.2", features = ["derive"] }
 zstd = "0.13.3"
 
@@ -120,14 +120,14 @@ xattr = "1"
 [dev-dependencies]
 anyhow = { workspace = true }
 expect-test = "1.5.1"
-flate2 = "1.1.5"
+flate2 = "1.1.9"
 globset = "0.4.18"
-insta = { version = "1.43.2", features = ["redactions", "ron"] }
-mockall = "0.13"
+insta = { version = "1.46.3", features = ["redactions", "ron"] }
+mockall = "0.14"
 pretty_assertions = "1.4.1"
-proptest = { version = "1.9.0", default-features = false, features = ["std"] }
+proptest = { version = "1.10.0", default-features = false, features = ["std"] }
 rstest = { workspace = true }
-rustdoc-json = "0.9.7"
+rustdoc-json = "0.9.8"
 # We need to have rustic_backend here, because the doc-tests in lib.rs of rustic_core
 rustic_backend = { workspace = true }
 rustic_testing = { workspace = true }
@@ -135,7 +135,7 @@ rustup-toolchain = "0.1.10"
 simplelog = "0.12.2"
 tar = "0.4.44"
 tempfile = { workspace = true }
-toml = "0.9.8"
+toml = "0.9.11"
 
 [lints]
 workspace = true

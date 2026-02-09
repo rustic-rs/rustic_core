@@ -8,7 +8,7 @@ publish = false
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-jiff = "0.2.16"
+jiff = "0.2.19"
 rustic_backend = { workspace = true }
 rustic_core = { workspace = true }
 simplelog = { workspace = true }
