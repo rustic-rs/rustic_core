@@ -2,6 +2,44 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.10.0](https://github.com/rustic-rs/rustic_core/compare/rustic_core-v0.9.0...rustic_core-v0.10.0) - 2026-02-09
+
+### Added
+
+- [**breaking**] Add support for batch warmup ([#438](https://github.com/rustic-rs/rustic_core/pull/438))
+- [**breaking**] Add masterkey as credential option ([#468](https://github.com/rustic-rs/rustic_core/pull/468))
+- improve copy algorithm ([#464](https://github.com/rustic-rs/rustic_core/pull/464))
+- [**breaking**] More rewrite features ([#465](https://github.com/rustic-rs/rustic_core/pull/465))
+- [**breaking**] Add rewrite command ([#462](https://github.com/rustic-rs/rustic_core/pull/462))
+- [**breaking**] extend LocalSourceSaveOptions ([#461](https://github.com/rustic-rs/rustic_core/pull/461))
+- [**breaking**] improve restore algorithm ([#453](https://github.com/rustic-rs/rustic_core/pull/453))
+- [**breaking**] change ignore-devid to with-devid ([#460](https://github.com/rustic-rs/rustic_core/pull/460))
+- Use Timestamp in index ([#458](https://github.com/rustic-rs/rustic_core/pull/458))
+- Optimize prune rewrite ([#448](https://github.com/rustic-rs/rustic_core/pull/448))
+- [**breaking**] Add support for multiple parents ([#427](https://github.com/rustic-rs/rustic_core/pull/427))
+
+### Fixed
+
+- fix clippy lints ([#473](https://github.com/rustic-rs/rustic_core/pull/473))
+- Use jiff everywhere ([#467](https://github.com/rustic-rs/rustic_core/pull/467))
+- fix rewrite file count ([#466](https://github.com/rustic-rs/rustic_core/pull/466))
+- Return error if too few snapshots for latest~N ([#459](https://github.com/rustic-rs/rustic_core/pull/459))
+- Use early-delete-index only if instant-delete is selected ([#457](https://github.com/rustic-rs/rustic_core/pull/457))
+- fix clap runtime errors for parent options ([#456](https://github.com/rustic-rs/rustic_core/pull/456))
+- Use parents instead of parent; allow latest ([#455](https://github.com/rustic-rs/rustic_core/pull/455))
+- improve error handling for missing UID/GID name ([#454](https://github.com/rustic-rs/rustic_core/pull/454))
+- fix clippy lints ([#449](https://github.com/rustic-rs/rustic_core/pull/449))
+
+### Other
+
+- update dependencies ([#475](https://github.com/rustic-rs/rustic_core/pull/475))
+- [**breaking**] Refactor snapshot grouping ([#474](https://github.com/rustic-rs/rustic_core/pull/474))
+- [**breaking**] Simplify Repository status ([#472](https://github.com/rustic-rs/rustic_core/pull/472))
+- [**breaking**] Simplify Progress ([#469](https://github.com/rustic-rs/rustic_core/pull/469))
+- update MSRV to 1.88.0 ([#471](https://github.com/rustic-rs/rustic_core/pull/471))
+- FreeBSD build ([#440](https://github.com/rustic-rs/rustic_core/pull/440))
+- refactor! use jiff instead of chrono ([#452](https://github.com/rustic-rs/rustic_core/pull/452))
+
 ## [0.9.0](https://github.com/rustic-rs/rustic_core/compare/rustic_core-v0.8.0...rustic_core-v0.9.0) - 2025-11-08
 
 ### Added

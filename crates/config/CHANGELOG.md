@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 ## [unreleased]
 
+## [0.2.4](https://github.com/rustic-rs/rustic_core/compare/rustic_config-v0.2.3...rustic_config-v0.2.4) - 2026-02-09
+
+### Other
+
+- update MSRV to 1.88.0 ([#471](https://github.com/rustic-rs/rustic_core/pull/471))
+
 ## [0.2.3](https://github.com/rustic-rs/rustic_core/compare/rustic_config-v0.2.2...rustic_config-v0.2.3) - 2025-09-12
 
 ### Other

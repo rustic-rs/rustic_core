@@ -2,6 +2,23 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.6.0](https://github.com/rustic-rs/rustic_core/compare/rustic_backend-v0.5.4...rustic_backend-v0.6.0) - 2026-02-09
+
+### Added
+
+- [**breaking**] Add support for batch warmup ([#438](https://github.com/rustic-rs/rustic_core/pull/438))
+- *(backend/opendal)* include scheme in location() and bump opendal to 0.55.0 ([#446](https://github.com/rustic-rs/rustic_core/pull/446))
+
+### Fixed
+
+- fix clippy lints ([#473](https://github.com/rustic-rs/rustic_core/pull/473))
+- Use jiff everywhere ([#467](https://github.com/rustic-rs/rustic_core/pull/467))
+
+### Other
+
+- update dependencies ([#475](https://github.com/rustic-rs/rustic_core/pull/475))
+- update MSRV to 1.88.0 ([#471](https://github.com/rustic-rs/rustic_core/pull/471))
+
 ## [0.5.4](https://github.com/rustic-rs/rustic_core/compare/rustic_backend-v0.5.3...rustic_backend-v0.5.4) - 2025-11-08
 
 ### Added

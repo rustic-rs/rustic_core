@@ -6,6 +6,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0](https://github.com/rustic-rs/rustic_core/compare/rustic_testing-v0.3.4...rustic_testing-v0.4.0) - 2026-02-09
+
+### Added
+
+- [**breaking**] Add support for batch warmup ([#438](https://github.com/rustic-rs/rustic_core/pull/438))
+
 ## [0.3.4](https://github.com/rustic-rs/rustic_core/compare/rustic_testing-v0.3.3...rustic_testing-v0.3.4) - 2025-11-08
 
 ### Other
