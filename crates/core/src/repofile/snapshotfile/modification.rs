@@ -36,18 +36,12 @@ pub struct SnapshotModification {
     pub set_hostname: Option<String>,
 
     /// Tags to add (can be specified multiple times)
-    #[cfg_attr(
-        feature = "clap",
-        clap(long, value_name = "TAG[,TAG,..]", conflicts_with = "remove_tags")
-    )]
+    #[cfg_attr(feature = "clap", clap(long, value_name = "TAG[,TAG,..]"))]
     #[cfg_attr(feature = "merge", merge(strategy = conflate::vec::overwrite_empty))]
     pub add_tags: Vec<StringList>,
 
     /// Tag list to set (can be specified multiple times)
-    #[cfg_attr(
-        feature = "clap",
-        clap(long, value_name = "TAG[,TAG,..]", conflicts_with = "remove_tags")
-    )]
+    #[cfg_attr(feature = "clap", clap(long, value_name = "TAG[,TAG,..]"))]
     #[cfg_attr(feature = "merge", merge(strategy = conflate::vec::overwrite_empty))]
     pub set_tags: Vec<StringList>,
 
