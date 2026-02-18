@@ -40,11 +40,12 @@ use crate::{
         self,
         backup::BackupOptions,
         check::{CheckOptions, CheckResults, check_repository},
-        config::ConfigOptions,
+        config::{ConfigOptions, save_config_hot},
         copy::CopySnapshot,
         key::{KeyOptions, add_current_key_to_repo},
         prune::{PruneOptions, PrunePlan, prune_repository},
         repair::{
+            hotcold::{repair_hotcold, repair_hotcold_packs},
             index::{RepairIndexOptions, index_checked_from_collector, repair_index},
             snapshots::{RepairSnapshotsOptions, repair_snapshots},
         },
@@ -63,7 +64,6 @@ use crate::{
         ConfigFile, KeyId, PathList, RepoFile, RepoId, SnapshotFile, SnapshotSummary, Tree,
         configfile::ConfigId,
         keyfile::{MasterKey, find_key_in_backend},
-        packfile::PackId,
         snapshotfile::SnapshotId,
     },
     repository::{
@@ -167,6 +167,9 @@ pub struct Repository<S> {
     /// The Backend to use for hot files
     pub(crate) be_hot: Option<Arc<dyn WriteBackend>>,
 
+    /// The Backend to use for cold files
+    pub(crate) be_cold: Arc<dyn WriteBackend>,
+
     /// The options used for this repository
     opts: RepositoryOptions,
 
@@ -228,6 +231,8 @@ impl Repository<()> {
             );
         }
 
+        let be_cold = be.clone();
+
         if opts.warm_up {
             be = WarmUpAccessBackend::new_warm_up(be);
         }
@@ -243,6 +248,7 @@ impl Repository<()> {
             name,
             be,
             be_hot,
+            be_cold,
             opts: opts.clone(),
             pb: Arc::new(pb),
             status: (),
@@ -341,7 +347,40 @@ impl<S> Repository<S> {
     /// * If listing the repository config file failed
     /// * If there is more than one repository config file
     pub fn open(self, credentials: &Credentials) -> RusticResult<Repository<OpenStatus>> {
-        let config_id = self.config_id()?.ok_or_else(|| {
+        self.open_may_use_hot(credentials, true)
+    }
+
+    /// Open the repository with a given password using only the cold repository.
+    ///
+    /// This gets the decryption key and reads the config file
+    ///
+    /// # Arguments
+    ///
+    /// * `password` - The password to use
+    ///
+    /// # Errors
+    ///
+    /// * If no repository config file is found
+    /// * If the keys of the hot and cold backend don't match
+    /// * If the password is incorrect
+    /// * If no suitable key is found
+    /// * If listing the repository config file failed
+    /// * If there is more than one repository config file
+    pub fn open_only_cold(self, credentials: &Credentials) -> RusticResult<Repository<OpenStatus>> {
+        self.open_may_use_hot(credentials, false)
+    }
+
+    fn open_may_use_hot(
+        self,
+        credentials: &Credentials,
+        use_hot: bool,
+    ) -> RusticResult<Repository<OpenStatus>> {
+        let config_id = if use_hot && let Some(be) = &self.be_hot {
+            self.config_id_with_backend(be)?
+        } else {
+            self.config_id()?
+        }
+        .ok_or_else(|| {
             RusticError::new(
                 ErrorKind::Configuration,
                 "No repository config file found for `{name}`. Please check the repository.",
@@ -349,31 +388,53 @@ impl<S> Repository<S> {
             .attach_context("name", self.name.clone())
         })?;
 
-        if let Some(be_hot) = &self.be_hot {
-            let mut keys = self.be.list_with_size(FileType::Key)?;
-            keys.sort_unstable_by_key(|key| key.0);
-            let mut hot_keys = be_hot.list_with_size(FileType::Key)?;
-            hot_keys.sort_unstable_by_key(|key| key.0);
-            if keys != hot_keys {
-                return Err(RusticError::new(
+        if use_hot {
+            if let Some(be_hot) = &self.be_hot {
+                // check keys
+                let mut keys = self.be.list_with_size(FileType::Key)?;
+                keys.sort_unstable_by_key(|key| key.0);
+                let mut hot_keys = be_hot.list_with_size(FileType::Key)?;
+                hot_keys.sort_unstable_by_key(|key| key.0);
+                if keys != hot_keys {
+                    return Err(RusticError::new(
                     ErrorKind::Key,
                     "Keys of hot and cold repositories don't match for `{name}`. Please check the keys.",
                 )
                 .attach_context("name", self.name.clone()));
+                }
             }
+        } else {
+            // warm-up keys
+            let keys = self.be_cold.list(FileType::Key)?;
+            warm_up_wait(&self, FileType::Key, keys.into_iter())?;
         }
 
         let (key, key_id) = match credentials {
             Credentials::Password(password) => {
-                let (key, key_id) = find_key_in_backend(&self.be, &password, None)?;
+                let (key, key_id) = if use_hot {
+                    find_key_in_backend(&self.be, &password, None)?
+                } else {
+                    find_key_in_backend(&self.be_cold, &password, None)?
+                };
                 info!("repository {}: password is correct.", self.name);
                 (key, Some(key_id))
             }
             Credentials::Masterkey(key) => (key.key(), None),
         };
 
-        let dbe = DecryptBackend::new(self.be.clone(), key);
-        let config: ConfigFile = dbe.get_file(&config_id)?;
+        // Initialize a new repository with given credentials and options.
+        let be = if use_hot {
+            self.be.clone()
+        } else {
+            // warm-up config file
+            self.warm_up_wait(std::iter::once(config_id))?;
+            self.be_cold.clone()
+        };
+        let dbe = DecryptBackend::new(be, key);
+        let mut config: ConfigFile = dbe.get_file(&config_id)?;
+        if !use_hot && self.be_hot.is_some() {
+            config.is_hot = Some(true);
+        }
         self.open_raw(key, key_id, config)
     }
 
@@ -381,13 +442,9 @@ impl<S> Repository<S> {
     ///
     /// This returns an open repository which can be directly used.
     ///
-    /// # Type Parameters
-    ///
-    /// * `P` - The type of the progress bar
-    ///
     /// # Arguments
     ///
-    /// * `pass` - The password to use
+    /// * `credentials` - The credentials
     /// * `key_opts` - The options to use for the key
     /// * `config_opts` - The options to use for the config
     ///
@@ -513,6 +570,7 @@ impl<S> Repository<S> {
             name: self.name,
             be: self.be,
             be_hot: self.be_hot,
+            be_cold: self.be_cold,
             opts: self.opts,
             pb: self.pb,
             status: open,
@@ -553,11 +611,12 @@ impl<S> Repository<S> {
         commands::repoinfo::collect_file_infos(self)
     }
 
-    /// Warm up the given pack files without waiting.
+    /// Warm up the given repository files without waiting.
     ///
     /// # Arguments
     ///
-    /// * `packs` - The pack files to warm up
+    /// * `tpe` - The filetype to warm up
+    /// * `ids` - The ids to warm up
     ///
     /// # Errors
     ///
@@ -567,25 +626,41 @@ impl<S> Repository<S> {
     /// # Returns
     ///
     /// The result of the warm up
-    pub fn warm_up(&self, packs: impl ExactSizeIterator<Item = PackId>) -> RusticResult<()> {
-        warm_up(self, packs)
+    pub fn warm_up<I: RepoId>(&self, ids: impl ExactSizeIterator<Item = I>) -> RusticResult<()> {
+        warm_up(self, I::TYPE, ids.map(|id| *id))
     }
 
     /// Warm up the given pack files and wait the configured waiting time.
     ///
     /// # Arguments
     ///
-    /// * `packs` - The pack files to warm up
+    /// * `tpe` - The filetype to warm up
+    /// * `ids` - The ids to warm up
     ///
     /// # Errors
     ///
     /// * If the command could not be parsed.
     /// * If the thread pool could not be created.
-    pub(crate) fn warm_up_wait(
+    pub(crate) fn warm_up_wait<I: RepoId>(
         &self,
-        packs: impl ExactSizeIterator<Item = PackId> + Clone,
+        ids: impl ExactSizeIterator<Item = I> + Clone,
     ) -> RusticResult<()> {
-        warm_up_wait(self, packs)
+        warm_up_wait(self, I::TYPE, ids.map(|id| *id))
+    }
+
+    /// Repair hotcold files except packs
+    ///
+    /// This compares the files in the hot and cold repo part and copies missing ones.
+    ///
+    /// # Arguments
+    ///
+    /// * `dry_run` - If true, only print what would be done
+    ///
+    /// # Errors
+    ///
+    // TODO: Document errors
+    pub fn repair_hotcold_except_packs(&self, dry_run: bool) -> RusticResult<()> {
+        repair_hotcold(self, dry_run)
     }
 }
 
@@ -667,6 +742,20 @@ impl<S: Open> Repository<S> {
     /// Get the [`MasterKey`] used to open the repository
     pub fn key(&self) -> MasterKey {
         MasterKey::from_key(*self.status.open_status().dbe.key())
+    }
+
+    /// Init only the hot repository, i.e. save the [`ConfigFile`] only to the hot part of a repository
+    ///
+    /// # Errors
+    ///
+    /// * If the config file could not be saved.
+    pub fn init_hot(&self) -> RusticResult<()> {
+        if let Some(hot_be) = self.be_hot.clone() {
+            hot_be.create()?;
+        }
+        let config = self.config().clone();
+        let key = *self.dbe().key();
+        save_config_hot(self, config, key)
     }
 
     /// Delete the key with the given id
@@ -1053,6 +1142,7 @@ impl<S: Open> Repository<S> {
             name: self.name,
             be: self.be,
             be_hot: self.be_hot,
+            be_cold: self.be_cold,
             opts: self.opts,
             pb: self.pb,
             status,
@@ -1111,6 +1201,7 @@ impl<S: Open> Repository<S> {
             name: self.name,
             be: self.be,
             be_hot: self.be_hot,
+            be_cold: self.be_cold,
             opts: self.opts,
             pb: self.pb,
             status,
@@ -1204,6 +1295,21 @@ impl<S: Open> Repository<S> {
     // TODO: Document errors
     pub fn repair_index(&self, opts: &RepairIndexOptions, dry_run: bool) -> RusticResult<()> {
         repair_index(self, *opts, dry_run)
+    }
+
+    /// Repair hotcold packs
+    ///
+    /// This compares the pack files in the hot and cold repo part and copies missing ones.
+    ///
+    /// # Arguments
+    ///
+    /// * `dry_run` - If true, only print what would be done
+    ///
+    /// # Errors
+    ///
+    // TODO: Document errors
+    pub fn repair_hotcold_packs(&self, dry_run: bool) -> RusticResult<()> {
+        repair_hotcold_packs(self, dry_run)
     }
 
     /// Rewrite snapshots using snapshot modifications.
@@ -1372,6 +1478,7 @@ impl<S: IndexedTree> Repository<S> {
             name: self.name,
             be: self.be,
             be_hot: self.be_hot,
+            be_cold: self.be_cold,
             opts: self.opts,
             pb: self.pb,
             status: self.status.into_open_status(),
@@ -1608,6 +1715,7 @@ impl<S: IndexedFull> Repository<S> {
             name: self.name,
             be: self.be,
             be_hot: self.be_hot,
+            be_cold: self.be_cold,
             opts: self.opts,
             pb: self.pb,
             status: self.status.into_indexed_tree(),

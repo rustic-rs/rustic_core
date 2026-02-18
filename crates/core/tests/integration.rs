@@ -29,6 +29,7 @@ mod integration {
     mod chunker;
     mod copy;
     mod find;
+    mod hotcold;
     mod key;
     mod ls;
     mod prune;

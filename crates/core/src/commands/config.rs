@@ -15,7 +15,6 @@ use crate::{
 ///
 /// # Type Parameters
 ///
-/// * `P` - The progress bar type.
 /// * `S` - The state the repository is in.
 ///
 /// # Arguments
@@ -63,7 +62,6 @@ pub(crate) fn apply_config<S: Open>(
 ///
 /// # Type Parameters
 ///
-/// * `P` - The progress bar type.
 /// * `S` - The state the repository is in.
 ///
 /// # Arguments
@@ -84,7 +82,30 @@ pub(crate) fn save_config<S>(
     let dbe = DecryptBackend::new(repo.be.clone(), key);
     // for hot/cold backend, this only saves the config to the cold repo.
     _ = dbe.save_file_uncompressed(&new_config)?;
+    save_config_hot(repo, new_config, key)
+}
 
+/// Save a [`ConfigFile`] only to the hot part of a repository
+///
+/// # Type Parameters
+///
+/// * `S` - The state the repository is in.
+///
+/// # Arguments
+///
+/// * `repo` - The repository to save the config to
+/// * `new_config` - The config to save
+/// * `key` - The key to encrypt the config with
+///
+/// # Errors
+///
+/// * If the file could not be serialized to json.
+/// * If the file could not be saved to the backend.
+pub(crate) fn save_config_hot<S>(
+    repo: &Repository<S>,
+    mut new_config: ConfigFile,
+    key: impl CryptoKey,
+) -> RusticResult<()> {
     if let Some(hot_be) = repo.be_hot.clone() {
         // save config to hot repo
         let dbe = DecryptBackend::new(hot_be.clone(), key);

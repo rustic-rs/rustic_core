@@ -20,7 +20,6 @@ use crate::{
 ///
 /// # Type Parameters
 ///
-/// * `P` - The progress bar type.
 /// * `S` - The state the repository is in.
 ///
 /// # Arguments
@@ -60,17 +59,16 @@ pub(crate) fn init<S>(
     Ok((key, key_id, config))
 }
 
-/// Initialize a new repository with a given config.
+/// Initializes a new repository using the given [`ConfigFile`]
 ///
 /// # Type Parameters
 ///
-/// * `P` - The progress bar type.
 /// * `S` - The state the repository is in.
 ///
 /// # Arguments
 ///
 /// * `repo` - The repository to initialize.
-/// * `pass` - The password to encrypt the key with.
+/// * `credentials` - The credentials to use.
 /// * `key_opts` - The options to create the key with.
 /// * `config` - The config to use.
 ///

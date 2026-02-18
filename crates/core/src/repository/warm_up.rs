@@ -6,10 +6,9 @@ use log::{debug, error, warn};
 use rayon::ThreadPoolBuilder;
 
 use crate::{
-    CommandInput, Progress,
+    CommandInput, Id, Progress,
     backend::{FileType, ReadBackend},
     error::{ErrorKind, RusticError, RusticResult},
-    repofile::packfile::PackId,
     repository::Repository,
 };
 
@@ -31,13 +30,15 @@ pub(super) mod constants {
 /// * If the thread pool could not be created.
 pub(crate) fn warm_up_wait<S>(
     repo: &Repository<S>,
-    packs: impl ExactSizeIterator<Item = PackId> + Clone,
+    tpe: FileType,
+    ids: impl ExactSizeIterator<Item = Id> + Clone,
 ) -> RusticResult<()> {
-    warm_up(repo, packs.clone())?;
+    warm_up(repo, tpe, ids.clone())?;
 
     if let Some(warm_up_wait_cmd) = &repo.opts.warm_up_wait_command {
         warm_up_command(
-            packs,
+            tpe,
+            ids,
             warm_up_wait_cmd,
             repo,
             &WarmUpType::WaitPack,
@@ -70,11 +71,13 @@ pub(crate) fn warm_up_wait<S>(
 /// * If the thread pool could not be created.
 pub(crate) fn warm_up<S>(
     repo: &Repository<S>,
-    packs: impl ExactSizeIterator<Item = PackId>,
+    tpe: FileType,
+    ids: impl ExactSizeIterator<Item = Id>,
 ) -> RusticResult<()> {
     if let Some(warm_up_cmd) = &repo.opts.warm_up_command {
         warm_up_command(
-            packs,
+            tpe,
+            ids,
             warm_up_cmd,
             repo,
             &WarmUpType::WarmUp,
@@ -82,7 +85,7 @@ pub(crate) fn warm_up<S>(
             &repo.be,
         )?;
     } else if repo.be.needs_warm_up() {
-        warm_up_repo(repo, packs)?;
+        warm_up_repo(repo, tpe, ids)?;
     }
     Ok(())
 }
@@ -108,7 +111,8 @@ enum WarmUpType {
 ///
 /// * If the command could not be parsed.
 fn warm_up_command<S>(
-    packs: impl ExactSizeIterator<Item = PackId>,
+    tpe: FileType,
+    ids: impl ExactSizeIterator<Item = Id>,
     command: &CommandInput,
     repo: &Repository<S>,
     ty: &WarmUpType,
@@ -117,7 +121,7 @@ fn warm_up_command<S>(
 ) -> RusticResult<()> {
     let use_plural = command.uses_plural_placeholders()?;
 
-    let total = packs.len();
+    let total = ids.len();
 
     let p = repo.progress_counter(match ty {
         WarmUpType::WarmUp => "warming up packs...",
@@ -125,13 +129,13 @@ fn warm_up_command<S>(
     });
     p.set_length(total as u64);
 
-    let chunks = packs.chunks(batch_size);
+    let chunks = ids.chunks(batch_size);
     for batch in &chunks {
         let batch: Vec<_> = batch.collect();
         if use_plural {
-            warm_up_batch_plural(&batch, command, ty, backend, &p)?;
+            warm_up_batch_plural(tpe, &batch, command, ty, backend, &p)?;
         } else {
-            warm_up_batch_singular(&batch, command, ty, backend, &p)?;
+            warm_up_batch_singular(tpe, &batch, command, ty, backend, &p)?;
         }
     }
 
@@ -139,7 +143,7 @@ fn warm_up_command<S>(
     Ok(())
 }
 
-/// Warm up a batch of packs using singular mode (one command per pack).
+/// Warm up a batch of ids using singular mode (one command per id).
 ///
 /// # Arguments
 ///
@@ -154,25 +158,31 @@ fn warm_up_command<S>(
 ///
 /// * If the command could not be parsed.
 fn warm_up_batch_singular(
-    batch: &[PackId],
+    tpe: FileType,
+    batch: &[Id],
     command: &CommandInput,
     ty: &WarmUpType,
     backend: &impl ReadBackend,
     progress: &Progress,
 ) -> RusticResult<()> {
+    let file_type = tpe.to_string();
     let children: Vec<_> = batch
         .iter()
-        .map(|pack| {
-            let id = pack.to_hex().to_string();
-            let path = backend.warmup_path(FileType::Pack, pack);
+        .map(|id| {
+            let path = backend.warmup_path(tpe, id);
+            let id = id.to_hex().to_string();
 
             let args: Vec<_> = command
                 .args()
                 .iter()
-                .map(|c| c.replace("%id", &id).replace("%path", &path))
+                .map(|c| {
+                    c.replace("%tpe", &file_type)
+                        .replace("%id", &id)
+                        .replace("%path", &path)
+                })
                 .collect();
 
-            debug!("spawning {command:?} for pack {pack:?}...");
+            debug!("spawning {command:?} for id {id:?}...");
 
             let child = Command::new(command.command())
                 .args(&args)
@@ -184,18 +194,18 @@ fn warm_up_batch_singular(
                         err,
                     )
                     .attach_context("command", command.to_string())
-                    .attach_context("pack", pack.to_hex().to_string())
+                    .attach_context("id", &id)
                     .attach_context("type", format!("{ty:?}"))
                 })?;
 
-            Ok::<_, Box<RusticError>>((child, *pack))
+            Ok((child, id))
         })
-        .collect::<Result<Vec<_>, _>>()?;
+        .collect::<RusticResult<Vec<_>>>()?;
 
-    let mut failed_packs = Vec::new();
+    let mut failed_ids = Vec::new();
 
-    for (mut child, pack) in children {
-        debug!("waiting for warm-up command for pack {pack:?}...");
+    for (mut child, id) in children {
+        debug!("waiting for warm-up command for id {id}...");
 
         let status = child.wait().map_err(|err| {
             RusticError::with_source(
@@ -204,33 +214,33 @@ fn warm_up_batch_singular(
                 err,
             )
             .attach_context("command", command.to_string())
-            .attach_context("pack", pack.to_hex().to_string())
+            .attach_context("id", &id)
             .attach_context("type", format!("{ty:?}"))
         })?;
 
         if !status.success() {
-            failed_packs.push((pack, status));
+            failed_ids.push((id, status));
         }
 
         progress.inc(1);
     }
 
-    if !failed_packs.is_empty() {
+    if !failed_ids.is_empty() {
         let error_msg = format!(
-            "{ty:?} command failed for {}/{} pack(s): {}",
-            failed_packs.len(),
+            "{ty:?} command failed for {}/{} id(s): {}",
+            failed_ids.len(),
             batch.len(),
-            failed_packs
+            failed_ids
                 .iter()
-                .map(|(pack, status)| format!("{pack:?} ({status})"))
+                .map(|(id, status)| format!("{id:?} ({status})"))
                 .collect::<Vec<_>>()
                 .join(", ")
         );
 
         return Err(RusticError::new(ErrorKind::ExternalCommand, error_msg)
             .attach_context("command", command.to_string())
-            .attach_context("failed_packs", failed_packs.len().to_string())
-            .attach_context("total_packs", batch.len().to_string())
+            .attach_context("failed_ids", failed_ids.len().to_string())
+            .attach_context("total_ids", batch.len().to_string())
             .attach_context("type", format!("{ty:?}")));
     }
 
@@ -252,12 +262,14 @@ fn warm_up_batch_singular(
 ///
 /// * If the command could not be parsed.
 fn warm_up_batch_plural(
-    batch: &[PackId],
+    tpe: FileType,
+    batch: &[Id],
     command: &CommandInput,
     ty: &WarmUpType,
     backend: &impl ReadBackend,
     progress: &Progress,
 ) -> RusticResult<()> {
+    let file_type = tpe.to_string();
     let cmd_str = command.to_string();
     let use_ids = cmd_str.contains("%ids");
     let use_paths = cmd_str.contains("%paths");
@@ -274,7 +286,7 @@ fn warm_up_batch_plural(
                     .map(|id| backend.warmup_path(FileType::Pack, id)),
             );
         } else {
-            args.push(arg.clone());
+            args.push(arg.replace("%tpe", &file_type));
         }
     }
 
@@ -323,10 +335,11 @@ fn warm_up_batch_plural(
 /// * If the thread pool could not be created.
 fn warm_up_repo<S>(
     repo: &Repository<S>,
-    packs: impl ExactSizeIterator<Item = PackId>,
+    tpe: FileType,
+    ids: impl ExactSizeIterator<Item = Id>,
 ) -> RusticResult<()> {
     let progress_bar = repo.progress_counter("warming up packs...");
-    progress_bar.set_length(packs.len() as u64);
+    progress_bar.set_length(ids.len() as u64);
 
     let pool = ThreadPoolBuilder::new()
         .num_threads(constants::MAX_READER_THREADS_NUM)
@@ -341,11 +354,11 @@ fn warm_up_repo<S>(
     let progress_bar_ref = &progress_bar;
     let backend = &repo.be;
     pool.in_place_scope(|scope| {
-        for pack in packs {
+        for id in ids {
             scope.spawn(move |_| {
-                if let Err(err) = backend.warm_up(FileType::Pack, &pack) {
+                if let Err(err) = backend.warm_up(tpe, &id) {
                     // FIXME: Use error handling
-                    error!("warm-up failed for pack {pack:?}. {}", err.display_log());
+                    error!("warm-up failed for pack {id:?}. {}", err.display_log());
                 }
                 progress_bar_ref.inc(1);
             });
