@@ -204,7 +204,7 @@ impl<T> BlobLocations<T> {
     pub fn can_coalesce(&self, other: &Self) -> bool {
         // if the blobs are (almost) contiguous and we don't trespass the limit, blobs can be read in one partial read
         other.offset <= self.offset + self.length + constants::MAX_HOLESIZE
-            && other.offset > self.offset
+            && other.offset >= self.offset + self.length
             && other.offset + other.length - self.offset <= constants::LIMIT_PACK_READ
     }
 
@@ -222,5 +222,49 @@ impl<T> BlobLocations<T> {
         } else {
             Err((self, other))
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rstest::rstest;
+
+    #[rstest]
+    #[case(12, 123, 0, 123, None)] // second before first
+    #[case(12, 123, 12, 123, None)] // second overlaps
+    #[case(12, 123, 134, 123, None)] // second still overlaps
+    #[case(12, 123, 135, 123, Some(246))] // second contiguous to first => OK
+    #[case(12, 123, 136, 123, Some(247))] // small hole => OK
+    #[case(12, 123, 135 + constants::MAX_HOLESIZE, 123, Some(246 + constants::MAX_HOLESIZE))] // maximum hole => OK
+    #[case(12, 123, 136 + constants::MAX_HOLESIZE, 123, None)] // hole too large
+    #[case(12, constants::LIMIT_PACK_READ - 15, constants::LIMIT_PACK_READ - 3, 15, Some(constants::LIMIT_PACK_READ))] // maximum length
+    #[case(12, constants::LIMIT_PACK_READ - 15, constants::LIMIT_PACK_READ - 3, 16, None)] // exceeds limit to read
+    #[case(12, constants::LIMIT_PACK_READ - 15, constants::LIMIT_PACK_READ, 12, Some(constants::LIMIT_PACK_READ))] // maximum length with hole
+    #[case(12, constants::LIMIT_PACK_READ - 15, constants::LIMIT_PACK_READ + 1, 12, None)] // exceeds limit
+    fn test_coalesce(
+        #[case] offset1: u32,
+        #[case] length1: u32,
+        #[case] offset2: u32,
+        #[case] length2: u32,
+        #[case] expected: Option<u32>,
+    ) {
+        // helper to create BlobLocations
+        let bl = |offset, length| {
+            BlobLocations::from_blob_location(
+                BlobLocation {
+                    offset,
+                    length,
+                    uncompressed_length: None,
+                },
+                (),
+            )
+        };
+
+        let coalesced_length = bl(offset1, length1)
+            .coalesce(bl(offset2, length2))
+            .ok()
+            .map(|bl| bl.length);
+        assert_eq!(coalesced_length, expected);
     }
 }
