@@ -319,9 +319,9 @@ impl ReadBackend for RestBackend {
 
             Ok(list
                 .into_iter()
-                .filter_map(|i| match i.name.parse::<Id>() {
-                    Ok(id) => Some((id, i.size)),
-                    Err(_) => None,
+                .filter_map(|entry| {
+                    let id = Id::parse_some(&entry.name, tpe)?;
+                    Some((id, entry.size))
                 })
                 .collect())
         })

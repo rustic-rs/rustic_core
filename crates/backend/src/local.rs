@@ -1,5 +1,6 @@
 use std::{
-    fs::{self, File},
+    fmt::Debug,
+    fs::{self, File, Metadata},
     io::{Read, Seek, SeekFrom, Write},
     path::{Path, PathBuf},
     process::Command,
@@ -220,15 +221,21 @@ impl ReadBackend for LocalBackend {
 
         let walker = WalkDir::new(self.path.join(tpe.dirname()))
             .into_iter()
-            // TODO: What to do with errors?
             .inspect(|r| {
                 if let Err(err) = r {
                     error!("Error while listing files: {err:?}");
                 }
             })
-            .filter_map(walkdir::Result::ok)
-            .filter(|e| e.file_type().is_file())
-            .filter_map(|e| e.file_name().to_string_lossy().parse::<Id>().ok());
+            .filter_map(|r| {
+                let entry = r
+                    .inspect_err(|err| error!("error listing {tpe}: {err}"))
+                    .ok()?;
+                if !entry.file_type().is_file() {
+                    return None;
+                }
+                let name = entry.file_name().to_string_lossy();
+                Id::parse_some(&name, tpe)
+            });
         Ok(walker.collect())
     }
 
@@ -244,81 +251,48 @@ impl ReadBackend for LocalBackend {
     /// * If the length of the file could not be converted to u32.
     /// * If the metadata of the file could not be queried.
     fn list_with_size(&self, tpe: FileType) -> RusticResult<Vec<(Id, u32)>> {
+        fn length<E: Debug>(
+            meta: Result<Metadata, E>,
+            file_name: &str,
+            tpe: FileType,
+        ) -> Option<u32> {
+            let metadata = meta.inspect_err(|err| {
+                error!(
+                    "Failed to query metadata of the file {file_name} while listing {tpe}: {err:?}"
+                );
+            }).ok()?;
+
+            let length = metadata.len();
+            length.try_into().inspect_err(|err| {
+                error!("Failed to convert file length {length} of {file_name} to u32 while listing {tpe}: {err:?}");
+            }).ok()
+        }
+
         trace!("listing tpe: {tpe:?}");
         let path = self.path.join(tpe.dirname());
 
         if tpe == FileType::Config {
-            return Ok(if path.exists() {
-                vec![(Id::default(), {
-                    let metadata = path.metadata().map_err(|err|
-                            RusticError::with_source(
-                                ErrorKind::Backend,
-                                "Failed to query metadata of the file `{path}`. Please check the file and try again.",
-                                err
-                            )
-                            .attach_context("path", path.to_string_lossy())
-                        )?;
-
-                    metadata.len().try_into().map_err(|err| {
-                        RusticError::with_source(
-                            ErrorKind::Backend,
-                            "Failed to convert file length `{length}` to u32.",
-                            err,
-                        )
-                        .attach_context("length", metadata.len().to_string())
-                        .ask_report()
-                    })?
-                })]
-            } else {
-                Vec::new()
-            });
+            if path.exists() {
+                return Ok(vec![(Id::default(), {
+                    length(path.metadata(), "config", tpe).unwrap_or_default()
+                })]);
+            }
+            return Ok(Vec::new());
         }
 
-        let walker = WalkDir::new(path)
-            .into_iter()
-            .inspect(|r| {
-                if let Err(err) = r {
-                    error!("Error while listing files: {err:?}");
-                }
-            })
-            .filter_map(walkdir::Result::ok)
-            .filter(|e| e.file_type().is_file())
-            .map(|e| -> RusticResult<_> {
-                Ok((
-                    e.file_name().to_string_lossy().parse()?,
-                    {
-                        let metadata = e.metadata()
-                        .map_err(|err|
-                            RusticError::with_source(
-                                ErrorKind::Backend,
-                                "Failed to query metadata of the file `{path}`. Please check the file and try again.",
-                                err
-                            )
-                            .attach_context("path", e.path().to_string_lossy())
-                        )
-                        ?;
+        let walker = WalkDir::new(path).into_iter().filter_map(|r| {
+            let entry = r
+                .inspect_err(|err| error!("error listing {tpe}: {err}"))
+                .ok()?;
+            if !entry.file_type().is_file() {
+                return None;
+            }
+            let name = entry.file_name().to_string_lossy();
+            let id = Id::parse_some(&name, tpe)?;
+            let length = length(entry.metadata(), &name, tpe)?;
 
-                        metadata
-                        .len()
-                        .try_into()
-                        .map_err(|err|
-                            RusticError::with_source(
-                                ErrorKind::Backend,
-                                "Failed to convert file length `{length}` to u32.",
-                                err
-                            )
-                            .attach_context("length", metadata.len().to_string())
-                            .ask_report()
-                        )?
-                    },
-                ))
-            })
-            .inspect(|r| {
-                if let Err(err) = r {
-                    error!("Error while listing files: {}", err.display_log());
-                }
-            })
-            .filter_map(RusticResult::ok);
+            Some((id, length))
+        });
 
         Ok(walker.collect())
     }
