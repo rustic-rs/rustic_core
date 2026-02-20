@@ -1319,6 +1319,8 @@ pub(crate) fn prune_repository<S: Open>(
                     }
                     pack.blobs
                         .retain(|blob| used_ids.remove(&blob.id).is_some()); // don't save duplicate blobs
+                    // sort blobs to later allow coalescing
+                    pack.blobs.sort_unstable();
                     repack_packs.push(pack);
                 }
                 PackToDo::MarkDelete => {
