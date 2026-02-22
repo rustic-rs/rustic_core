@@ -4,10 +4,12 @@ use std::{fmt, io::Read, ops::Deref, path::Path, str::FromStr};
 
 use binrw::{BinRead, BinWrite};
 use derive_more::{Constructor, Display};
+use log::debug;
 use rand::{RngCore, rng};
 use serde_derive::{Deserialize, Serialize};
 
 use crate::{
+    FileType,
     crypto::hasher::hash_reader,
     error::{ErrorKind, RusticError, RusticResult},
 };
@@ -119,6 +121,16 @@ impl Id {
     #[deprecated(note = "use FromStr::from_str instead")]
     pub fn from_hex(s: &str) -> RusticResult<Self> {
         s.parse()
+    }
+
+    /// Parse ID ignoring (but logging) errors
+    #[must_use]
+    pub fn parse_some(name: &str, tpe: FileType) -> Option<Self> {
+        name.parse()
+            .inspect_err(|err| {
+                debug!("ignoring {name} which is no ID while listing {tpe}: {err}",);
+            })
+            .ok()
     }
 
     /// Generate a random `Id`.

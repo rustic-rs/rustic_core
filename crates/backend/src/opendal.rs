@@ -5,6 +5,7 @@ use bytes::Bytes;
 use bytesize::ByteSize;
 use log::{error, trace};
 use opendal::{
+    Metadata,
     blocking::Operator,
     layers::{ConcurrentLimitLayer, LoggingLayer, RetryLayer, ThrottleLayer},
     options::{ListOptions, ReadOptions},
@@ -242,21 +243,24 @@ impl ReadBackend for OpenDALBackend {
             ..Default::default()
         };
 
-        Ok(self
+        let lister = self
             .operator
-            .list_options(&path, list_options)
+            .lister_options(&path, list_options)
             .map_err(|err| {
-                RusticError::with_source(
-                    ErrorKind::Backend,
-                    "Listing all files of `{path}` failed in the backend. Please check if the given path is correct.",
-                    err,
-                )
-                .attach_context("path", path)
-                .attach_context("type", tpe.to_string())
-            })?
-            .into_iter()
-            .filter(|e| e.metadata().is_file())
-            .filter_map(|e| e.name().parse().ok())
+                RusticError::with_source(ErrorKind::Backend, "Listing failed for `{type}`", err)
+                    .attach_context("type", tpe.to_string())
+            })?;
+        Ok(lister
+            .filter_map(|r| {
+                let entry = r
+                    .inspect_err(|err| error!("error listing {tpe}: {err}"))
+                    .ok()?;
+                let metadata = entry.metadata();
+                if !metadata.is_file() {
+                    return None;
+                }
+                Id::parse_some(entry.name(), tpe)
+            })
             .collect())
     }
 
@@ -267,20 +271,17 @@ impl ReadBackend for OpenDALBackend {
     /// * `tpe` - The type of the files to list.
     ///
     fn list_with_size(&self, tpe: FileType) -> RusticResult<Vec<(Id, u32)>> {
+        fn length(entry: &Metadata, file_name: &str, tpe: FileType) -> Option<u32> {
+            let length = entry.content_length();
+            length.try_into().inspect_err(|err| {
+                    error!("Failed to convert file length {length} of {file_name} to u32 while listing {tpe}: {err}");
+                }).ok()
+        }
+
         trace!("listing tpe: {tpe:?}");
         if tpe == FileType::Config {
             return match self.operator.stat("config") {
-                Ok(entry) => Ok(vec![(
-                    Id::default(),
-                    entry.content_length().try_into().map_err(|err| {
-                        RusticError::with_source(
-                            ErrorKind::Internal,
-                            "Parsing content length `{length}` failed",
-                            err,
-                        )
-                        .attach_context("length", entry.content_length().to_string())
-                    })?,
-                )]),
+                Ok(meta) => Ok(vec![(Id::default(), length(&meta, "config", tpe).unwrap_or_default())]),
                 Err(err) if err.kind() == opendal::ErrorKind::NotFound => Ok(Vec::new()),
                 Err(err) => Err(err).map_err(|err|
                     RusticError::with_source(
@@ -298,42 +299,29 @@ impl ReadBackend for OpenDALBackend {
             recursive: true,
             ..Default::default()
         };
-        Ok(self
-            .operator.list_options(&path, list_options)
-            .map_err(|err|
-                RusticError::with_source(
-                    ErrorKind::Backend,
-                    "Listing all files of `{type}` in directory `{path}` and their sizes failed in the backend. Please check if the given path is correct.",
-                    err,
-                )
-                .attach_context("path", path)
-                .attach_context("type", tpe.to_string())
-            )?
-            .into_iter()
-            .filter(|e| e.metadata().is_file())
-            .map(|e| -> RusticResult<(Id, u32)> {
-                Ok((
-                    e.name().parse()?,
-                    e.metadata()
-                        .content_length()
-                        .try_into()
-                        .map_err(|err|
-                            RusticError::with_source(
-                                ErrorKind::Internal,
-                                "Parsing content length `{length}` failed",
-                                err,
-                            )
-                            .attach_context("length", e.metadata().content_length().to_string())
-                        )?,
-                ))
-            })
-            .inspect(|r| {
-                if let Err(err) = r {
-                    error!("Error while listing files: {}", err.display_log());
+        let lister = self
+            .operator
+            .lister_options(&path, list_options)
+            .map_err(|err| {
+                RusticError::with_source(ErrorKind::Backend, "Listing failed for `{type}`", err)
+                    .attach_context("type", tpe.to_string())
+            })?;
+        let entries = lister
+            .filter_map(|r| {
+                let entry = r
+                    .inspect_err(|err| error!("error listing {tpe}: {err}"))
+                    .ok()?;
+                let metadata = entry.metadata();
+                if !metadata.is_file() {
+                    return None;
                 }
+                let name = entry.name();
+                let id = Id::parse_some(name, tpe)?;
+                let length = length(metadata, name, tpe)?;
+                Some((id, length))
             })
-            .filter_map(RusticResult::ok)
-            .collect())
+            .collect();
+        Ok(entries)
     }
 
     fn read_full(&self, tpe: FileType, id: &Id) -> RusticResult<Bytes> {
