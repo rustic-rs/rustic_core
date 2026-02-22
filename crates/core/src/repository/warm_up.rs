@@ -1,5 +1,8 @@
+use std::io;
 use std::process::Command;
 use std::thread::sleep;
+
+use backon::{BlockingRetryable, ExponentialBuilder};
 
 use itertools::Itertools;
 use log::{debug, error, warn};
@@ -13,8 +16,25 @@ use crate::{
 };
 
 pub(super) mod constants {
+    use std::time::Duration;
+
     /// The maximum number of reader threads to use for warm-up.
     pub(super) const MAX_READER_THREADS_NUM: usize = 20;
+
+    /// The maximum number of retries for spawning commands.
+    pub(crate) const MAX_RETRIES: usize = 5;
+
+    /// Initial delay for exponential backoff for spawning commands.
+    pub(crate) const INITIAL_DELAY: Duration = Duration::from_millis(10);
+}
+
+/// Configuration for retrying executing a command that the operating system reports is busy.
+/// We believe this is a transient race condition that happens during unit tests when a program
+/// is created and then immediately executed.
+fn execute_cmd_retry() -> ExponentialBuilder {
+    ExponentialBuilder::default()
+        .with_min_delay(constants::INITIAL_DELAY)
+        .with_max_times(constants::MAX_RETRIES)
 }
 
 /// Warm up the repository and wait.
@@ -192,9 +212,13 @@ fn warm_up_batch_singular(
 
             debug!("spawning {command:?} for id {id:?}...");
 
-            let child = Command::new(command.command())
-                .args(&args)
-                .spawn()
+            let child = (|| Command::new(command.command()).args(&args).spawn())
+                .retry(execute_cmd_retry())
+                .when(|err| err.kind() == io::ErrorKind::ExecutableFileBusy)
+                .notify(|err, duration| {
+                    debug!("spawn failed with ETXTBSY, retrying in {duration:?}: {err}");
+                })
+                .call()
                 .map_err(|err| {
                     RusticError::with_source(
                         ErrorKind::ExternalCommand,
@@ -301,9 +325,13 @@ fn warm_up_batch_plural(
 
     debug!("calling {command:?} with {} id(s)...", batch.len());
 
-    let status = Command::new(command.command())
-        .args(&args)
-        .status()
+    let status = (|| Command::new(command.command()).args(&args).status())
+        .retry(execute_cmd_retry())
+        .when(|err| err.kind() == io::ErrorKind::ExecutableFileBusy)
+        .notify(|err, duration| {
+            debug!("spawn failed with ETXTBSY, retrying in {duration:?}: {err}");
+        })
+        .call()
         .map_err(|err| {
             RusticError::with_source(
                 ErrorKind::ExternalCommand,
