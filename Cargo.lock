@@ -3290,6 +3290,7 @@ version = "0.10.0"
 dependencies = [
  "aes256ctr_poly1305aes",
  "anyhow",
+ "backon",
  "binrw",
  "bytes",
  "bytesize",
