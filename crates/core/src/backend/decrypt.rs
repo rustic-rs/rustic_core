@@ -121,6 +121,16 @@ pub trait DecryptReadBackend: ReadBackend + Clone + 'static {
             &self.read_partial(tpe, id, cacheable, location.offset, location.length)?,
             location.uncompressed_length,
         )
+        .map_err(|err| {
+            RusticError::with_source(
+                ErrorKind::Cryptography,
+                "error processing {tpe}:{id} at {location}",
+                err,
+            )
+            .attach_context("tpe", tpe.to_string())
+            .attach_context("id", id.to_string())
+            .attach_context("location", format!("{location:?}"))
+        })
     }
 
     /// Gets the given file.
@@ -602,7 +612,17 @@ impl<C: CryptoKey> DecryptReadBackend for DecryptBackend<C> {
     /// * If the backend does not support decryption.
     /// * If the data could not be decoded.
     fn read_encrypted_full(&self, tpe: FileType, id: &Id) -> RusticResult<Bytes> {
-        self.decrypt_file(&self.read_full(tpe, id)?).map(Into::into)
+        self.decrypt_file(&self.read_full(tpe, id)?)
+            .map_err(|err| {
+                RusticError::with_source(
+                    ErrorKind::Cryptography,
+                    "error processing {tpe}:{id}",
+                    err,
+                )
+                .attach_context("tpe", tpe.to_string())
+                .attach_context("id", id.to_string())
+            })
+            .map(Into::into)
     }
 }
 
