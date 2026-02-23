@@ -22,7 +22,8 @@ pub(super) mod constants {
 /// # Arguments
 ///
 /// * `repo` - The repository to warm up.
-/// * `packs` - The packs to warm up.
+/// * `tpe` - The filetype of the ids.
+/// * `ids` - The ids to warm up.
 ///
 /// # Errors
 ///
@@ -33,27 +34,29 @@ pub(crate) fn warm_up_wait<S>(
     tpe: FileType,
     ids: impl ExactSizeIterator<Item = Id> + Clone,
 ) -> RusticResult<()> {
-    warm_up(repo, tpe, ids.clone())?;
+    if ids.len() > 0 {
+        warm_up(repo, tpe, ids.clone())?;
 
-    if let Some(warm_up_wait_cmd) = &repo.opts.warm_up_wait_command {
-        warm_up_command(
-            tpe,
-            ids,
-            warm_up_wait_cmd,
-            repo,
-            &WarmUpType::WaitPack,
-            repo.opts.warm_up_batch.unwrap_or(1),
-            &repo.be,
-        )?;
-    } else if let Some(wait) = repo.opts.warm_up_wait {
-        let p = repo.progress_spinner(&format!("waiting {wait}..."));
-        sleep(
-            wait.try_into()
-                // ignore conversation errors, but print out warning
-                .inspect_err(|err| warn!("cannot wait for warm-up: {err}"))
-                .unwrap_or_default(),
-        );
-        p.finish();
+        if let Some(warm_up_wait_cmd) = &repo.opts.warm_up_wait_command {
+            warm_up_command(
+                tpe,
+                ids,
+                warm_up_wait_cmd,
+                repo,
+                &WarmUpType::Wait,
+                repo.opts.warm_up_batch.unwrap_or(1),
+                &repo.be,
+            )?;
+        } else if let Some(wait) = repo.opts.warm_up_wait {
+            let p = repo.progress_spinner(&format!("waiting {wait}..."));
+            sleep(
+                wait.try_into()
+                    // ignore conversation errors, but print out warning
+                    .inspect_err(|err| warn!("cannot wait for warm-up: {err}"))
+                    .unwrap_or_default(),
+            );
+            p.finish();
+        }
     }
     Ok(())
 }
@@ -63,7 +66,8 @@ pub(crate) fn warm_up_wait<S>(
 /// # Arguments
 ///
 /// * `repo` - The repository to warm up.
-/// * `packs` - The packs to warm up.
+/// * `tpe` - The filetype of the ids.
+/// * `ids` - The ids to warm up.
 ///
 /// # Errors
 ///
@@ -74,18 +78,20 @@ pub(crate) fn warm_up<S>(
     tpe: FileType,
     ids: impl ExactSizeIterator<Item = Id>,
 ) -> RusticResult<()> {
-    if let Some(warm_up_cmd) = &repo.opts.warm_up_command {
-        warm_up_command(
-            tpe,
-            ids,
-            warm_up_cmd,
-            repo,
-            &WarmUpType::WarmUp,
-            repo.opts.warm_up_batch.unwrap_or(1),
-            &repo.be,
-        )?;
-    } else if repo.be.needs_warm_up() {
-        warm_up_repo(repo, tpe, ids)?;
+    if ids.len() > 0 {
+        if let Some(warm_up_cmd) = &repo.opts.warm_up_command {
+            warm_up_command(
+                tpe,
+                ids,
+                warm_up_cmd,
+                repo,
+                &WarmUpType::WarmUp,
+                repo.opts.warm_up_batch.unwrap_or(1),
+                &repo.be,
+            )?;
+        } else if repo.be.needs_warm_up() {
+            warm_up_repo(repo, tpe, ids)?;
+        }
     }
     Ok(())
 }
@@ -93,19 +99,20 @@ pub(crate) fn warm_up<S>(
 #[derive(Debug)]
 enum WarmUpType {
     WarmUp,
-    WaitPack,
+    Wait,
 }
 
 /// Warm up the repository using a command.
 ///
 /// # Arguments
 ///
-/// * `packs` - The packs to warm up.
+/// * `tpe` - The filetype of the ids.
+/// * `ids` - The ids to warm up.
 /// * `command` - The command to execute.
 /// * `pb` - The progress bar to use.
 /// * `ty` - The type of warm-up operation.
-/// * `batch_size` - The number of packs to process in each batch.
-/// * `backend` - The backend to get pack paths from.
+/// * `batch_size` - The number of ids to process in each batch.
+/// * `backend` - The backend to get id paths from.
 ///
 /// # Errors
 ///
@@ -123,9 +130,9 @@ fn warm_up_command<S>(
 
     let total = ids.len();
 
-    let p = repo.progress_counter(match ty {
-        WarmUpType::WarmUp => "warming up packs...",
-        WarmUpType::WaitPack => "waiting for packs to be ready...",
+    let p = repo.progress_counter(&match ty {
+        WarmUpType::WarmUp => format!("warming up {tpe}(s)..."),
+        WarmUpType::Wait => format!("waiting for {tpe}(s) to be ready..."),
     });
     p.set_length(total as u64);
 
@@ -147,11 +154,12 @@ fn warm_up_command<S>(
 ///
 /// # Arguments
 ///
-/// * `batch` - The packs in this batch.
+/// * `tpe` - The filetype of the ids.
+/// * `batch` - The ids in this batch.
 /// * `command` - The command to execute.
 /// * `pb` - The progress bar to use.
 /// * `ty` - The type of warm-up operation.
-/// * `backend` - The backend to get pack paths from.
+/// * `backend` - The backend to get id paths from.
 /// * `progress` - The progress bar to update.
 ///
 /// # Errors
@@ -247,15 +255,16 @@ fn warm_up_batch_singular(
     Ok(())
 }
 
-/// Warm up a batch of packs using plural mode (single command with all values).
+/// Warm up a batch of ids using plural mode (single command with all values).
 ///
 /// # Arguments
 ///
-/// * `batch` - The packs in this batch.
+/// * `tpe` - The filetype of the ids.
+/// * `batch` - The ids in this batch.
 /// * `command` - The command to execute.
 /// * `pb` - The progress bar to use.
 /// * `ty` - The type of warm-up operation.
-/// * `backend` - The backend to get pack paths from.
+/// * `backend` - The backend to get id paths from.
 /// * `progress` - The progress bar to update.
 ///
 /// # Errors
@@ -290,7 +299,7 @@ fn warm_up_batch_plural(
         }
     }
 
-    debug!("calling {command:?} with {} pack(s)...", batch.len());
+    debug!("calling {command:?} with {} id(s)...", batch.len());
 
     let status = Command::new(command.command())
         .args(&args)
@@ -309,7 +318,7 @@ fn warm_up_batch_plural(
         return Err(RusticError::new(
             ErrorKind::ExternalCommand,
             format!(
-                "{ty:?} command failed for batch of {} pack(s). {status}",
+                "{ty:?} command failed for batch of {} id(s). {status}",
                 batch.len()
             ),
         )
@@ -328,7 +337,8 @@ fn warm_up_batch_plural(
 /// # Arguments
 ///
 /// * `repo` - The repository to warm up.
-/// * `packs` - The packs to warm up.
+/// * `tpe` - The filetype of the ids
+/// * `ids` - The ids to warm up.
 ///
 /// # Errors
 ///
@@ -338,7 +348,7 @@ fn warm_up_repo<S>(
     tpe: FileType,
     ids: impl ExactSizeIterator<Item = Id>,
 ) -> RusticResult<()> {
-    let progress_bar = repo.progress_counter("warming up packs...");
+    let progress_bar = repo.progress_counter("warming up {tpe}(s)...");
     progress_bar.set_length(ids.len() as u64);
 
     let pool = ThreadPoolBuilder::new()
@@ -358,7 +368,7 @@ fn warm_up_repo<S>(
             scope.spawn(move |_| {
                 if let Err(err) = backend.warm_up(tpe, &id) {
                     // FIXME: Use error handling
-                    error!("warm-up failed for pack {id:?}. {}", err.display_log());
+                    error!("warm-up failed for id {id:?}. {}", err.display_log());
                 }
                 progress_bar_ref.inc(1);
             });

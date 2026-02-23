@@ -406,7 +406,9 @@ impl<S> Repository<S> {
         } else {
             // warm-up keys
             let keys = self.be_cold.list(FileType::Key)?;
-            warm_up_wait(&self, FileType::Key, keys.into_iter())?;
+            if !keys.is_empty() {
+                warm_up_wait(&self, FileType::Key, keys.into_iter())?;
+            }
         }
 
         let (key, key_id) = match credentials {
@@ -615,7 +617,6 @@ impl<S> Repository<S> {
     ///
     /// # Arguments
     ///
-    /// * `tpe` - The filetype to warm up
     /// * `ids` - The ids to warm up
     ///
     /// # Errors
@@ -634,7 +635,6 @@ impl<S> Repository<S> {
     ///
     /// # Arguments
     ///
-    /// * `tpe` - The filetype to warm up
     /// * `ids` - The ids to warm up
     ///
     /// # Errors
