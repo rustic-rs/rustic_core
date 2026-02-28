@@ -19,7 +19,7 @@ use log::info;
 use serde_with::{DisplayFromStr, serde_as};
 
 use crate::{
-    RepositoryBackends, RusticError,
+    ReadSource, RepositoryBackends, RusticError,
     backend::{
         FileType, FindInBackend, ReadBackend, WriteBackend,
         cache::{Cache, CachedBackend},
@@ -1686,6 +1686,39 @@ impl<S: IndexedIds> Repository<S> {
         snap: SnapshotFile,
     ) -> RusticResult<SnapshotFile> {
         commands::backup::backup(self, opts, source, snap)
+    }
+
+    /// Run a backup of `source` using a `ReadSource`.
+    ///
+    /// You have to give a preflled [`SnapshotFile`] which is modified and saved.
+    ///
+    /// # Arguments
+    ///
+    /// * `opts` - The options to use
+    /// * `src` - The source to backup
+    /// * `snap` - The snapshot to modify and save
+    ///
+    /// # Errors
+    ///
+    // TODO: Document errors
+    ///
+    /// # Returns
+    ///  
+    /// The saved snapshot.
+    pub fn archive<R>(
+        &self,
+        opts: &BackupOptions,
+        src: &R,
+        snap: SnapshotFile,
+        backup_paths: &[PathBuf],
+    ) -> RusticResult<SnapshotFile>
+    where
+        S: IndexedIds,
+        R: ReadSource + 'static,
+        <R as ReadSource>::Open: Send,
+        <R as ReadSource>::Iter: Send,
+    {
+        commands::backup::archive(self, opts, src, snap, backup_paths)
     }
 }
 

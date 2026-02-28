@@ -132,6 +132,7 @@ pub use crate::{
     backend::{
         ALL_FILE_TYPES, FileType, ReadBackend, ReadSource, ReadSourceEntry, ReadSourceOpen,
         RepositoryBackends, WriteBackend,
+        childstdout::ChildStdoutSource,
         decrypt::{compression_level_range, max_compression_level},
         ignore::{LocalSource, LocalSourceFilterOptions, LocalSourceSaveOptions},
         local_destination::LocalDestination,
@@ -141,6 +142,7 @@ pub use crate::{
                 BlockdevOption, DevIdOption, NodeModification, TimeOption, XattrOption,
             },
         },
+        stdin::StdinSource,
     },
     blob::{
         BlobId, DataId, PackedId,

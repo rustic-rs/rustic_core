@@ -1,12 +1,18 @@
 /// `OpenDAL` backend for rustic.
-use std::{collections::BTreeMap, str::FromStr, sync::OnceLock};
+use std::{
+    collections::BTreeMap,
+    ffi::OsStr,
+    str::FromStr,
+    sync::{Arc, OnceLock},
+    vec::IntoIter,
+};
 
 use bytes::Bytes;
 use bytesize::ByteSize;
-use log::{error, trace};
+use log::{error, trace, warn};
 use opendal::{
-    Metadata,
-    blocking::Operator,
+    Entry, Metadata,
+    blocking::{Operator, StdReader},
     layers::{ConcurrentLimitLayer, LoggingLayer, RetryLayer, ThrottleLayer},
     options::{ListOptions, ReadOptions},
 };
@@ -15,7 +21,9 @@ use tokio::runtime::Runtime;
 use typed_path::UnixPathBuf;
 
 use rustic_core::{
-    ALL_FILE_TYPES, ErrorKind, FileType, Id, ReadBackend, RusticError, RusticResult, WriteBackend,
+    ALL_FILE_TYPES, ErrorKind, FileType, Id, ReadBackend, ReadSource, ReadSourceEntry,
+    ReadSourceOpen, RusticError, RusticResult, WriteBackend,
+    repofile::{Node, NodeType},
 };
 
 mod constants {
@@ -197,6 +205,43 @@ impl OpenDALBackend {
             _ => UnixPathBuf::from(tpe.dirname()).join(&hex_id[..]),
         }
         .to_string()
+    }
+
+    /// Turn this `OpenDALBackend into a ReadSource`
+    ///
+    /// # Errors
+    /// If listing fails
+    pub fn as_source(self) -> RusticResult<OpenDALReadSource> {
+        let list_options = ListOptions {
+            recursive: true,
+            ..Default::default()
+        };
+        // openDAL lister may entries in random order; hence we collect and sort them here.
+        // This also allows to handle listing errors directly
+        let mut entries: Vec<_> = self
+            .operator
+            .lister_options("", list_options)
+            .map_err(|err| {
+                RusticError::with_source(ErrorKind::Backend, "Error listong openDAL source.", err)
+            })?
+            .filter_map(|entry| {
+                // Ignore not needed root path
+                if let Ok(e) = &entry
+                    && e.path() == "/"
+                {
+                    return None;
+                }
+                entry
+                    .inspect_err(|err| warn!("ignoring error on openDAL entry: {err}"))
+                    .ok()
+            })
+            .collect();
+        entries.sort_unstable_by(|e1, e2| e1.path().cmp(e2.path()));
+
+        Ok(OpenDALReadSource {
+            entries,
+            be: Arc::new(self),
+        })
     }
 }
 
@@ -570,5 +615,102 @@ mod tests {
         );
 
         Ok(())
+    }
+}
+
+#[derive(Debug)]
+/// Describes an open file from the local backend.
+pub struct OpenFile(Arc<OpenDALBackend>, String);
+
+impl ReadSourceOpen for OpenFile {
+    type Reader = StdReader;
+
+    /// Open the file from the local backend.
+    ///
+    /// # Returns
+    ///
+    /// The read handle to the file from the local backend.
+    ///
+    /// # Errors
+    ///
+    /// * If the file could not be opened.
+    fn open(self) -> RusticResult<Self::Reader> {
+        let path = self.1;
+
+        let reader = || self.0.operator.reader(&path)?.into_std_read(..);
+
+        let reader = reader()
+        .map_err(|err| {
+            RusticError::with_source(
+                ErrorKind::InputOutput,
+                "Failed to open file at `{path}`. Please make sure the file exists and is accessible.",
+                err,
+            )
+            .attach_context("path", path)
+        })?;
+        Ok(reader)
+    }
+}
+
+// Walk doesn't implement Debug
+#[allow(missing_debug_implementations)]
+/// A Lister for a `OpenDALSource`
+pub struct OpenDALLister(IntoIter<Entry>, Arc<OpenDALBackend>);
+
+impl Iterator for OpenDALLister {
+    type Item = RusticResult<ReadSourceEntry<OpenFile>>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        Ok(self.0.next().map(|e| {
+            let path = e.path();
+            // strip "/" suffix from dirs
+            let path = path.strip_suffix('/').unwrap_or(path);
+            let name = OsStr::new(e.name());
+            let metadata = e.metadata();
+            let node_type = if metadata.is_dir() {
+                NodeType::Dir
+            } else {
+                NodeType::File
+            };
+            let meta = rustic_core::repofile::Metadata {
+                mtime: metadata
+                    .last_modified()
+                    .map(opendal::raw::Timestamp::into_inner),
+                size: metadata.content_length(),
+                ..Default::default()
+            };
+            let node = Node::new_node(name, node_type, meta);
+            let open = Some(OpenFile(self.1.clone(), path.to_string()));
+            ReadSourceEntry {
+                path: path.into(),
+                node,
+                open,
+            }
+        }))
+        .transpose()
+    }
+}
+
+#[allow(missing_debug_implementations)]
+/// A source to backup using openDAL for the access
+pub struct OpenDALReadSource {
+    entries: Vec<Entry>,
+    be: Arc<OpenDALBackend>,
+}
+
+impl ReadSource for OpenDALReadSource {
+    type Open = OpenFile;
+    type Iter = OpenDALLister;
+    /// Returns the size of the source.
+    fn size(&self) -> RusticResult<Option<u64>> {
+        let size = self
+            .entries
+            .iter()
+            .map(|e| e.metadata().content_length())
+            .sum();
+        Ok(Some(size))
+    }
+    fn entries(&self) -> Self::Iter {
+        OpenDALLister(self.entries.clone().into_iter(), self.be.clone())
     }
 }
