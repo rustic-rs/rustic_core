@@ -2,6 +2,22 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.10.1](https://github.com/rustic-rs/rustic_core/compare/rustic_core-v0.10.0...rustic_core-v0.10.1) - 2026-02-28
+
+### Added
+
+- Add methods for repairing hot/cold repositories ([#255](https://github.com/rustic-rs/rustic_core/pull/255))
+
+### Fixed
+
+- Add information about to_delete to check errors ([#484](https://github.com/rustic-rs/rustic_core/pull/484))
+- race condition in warmup tests ([#481](https://github.com/rustic-rs/rustic_core/pull/481))
+- only call warm-up/wait if #ids > 0 ([#483](https://github.com/rustic-rs/rustic_core/pull/483))
+- show type/id for crypto errors ([#482](https://github.com/rustic-rs/rustic_core/pull/482))
+- ignore non-id files when listing ([#479](https://github.com/rustic-rs/rustic_core/pull/479))
+- sort blobs before repacking ([#478](https://github.com/rustic-rs/rustic_core/pull/478))
+- tag options in rewrite don't conflict with each other ([#476](https://github.com/rustic-rs/rustic_core/pull/476))
+
 ## [0.10.0](https://github.com/rustic-rs/rustic_core/compare/rustic_core-v0.9.0...rustic_core-v0.10.0) - 2026-02-09
 
 ### Added
