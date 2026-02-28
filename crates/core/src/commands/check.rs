@@ -434,6 +434,9 @@ fn check_cache_files(
     Ok(())
 }
 
+// IndexPacks is a Map of all packs from the index with information about size (u32) and whether they are marked-to-delete (bool)
+type IndexPacks = BTreeMap<PackId, (u32, bool)>;
+
 /// Check if packs correspond to index and are present in the backend
 ///
 /// # Arguments
@@ -455,7 +458,7 @@ fn check_packs<S: Open>(
     be: &impl DecryptReadBackend,
     hot_be: Option<&impl ReadBackend>,
     collector: &CheckResultsCollector,
-) -> RusticResult<(IndexCollector, BTreeMap<PackId, u32>)> {
+) -> RusticResult<(IndexCollector, IndexPacks)> {
     let mut packs = BTreeMap::new();
     let mut tree_packs = BTreeMap::new();
     let mut index_collector = IndexCollector::new(IndexType::Full);
@@ -468,9 +471,9 @@ fn check_packs<S: Open>(
             let check_time = to_delete; // Check if time is set for packs marked to delete
             let blob_type = p.blob_type();
             let pack_size = p.pack_size();
-            _ = packs.insert(p.id, pack_size);
+            _ = packs.insert(p.id, (pack_size, to_delete));
             if hot_be.is_some() && blob_type == BlobType::Tree {
-                _ = tree_packs.insert(p.id, pack_size);
+                _ = tree_packs.insert(p.id, (pack_size, to_delete));
             }
 
             // Check if time is set _
@@ -533,7 +536,7 @@ fn check_packs<S: Open>(
 /// * If a pack is missing or has a different size
 fn check_packs_list(
     be: &impl ReadBackend,
-    packs: &mut BTreeMap<PackId, u32>,
+    packs: &mut IndexPacks,
     collector: &CheckResultsCollector,
 ) -> RusticResult<()> {
     let mut packs_from_be = be.list_with_size(FileType::Pack)?;
@@ -541,9 +544,10 @@ fn check_packs_list(
     for (id, size) in packs_from_be {
         match packs.remove(&PackId::from(id)) {
             None => collector.add_warn(CheckError::PackNotReferenced { id }),
-            Some(index_size) if index_size != size => {
+            Some((index_size, to_delete)) if index_size != size => {
                 collector.add_error(CheckError::PackSizeMismatchIndex {
                     id,
+                    to_delete,
                     index_size,
                     size,
                 });
@@ -552,8 +556,12 @@ fn check_packs_list(
         }
     }
 
-    for id in packs.keys() {
-        collector.add_error(CheckError::NoPack { id: *id });
+    for (id, (size, to_delete)) in packs {
+        collector.add_error(CheckError::NoPack {
+            id: *id,
+            to_delete: *to_delete,
+            size: *size,
+        });
     }
     Ok(())
 }
@@ -570,8 +578,8 @@ fn check_packs_list(
 /// * If a pack is missing or has a different size
 fn check_packs_list_hot(
     be: &impl ReadBackend,
-    mut treepacks: BTreeMap<PackId, u32>,
-    packs: &BTreeMap<PackId, u32>,
+    mut treepacks: IndexPacks,
+    packs: &IndexPacks,
     collector: &CheckResultsCollector,
 ) -> RusticResult<()> {
     for (id, size) in be.list_with_size(FileType::Pack)? {
@@ -584,9 +592,10 @@ fn check_packs_list_hot(
                     collector.add_warn(CheckError::HotPackNotReferenced { id });
                 }
             }
-            Some(index_size) if index_size != size => {
+            Some((index_size, to_delete)) if index_size != size => {
                 collector.add_error(CheckError::HotPackSizeMismatchIndex {
                     id,
+                    to_delete,
                     index_size,
                     size,
                 });
@@ -595,8 +604,12 @@ fn check_packs_list_hot(
         }
     }
 
-    for (id, _) in treepacks {
-        collector.add_error(CheckError::NoHotPack { id });
+    for (id, (size, to_delete)) in treepacks {
+        collector.add_error(CheckError::NoHotPack {
+            id,
+            to_delete,
+            size,
+        });
     }
     Ok(())
 }
@@ -861,16 +874,34 @@ pub enum CheckError {
     PackNotReferenced { id: Id },
     /// hot pack {id} not referenced in index. Can be a parallel backup job. To repair: 'rustic repair index'.
     HotPackNotReferenced { id: PackId },
-    /// pack {id}: size computed by index: {index_size}, actual size: {size}. To repair: 'rustic repair index'.
-    PackSizeMismatchIndex { id: Id, index_size: u32, size: u32 },
-    /// hot pack {id}: size computed by index: {index_size}, actual size: {size}. To repair: 'rustic repair index'.
-    HotPackSizeMismatchIndex { id: Id, index_size: u32, size: u32 },
+    /// pack {id} marked to delete: {to_delete}: size computed by index: {index_size}, actual size: {size}. To repair: 'rustic repair index'.
+    PackSizeMismatchIndex {
+        id: Id,
+        to_delete: bool,
+        index_size: u32,
+        size: u32,
+    },
+    /// hot pack {id} marked to-delete: {to_delete}: size computed by index: {index_size}, actual size: {size}. To repair: 'rustic repair index'.
+    HotPackSizeMismatchIndex {
+        id: Id,
+        to_delete: bool,
+        index_size: u32,
+        size: u32,
+    },
     /// hot pack {id} is a data pack. This should not happen.
     HotDataPack { id: PackId },
-    /// hot pack {id} is referenced by the index but not present! To repair: 'rustic repair index'.
-    NoHotPack { id: PackId },
-    /// pack {id} is referenced by the index but not present! To repair: 'rustic repair index'.
-    NoPack { id: PackId },
+    /// hot pack {id} marked to-delete: {to_delete} is referenced by the index with size {size} but not present! To repair: 'rustic repair index'.
+    NoHotPack {
+        id: PackId,
+        to_delete: bool,
+        size: u32,
+    },
+    /// pack {id} marked to-delete: {to_delete} is referenced by the index with size {size} but not present! To repair: 'rustic repair index'.
+    NoPack {
+        id: PackId,
+        to_delete: bool,
+        size: u32,
+    },
     /// file {file:?} doesn't have a content
     FileHasNoContent { file: PathBuf },
     /// file {file:?} blob {blob_num} has null ID
