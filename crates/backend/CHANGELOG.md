@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.6.1](https://github.com/rustic-rs/rustic_core/compare/rustic_backend-v0.6.0...rustic_backend-v0.6.1) - 2026-02-28
+
+### Fixed
+
+- ignore non-id files when listing ([#479](https://github.com/rustic-rs/rustic_core/pull/479))
+
 ## [0.6.0](https://github.com/rustic-rs/rustic_core/compare/rustic_backend-v0.5.4...rustic_backend-v0.6.0) - 2026-02-09
 
 ### Added
