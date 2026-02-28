@@ -10,6 +10,8 @@ CheckResults(
                 id: PackId(
                     1959b7f2802f1d83c9eeda21f3d5c5f4ff6c4b122a59b5f5ca5e28a4970a37b4,
                 ),
+                to_delete: false,
+                size: 110,
             },
         ),
     ],
