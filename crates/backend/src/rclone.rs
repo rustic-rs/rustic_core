@@ -178,17 +178,16 @@ impl RcloneBackend {
         let user = Alphanumeric.sample_string(&mut rng(), 12);
         let password = Alphanumeric.sample_string(&mut rng(), 12);
 
-        let mut rclone_command =
+        let rclone_command =
             rclone_command.map_or_else(|| DEFAULT_COMMAND.to_string(), Clone::clone);
-        rclone_command.push(' ');
-        rclone_command.push_str(url.as_ref());
-        let rclone_command: CommandInput = rclone_command.parse().map_err(
+        let mut rclone_command: CommandInput = rclone_command.parse().map_err(
             |err| RusticError::with_source(
                 ErrorKind::InvalidInput,
                 "Expected rclone command to be valid, but it was not. Please check the configuration file.",
                 err
             )
         )?;
+        rclone_command.append_arg(url.as_ref().to_string());
         debug!("starting rclone via {rclone_command:?}");
 
         let mut command = Command::new(rclone_command.command());

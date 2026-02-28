@@ -16,9 +16,12 @@ fn from_str() -> Result<()> {
     assert_eq!(cmd.command(), "echo");
     assert_eq!(cmd.args(), ["test"]);
 
-    let cmd: CommandInput = r#"echo "test test" test"#.parse()?;
+    let mut cmd: CommandInput = r#"echo "test test" test"#.parse()?;
     assert_eq!(cmd.command(), "echo");
     assert_eq!(cmd.args(), ["test test", "test"]);
+
+    cmd.append_arg("my arg'test'".to_string());
+    assert_eq!(cmd.args(), ["test test", "test", "my arg'test'"]);
     Ok(())
 }
 
