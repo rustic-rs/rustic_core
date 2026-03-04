@@ -126,6 +126,11 @@ impl CommandInput {
         self.0.on_failure
     }
 
+    /// Appends the given arg to the existing list of args for this command
+    pub fn append_arg(&mut self, arg: String) {
+        self.0.args.push(arg);
+    }
+
     /// Runs the command if it is set
     ///
     /// # Errors
