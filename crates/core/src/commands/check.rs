@@ -1020,7 +1020,7 @@ mod tests {
 
     use super::*;
     use insta::assert_ron_snapshot;
-    use rand::{Rng, SeedableRng, rngs::StdRng};
+    use rand::{Rng, RngExt, SeedableRng, rngs::StdRng};
     use rstest::{fixture, rstest};
 
     const PACK_SIZE: u32 = 100_000_000;

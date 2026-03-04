@@ -1,6 +1,6 @@
 use std::io::{self, Read};
 
-use rand::{Rng, rng};
+use rand::{RngExt, rng};
 use rustic_cdc::{Polynom, Polynom64, Rabin64, RollingHash64};
 
 use crate::error::{ErrorKind, RusticError, RusticResult};

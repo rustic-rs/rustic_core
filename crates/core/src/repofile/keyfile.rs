@@ -1,5 +1,5 @@
 use jiff::Zoned;
-use rand::{RngCore, rng};
+use rand::{Rng, rng};
 use scrypt::Params;
 use serde_derive::{Deserialize, Serialize};
 use serde_with::{base64::Base64, serde_as, skip_serializing_none};
