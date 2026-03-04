@@ -5,7 +5,7 @@ use std::{fmt, io::Read, ops::Deref, path::Path, str::FromStr};
 use binrw::{BinRead, BinWrite};
 use derive_more::{Constructor, Display};
 use log::debug;
-use rand::{RngCore, rng};
+use rand::{Rng, rng};
 use serde_derive::{Deserialize, Serialize};
 
 use crate::{
@@ -135,7 +135,7 @@ impl Id {
 
     /// Generate a random `Id`.
     #[must_use]
-    pub fn random_from_rng(rng: &mut impl RngCore) -> Self {
+    pub fn random_from_rng(rng: &mut impl Rng) -> Self {
         let mut id = Self::default();
         rng.fill_bytes(&mut id.0);
         id

@@ -2,7 +2,7 @@ use aes256ctr_poly1305aes::{
     Aes256CtrPoly1305Aes,
     aead::{self, Aead, AeadInPlace},
 };
-use rand::{RngCore, rng};
+use rand::{Rng, rng};
 
 use crate::{
     crypto::CryptoKey,

@@ -1,7 +1,7 @@
 //! This module contains [`BackendOptions`] and helpers to choose a backend from a given url.
 use derive_setters::Setters;
 use std::{collections::BTreeMap, sync::Arc};
-use strum_macros::{Display, EnumString};
+use strum::{Display, EnumString};
 
 use rustic_core::{ErrorKind, RepositoryBackends, RusticError, RusticResult, WriteBackend};
 
