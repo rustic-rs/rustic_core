@@ -3,9 +3,10 @@ pub mod modify;
 pub mod rewrite;
 
 use std::{
+    borrow::Cow,
     cmp::Ordering,
     collections::{BTreeMap, BTreeSet, BinaryHeap},
-    ffi::{OsStr, OsString},
+    ffi::OsStr,
     mem,
     path::{Component, Path, PathBuf, Prefix},
     str::{self, Utf8Error},
@@ -225,7 +226,7 @@ impl Tree {
             be: &impl DecryptReadBackend,
             index: &impl ReadGlobalIndex,
             tree_id: TreeId,
-            path_comp: &[OsString],
+            path_comp: &[Cow<'_, OsStr>],
             results_cache: &mut [BTreeMap<TreeId, Option<usize>>],
             nodes: &mut BTreeMap<Node, usize>,
             idx: usize,
@@ -435,18 +436,18 @@ pub struct FindMatches {
 ///
 /// * If the component is a current or parent directory.
 /// * If the component is not UTF-8 conform.
-pub(crate) fn comp_to_osstr(p: Component<'_>) -> TreeResult<Option<OsString>> {
+pub(crate) fn comp_to_osstr(p: Component<'_>) -> TreeResult<Option<Cow<'_, OsStr>>> {
     let s = match p {
         Component::RootDir => None,
         Component::Prefix(p) => match p.kind() {
-            Prefix::Verbatim(p) | Prefix::DeviceNS(p) => Some(p.to_os_string()),
-            Prefix::VerbatimUNC(_, q) | Prefix::UNC(_, q) => Some(q.to_os_string()),
-            Prefix::VerbatimDisk(p) | Prefix::Disk(p) => Some(
+            Prefix::Verbatim(p) | Prefix::DeviceNS(p) => Some(Cow::Borrowed(p)),
+            Prefix::VerbatimUNC(_, q) | Prefix::UNC(_, q) => Some(Cow::Borrowed(q)),
+            Prefix::VerbatimDisk(p) | Prefix::Disk(p) => Some(Cow::Owned(
                 OsStr::new(str::from_utf8(&[p]).map_err(TreeErrorKind::PathIsNotUtf8Conform)?)
                     .to_os_string(),
-            ),
+            )),
         },
-        Component::Normal(p) => Some(p.to_os_string()),
+        Component::Normal(p) => Some(Cow::Borrowed(p)),
         _ => return Err(TreeErrorKind::ContainsCurrentOrParentDirectory),
     };
     Ok(s)
