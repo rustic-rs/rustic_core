@@ -10,7 +10,7 @@ use crate::{
 
 /// `TreeIterator` turns an Iterator yielding items with paths and Nodes into an
 /// Iterator which ensures that all subdirectories are visited and closed.
-/// The resulting Iterator yielss a `TreeType` which either contains the original
+/// The resulting Iterator yields a `TreeType` which either contains the original
 /// item, a new tree to be inserted or a pseudo item which indicates that a tree is finished.
 ///
 /// # Type Parameters
@@ -97,7 +97,7 @@ where
                                 if node.is_dir() && path == &self.path {
                                     let (path, node, _) = self.item.take().unwrap();
                                     self.item = self.iter.next();
-                                    let name = node.name();
+                                    let name = node.name().into_owned();
                                     return Some(TreeType::NewTree((path, node, name)));
                                 }
                                 // Use mode 755 for missing dirs, so they can be accessed
@@ -106,7 +106,11 @@ where
                                     ..Default::default()
                                 };
                                 let node = Node::new_node(&p, NodeType::Dir, meta);
-                                return Some(TreeType::NewTree((self.path.clone(), node, p)));
+                                return Some(TreeType::NewTree((
+                                    self.path.clone(),
+                                    node,
+                                    p.into_owned(),
+                                )));
                             }
                         }
                         // there wasn't any normal path component to process - return current item

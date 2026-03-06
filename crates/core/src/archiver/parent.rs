@@ -131,7 +131,7 @@ impl Parent {
             loop {
                 match p_nodes.get(*idx) {
                     None => break None,
-                    Some(p_node) => match p_node.name().as_os_str().cmp(name) {
+                    Some(p_node) => match (*p_node.name()).cmp(name) {
                         Ordering::Less => *idx += 1,
                         Ordering::Equal => {
                             break Some(p_node);

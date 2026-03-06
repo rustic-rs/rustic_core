@@ -1,12 +1,6 @@
 pub mod modification;
 
-use std::{
-    cmp::Ordering,
-    ffi::{OsStr, OsString},
-    fmt::Debug,
-    path::Path,
-    str::FromStr,
-};
+use std::{borrow::Cow, cmp::Ordering, ffi::OsStr, fmt::Debug, path::Path};
 
 #[cfg(not(windows))]
 use std::fmt::Write;
@@ -355,8 +349,8 @@ impl Node {
     /// # Panics
     ///
     /// * If the name is not valid unicode
-    pub fn name(&self) -> OsString {
-        unescape_filename(&self.name).unwrap_or_else(|_| OsString::from_str(&self.name).unwrap())
+    pub fn name(&self) -> Cow<'_, OsStr> {
+        unescape_filename(&self.name).unwrap_or_else(|_| Cow::Borrowed(OsStr::new(&self.name)))
     }
 }
 
@@ -389,8 +383,8 @@ fn escape_filename(name: &OsStr) -> String {
 ///
 /// * `s` - The escaped filename
 #[cfg(windows)]
-fn unescape_filename(s: &str) -> Result<OsString, core::convert::Infallible> {
-    OsString::from_str(s)
+fn unescape_filename(s: &str) -> Result<Cow<'_, OsStr>, core::convert::Infallible> {
+    Ok(Cow::Borrowed(OsStr::new(s)))
 }
 
 #[cfg(not(windows))]
@@ -458,9 +452,13 @@ fn escape_filename(name: &OsStr) -> String {
 ///
 /// * `s` - The escaped filename
 // inspired by the enquote crate
-fn unescape_filename(s: &str) -> NodeResult<'_, OsString> {
+fn unescape_filename(s: &str) -> NodeResult<'_, Cow<'_, OsStr>> {
+    if !s.contains('\\') {
+        return Ok(Cow::Borrowed(OsStr::new(s)));
+    }
+
     let mut chars = s.chars();
-    let mut u = Vec::new();
+    let mut u = Vec::with_capacity(s.len());
     loop {
         match chars.next() {
             None => break,
@@ -549,7 +547,7 @@ fn unescape_filename(s: &str) -> NodeResult<'_, OsString> {
         }
     }
 
-    Ok(OsStr::from_bytes(&u).to_os_string())
+    Ok(Cow::Owned(OsStr::from_bytes(&u).to_os_string()))
 }
 
 #[cfg(not(windows))]
@@ -575,7 +573,8 @@ mod tests {
         #[test]
         fn escape_unescape_is_identity(bytes in prop::collection::vec(prop::num::u8::ANY, 0..65536)) {
             let name = OsStr::from_bytes(&bytes);
-            prop_assert_eq!(name, unescape_filename(&escape_filename(name)).unwrap());
+            let escaped = escape_filename(name);
+            prop_assert_eq!(name, unescape_filename(escaped.as_ref()).unwrap());
         }
     }
 
