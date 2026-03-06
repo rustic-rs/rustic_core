@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.11.0](https://github.com/rustic-rs/rustic_core/compare/rustic_core-v0.10.1...rustic_core-v0.11.0) - 2026-03-06
+
+### Other
+
+- [**breaking**] use Cow to avoid OsString allocations ([#487](https://github.com/rustic-rs/rustic_core/pull/487))
+
 ## [0.10.1](https://github.com/rustic-rs/rustic_core/compare/rustic_core-v0.10.0...rustic_core-v0.10.1) - 2026-03-04
 
 ### Added
