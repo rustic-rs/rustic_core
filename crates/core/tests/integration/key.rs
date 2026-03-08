@@ -46,7 +46,7 @@ fn test_key_commands(set_up_repo: Result<RepoOpen>) -> Result<()> {
     let found_ids: Vec<KeyId> = repo.find_ids(&[key_id2.to_string()])?.collect();
     assert_eq!(found_ids, &[key_id2]);
     let found_keys: Vec<KeyFile> = repo
-        .stream_files_list::<KeyFile>(&found_ids)?
+        .stream_files_list::<KeyFile>(found_ids)?
         .map(|item| item.unwrap().1)
         .collect();
     assert_eq!(found_keys.len(), 1);

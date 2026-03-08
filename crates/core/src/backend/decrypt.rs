@@ -1,8 +1,8 @@
 use std::{num::NonZeroU32, sync::Arc};
 
 use bytes::Bytes;
-use crossbeam_channel::{Receiver, unbounded};
-use rayon::prelude::*;
+use crossbeam_channel::{Receiver, bounded};
+use rayon::{prelude::*, spawn};
 use zstd::stream::{copy_encode, decode_all, encode_all};
 
 pub use zstd::compression_level_range;
@@ -173,7 +173,7 @@ pub trait DecryptReadBackend: ReadBackend + Clone + 'static {
     fn stream_all<F: RepoFile>(&self, p: &Progress) -> StreamResult<F::Id, F> {
         let list = self.list(F::TYPE)?;
         let list: Vec<_> = list.into_iter().map(F::Id::from).collect();
-        self.stream_list(&list, p)
+        self.stream_list(list, p)
     }
 
     /// Streams a list of files.
@@ -188,16 +188,20 @@ pub trait DecryptReadBackend: ReadBackend + Clone + 'static {
     /// # Errors
     ///
     /// If the files could not be read.
-    fn stream_list<F: RepoFile>(&self, list: &[F::Id], p: &Progress) -> StreamResult<F::Id, F> {
+    fn stream_list<F: RepoFile>(&self, list: Vec<F::Id>, p: &Progress) -> StreamResult<F::Id, F> {
         p.set_length(list.len() as u64);
-        let (tx, rx) = unbounded();
+        // we use a zero-capacity channel; the loading is typically the bottleneck, not the processing.
+        let (tx, rx) = bounded(0);
+        let be = self.clone();
+        let p = p.clone();
 
-        list.into_par_iter()
-            .for_each_with((self, p, tx), |(be, p, tx), id| {
-                let file = be.get_file::<F>(id).map(|file| (*id, file));
+        spawn(move || {
+            _ = list.into_par_iter().try_for_each(|id| {
+                let file = be.get_file::<F>(&id).map(|file| (id, file));
                 p.inc(1);
-                tx.send(file).unwrap();
+                tx.send(file).ok() // abort as soon as possible if sending fails, i.e. if the receiver is dropped
             });
+        });
         Ok(rx)
     }
 }

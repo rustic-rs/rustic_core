@@ -880,7 +880,7 @@ impl SnapshotFile {
             .map(|id| SnapshotId::from(*id))
             .filter(|id| !snaps.contains_key(id))
             .collect();
-        for res in be.stream_list::<Self>(&missing_ids, p)? {
+        for res in be.stream_list::<Self>(missing_ids, p)? {
             let (id, snap) = res?;
             if filter(&snap) {
                 let _ = snaps.insert(id, snap);

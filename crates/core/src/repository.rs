@@ -1272,7 +1272,7 @@ impl<S: Open> Repository<S> {
     /// The result is not sorted and may come in random order!
     pub fn stream_files_list<F: RepoFile>(
         &self,
-        list: &[F::Id],
+        list: Vec<F::Id>,
     ) -> RusticResult<impl Iterator<Item = RusticResult<(F::Id, F)>>> {
         Ok(self
             .dbe()
