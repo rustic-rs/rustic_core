@@ -3,7 +3,7 @@ use std::sync::Arc;
 use log::info;
 
 /// A progress used to indicate/update the status of something which is being processed
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Progress(Arc<dyn RusticProgress>);
 
 impl Progress {
