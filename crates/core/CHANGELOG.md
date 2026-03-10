@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.11.0](https://github.com/rustic-rs/rustic_core/compare/rustic_core-v0.10.1...rustic_core-v0.11.0) - 2026-03-10
+
+### Other
+
+- use general tree modifier in `repair snapshots` ([#463](https://github.com/rustic-rs/rustic_core/pull/463))
+- [**breaking**] Optimize file streaming ([#489](https://github.com/rustic-rs/rustic_core/pull/489))
+- [**breaking**] use Cow to avoid OsString allocations ([#487](https://github.com/rustic-rs/rustic_core/pull/487))
+
 ## [0.10.1](https://github.com/rustic-rs/rustic_core/compare/rustic_core-v0.10.0...rustic_core-v0.10.1) - 2026-03-04
 
 ### Added
