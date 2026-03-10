@@ -33,6 +33,7 @@ mod integration {
     mod key;
     mod ls;
     mod prune;
+    mod repair_snapshots;
     mod restore;
     mod rewrite;
     mod snapshots;
@@ -49,6 +50,7 @@ use insta::{
     internals::{Content, ContentPath},
 };
 use rstest::fixture;
+use rustic_backend::LocalBackend;
 use serde::Serialize;
 use tar::Archive;
 use tempfile::{TempDir, tempdir};
@@ -94,6 +96,20 @@ fn set_up_repo() -> Result<RepoOpen> {
         &key_opts,
         config_opts,
     )?;
+    Ok(repo)
+}
+
+fn repo_from_fixture(dir: &TempDir, repo_file: &str) -> Result<RepoOpen> {
+    let path = Path::new("tests/fixtures/").join(repo_file);
+    let tar_gz = File::open(path)?;
+    let tar = GzDecoder::new(tar_gz);
+    let mut archive = Archive::new(tar);
+    archive.unpack(dir)?;
+
+    let be = LocalBackend::new(dir.path().join("repo").to_str().unwrap(), None)?;
+    let be = RepositoryBackends::new(Arc::new(be), None);
+    let options = RepositoryOptions::default();
+    let repo = Repository::new(&options, &be)?.open(&Credentials::password("geheim"))?;
     Ok(repo)
 }
 
