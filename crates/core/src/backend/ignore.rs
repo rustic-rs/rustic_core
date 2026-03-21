@@ -2,6 +2,7 @@ pub mod mapper;
 pub use mapper::LocalSourceSaveOptions;
 
 use std::{
+    ffi::OsString,
     fs::File,
     path::{Path, PathBuf},
 };
@@ -91,6 +92,11 @@ pub struct LocalSourceFilterOptions {
     #[cfg_attr(feature = "merge", merge(strategy = conflate::vec::overwrite_empty))]
     pub exclude_if_present: Vec<String>,
 
+    /// Exclude files/directories having the given extended attribute set (can be specified multiple times)
+    #[cfg_attr(feature = "clap", clap(long, value_name = "XATTR"))]
+    #[cfg_attr(feature = "merge", merge(strategy = conflate::vec::overwrite_empty))]
+    pub exclude_if_xattr: Vec<String>,
+
     /// Exclude other file systems, don't cross filesystem boundaries and subvolumes
     #[cfg_attr(feature = "clap", clap(long, short = 'x'))]
     #[cfg_attr(feature = "merge", merge(strategy = conflate::bool::overwrite_false))]
@@ -151,17 +157,55 @@ impl LocalSource {
             .overrides(overrides);
 
         let exclude_if_present = filter_opts.exclude_if_present.clone();
-        if !filter_opts.exclude_if_present.is_empty() {
-            _ = walk_builder.filter_entry(move |entry| match entry.file_type() {
-                Some(tpe) if tpe.is_dir() => {
-                    for file in &exclude_if_present {
-                        if entry.path().join(file).exists() {
-                            return false;
+        let exclude_if_xattr: Vec<OsString> = filter_opts
+            .exclude_if_xattr
+            .iter()
+            .map(OsString::from)
+            .collect();
+
+        if !exclude_if_xattr.is_empty() {
+            #[cfg(any(windows, target_os = "openbsd"))]
+            warn!("exclude-if-xattr is not supported on this platform");
+            #[cfg(not(any(windows, target_os = "openbsd")))]
+            if !xattr::SUPPORTED_PLATFORM {
+                warn!("exclude-if-xattr is not supported on this platform");
+            }
+        }
+
+        let needs_entry_filter = !exclude_if_present.is_empty() || !exclude_if_xattr.is_empty();
+
+        if needs_entry_filter {
+            _ = walk_builder.filter_entry(move |entry| {
+                // exclude-if-present: skip directories containing a marker file
+                if !exclude_if_present.is_empty()
+                    && let Some(tpe) = entry.file_type()
+                    && tpe.is_dir()
+                    && exclude_if_present
+                        .iter()
+                        .any(|file| entry.path().join(file).exists())
+                {
+                    return false;
+                }
+
+                // exclude-if-xattr: skip entries that have a matching xattr
+                #[cfg(not(any(windows, target_os = "openbsd")))]
+                if xattr::SUPPORTED_PLATFORM && !exclude_if_xattr.is_empty() {
+                    match xattr::list(entry.path()) {
+                        Ok(mut attrs) => {
+                            if attrs.any(|attr| exclude_if_xattr.contains(&attr)) {
+                                return false;
+                            }
+                        }
+                        Err(err) => {
+                            warn!(
+                                "Error reading xattrs for {}, not excluding: {err}",
+                                entry.path().display()
+                            );
                         }
                     }
-                    true
                 }
-                _ => true,
+
+                true
             });
         }
 

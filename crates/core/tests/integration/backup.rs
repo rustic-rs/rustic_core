@@ -248,3 +248,62 @@ fn test_backup_stdin_command(
     assert_eq!(content, b"test\n");
     Ok(())
 }
+
+#[cfg(not(any(windows, target_os = "openbsd")))]
+#[rstest]
+fn test_backup_excludes_xattr_entries(set_up_repo: Result<RepoOpen>) -> Result<()> {
+    use std::ffi::OsStr;
+    use std::fs;
+
+    use rustic_core::{
+        LocalSourceFilterOptions, LsOptions, RusticResult,
+        repofile::{Metadata, Node, NodeType},
+    };
+
+    if !xattr::SUPPORTED_PLATFORM {
+        return Ok(());
+    }
+
+    let tmp = tempfile::tempdir()?;
+    let base = tmp.path();
+
+    fs::write(base.join("keep.txt"), "keep")?;
+    fs::create_dir(base.join("keep-dir"))?;
+    fs::write(base.join("keep-dir").join("nested.txt"), "nested")?;
+
+    let exclude_file = base.join("exclude.txt");
+    fs::write(&exclude_file, "excluded")?;
+    xattr::set(&exclude_file, "user.rustic_test_exclude", b"")?;
+
+    let exclude_dir = base.join("exclude-dir");
+    fs::create_dir(&exclude_dir)?;
+    fs::write(exclude_dir.join("nested.txt"), "nested-excluded")?;
+    xattr::set(&exclude_dir, "user.rustic_test_exclude", b"")?;
+
+    let repo = set_up_repo?.to_indexed_ids()?;
+    let paths = PathList::from_iter(Some(base.to_path_buf()));
+
+    let filter_opts = LocalSourceFilterOptions::default()
+        .exclude_if_xattr(vec!["user.rustic_test_exclude".to_string()]);
+    let opts = BackupOptions::default()
+        .as_path(PathBuf::from("test"))
+        .ignore_filter_opts(filter_opts);
+
+    let snapshot = repo.backup(&opts, &paths, SnapshotFile::default())?;
+
+    let repo = repo.to_indexed_ids()?;
+    let mut root_node = Node::new_node(OsStr::new(""), NodeType::Dir, Metadata::default());
+    root_node.subtree = Some(snapshot.tree);
+
+    let mut paths: Vec<PathBuf> = repo
+        .ls(&root_node, &LsOptions::default())?
+        .collect::<RusticResult<Vec<_>>>()?
+        .into_iter()
+        .map(|(path, _)| path)
+        .collect();
+    paths.sort();
+
+    assert_with_win("backup-exclude-xattr", &paths);
+
+    Ok(())
+}

@@ -1,0 +1,10 @@
+---
+source: crates/core/tests/integration.rs
+expression: snap
+---
+[
+  "test",
+  "test/keep-dir",
+  "test/keep-dir/nested.txt",
+  "test/keep.txt",
+]
