@@ -90,6 +90,12 @@ pub struct RestoreStats {
     pub dirs: FileDirStats,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+struct HardlinkKey {
+    device_id: u64,
+    inode: u64,
+}
+
 /// Restore the repository to the given destination.
 ///
 /// # Type Parameters
@@ -350,7 +356,11 @@ fn restore_metadata(
     dest: &LocalDestination,
 ) -> RusticResult<()> {
     let mut dir_stack = Vec::new();
+    let mut hardlinks = BTreeMap::<HardlinkKey, Vec<PathBuf>>::new();
     while let Some((path, node)) = node_streamer.next().transpose()? {
+        if let Some(key) = hardlink_key(&node) {
+            hardlinks.entry(key).or_default().push(path.clone());
+        }
         match node.node_type {
             NodeType::Dir => {
                 // set metadata for all non-parent paths in stack
@@ -371,6 +381,57 @@ fn restore_metadata(
     // empty dir stack and set metadata
     for (path, node) in dir_stack.into_iter().rev() {
         set_metadata(dest, opts, &path, &node);
+    }
+
+    restore_hardlinks(dest, &hardlinks)?;
+
+    Ok(())
+}
+
+fn hardlink_key(node: &Node) -> Option<HardlinkKey> {
+    matches!(node.node_type, NodeType::File)
+        .then_some(HardlinkKey {
+            device_id: node.meta.device_id,
+            inode: node.meta.inode,
+        })
+        .filter(|key| node.meta.links > 1 && key.device_id != 0 && key.inode != 0)
+}
+
+fn restore_hardlinks(
+    dest: &LocalDestination,
+    hardlinks: &BTreeMap<HardlinkKey, Vec<PathBuf>>,
+) -> RusticResult<()> {
+    for paths in hardlinks.values() {
+        if paths.len() < 2 {
+            continue;
+        }
+
+        let canonical = &paths[0];
+        for path in paths.iter().skip(1) {
+            debug!(
+                "restoring hardlink {} -> {}",
+                path.display(),
+                canonical.display()
+            );
+            let full_path = dest.path(path);
+            dest.remove_file(&full_path).map_err(|err| {
+                RusticError::with_source(
+                    ErrorKind::InputOutput,
+                    "Failed to remove the file `{path}` before recreating its hardlink.",
+                    err,
+                )
+                .attach_context("path", path.display().to_string())
+            })?;
+            dest.hard_link(canonical, path).map_err(|err| {
+                RusticError::with_source(
+                    ErrorKind::InputOutput,
+                    "Failed to recreate the hardlink `{path}` from `{canonical}`.",
+                    err,
+                )
+                .attach_context("path", path.display().to_string())
+                .attach_context("canonical", canonical.display().to_string())
+            })?;
+        }
     }
 
     Ok(())

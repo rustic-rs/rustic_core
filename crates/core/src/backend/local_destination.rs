@@ -102,6 +102,12 @@ pub enum LocalDestinationErrorKind {
         filename: PathBuf,
         source: std::io::Error,
     },
+    /// failed to create hardlink from `{source_path:?}` to `{filename:?}` with `{source:?}`
+    HardLinkingFailed {
+        source_path: PathBuf,
+        filename: PathBuf,
+        source: std::io::Error,
+    },
 }
 
 pub(crate) type LocalDestinationResult<T> = Result<T, LocalDestinationErrorKind>;
@@ -789,6 +795,39 @@ impl LocalDestination {
             .map_err(LocalDestinationErrorKind::CouldNotSeekToPositionInFile)?;
         file.write_all(data)
             .map_err(LocalDestinationErrorKind::CouldNotWriteToBuffer)?;
+        Ok(())
+    }
+
+    /// Create a hardlink `item` pointing to `source_item`, both relative to the base path.
+    ///
+    /// # Arguments
+    ///
+    /// * `source_item` - The already-restored file to link to
+    /// * `item` - The path to create as a hardlink
+    ///
+    /// # Errors
+    ///
+    /// * If the new hardlink does not have a parent directory.
+    /// * If the directory could not be created.
+    /// * If the hardlink could not be created.
+    pub(crate) fn hard_link(
+        &self,
+        source_item: impl AsRef<Path>,
+        item: impl AsRef<Path>,
+    ) -> LocalDestinationResult<()> {
+        let source_path = self.path(source_item);
+        let filename = self.path(item);
+        let dir = filename
+            .parent()
+            .ok_or_else(|| LocalDestinationErrorKind::FileDoesNotHaveParent(filename.clone()))?;
+        fs::create_dir_all(dir).map_err(LocalDestinationErrorKind::DirectoryCreationFailed)?;
+        fs::hard_link(&source_path, &filename).map_err(|err| {
+            LocalDestinationErrorKind::HardLinkingFailed {
+                source_path,
+                filename,
+                source: err,
+            }
+        })?;
         Ok(())
     }
 }
