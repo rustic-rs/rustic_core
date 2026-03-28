@@ -144,6 +144,7 @@ impl LocalSource {
             .hidden(false)
             .ignore(false)
             .git_ignore(filter_opts.git_ignore)
+            .git_exclude(filter_opts.git_ignore)
             .require_git(!filter_opts.no_require_git)
             .sort_by_file_path(Path::cmp)
             .same_file_system(filter_opts.one_file_system)
