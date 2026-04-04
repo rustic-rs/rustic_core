@@ -122,10 +122,17 @@ pub(crate) fn restore_repository<S: IndexedTree>(
     dest: &LocalDestination,
 ) -> RusticResult<()> {
     repo.warm_up_wait(file_infos.to_packs().into_iter())?;
-    restore_contents(repo, dest, file_infos)?;
+    restore_contents(
+        repo,
+        dest,
+        &file_infos.names,
+        file_infos.file_lengths,
+        file_infos.r,
+        file_infos.restore_size,
+    )?;
 
     let p = repo.progress_spinner("setting metadata...");
-    restore_metadata(node_streamer, opts, dest)?;
+    restore_metadata(node_streamer, &file_infos.hardlink_candidates, opts, dest)?;
     p.finish();
 
     Ok(())
@@ -240,6 +247,15 @@ pub(crate) fn collect_and_prepare<S: IndexedFull>(
                 }
             }
             NodeType::File => {
+                if let Some(key) = hardlink_key(node) {
+                    match restore_infos.hardlink_candidates.entry(key) {
+                        std::collections::btree_map::Entry::Vacant(entry) => {
+                            trace!("Adding hardlink candidate {}", path.display());
+                            _ = entry.insert(path.clone());
+                        }
+                        std::collections::btree_map::Entry::Occupied(_) => return Ok(()), // this is a hardlink to an existing candidate, will be processed later while setting metadata
+                    }
+                }
                 // collect blobs needed for restoring
                 match (
                     exists,
@@ -352,15 +368,33 @@ pub(crate) fn collect_and_prepare<S: IndexedFull>(
 /// * If the restore failed.
 fn restore_metadata(
     mut node_streamer: impl Iterator<Item = RusticResult<(PathBuf, Node)>>,
+    hardlink_candidates: &BTreeMap<HardlinkKey, PathBuf>,
     opts: RestoreOptions,
     dest: &LocalDestination,
 ) -> RusticResult<()> {
     let mut dir_stack = Vec::new();
-    let mut hardlinks = BTreeMap::<HardlinkKey, Vec<PathBuf>>::new();
     while let Some((path, node)) = node_streamer.next().transpose()? {
-        if let Some(key) = hardlink_key(&node) {
-            hardlinks.entry(key).or_default().push(path.clone());
+        // Create hardlink directly, if this is one.
+        if let Some(key) = hardlink_key(&node)
+            && let Some(canonical) = hardlink_candidates.get(&key)
+            && canonical != &path
+        {
+            debug!(
+                "restoring hardlink {} -> {}",
+                path.display(),
+                canonical.display()
+            );
+            dest.hard_link(canonical, &path).map_err(|err| {
+                RusticError::with_source(
+                    ErrorKind::InputOutput,
+                    "Failed to recreate the hardlink `{path}` from `{canonical}`.",
+                    err,
+                )
+                .attach_context("path", path.display().to_string())
+                .attach_context("canonical", canonical.display().to_string())
+            })?;
         }
+
         match node.node_type {
             NodeType::Dir => {
                 // set metadata for all non-parent paths in stack
@@ -383,58 +417,18 @@ fn restore_metadata(
         set_metadata(dest, opts, &path, &node);
     }
 
-    restore_hardlinks(dest, &hardlinks)?;
-
     Ok(())
 }
 
 fn hardlink_key(node: &Node) -> Option<HardlinkKey> {
-    matches!(node.node_type, NodeType::File)
+    (matches!(node.node_type, NodeType::File)
+        && node.meta.links > 1
+        && node.meta.device_id != 0
+        && node.meta.inode != 0)
         .then_some(HardlinkKey {
             device_id: node.meta.device_id,
             inode: node.meta.inode,
         })
-        .filter(|key| node.meta.links > 1 && key.device_id != 0 && key.inode != 0)
-}
-
-fn restore_hardlinks(
-    dest: &LocalDestination,
-    hardlinks: &BTreeMap<HardlinkKey, Vec<PathBuf>>,
-) -> RusticResult<()> {
-    for paths in hardlinks.values() {
-        if paths.len() < 2 {
-            continue;
-        }
-
-        let canonical = &paths[0];
-        for path in paths.iter().skip(1) {
-            debug!(
-                "restoring hardlink {} -> {}",
-                path.display(),
-                canonical.display()
-            );
-            let full_path = dest.path(path);
-            dest.remove_file(&full_path).map_err(|err| {
-                RusticError::with_source(
-                    ErrorKind::InputOutput,
-                    "Failed to remove the file `{path}` before recreating its hardlink.",
-                    err,
-                )
-                .attach_context("path", path.display().to_string())
-            })?;
-            dest.hard_link(canonical, path).map_err(|err| {
-                RusticError::with_source(
-                    ErrorKind::InputOutput,
-                    "Failed to recreate the hardlink `{path}` from `{canonical}`.",
-                    err,
-                )
-                .attach_context("path", path.display().to_string())
-                .attach_context("canonical", canonical.display().to_string())
-            })?;
-        }
-    }
-
-    Ok(())
 }
 
 /// Set the metadata of the given file or directory.
@@ -529,16 +523,11 @@ impl PackInfo {
 fn restore_contents<S: Open>(
     repo: &Repository<S>,
     dest: &LocalDestination,
-    file_infos: RestorePlan,
+    filenames: &Filenames,
+    file_lengths: Vec<u64>,
+    restore_info: RestoreInfo,
+    restore_size: u64,
 ) -> RusticResult<()> {
-    let RestorePlan {
-        names: filenames,
-        file_lengths,
-        r: restore_info,
-        restore_size: total_size,
-        ..
-    } = file_infos;
-    let filenames = &filenames;
     let be = repo.dbe();
 
     // first create needed empty files, as they are not created later.
@@ -559,7 +548,7 @@ fn restore_contents<S: Open>(
     let sizes = &Mutex::new(file_lengths);
 
     let p = repo.progress_bytes("restoring file contents...");
-    p.set_length(total_size);
+    p.set_length(restore_size);
 
     let packs: Vec<_> = restore_info
         .into_iter()
@@ -687,6 +676,8 @@ pub struct RestorePlan {
     file_lengths: Vec<u64>,
     /// The restore information
     r: RestoreInfo,
+    /// candidates for hardlinks
+    hardlink_candidates: BTreeMap<HardlinkKey, PathBuf>,
     /// The total restore size
     pub restore_size: u64,
     /// The total size of matched content, i.e. content with needs no restore.
