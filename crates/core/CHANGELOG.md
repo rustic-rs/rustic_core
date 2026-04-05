@@ -2,6 +2,25 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.11.0](https://github.com/rustic-rs/rustic_core/compare/rustic_core-v0.10.1...rustic_core-v0.11.0) - 2026-04-05
+
+### Added
+
+- Optimize hardlink creation in restore ([#495](https://github.com/rustic-rs/rustic_core/pull/495))
+- add exclude-if-xattr option ([#491](https://github.com/rustic-rs/rustic_core/pull/491))
+
+### Fixed
+
+- make `ignore`'s `.git_exclude()` mirror `.git_ignore()` ([#494](https://github.com/rustic-rs/rustic_core/pull/494))
+
+### Other
+
+- update dependencies ([#496](https://github.com/rustic-rs/rustic_core/pull/496))
+- preserve hardlinks on restore ([#492](https://github.com/rustic-rs/rustic_core/pull/492))
+- use general tree modifier in `repair snapshots` ([#463](https://github.com/rustic-rs/rustic_core/pull/463))
+- [**breaking**] Optimize file streaming ([#489](https://github.com/rustic-rs/rustic_core/pull/489))
+- [**breaking**] use Cow to avoid OsString allocations ([#487](https://github.com/rustic-rs/rustic_core/pull/487))
+
 ## [0.10.1](https://github.com/rustic-rs/rustic_core/compare/rustic_core-v0.10.0...rustic_core-v0.10.1) - 2026-03-04
 
 ### Added
