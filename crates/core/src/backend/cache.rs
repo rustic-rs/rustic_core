@@ -2,7 +2,7 @@ use std::{
     collections::HashMap,
     fs::{self, File},
     io::{self, Read, Seek, SeekFrom, Write},
-    path::PathBuf,
+    path::{Path, PathBuf},
     sync::Arc,
 };
 
@@ -538,10 +538,37 @@ impl Cache {
     ///
     /// * If the file could not be written.
     pub fn write_bytes(&self, tpe: FileType, id: &Id, buf: &Bytes) -> RusticResult<()> {
+        fn write_local_file(filename: &Path, buf: &[u8]) -> RusticResult<()> {
+            let mut file = fs::OpenOptions::new()
+                .create(true)
+                .truncate(true)
+                .write(true)
+                .open(filename)
+                .map_err(|err| {
+                    RusticError::with_source(
+                        ErrorKind::InputOutput,
+                        "Failed to open the file `{path}`.",
+                        err,
+                    )
+                    .attach_context("path", filename.to_string_lossy())
+                })?;
+
+            file.write_all(buf).map_err(|err| {
+                RusticError::with_source(
+                    ErrorKind::InputOutput,
+                    "Failed to write to the buffer: `{path}`.",
+                    err,
+                )
+                .attach_context("path", filename.to_string_lossy())
+            })?;
+            Ok(())
+        }
+
         trace!("cache writing tpe: {:?}, id: {}", &tpe, &id);
 
         let dir = self.dir(tpe, id);
 
+        // create parent directory if it does not exist
         fs::create_dir_all(&dir).map_err(|err| {
             RusticError::with_source(
                 ErrorKind::InputOutput,
@@ -554,30 +581,25 @@ impl Cache {
         })?;
 
         let filename = self.path(tpe, id);
-
-        let mut file = fs::OpenOptions::new()
-            .create(true)
-            .truncate(true)
-            .write(true)
-            .open(&filename)
-            .map_err(|err| {
-                RusticError::with_source(
-                    ErrorKind::InputOutput,
-                    "Failed to open file at `{path}`",
-                    err,
-                )
-                .attach_context("path", filename.display().to_string())
-            })?;
-
-        file.write_all(buf).map_err(|err| {
+        let filename_tmp = dir.join(id.to_hex().to_string() + "-tmp-");
+        match write_local_file(&filename_tmp, buf) {
+            Ok(file) => file,
+            Err(err) => {
+                // Clean-up in case of error
+                _ = fs::remove_file(&filename_tmp);
+                return Err(err);
+            }
+        }
+        // rename temporary file to real file
+        fs::rename(&filename_tmp, &filename).map_err(|err| {
             RusticError::with_source(
                 ErrorKind::InputOutput,
-                "Failed to write to buffer at `{path}`",
+                "Failed to move `{path_tmp}` to `{path}`",
                 err,
             )
+            .attach_context("path_tmp", filename_tmp.display().to_string())
             .attach_context("path", filename.display().to_string())
-            .attach_context("tpe", tpe.to_string())
-            .attach_context("id", id.to_string())
+            .ask_report()
         })?;
 
         Ok(())

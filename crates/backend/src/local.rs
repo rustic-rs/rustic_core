@@ -90,6 +90,13 @@ impl LocalBackend {
         }
     }
 
+    fn filename(tpe: FileType, id: &Id) -> String {
+        match tpe {
+            FileType::Config => "config".to_string(),
+            _ => id.to_hex().to_string(),
+        }
+    }
+
     /// Path to the given file type and id.
     ///
     /// If the file type is `FileType::Pack`, the id will be used to determine the subdirectory.
@@ -103,11 +110,7 @@ impl LocalBackend {
     ///
     /// The path to the file.
     fn path(&self, tpe: FileType, id: &Id) -> PathBuf {
-        let hex_id = id.to_hex();
-        match tpe {
-            FileType::Config => self.path.join("config"),
-            _ => self.base_path(tpe, id).join(hex_id),
-        }
+        self.base_path(tpe, id).join(Self::filename(tpe, id))
     }
 
     /// Call the given command.
@@ -469,13 +472,68 @@ impl WriteBackend for LocalBackend {
         _cacheable: bool,
         buf: Bytes,
     ) -> RusticResult<()> {
+        fn write_local_file(filename: &Path, buf: &[u8]) -> RusticResult<()> {
+            let length = buf.len().try_into().map_err(|err| {
+                RusticError::with_source(
+                    ErrorKind::Internal,
+                    "Failed to convert length `{length}` to u64.",
+                    err,
+                )
+                .attach_context("length", buf.len().to_string())
+                .ask_report()
+            })?;
+
+            let mut file = fs::OpenOptions::new()
+                .create(true)
+                .truncate(true)
+                .write(true)
+                .open(filename)
+                .map_err(|err| {
+                    RusticError::with_source(
+                        ErrorKind::InputOutput,
+                        "Failed to open the file `{path}`. Please check the file and try again.",
+                        err,
+                    )
+                    .attach_context("path", filename.to_string_lossy())
+                })?;
+
+            file.set_len(length)
+                .map_err(|err| {
+                    RusticError::with_source(
+                        ErrorKind::InputOutput,
+                        "Failed to set the length of the file `{path}`. Please check the file and try again.",
+                        err,
+                    )
+                    .attach_context("path", filename.to_string_lossy())
+            })?;
+
+            file.write_all(buf).map_err(|err| {
+                RusticError::with_source(
+                    ErrorKind::InputOutput,
+                    "Failed to write to the buffer: `{path}`. Please check the file and try again.",
+                    err,
+                )
+                .attach_context("path", filename.to_string_lossy())
+            })?;
+            file.sync_all().map_err(|err| {
+                RusticError::with_source(
+                    ErrorKind::InputOutput,
+                    "Failed to sync OS Metadata to disk: `{path}`. Please check the file and try again.",
+                    err,
+                )
+                .attach_context("path", filename.to_string_lossy())
+            })?;
+            Ok(())
+        }
+
         trace!("writing tpe: {:?}, id: {}", &tpe, &id);
         let filename = self.path(tpe, id);
 
         let parent = self.base_path(tpe, id);
 
         // create parent directory if it does not exist
-        fs::create_dir_all(&parent).map_err(|err| {
+        fs::create_dir_all(&parent)
+            .map_err(|err| {
             RusticError::with_source(
                 ErrorKind::InputOutput,
                 "Failed to create directories `{path}`. Does the directory already exist? Please check the file and try again.",
@@ -485,54 +543,26 @@ impl WriteBackend for LocalBackend {
             .ask_report()
         })?;
 
-        let mut file = fs::OpenOptions::new()
-            .create(true)
-            .truncate(true)
-            .write(true)
-            .open(&filename)
-            .map_err(|err| {
-                RusticError::with_source(
-                    ErrorKind::InputOutput,
-                    "Failed to open the file `{path}`. Please check the file and try again.",
-                    err,
-                )
-                .attach_context("path", filename.to_string_lossy())
-            })?;
-
-        file.set_len(buf.len().try_into().map_err(|err| {
+        // Write to temporary file
+        let filename_tmp = parent.join(Self::filename(tpe, id) + "-tmp-");
+        match write_local_file(&filename_tmp, &buf) {
+            Ok(file) => file,
+            Err(err) => {
+                // Clean-up in case of error
+                _ = fs::remove_file(&filename_tmp);
+                return Err(err);
+            }
+        }
+        // rename temporary file to real file
+        fs::rename(&filename_tmp, &filename).map_err(|err| {
             RusticError::with_source(
-                ErrorKind::Internal,
-                "Failed to convert length `{length}` to u64.",
+                ErrorKind::InputOutput,
+                "Failed to move `{path_tmp}` to `{path}`",
                 err,
             )
-            .attach_context("length", buf.len().to_string())
+            .attach_context("path_tmp", filename_tmp.display().to_string())
+            .attach_context("path", filename.display().to_string())
             .ask_report()
-        })?)
-        .map_err(|err| {
-            RusticError::with_source(
-                ErrorKind::InputOutput,
-                "Failed to set the length of the file `{path}`. Please check the file and try again.",
-                err,
-            )
-            .attach_context("path", filename.to_string_lossy())
-        })?;
-
-        file.write_all(&buf).map_err(|err| {
-            RusticError::with_source(
-                ErrorKind::InputOutput,
-                "Failed to write to the buffer: `{path}`. Please check the file and try again.",
-                err,
-            )
-            .attach_context("path", filename.to_string_lossy())
-        })?;
-
-        file.sync_all().map_err(|err| {
-            RusticError::with_source(
-                ErrorKind::InputOutput,
-                "Failed to sync OS Metadata to disk: `{path}`. Please check the file and try again.",
-                err,
-            )
-            .attach_context("path", filename.to_string_lossy())
         })?;
 
         if let Some(command) = &self.post_create_command
