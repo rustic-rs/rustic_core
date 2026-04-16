@@ -109,7 +109,6 @@ impl KeyFile {
             })?,
             self.r,
             self.p,
-            Params::RECOMMENDED_LEN,
         )
         .map_err(|err| {
             RusticError::with_source(
@@ -205,7 +204,7 @@ impl KeyFile {
         with_created: bool,
     ) -> RusticResult<Self> {
         let masterkey = MasterKey::from_key(key);
-        let params = Params::recommended();
+        let params = Params::RECOMMENDED;
         let mut salt = vec![0; 64];
         rng().fill_bytes(&mut salt);
 

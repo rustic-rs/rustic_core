@@ -35,7 +35,7 @@ fn test_working_keys_passes(#[case] password: &str, #[case] should_work: bool) -
 }
 
 #[test]
-// using an invalid keyfile: Here the scrypt params are not valid
+// using an invalid keyfile: Here the data in the keyfile is not valid
 fn test_keys_failing_passes() -> Result<()> {
     let be = InMemoryBackend::new();
     add_to_be(&be, FileType::Config, "tests/fixtures/config")?;
