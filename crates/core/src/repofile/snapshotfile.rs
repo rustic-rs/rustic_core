@@ -818,27 +818,6 @@ impl SnapshotFile {
         Self::from_backend(be, &SnapshotId::from(id))
     }
 
-    /// Get a list of [`SnapshotFile`]s from the backend by supplying a list of/parts of their Ids
-    ///
-    /// # Arguments
-    ///
-    /// * `be` - The backend to use
-    /// * `ids` - The list of (parts of the) ids of the snapshots
-    /// * `p` - A progress bar to use
-    ///
-    /// # Errors
-    ///
-    /// * If the string is not a valid hexadecimal string
-    /// * If no id could be found.
-    /// * If the id is not unique.
-    pub(crate) fn from_ids<B: DecryptReadBackend, T: AsRef<str>>(
-        be: &B,
-        ids: &[T],
-        p: &Progress,
-    ) -> RusticResult<Vec<Self>> {
-        Self::update_from_ids(be, Vec::new(), ids, p)
-    }
-
     /// Update a list of [`SnapshotFile`]s from the backend by supplying a list of/parts of their Ids
     ///
     /// # Arguments

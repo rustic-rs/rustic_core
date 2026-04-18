@@ -40,6 +40,7 @@ pub enum LocalDestinationErrorKind {
     DirectoryCreationFailed(std::io::Error),
     /// file `{0:?}` should have a parent
     FileDoesNotHaveParent(PathBuf),
+    #[cfg(any(target_os = "macos", target_os = "openbsd"))]
     /// `DeviceID` could not be converted to other type `{target}` of device `{device}`: `{source}`
     DeviceIdConversionFailed {
         target: String,

@@ -47,8 +47,7 @@ pub struct RewriteTreesOptions {
 }
 
 #[derive(Debug)]
-pub struct RewriteVisitor<'a, I: ReadGlobalIndex> {
-    index: &'a I,
+pub struct RewriteVisitor {
     overrides: Override,
     node_modification: NodeModification,
     all_trees: bool,
@@ -57,10 +56,9 @@ pub struct RewriteVisitor<'a, I: ReadGlobalIndex> {
     summary: BTreeMap<TreeId, Summary>,
 }
 
-impl<'a, I: ReadGlobalIndex> RewriteVisitor<'a, I> {
-    pub fn new(index: &'a I, opts: &RewriteTreesOptions) -> RusticResult<Self> {
+impl RewriteVisitor {
+    pub fn new(opts: &RewriteTreesOptions) -> RusticResult<Self> {
         Ok(Self {
-            index,
             overrides: opts.excludes.as_override()?,
             node_modification: opts.node_modification.clone(),
             all_trees: opts.all_trees,
@@ -71,7 +69,7 @@ impl<'a, I: ReadGlobalIndex> RewriteVisitor<'a, I> {
     }
 }
 
-impl<I: ReadGlobalIndex> Visitor for RewriteVisitor<'_, I> {
+impl Visitor for RewriteVisitor {
     fn pre_process(&self, path: &PathBuf, id: TreeId) -> ModifierAction {
         if self.unchanged.contains(&(path.clone(), id)) {
             ModifierAction::Change(ModifierChange::Unchanged)
@@ -125,7 +123,7 @@ impl<I: ReadGlobalIndex> Visitor for RewriteVisitor<'_, I> {
 
 pub struct Rewriter<'a, BE: DecryptWriteBackend, I: ReadGlobalIndex> {
     modifier: TreeModifier<'a, BE, I>,
-    visitor: RewriteVisitor<'a, I>,
+    visitor: RewriteVisitor,
 }
 
 impl<'a, BE: DecryptFullBackend, I: ReadGlobalIndex> Rewriter<'a, BE, I> {
@@ -137,7 +135,7 @@ impl<'a, BE: DecryptFullBackend, I: ReadGlobalIndex> Rewriter<'a, BE, I> {
         dry_run: bool,
     ) -> RusticResult<Self> {
         let modifier = TreeModifier::new(be, index, config, dry_run)?;
-        let visitor = RewriteVisitor::new(index, opts)?;
+        let visitor = RewriteVisitor::new(opts)?;
         Ok(Self { modifier, visitor })
     }
 
@@ -188,11 +186,5 @@ impl Summary {
         if node.is_file() {
             self.size += node.meta.size;
         }
-    }
-
-    pub fn from_node(node: &Node) -> Self {
-        let mut summary = Self::default();
-        summary.update(node);
-        summary
     }
 }

@@ -15,10 +15,7 @@ use tempfile::tempdir;
 use rustic_core::{CommandInput, Id, RepositoryBackends, RepositoryOptions, repofile::PackId};
 use rustic_testing::backend::in_memory_backend::InMemoryBackend;
 
-type RepoOpen = rustic_core::Repository<rustic_core::OpenStatus>;
-
 // Test constants
-const DEFAULT_BATCH_SIZE: usize = 1;
 const PACK_ID_HEX_LENGTH: usize = 64;
 
 /// Helper to create a test script that logs invocations and arguments

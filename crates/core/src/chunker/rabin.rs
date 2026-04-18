@@ -6,16 +6,8 @@ use rustic_cdc::{Polynom, Polynom64, Rabin64, RollingHash64};
 use crate::error::{ErrorKind, RusticError, RusticResult};
 
 pub(super) mod constants {
-    /// The Splitmask is used to determine if a chunk is a chunk boundary.
-    pub(super) const SIZE: usize = 1 << 20;
     /// The size of a kilobyte.
     pub(super) const KB: usize = 1024;
-    /// The size of a megabyte.
-    pub(super) const MB: usize = 1024 * KB;
-    /// The minimum size of a chunk.
-    pub(super) const MIN_SIZE: usize = 512 * KB;
-    /// The maximum size of a chunk.
-    pub(super) const MAX_SIZE: usize = 8 * MB;
     /// Buffer size used for reading - TODO: Find out optimal size for best performance!
     pub(super) const BUF_SIZE: usize = 4 * KB;
     /// Random polynomial maximum tries.
@@ -331,18 +323,19 @@ mod tests {
     use rand::prelude::*;
     use std::io::{Cursor, repeat};
 
+    /// The Splitmask is used to determine if a chunk is a chunk boundary.
+    const SIZE: usize = 1 << 20;
+    /// The size of a megabyte.
+    const MB: usize = 1024 * constants::KB;
+    /// The minimum size of a chunk.
+    const MIN_SIZE: usize = 512 * constants::KB;
+    /// The maximum size of a chunk.
+    const MAX_SIZE: usize = 8 * MB;
+
     fn chunker<R: Read + Send>(reader: R, size_hint: usize) -> ChunkIter<R> {
         let poly = 0x003D_A335_8B4D_C173;
         let rabin = Rabin64::new_with_polynom(6, &poly);
-        ChunkIter::new(
-            rabin,
-            constants::SIZE,
-            constants::MIN_SIZE,
-            constants::MAX_SIZE,
-            reader,
-            size_hint,
-        )
-        .unwrap()
+        ChunkIter::new(rabin, SIZE, MIN_SIZE, MAX_SIZE, reader, size_hint).unwrap()
     }
 
     #[test]
@@ -388,6 +381,6 @@ mod tests {
         let mut chunker = chunker(&mut reader, usize::MAX);
 
         let chunk = chunker.next().unwrap().unwrap();
-        assert_eq!(constants::MIN_SIZE, chunk.len());
+        assert_eq!(MIN_SIZE, chunk.len());
     }
 }

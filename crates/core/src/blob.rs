@@ -3,7 +3,6 @@ pub(crate) mod tree;
 
 use std::{cmp::Ordering, num::NonZeroU32};
 
-use derive_more::Constructor;
 use enum_map::{Enum, EnumMap};
 use serde_derive::{Deserialize, Serialize};
 
@@ -118,21 +117,6 @@ macro_rules! impl_blobid {
 
 impl_blobid!(DataId, BlobType::Data);
 
-/// A `Blob` is a file that is stored in the backend.
-///
-/// It can be a `tree` or a `data` blob.
-///
-/// A `tree` blob is a file that contains a list of other blobs.
-/// A `data` blob is a file that contains the actual data.
-#[derive(Debug, PartialEq, Eq, Copy, Clone, Constructor)]
-pub(crate) struct Blob {
-    /// The type of the blob
-    tpe: BlobType,
-
-    /// The id of the blob
-    id: BlobId,
-}
-
 /// `BlobLocation` contains information about a blob within a pack
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct BlobLocation {
@@ -188,10 +172,6 @@ impl<T: Eq> Ord for BlobLocations<T> {
 impl<T> BlobLocations<T> {
     pub fn length(&self) -> u32 {
         self.blobs.iter().map(|bl| bl.0.length).sum()
-    }
-
-    pub fn data_length(&self) -> u32 {
-        self.blobs.iter().map(|bl| bl.0.data_length()).sum()
     }
 
     pub fn from_blob_location(location: BlobLocation, target: T) -> Self {

@@ -24,7 +24,7 @@ use crate::{
     index::{IndexEntry, indexer::SharedIndexer},
     repofile::{
         configfile::ConfigFile,
-        indexfile::{IndexBlob, IndexPack},
+        indexfile::IndexPack,
         packfile::{PackHeaderLength, PackHeaderRef, PackId},
         snapshotfile::SnapshotSummary,
     },
@@ -39,12 +39,6 @@ pub enum PackerErrorKind {
         to: &'static str,
         from: &'static str,
         source: std::num::TryFromIntError,
-    },
-    /// Sending crossbeam message failed: `id`: `{id:?}`, `data`: `{data:?}` : `{source}`
-    SendingCrossbeamMessage {
-        id: BlobId,
-        data: Bytes,
-        source: crossbeam_channel::SendError<(Bytes, BlobId)>,
     },
     /// Sending crossbeam data message failed: `data`: `{data:?}`, `index_pack`: `{index_pack:?}` : `{source}`
     SendingCrossbeamDataMessage {
@@ -822,13 +816,6 @@ pub struct CopyPackBlobs {
 }
 
 impl CopyPackBlobs {
-    pub fn from_index_blob(pack_id: PackId, blob: IndexBlob) -> Self {
-        Self {
-            pack_id,
-            locations: BlobLocations::from_blob_location(blob.location, blob.id),
-        }
-    }
-
     pub fn from_index_entry(entry: IndexEntry, id: BlobId) -> Self {
         Self {
             pack_id: entry.pack,
@@ -864,8 +851,6 @@ where
     be_src: BE,
     /// The packer to write to.
     packer: Packer<BE>,
-    /// The size limit of the pack file.
-    size_limit: u32,
     /// the blob type
     blob_type: BlobType,
 }
@@ -896,11 +881,9 @@ impl<BE: DecryptFullBackend> BlobCopier<BE> {
         pack_sizer: PackSizer,
     ) -> RusticResult<Self> {
         let packer = Packer::new(be_dst, blob_type, indexer, pack_sizer)?;
-        let size_limit = pack_sizer.pack_size();
         Ok(Self {
             be_src,
             packer,
-            size_limit,
             blob_type,
         })
     }

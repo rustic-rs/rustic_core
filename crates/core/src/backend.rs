@@ -483,48 +483,6 @@ pub trait ReadSource: Sync + Send {
     fn entries(&self) -> Self::Iter;
 }
 
-/// Trait for backends that can write to a source.
-///
-/// This trait is implemented by all backends that can write data to a source.
-pub trait WriteSource: Clone {
-    /// Create a new source.
-    ///
-    /// # Type Parameters
-    ///
-    /// * `P` - The type of the path.
-    ///
-    /// # Arguments
-    ///
-    /// * `path` - The path of the source.
-    /// * `node` - The node information of the source.
-    fn create<P: Into<PathBuf>>(&self, path: P, node: Node);
-
-    /// Set the metadata of a source.
-    ///
-    /// # Type Parameters
-    ///
-    /// * `P` - The type of the path.
-    ///
-    /// # Arguments
-    ///
-    /// * `path` - The path of the source.
-    /// * `node` - The node information of the source.
-    fn set_metadata<P: Into<PathBuf>>(&self, path: P, node: Node);
-
-    /// Write data to a source at the given offset.
-    ///
-    /// # Type Parameters
-    ///
-    /// * `P` - The type of the path.
-    ///
-    /// # Arguments
-    ///
-    /// * `path` - The path of the source.
-    /// * `offset` - The offset to write at.
-    /// * `data` - The data to write.
-    fn write_at<P: Into<PathBuf>>(&self, path: P, offset: u64, data: Bytes);
-}
-
 /// The backends a repository can be initialized and operated on
 ///
 /// # Note

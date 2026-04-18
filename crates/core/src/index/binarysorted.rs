@@ -104,11 +104,6 @@ impl IndexCollector {
         &self.0[BlobType::Tree].packs
     }
 
-    #[must_use]
-    pub fn data_packs(&self) -> &Vec<(PackId, u32)> {
-        &self.0[BlobType::Data].packs
-    }
-
     // Turns Collector into an index by sorting the entries by ID.
     #[must_use]
     pub fn into_index(self) -> Index {

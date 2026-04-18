@@ -128,7 +128,7 @@ impl Id {
     pub fn parse_some(name: &str, tpe: FileType) -> Option<Self> {
         name.parse()
             .inspect_err(|err| {
-                debug!("ignoring {name} which is no ID while listing {tpe}: {err}",);
+                debug!("ignoring {name} which is no ID while listing {tpe}: {err}");
             })
             .ok()
     }

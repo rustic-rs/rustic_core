@@ -29,7 +29,6 @@ pub enum ModifierChange {
 #[derive(Debug)]
 pub enum ModifierAction {
     Change(ModifierChange),
-    WriteChangedTree(Tree),
     Process(TreeId),
 }
 
@@ -76,9 +75,6 @@ pub trait Visitor {
     }
 }
 
-pub struct DefaultVisitor;
-impl Visitor for DefaultVisitor {}
-
 pub struct TreeModifier<'a, BE: DecryptWriteBackend, I: ReadGlobalIndex> {
     be: &'a BE,
     index: &'a I,
@@ -112,10 +108,6 @@ impl<'a, BE: DecryptFullBackend, I: ReadGlobalIndex> TreeModifier<'a, BE, I> {
         let mut changed = false;
         let tree = match visitor.pre_process(&path, id) {
             ModifierAction::Change(change) => return Ok(change),
-            ModifierAction::WriteChangedTree(tree) => {
-                changed = true;
-                tree
-            }
             ModifierAction::Process(id) => {
                 match visitor.pre_process_tree(Tree::from_backend(self.be, self.index, id))? {
                     TreeAction::ProcessChangedTree(tree) => {

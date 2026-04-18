@@ -1113,6 +1113,7 @@ mod tests {
         );
     }
 
+    #[test]
     fn test_read_subset_n_m() {
         let test_packs = test_packs(&mut rng());
         let mut all_packs: BTreeSet<_> = test_packs.iter().map(|pack| pack.id).collect();

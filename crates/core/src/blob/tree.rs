@@ -520,21 +520,6 @@ where
     ///
     /// * `be` - The backend to read from.
     /// * `node` - The node to start from.
-    ///
-    /// # Errors
-    ///
-    /// * If the tree ID is not found in the backend.
-    /// * If deserialization fails.
-    pub fn new(be: BE, index: &'a I, node: &Node) -> RusticResult<Self> {
-        Self::new_streamer(be, index, node, None, true)
-    }
-
-    /// Creates a new `NodeStreamer`.
-    ///
-    /// # Arguments
-    ///
-    /// * `be` - The backend to read from.
-    /// * `node` - The node to start from.
     /// * `overrides` - The glob overrides.
     /// * `recursive` - Whether to stream recursively.
     ///
