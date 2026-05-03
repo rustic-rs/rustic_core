@@ -28,6 +28,7 @@ mod integration {
     mod check;
     mod chunker;
     mod copy;
+    mod dump;
     mod find;
     mod hotcold;
     mod key;
