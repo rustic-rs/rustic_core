@@ -151,7 +151,6 @@ pub use crate::{
         check::{CheckOptions, CheckResults, ReadSubsetOption},
         config::ConfigOptions,
         copy::CopySnapshot,
-        dump::DumpOptions,
         forget::{ForgetGroup, ForgetGroups, ForgetSnapshot, KeepOptions},
         key::KeyOptions,
         prune::{LimitOption, PruneOptions, PrunePlan, PruneStats},

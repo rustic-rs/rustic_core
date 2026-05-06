@@ -42,7 +42,6 @@ use crate::{
         check::{CheckOptions, CheckResults, check_repository},
         config::{ConfigOptions, save_config_hot},
         copy::CopySnapshot,
-        dump::DumpOptions,
         key::{KeyOptions, add_current_key_to_repo},
         prune::{PruneOptions, PrunePlan, prune_repository},
         repair::{
@@ -1745,9 +1744,6 @@ impl<S: IndexedFull> Repository<S> {
 
     /// Dump a [`Node`] using the given writer.
     ///
-    /// Equivalent to [`Self::dump_with_opts`] with [`DumpOptions::default`],
-    /// which fetches blobs in parallel using the available parallelism.
-    ///
     /// # Arguments
     ///
     /// * `node` - The node to dump
@@ -1764,34 +1760,7 @@ impl<S: IndexedFull> Repository<S> {
     where
         S: Sync,
     {
-        commands::dump::dump(self, node, w, DumpOptions::default())
-    }
-
-    /// Dump a [`Node`] using the given writer and dump options.
-    ///
-    /// # Arguments
-    ///
-    /// * `node` - The node to dump
-    /// * `w` - The writer to use
-    /// * `opts` - The dump options to use
-    ///
-    /// # Errors
-    ///
-    /// * If the node is not a file.
-    ///
-    /// # Note
-    ///
-    /// Currently, only regular file nodes are supported.
-    pub fn dump_with_opts(
-        &self,
-        node: &Node,
-        w: &mut impl Write,
-        opts: &DumpOptions,
-    ) -> RusticResult<()>
-    where
-        S: Sync,
-    {
-        commands::dump::dump(self, node, w, *opts)
+        commands::dump::dump(self, node, w)
     }
 
     /// Prepare the restore.

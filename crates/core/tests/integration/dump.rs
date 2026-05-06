@@ -7,7 +7,7 @@ use rstest::rstest;
 use tempfile::tempdir;
 
 use rustic_core::{
-    BackupOptions, ConfigOptions, DumpOptions, IndexedFullStatus, PathList, Repository,
+    BackupOptions, ConfigOptions, IndexedFullStatus, PathList, Repository,
     repofile::{Chunker, SnapshotFile},
 };
 
@@ -48,8 +48,9 @@ fn backup_single_file(
 }
 
 #[rstest]
-fn test_dump_parallel_matches_sequential(set_up_repo: Result<RepoOpen>) -> Result<()> {
-    let (repo, snapshot_path) = backup_single_file(set_up_repo?, "file.bin", &payload(64 * 1024))?;
+fn test_dump_multi_blob_matches_source(set_up_repo: Result<RepoOpen>) -> Result<()> {
+    let data = payload(64 * 1024);
+    let (repo, snapshot_path) = backup_single_file(set_up_repo?, "file.bin", &data)?;
     let node = repo.node_from_snapshot_path(&snapshot_path, |_| true)?;
 
     // Sanity: the configured chunker must have produced more than one blob,
@@ -60,17 +61,9 @@ fn test_dump_parallel_matches_sequential(set_up_repo: Result<RepoOpen>) -> Resul
         "expected the test file to span multiple blobs, got {blob_count}",
     );
 
-    let dump = |opts: DumpOptions| -> Result<Vec<u8>> {
-        let mut out = Vec::new();
-        repo.dump_with_opts(&node, &mut out, &opts)?;
-        Ok(out)
-    };
-
-    let sequential = dump(DumpOptions::default().num_threads(1u32))?;
-    let parallel = dump(DumpOptions::default().num_threads(8u32))?;
-
-    assert_eq!(sequential, payload(64 * 1024));
-    assert_eq!(parallel, sequential);
+    let mut out = Vec::new();
+    repo.dump(&node, &mut out)?;
+    assert_eq!(out, data);
     Ok(())
 }
 
