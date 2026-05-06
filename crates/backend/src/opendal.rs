@@ -379,7 +379,20 @@ impl ReadBackend for OpenDALBackend {
     }
 
     fn warmup_path(&self, tpe: FileType, id: &Id) -> String {
-        self.path(tpe, id)
+        // OpenDAL normalizes roots to format `/path/` (with leading and trailing slashes)
+        // or just `/` for the storage root. We strip these slashes to get the root prefix
+        // and prepend it to the relative path for the warm-up command.
+        // This ensures warm-up commands receive the full S3 object key like
+        // `rustic/data/03/03dc1178...` instead of just `data/03/03dc1178...`
+        let root = self.operator.info().root();
+        let root = root.trim_matches('/');
+        let relative_path = self.path(tpe, id);
+
+        if root.is_empty() {
+            relative_path
+        } else {
+            format!("{root}/{relative_path}")
+        }
     }
 }
 
@@ -522,6 +535,40 @@ mod tests {
         let test: TestCase = toml::from_str(&fs::read_to_string(test_case)?)?;
 
         _ = OpenDALBackend::new(test.path, test.options)?;
+        Ok(())
+    }
+
+    /// Test `warmup_path` includes root prefix when root is configured
+    #[rstest]
+    #[case("s3_aws", "path/to/repo/data/")] // root = "/path/to/repo"
+    #[case("s3_idrive", "data/")] // root = "/"
+    fn test_warmup_path_respects_root(
+        #[case] fixture: &str,
+        #[case] expected_prefix: &str,
+    ) -> Result<()> {
+        #[derive(Deserialize)]
+        struct TestCase {
+            path: String,
+            options: BTreeMap<String, String>,
+        }
+
+        let fixture_path = PathBuf::from(format!("tests/fixtures/opendal/{fixture}.toml"));
+        let test: TestCase = toml::from_str(&fs::read_to_string(fixture_path)?)?;
+        let backend = OpenDALBackend::new(test.path, test.options)?;
+
+        let id: Id = "03dc1178e4e54f69beaf35dd9d4256a5a600e9fa3452b9db80bd649938923e67".parse()?;
+        let path = backend.warmup_path(FileType::Pack, &id);
+
+        assert!(
+            path.starts_with(expected_prefix),
+            "warmup_path should start with '{expected_prefix}', got: {path}"
+        );
+        // Verify no double slashes
+        assert!(
+            !path.contains("//"),
+            "warmup_path should not contain double slashes: {path}"
+        );
+
         Ok(())
     }
 }
