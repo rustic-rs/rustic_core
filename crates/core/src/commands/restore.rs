@@ -3,6 +3,7 @@
 use derive_setters::Setters;
 use jiff::Timestamp;
 use log::{debug, error, info, trace, warn};
+use smallvec::SmallVec;
 
 use std::{cmp::Ordering, collections::BTreeMap, path::PathBuf, sync::Mutex};
 
@@ -28,8 +29,8 @@ pub(crate) mod constants {
     pub(crate) const MAX_READER_THREADS_NUM: usize = 20;
 }
 
-type RestoreInfo = BTreeMap<(PackId, BlobLocation), Vec<FileLocation>>;
 type Filenames = Vec<PathBuf>;
+type RestoreInfo = BTreeMap<(PackId, BlobLocation), SmallVec<[FileLocation; 1]>>;
 
 #[allow(clippy::struct_excessive_bools)]
 #[cfg_attr(feature = "clap", derive(clap::Parser))]
@@ -470,7 +471,7 @@ pub(crate) fn set_metadata(
 struct PackInfo {
     pack_id: PackId,
     from_file: Option<(usize, u64, u32)>,
-    locations: BlobLocations<Vec<(usize, u64)>>,
+    locations: BlobLocations<SmallVec<[(usize, u64); 1]>>,
 }
 
 impl PackInfo {
@@ -550,7 +551,7 @@ fn restore_contents<S: Open>(
                 .find(|fl| fl.matches)
                 .map(|fl| (fl.file_idx, fl.file_start, bl.data_length()));
 
-            let name_dests: Vec<_> = fls
+            let name_dests = fls
                 .iter()
                 .filter(|fl| !fl.matches)
                 .map(|fl| (fl.file_idx, fl.file_start))

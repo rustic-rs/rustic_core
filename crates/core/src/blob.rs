@@ -5,6 +5,7 @@ use std::{cmp::Ordering, num::NonZeroU32};
 
 use enum_map::{Enum, EnumMap};
 use serde_derive::{Deserialize, Serialize};
+use smallvec::{SmallVec, smallvec};
 
 use crate::define_new_id_struct;
 
@@ -154,7 +155,7 @@ impl BlobLocation {
 pub struct BlobLocations<T> {
     pub offset: u32,
     pub length: u32,
-    pub blobs: Vec<(BlobLocation, T)>,
+    pub blobs: SmallVec<[(BlobLocation, T); 1]>,
 }
 
 impl<T: Eq + PartialEq> PartialOrd<Self> for BlobLocations<T> {
@@ -178,7 +179,7 @@ impl<T> BlobLocations<T> {
         Self {
             offset: location.offset,
             length: location.length,
-            blobs: vec![(location, target)],
+            blobs: smallvec![(location, target)],
         }
     }
     pub fn can_coalesce(&self, other: &Self) -> bool {
