@@ -124,6 +124,9 @@ pub(crate) mod repository;
 /// Virtual File System support - allows to act on the repository like on a file system
 pub mod vfs;
 
+// re-export jiff
+pub use jiff;
+
 // rustic_core Public API
 pub use crate::{
     backend::{
