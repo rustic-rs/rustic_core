@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.6.2](https://github.com/rustic-rs/rustic_core/compare/rustic_backend-v0.6.1...rustic_backend-v0.6.2) - 2026-05-14
+
+### Fixed
+
+- include repo root in warmup paths ([#509](https://github.com/rustic-rs/rustic_core/pull/509)) ([#510](https://github.com/rustic-rs/rustic_core/pull/510))
+- local BE - don't leave broken files when writing fails ([#499](https://github.com/rustic-rs/rustic_core/pull/499))
+
+### Other
+
+- update opendal, reqwest and others ([#507](https://github.com/rustic-rs/rustic_core/pull/507))
+
 ## [0.6.1](https://github.com/rustic-rs/rustic_core/compare/rustic_backend-v0.6.0...rustic_backend-v0.6.1) - 2026-03-04
 
 ### Fixed

@@ -2,6 +2,24 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.12.0](https://github.com/rustic-rs/rustic_core/compare/rustic_core-v0.11.0...rustic_core-v0.12.0) - 2026-05-14
+
+### Added
+
+- [**breaking**] scope destination scan to snapshot-relevant paths for restore ([#493](https://github.com/rustic-rs/rustic_core/pull/493))
+
+### Fixed
+
+- re-export jiff ([#512](https://github.com/rustic-rs/rustic_core/pull/512))
+- typo in comments ([#511](https://github.com/rustic-rs/rustic_core/pull/511))
+- local BE - don't leave broken files when writing fails ([#499](https://github.com/rustic-rs/rustic_core/pull/499))
+- fix clipp lints ([#500](https://github.com/rustic-rs/rustic_core/pull/500))
+
+### Other
+
+- parallelize blob fetch in dump command ([#501](https://github.com/rustic-rs/rustic_core/pull/501))
+- update opendal, reqwest and others ([#507](https://github.com/rustic-rs/rustic_core/pull/507))
+
 ## [0.11.0](https://github.com/rustic-rs/rustic_core/compare/rustic_core-v0.10.1...rustic_core-v0.11.0) - 2026-04-05
 
 ### Added
