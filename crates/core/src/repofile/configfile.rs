@@ -35,7 +35,7 @@ pub(super) mod constants {
 
     /// The default (average) size of a chunk = 1 MiB.
     pub(super) const DEFAULT_CHUNK_SIZE: usize = 1024 * 1024;
-    /// The default maximum size of a chunk = 512 kiB.
+    /// The default minimum size of a chunk = 512 kiB.
     pub(super) const DEFAULT_CHUNK_MIN_SIZE: usize = 512 * 1024;
     /// The default maximum size of a chunk = 8 MiB.
     pub(super) const DEFAULT_CHUNK_MAX_SIZE: usize = 8 * 1024 * 1024;
@@ -291,7 +291,7 @@ pub enum Chunker {
     #[default]
     /// Rabin chunker - a content defined chunker (CDC) based on Rabin fingerprints
     Rabin,
-    /// Fixed size chunke - makes chunks of a given fixed size
+    /// Fixed size chunker - makes chunks of a given fixed size
     FixedSize,
 }
 
