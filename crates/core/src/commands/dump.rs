@@ -6,6 +6,7 @@ use crate::{
     backend::node::{Node, NodeType},
     blob::{BlobId, BlobType, DataId},
     error::{ErrorKind, RusticError, RusticResult},
+    index::ReadIndex,
     repository::{IndexedFull, Repository},
 };
 
@@ -26,7 +27,7 @@ use crate::{
 /// * If the node is not a file.
 /// * If a blob cannot be fetched from the backend.
 /// * If writing to `w` fails.
-pub(crate) fn dump<S: IndexedFull + Sync>(
+pub(crate) fn dump<S: IndexedFull>(
     repo: &Repository<S>,
     node: &Node,
     w: &mut impl Write,
@@ -48,11 +49,21 @@ pub(crate) fn dump<S: IndexedFull + Sync>(
         return dump_sequential(repo, content, w);
     }
 
+    let index_entries: Vec<_> = content
+        .iter()
+        .map(|id| {
+            repo.index().get_data(id).ok_or_else(|| {
+                RusticError::new(ErrorKind::Internal, "Data Blob `{id}`  not found in index")
+                    .attach_context("id", id.to_string())
+            })
+        })
+        .collect::<RusticResult<_>>()?;
+
+    let be = repo.dbe();
     scope(|s| -> RusticResult<()> {
-        content
+        index_entries
             .iter()
-            .map(|id| BlobId::from(**id))
-            .parallel_map_scoped(s, |id| repo.get_blob_cached(&id, BlobType::Data))
+            .parallel_map_scoped(s, |ie| ie.read_data(be))
             .try_for_each(|res| write_blob(w, &res?))
     })
 }
