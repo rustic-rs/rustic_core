@@ -1,0 +1,6 @@
+path = "pcloud"
+[options]
+endpoint = "https://api.pcloud.com"
+username = "user@example.com"
+password = "secret"
+root = "/path/to/repo"
