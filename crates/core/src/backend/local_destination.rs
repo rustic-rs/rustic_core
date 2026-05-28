@@ -40,7 +40,11 @@ pub enum LocalDestinationErrorKind {
     DirectoryCreationFailed(std::io::Error),
     /// file `{0:?}` should have a parent
     FileDoesNotHaveParent(PathBuf),
-    #[cfg(any(target_os = "macos", target_os = "openbsd"))]
+    #[cfg(any(
+        target_os = "macos",
+        target_os = "openbsd",
+        all(target_os = "android", target_pointer_width = "32")
+    ))]
     /// `DeviceID` could not be converted to other type `{target}` of device `{device}`: `{source}`
     DeviceIdConversionFailed {
         target: String,
@@ -655,7 +659,11 @@ impl LocalDestination {
                 })?;
             }
             NodeType::Dev { device } => {
-                #[cfg(not(any(target_os = "macos", target_os = "openbsd")))]
+                #[cfg(not(any(
+                    target_os = "macos",
+                    target_os = "openbsd",
+                    all(target_os = "android", target_pointer_width = "32")
+                )))]
                 let device = *device;
                 #[cfg(any(target_os = "macos", target_os = "openbsd"))]
                 let device = i32::try_from(*device).map_err(|err| {
@@ -665,16 +673,36 @@ impl LocalDestination {
                         source: err,
                     }
                 })?;
+                #[cfg(all(target_os = "android", target_pointer_width = "32"))]
+                let device = u32::try_from(*device).map_err(|err| {
+                    LocalDestinationErrorKind::DeviceIdConversionFailed {
+                        target: "u32".to_string(),
+                        device: *device,
+                        source: err,
+                    }
+                })?;
                 mknod(&filename, SFlag::S_IFBLK, Mode::empty(), device)
                     .map_err(LocalDestinationErrorKind::FromErrnoError)?;
             }
             NodeType::Chardev { device } => {
-                #[cfg(not(any(target_os = "macos", target_os = "openbsd")))]
+                #[cfg(not(any(
+                    target_os = "macos",
+                    target_os = "openbsd",
+                    all(target_os = "android", target_pointer_width = "32")
+                )))]
                 let device = *device;
                 #[cfg(any(target_os = "macos", target_os = "openbsd"))]
                 let device = i32::try_from(*device).map_err(|err| {
                     LocalDestinationErrorKind::DeviceIdConversionFailed {
                         target: "i32".to_string(),
+                        device: *device,
+                        source: err,
+                    }
+                })?;
+                #[cfg(all(target_os = "android", target_pointer_width = "32"))]
+                let device = u32::try_from(*device).map_err(|err| {
+                    LocalDestinationErrorKind::DeviceIdConversionFailed {
+                        target: "u32".to_string(),
                         device: *device,
                         source: err,
                     }
