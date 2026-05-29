@@ -106,12 +106,14 @@ smallvec = { version = "1.15.1", features = ["union"] }
 strum = { version = "0.28.0", features = ["derive"] }
 zstd = "0.13.3"
 
-[target.'cfg(not(windows))'.dependencies]
+[target.'cfg(not(any(windows, all(target_os="android", target_arch="x86"))))'.dependencies]
 sha2 = { version = "0.10.9", features = ["asm"] }
 
-[target.'cfg(windows)'.dependencies]
+[target.'cfg(any(windows, all(target_os="android", target_arch="x86")))'.dependencies]
 # unfortunately, the asm extensions do not build on Windows, see https://github.com/RustCrypto/asm-hashes/issues/17
 # and https://github.com/RustCrypto/asm-hashes/pull/issues/78
+# Android x86 links this crate into a JNI shared library. sha2-asm's 32-bit x86 objects contain text
+# relocations, which Android rejects when loading shared libraries.
 sha2 = "0.10.9"
 
 [target.'cfg(not(any(windows, target_os="openbsd")))'.dependencies]
