@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use cached::proc_macro::cached;
+use cached::macros::cached;
 use derive_setters::Setters;
 use jiff::{Span, Zoned};
 use serde::{Deserialize, Serialize};

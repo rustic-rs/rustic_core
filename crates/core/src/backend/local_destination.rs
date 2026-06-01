@@ -9,8 +9,6 @@ use std::{
 };
 
 use bytes::Bytes;
-#[allow(unused_imports)]
-use cached::proc_macro::cached;
 use filetime::{FileTime, set_symlink_file_times};
 #[cfg(not(windows))]
 use log::warn;
@@ -21,7 +19,7 @@ use nix::sys::stat::{Mode, SFlag, mknod};
 #[cfg(not(windows))]
 use nix::{
     fcntl::{AT_FDCWD, AtFlags},
-    unistd::{Gid, Group, Uid, User, fchownat},
+    unistd::{Gid, Uid, fchownat},
 };
 
 #[cfg(not(windows))]
@@ -32,6 +30,33 @@ use crate::{
     backend::node::{ExtendedAttribute, Metadata, Node},
     error::{ErrorKind, RusticError, RusticResult},
 };
+
+#[cfg(not(windows))]
+mod helpers {
+    // Helper function to cache mapping user name -> uid
+    #![allow(clippy::needless_pass_by_value)]
+
+    use cached::macros::cached;
+    use log::warn;
+    use nix::unistd::{Gid, Group, Uid, User};
+
+    #[cached]
+    pub(super) fn uid_from_name(name: String) -> Option<Uid> {
+        User::from_name(&name)
+            .inspect_err(|err| warn!("Cannot determine UID from name {name}: {err}. Using UID 0."))
+            .unwrap_or_default()
+            .map(|u| u.uid)
+    }
+
+    // Helper function to cache mapping group name -> gid
+    #[cached]
+    pub(super) fn gid_from_name(name: String) -> Option<Gid> {
+        Group::from_name(&name)
+            .inspect_err(|err| warn!("Cannot determine GID from name {name}: {err}. Using UID 0."))
+            .unwrap_or_default()
+            .map(|g| g.gid)
+    }
+}
 
 /// [`LocalDestinationErrorKind`] describes the errors that can be returned by an action on the filesystem in Backends
 #[derive(thiserror::Error, Debug, displaydoc::Display)]
@@ -124,26 +149,6 @@ pub struct LocalDestination {
     path: PathBuf,
     /// Whether we expect a single file as destination.
     is_file: bool,
-}
-
-// Helper function to cache mapping user name -> uid
-#[cfg(not(windows))]
-#[cached]
-fn uid_from_name(name: String) -> Option<Uid> {
-    User::from_name(&name)
-        .inspect_err(|err| warn!("Cannot determine UID from name {name}: {err}. Using UID 0."))
-        .unwrap_or_default()
-        .map(|u| u.uid)
-}
-
-// Helper function to cache mapping group name -> gid
-#[cfg(not(windows))]
-#[cached]
-fn gid_from_name(name: String) -> Option<Gid> {
-    Group::from_name(&name)
-        .inspect_err(|err| warn!("Cannot determine GID from name {name}: {err}. Using UID 0."))
-        .unwrap_or_default()
-        .map(|g| g.gid)
 }
 
 impl LocalDestination {
@@ -344,11 +349,11 @@ impl LocalDestination {
     ) -> LocalDestinationResult<()> {
         let filename = self.path(item);
 
-        let user = meta.user.clone().and_then(uid_from_name);
+        let user = meta.user.clone().and_then(helpers::uid_from_name);
         // use uid from user if valid, else from saved uid (if saved)
         let uid = user.or_else(|| meta.uid.map(Uid::from_raw));
 
-        let group = meta.group.clone().and_then(gid_from_name);
+        let group = meta.group.clone().and_then(helpers::gid_from_name);
         // use gid from group if valid, else from saved gid (if saved)
         let gid = group.or_else(|| meta.gid.map(Gid::from_raw));
 
