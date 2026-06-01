@@ -18,6 +18,7 @@ pub struct StdinSource {
 
 impl StdinSource {
     /// Creates a new `StdinSource`.
+    #[must_use]
     pub const fn new(path: PathBuf) -> Self {
         Self { path }
     }

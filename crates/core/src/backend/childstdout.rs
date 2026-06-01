@@ -30,6 +30,9 @@ pub struct ChildStdoutSource {
 
 impl ChildStdoutSource {
     /// Creates a new `ChildSource`.
+    ///
+    /// # Errors
+    /// - if calling the command fails
     pub fn new(cmd: &CommandInput, path: PathBuf) -> RusticResult<Self> {
         let process = Command::new(cmd.command())
             .args(cmd.args())
@@ -51,6 +54,12 @@ impl ChildStdoutSource {
     }
 
     /// Finishes the `ChildSource`
+    ///
+    /// # Errors
+    /// - if handling of the return code leads to an error
+    ///
+    /// # Panics
+    /// - if the lock for the process cannot be obtained (should not happen)
     pub fn finish(self) -> RusticResult<()> {
         let status = self.process.lock().unwrap().wait();
         self.command
