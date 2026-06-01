@@ -1,5 +1,5 @@
 use {
-    cached::proc_macro::cached,
+    cached::macros::cached,
     log::warn,
     nix::unistd::{Gid, Group, Uid, User},
 };
