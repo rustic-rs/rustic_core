@@ -2,6 +2,29 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.12.0](https://github.com/rustic-rs/rustic_core/compare/rustic_core-v0.11.0...rustic_core-v0.12.0) - 2026-06-01
+
+### Added
+
+- make backup generic over a ReadSource; add openDAL ReadSource ([#518](https://github.com/rustic-rs/rustic_core/pull/518))
+- [**breaking**] scope destination scan to snapshot-relevant paths for restore ([#493](https://github.com/rustic-rs/rustic_core/pull/493))
+
+### Fixed
+
+- Build for 32-bit Android ([#517](https://github.com/rustic-rs/rustic_core/pull/517))
+- read index entries in `dump` before processing ([#513](https://github.com/rustic-rs/rustic_core/pull/513))
+- re-export jiff ([#512](https://github.com/rustic-rs/rustic_core/pull/512))
+- typo in comments ([#511](https://github.com/rustic-rs/rustic_core/pull/511))
+- local BE - don't leave broken files when writing fails ([#499](https://github.com/rustic-rs/rustic_core/pull/499))
+- fix clipp lints ([#500](https://github.com/rustic-rs/rustic_core/pull/500))
+
+### Other
+
+- update dependencies ([#519](https://github.com/rustic-rs/rustic_core/pull/519))
+- Use Smallvec ([#514](https://github.com/rustic-rs/rustic_core/pull/514))
+- parallelize blob fetch in dump command ([#501](https://github.com/rustic-rs/rustic_core/pull/501))
+- update opendal, reqwest and others ([#507](https://github.com/rustic-rs/rustic_core/pull/507))
+
 ## [0.11.0](https://github.com/rustic-rs/rustic_core/compare/rustic_core-v0.10.1...rustic_core-v0.11.0) - 2026-04-05
 
 ### Added
