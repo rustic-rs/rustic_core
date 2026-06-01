@@ -431,6 +431,11 @@ impl<O> ReadSourceEntry<O> {
         );
         Ok(Self { path, node, open })
     }
+
+    /// Turn this into a tree entry
+    pub fn as_tree_entry(self) -> (PathBuf, Node) {
+        (self.path, self.node)
+    }
 }
 
 /// Trait for backends that can read and open sources.

@@ -7,6 +7,7 @@ use std::{
     cmp::Ordering,
     collections::{BTreeMap, BTreeSet},
     fmt::{self, Display},
+    ops::Index,
     path::{Path, PathBuf},
     str::FromStr,
 };
@@ -1198,6 +1199,14 @@ impl<T: Into<PathBuf>> FromIterator<T> for PathList {
     }
 }
 
+impl Index<usize> for PathList {
+    type Output = PathBuf;
+
+    fn index(&self, index: usize) -> &Self::Output {
+        &self.0[index]
+    }
+}
+
 impl PathList {
     /// Create a `PathList` from a String containing a single path
     /// Note: for multiple paths, use `PathList::from_iter`.
@@ -1228,7 +1237,7 @@ impl PathList {
 
     /// Clone the internal `Vec<PathBuf>`.
     #[must_use]
-    pub(crate) fn paths(&self) -> Vec<PathBuf> {
+    pub fn paths(&self) -> Vec<PathBuf> {
         self.0.clone()
     }
 

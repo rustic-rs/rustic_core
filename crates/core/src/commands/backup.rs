@@ -10,7 +10,7 @@ use serde_derive::{Deserialize, Serialize};
 use serde_with::{DisplayFromStr, serde_as};
 
 use crate::{
-    CommandInput, Excludes,
+    CommandInput, Excludes, ReadSource,
     archiver::{Archiver, parent::Parent},
     backend::{
         childstdout::ChildStdoutSource,
@@ -90,19 +90,17 @@ impl ParentOptions {
     ///
     /// * `repo` - The repository to use
     /// * `snap` - The snapshot to use
-    /// * `backup_stdin` - Whether the backup is from stdin
     ///
     /// # Returns
     ///
-    /// The parent snapshot id and the parent object or `None` if no parent is used.
+    /// The parent snapshot ids and the parent object.
     pub(crate) fn get_parent<S: IndexedTree>(
         &self,
         repo: &Repository<S>,
         snap: &SnapshotFile,
-        backup_stdin: bool,
     ) -> (Vec<SnapshotId>, Parent) {
         let group = SnapshotGroup::from_snapshot(snap, self.group_by.unwrap_or_default());
-        let parent = if backup_stdin || self.force {
+        let parent = if self.force {
             Vec::new()
         } else if self.parents.is_empty() {
             // get suitable snapshot group from snapshot and opts.group_by. This is used to filter snapshots for the parent detection
@@ -210,8 +208,8 @@ pub struct BackupOptions {
 ///
 /// * `repo` - The repository to use
 /// * `opts` - The backup options
-/// * `source` - The source to backup
-/// * `snap` - The snapshot to backup
+/// * `src` - The source to backup
+/// * `snap` - The snapshot with raw information
 ///
 /// # Errors
 ///
@@ -224,21 +222,20 @@ pub struct BackupOptions {
 /// # Returns
 ///
 /// The snapshot pointing to the backup'ed data.
-#[allow(clippy::too_many_lines)]
-pub(crate) fn backup<S: IndexedIds>(
+pub(crate) fn archive<R, S>(
     repo: &Repository<S>,
     opts: &BackupOptions,
-    source: &PathList,
+    src: &R,
     mut snap: SnapshotFile,
-) -> RusticResult<SnapshotFile> {
+    backup_paths: &[PathBuf],
+) -> RusticResult<SnapshotFile>
+where
+    S: IndexedIds,
+    R: ReadSource + 'static,
+    <R as ReadSource>::Open: Send,
+    <R as ReadSource>::Iter: Send,
+{
     let index = repo.index();
-
-    let backup_stdin = *source == PathList::from_string("-")?;
-    let backup_path = if backup_stdin {
-        vec![PathBuf::from(&opts.stdin_filename)]
-    } else {
-        source.paths()
-    };
 
     let as_path = opts
         .as_path
@@ -257,10 +254,9 @@ pub(crate) fn backup<S: IndexedIds>(
         })
         .transpose()?;
 
-    let paths = match &as_path {
-        Some(p) => std::slice::from_ref(p),
-        None => &backup_path,
-    };
+    let paths = as_path
+        .as_ref()
+        .map_or(backup_paths, |p| std::slice::from_ref(p));
 
     snap.paths.set_paths(paths).map_err(|err| {
         RusticError::with_source(
@@ -270,14 +266,14 @@ pub(crate) fn backup<S: IndexedIds>(
         )
         .attach_context(
             "paths",
-            backup_path
+            backup_paths
                 .iter()
                 .map(|p| p.display().to_string())
                 .join(","),
         )
     })?;
 
-    let (parent_ids, parent) = opts.parent_opts.get_parent(repo, &snap, backup_stdin);
+    let (parent_ids, parent) = opts.parent_opts.get_parent(repo, &snap);
     if parent_ids.is_empty() {
         info!("using no parent");
     } else {
@@ -287,50 +283,73 @@ pub(crate) fn backup<S: IndexedIds>(
     }
 
     let be = DryRunBackend::new(repo.dbe().clone(), opts.dry_run);
-    info!("starting to backup {source} ...");
+    info!("starting to backup {backup_paths:?} ...");
     let archiver = Archiver::new(be, index, repo.config(), parent, snap)?;
     let p = repo.progress_bytes("backing up...");
 
-    let snap = if backup_stdin {
-        let path = &backup_path[0];
+    archiver.archive(
+        src,
+        &backup_paths[0],
+        as_path.as_ref(),
+        opts.parent_opts.skip_if_unchanged,
+        opts.no_scan,
+        &p,
+    )
+}
+
+/// Backup data, create a snapshot.
+///
+/// # Type Parameters
+///
+/// * `S` - The type of the indexed tree.
+///
+/// # Arguments
+///
+/// * `repo` - The repository to use
+/// * `opts` - The backup options
+/// * `source` - The source to backup
+/// * `snap` - The snapshot with raw information
+///
+/// # Errors
+///
+/// * If sending the message to the raw packer fails.
+/// * If converting the data length to u64 fails
+/// * If sending the message to the raw packer fails.
+/// * If the index file could not be serialized.
+/// * If the time is not in the range of `Local::now()`
+///
+/// # Returns
+///
+/// The snapshot pointing to the backup'ed data.
+pub(crate) fn backup<S: IndexedIds>(
+    repo: &Repository<S>,
+    opts: &BackupOptions,
+    source: &PathList,
+    snap: SnapshotFile,
+) -> RusticResult<SnapshotFile> {
+    let backup_stdin = PathList::from_string("-")?;
+
+    let snap = if *source == backup_stdin {
+        let path = PathBuf::from(&opts.stdin_filename);
+        let backup_paths = vec![path.clone()];
         if let Some(command) = &opts.stdin_command {
-            let src = ChildStdoutSource::new(command, path.clone())?;
-            let res = archiver.archive(
-                &src,
-                path,
-                as_path.as_ref(),
-                opts.parent_opts.skip_if_unchanged,
-                opts.no_scan,
-                &p,
-            )?;
+            let src = ChildStdoutSource::new(command, path)?;
+            let res = archive(repo, opts, &src, snap, &backup_paths)?;
             src.finish()?;
             res
         } else {
-            let src = StdinSource::new(path.clone());
-            archiver.archive(
-                &src,
-                path,
-                as_path.as_ref(),
-                opts.parent_opts.skip_if_unchanged,
-                opts.no_scan,
-                &p,
-            )?
+            let src = StdinSource::new(path);
+            archive(repo, opts, &src, snap, &backup_paths)?
         }
     } else {
+        let backup_path = source.paths();
         let src = LocalSource::new(
             opts.ignore_save_opts,
             &opts.excludes,
             &opts.ignore_filter_opts,
             &backup_path,
         )?;
-        archiver.archive(
-            &src,
-            &backup_path[0],
-            as_path.as_ref(),
-            opts.parent_opts.skip_if_unchanged,
-            opts.no_scan,
-            &p,
-        )?
+        archive(repo, opts, &src, snap, &backup_path)?
     };
 
     Ok(snap)
