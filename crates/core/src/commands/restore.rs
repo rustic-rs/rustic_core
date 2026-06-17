@@ -3,6 +3,7 @@
 use derive_setters::Setters;
 use jiff::Timestamp;
 use log::{debug, error, info, trace, warn};
+use serde::{Deserialize, Serialize};
 use smallvec::SmallVec;
 
 use std::{cmp::Ordering, collections::BTreeMap, path::PathBuf, sync::Mutex};
@@ -58,6 +59,18 @@ pub struct RestoreOptions {
     /// Always read and verify existing files (don't trust correct modification time and file size)
     #[cfg_attr(feature = "clap", clap(long))]
     pub verify_existing: bool,
+
+    /// Restore sparse files
+    #[cfg_attr(feature = "clap", clap(long))]
+    pub sparse: Option<SparseRestore>,
+}
+
+#[derive(Serialize, Default, Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "clap", derive(clap::ValueEnum))]
+pub enum SparseRestore {
+    #[default]
+    No,
+    ByContent,
 }
 
 #[derive(Default, Debug, Clone, Copy)]
@@ -125,6 +138,7 @@ pub(crate) fn restore_repository<S: IndexedTree>(
         file_infos.file_lengths,
         file_infos.r,
         file_infos.restore_size,
+        opts.sparse.unwrap_or_default(),
     )?;
 
     let p = repo.progress_spinner("setting metadata...");
@@ -520,6 +534,7 @@ fn restore_contents<S: Open>(
     file_lengths: Vec<u64>,
     restore_info: RestoreInfo,
     restore_size: u64,
+    sparse: SparseRestore,
 ) -> RusticResult<()> {
     let be = repo.dbe();
 
@@ -627,6 +642,11 @@ fn restore_contents<S: Open>(
                             )
                             .unwrap()
                         };
+                        let is_sparse = match sparse {
+                            SparseRestore::ByContent => data.iter().all(|&b| b == 0),
+                            SparseRestore::No => false,
+                        };
+
                         for (file_idx, start) in name_dests {
                             let data = data.clone();
                             s1.spawn(move |_| {
@@ -639,7 +659,9 @@ fn restore_contents<S: Open>(
                                     sizes_guard[file_idx] = 0;
                                 }
                                 drop(sizes_guard);
-                                dest.write_at(path, start, &data).unwrap();
+                                if !is_sparse {
+                                    dest.write_at(path, start, &data).unwrap();
+                                }
                                 p.inc(size);
                             });
                         }
