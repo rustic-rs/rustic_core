@@ -130,8 +130,8 @@ pub use jiff;
 // rustic_core Public API
 pub use crate::{
     backend::{
-        ALL_FILE_TYPES, FileType, ReadBackend, ReadSource, ReadSourceEntry, ReadSourceOpen,
-        RepositoryBackends, WriteBackend,
+        ALL_FILE_TYPES, BytesList, FileType, ReadBackend, ReadSource, ReadSourceEntry,
+        ReadSourceOpen, RepositoryBackends, WriteBackend,
         childstdout::ChildStdoutSource,
         decrypt::{compression_level_range, max_compression_level},
         ignore::{LocalSource, LocalSourceFilterOptions, LocalSourceSaveOptions},

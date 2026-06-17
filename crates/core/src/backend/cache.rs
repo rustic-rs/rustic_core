@@ -1,7 +1,7 @@
 use std::{
     collections::HashMap,
     fs::{self, File},
-    io::{self, Read, Seek, SeekFrom, Write},
+    io::{self, Read, Seek, SeekFrom},
     path::{Path, PathBuf},
     sync::Arc,
 };
@@ -12,7 +12,7 @@ use log::{trace, warn};
 use walkdir::WalkDir;
 
 use crate::{
-    backend::{FileType, ReadBackend, WriteBackend},
+    backend::{BytesList, FileType, ReadBackend, WriteBackend},
     error::{ErrorKind, RusticError, RusticResult},
     id::Id,
     repofile::configfile::RepositoryId,
@@ -105,7 +105,7 @@ impl ReadBackend for CachedBackend {
             }
             let res = self.be.read_full(tpe, id);
             if let Ok(data) = &res
-                && let Err(err) = self.cache.write_bytes(tpe, id, data)
+                && let Err(err) = self.cache.write_bytes(tpe, id, &data.clone().into())
             {
                 warn!(
                     "Error in cache backend writing {tpe:?},{id}: {}",
@@ -156,7 +156,7 @@ impl ReadBackend for CachedBackend {
             match self.be.read_full(tpe, id) {
                 Ok(data) => {
                     let range = offset as usize..(offset + length) as usize;
-                    if let Err(err) = self.cache.write_bytes(tpe, id, &data) {
+                    if let Err(err) = self.cache.write_bytes(tpe, id, &data.clone().into()) {
                         warn!(
                             "Error in cache backend writing {tpe:?},{id}: {}",
                             err.display_log()
@@ -200,16 +200,22 @@ impl WriteBackend for CachedBackend {
     /// * `id` - The id of the file.
     /// * `cacheable` - Whether the file is cacheable.
     /// * `buf` - The data to write.
-    fn write_bytes(&self, tpe: FileType, id: &Id, cacheable: bool, buf: Bytes) -> RusticResult<()> {
+    fn write_bytes(
+        &self,
+        tpe: FileType,
+        id: &Id,
+        cacheable: bool,
+        content: BytesList,
+    ) -> RusticResult<()> {
         if (cacheable || tpe.is_cacheable())
-            && let Err(err) = self.cache.write_bytes(tpe, id, &buf)
+            && let Err(err) = self.cache.write_bytes(tpe, id, &content)
         {
             warn!(
                 "Error in cache backend writing {tpe:?},{id}: {}",
                 err.display_log()
             );
         }
-        self.be.write_bytes(tpe, id, cacheable, buf)
+        self.be.write_bytes(tpe, id, cacheable, content)
     }
 
     /// Removes the given file.
@@ -430,7 +436,7 @@ impl Cache {
     ///
     /// * If the file could not be read.
     pub fn read_full(&self, tpe: FileType, id: &Id) -> RusticResult<Option<Bytes>> {
-        trace!("cache reading tpe: {:?}, id: {}", &tpe, &id);
+        trace!("cache reading tpe: {tpe:?}, id: {id}");
 
         let path = self.path(tpe, id);
 
@@ -470,10 +476,7 @@ impl Cache {
         offset: u32,
         length: u32,
     ) -> RusticResult<Option<Bytes>> {
-        trace!(
-            "cache reading tpe: {:?}, id: {}, offset: {}",
-            &tpe, &id, &offset
-        );
+        trace!("cache reading tpe: {tpe:?}, id: {id}, offset: {offset}");
 
         let path = self.path(tpe, id);
 
@@ -537,8 +540,8 @@ impl Cache {
     /// # Errors
     ///
     /// * If the file could not be written.
-    pub fn write_bytes(&self, tpe: FileType, id: &Id, buf: &Bytes) -> RusticResult<()> {
-        fn write_local_file(filename: &Path, buf: &[u8]) -> RusticResult<()> {
+    pub fn write_bytes(&self, tpe: FileType, id: &Id, content: &BytesList) -> RusticResult<()> {
+        fn write_local_file(filename: &Path, mut reader: impl Read) -> RusticResult<()> {
             let mut file = fs::OpenOptions::new()
                 .create(true)
                 .truncate(true)
@@ -553,7 +556,7 @@ impl Cache {
                     .attach_context("path", filename.to_string_lossy())
                 })?;
 
-            file.write_all(buf).map_err(|err| {
+            _ = io::copy(&mut reader, &mut file).map_err(|err| {
                 RusticError::with_source(
                     ErrorKind::InputOutput,
                     "Failed to write to the buffer: `{path}`.",
@@ -564,7 +567,7 @@ impl Cache {
             Ok(())
         }
 
-        trace!("cache writing tpe: {:?}, id: {}", &tpe, &id);
+        trace!("cache writing tpe: {tpe:?}, id: {id}");
 
         let dir = self.dir(tpe, id);
 
@@ -582,7 +585,7 @@ impl Cache {
 
         let filename = self.path(tpe, id);
         let filename_tmp = dir.join(id.to_hex().to_string() + "-tmp-");
-        match write_local_file(&filename_tmp, buf) {
+        match write_local_file(&filename_tmp, content.clone().reader()) {
             Ok(file) => file,
             Err(err) => {
                 // Clean-up in case of error
@@ -616,7 +619,7 @@ impl Cache {
     ///
     /// * If the file could not be removed.
     pub fn remove(&self, tpe: FileType, id: &Id) -> RusticResult<()> {
-        trace!("cache writing tpe: {:?}, id: {}", &tpe, &id);
+        trace!("cache writing tpe: {tpe:?}, id: {id}");
         let filename = self.path(tpe, id);
         fs::remove_file(&filename).map_err(|err| {
             RusticError::with_source(

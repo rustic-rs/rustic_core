@@ -586,38 +586,31 @@ where
 
     fn next(&mut self) -> Option<Self::Item> {
         loop {
-            match self.inner.next() {
-                Some(node) => {
-                    let path = self.path.join(node.name());
-                    if self.recursive
-                        && let Some(id) = node.subtree
-                    {
-                        self.path.push(node.name());
-                        let be = self.be.clone();
-                        let tree = match Tree::from_backend(&be, self.index, id) {
-                            Ok(tree) => tree,
-                            Err(err) => return Some(Err(err)),
-                        };
-                        let old_inner = mem::replace(&mut self.inner, tree.nodes.into_iter());
-                        self.open_iterators.push(old_inner);
-                    }
-
-                    if let Some(overrides) = &self.overrides
-                        && let Match::Ignore(_) = overrides.matched(&path, false)
-                    {
-                        continue;
-                    }
-
-                    return Some(Ok((path, node)));
+            if let Some(node) = self.inner.next() {
+                let path = self.path.join(node.name());
+                if self.recursive
+                    && let Some(id) = node.subtree
+                {
+                    self.path.push(node.name());
+                    let be = self.be.clone();
+                    let tree = match Tree::from_backend(&be, self.index, id) {
+                        Ok(tree) => tree,
+                        Err(err) => return Some(Err(err)),
+                    };
+                    let old_inner = mem::replace(&mut self.inner, tree.nodes.into_iter());
+                    self.open_iterators.push(old_inner);
                 }
-                None => match self.open_iterators.pop() {
-                    Some(it) => {
-                        self.inner = it;
-                        _ = self.path.pop();
-                    }
-                    None => return None,
-                },
+
+                if let Some(overrides) = &self.overrides
+                    && let Match::Ignore(_) = overrides.matched(&path, false)
+                {
+                    continue;
+                }
+                return Some(Ok((path, node)));
             }
+            // if inner was empty, go to parent path
+            self.inner = self.open_iterators.pop()?;
+            _ = self.path.pop();
         }
     }
 }

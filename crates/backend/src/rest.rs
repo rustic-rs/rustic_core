@@ -8,12 +8,14 @@ use jiff::SignedDuration;
 use log::{trace, warn};
 use reqwest::{
     Url,
-    blocking::{Client, ClientBuilder},
+    blocking::{Body, Client, ClientBuilder},
     header::{HeaderMap, HeaderValue},
 };
 use serde::Deserialize;
 
-use rustic_core::{ErrorKind, FileType, Id, ReadBackend, RusticError, RusticResult, WriteBackend};
+use rustic_core::{
+    BytesList, ErrorKind, FileType, Id, ReadBackend, RusticError, RusticResult, WriteBackend,
+};
 
 /// joining URL failed on: `{0}`
 #[derive(thiserror::Error, Clone, Copy, Debug, displaydoc::Display)]
@@ -463,22 +465,19 @@ impl WriteBackend for RestBackend {
         tpe: FileType,
         id: &Id,
         _cacheable: bool,
-        buf: Bytes,
+        content: BytesList,
     ) -> RusticResult<()> {
-        trace!("writing tpe: {:?}, id: {}", &tpe, &id);
-        let req_builder = self
-            .client
-            .post(
-                self.url(tpe, id)
-                    .map_err(|err| construct_join_url_error(err, tpe, id, &self.url))?,
-            )
-            .body(buf);
+        trace!("writing tpe: {tpe:?}, id: {id}");
+        let url = self
+            .url(tpe, id)
+            .map_err(|err| construct_join_url_error(err, tpe, id, &self.url))?;
 
         self.retry_notify(|| {
-            // Note: try_clone() always gives Some(_) as the body is Bytes which is cloneable
-            _ = req_builder
-                .try_clone()
-                .unwrap()
+            let body = Body::new(content.clone().reader());
+            _ = self
+                .client
+                .post(url.clone())
+                .body(body)
                 .send()?
                 .error_for_status()?;
             Ok(())
@@ -498,7 +497,7 @@ impl WriteBackend for RestBackend {
     ///
     /// * If the backoff failed.
     fn remove(&self, tpe: FileType, id: &Id, _cacheable: bool) -> RusticResult<()> {
-        trace!("removing tpe: {:?}, id: {}", &tpe, &id);
+        trace!("removing tpe: {tpe:?}, id: {id}");
         let url = self
             .url(tpe, id)
             .map_err(|err| construct_join_url_error(err, tpe, id, &self.url))?;

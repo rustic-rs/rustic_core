@@ -21,7 +21,7 @@ use tokio::runtime::Runtime;
 use typed_path::UnixPathBuf;
 
 use rustic_core::{
-    ALL_FILE_TYPES, ErrorKind, FileType, Id, ReadBackend, ReadSource, ReadSourceEntry,
+    ALL_FILE_TYPES, BytesList, ErrorKind, FileType, Id, ReadBackend, ReadSource, ReadSourceEntry,
     ReadSourceOpen, RusticError, RusticResult, WriteBackend,
     repofile::{Node, NodeType},
 };
@@ -498,11 +498,11 @@ impl WriteBackend for OpenDALBackend {
         tpe: FileType,
         id: &Id,
         _cacheable: bool,
-        buf: Bytes,
+        content: BytesList,
     ) -> RusticResult<()> {
-        trace!("writing tpe: {:?}, id: {}", &tpe, &id);
+        trace!("writing tpe: {tpe:?}, id: {id}");
         let filename = self.path(tpe, id);
-        _ = self.operator.write(&filename, buf).map_err(|err| {
+        _ = self.operator.write(&filename, content.into_vec()).map_err(|err| {
             RusticError::with_source(
                 ErrorKind::Backend,
                 "Writing file `{path}` failed in the backend. Please check if the given path is correct.",
@@ -524,7 +524,7 @@ impl WriteBackend for OpenDALBackend {
     /// * `id` - The id of the file.
     /// * `cacheable` - Whether the file is cacheable.
     fn remove(&self, tpe: FileType, id: &Id, _cacheable: bool) -> RusticResult<()> {
-        trace!("removing tpe: {:?}, id: {}", &tpe, &id);
+        trace!("removing tpe: {tpe:?}, id: {id}");
         let filename = self.path(tpe, id);
         self.operator.delete(&filename).map_err(|err| {
             RusticError::with_source(

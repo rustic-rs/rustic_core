@@ -8,7 +8,7 @@ use zstd::stream::{copy_encode, decode_all, encode_all};
 pub use zstd::compression_level_range;
 
 use crate::{
-    Progress,
+    BytesList, Progress,
     backend::{FileType, ReadBackend, WriteBackend},
     blob::BlobLocation,
     crypto::{CryptoKey, hasher::hash},
@@ -674,8 +674,14 @@ impl<C: CryptoKey> WriteBackend for DecryptBackend<C> {
         self.be.create()
     }
 
-    fn write_bytes(&self, tpe: FileType, id: &Id, cacheable: bool, buf: Bytes) -> RusticResult<()> {
-        self.be.write_bytes(tpe, id, cacheable, buf)
+    fn write_bytes(
+        &self,
+        tpe: FileType,
+        id: &Id,
+        cacheable: bool,
+        content: BytesList,
+    ) -> RusticResult<()> {
+        self.be.write_bytes(tpe, id, cacheable, content)
     }
 
     fn remove(&self, tpe: FileType, id: &Id, cacheable: bool) -> RusticResult<()> {

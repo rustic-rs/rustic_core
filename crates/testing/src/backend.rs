@@ -5,11 +5,11 @@ pub mod in_memory_backend {
         sync::RwLock,
     };
 
-    use bytes::Bytes;
+    use bytes::{Bytes, BytesMut};
     use enum_map::EnumMap;
 
     use rustic_core::{
-        ErrorKind, FileType, Id, ReadBackend, RusticError, RusticResult, WriteBackend,
+        BytesList, ErrorKind, FileType, Id, ReadBackend, RusticError, RusticResult, WriteBackend,
     };
 
     #[derive(Debug)]
@@ -154,9 +154,14 @@ pub mod in_memory_backend {
             tpe: FileType,
             id: &Id,
             _cacheable: bool,
-            buf: Bytes,
+            content: BytesList,
         ) -> RusticResult<()> {
-            if self.map.write().unwrap()[tpe].insert(*id, buf).is_some() {
+            let mut bytes = BytesMut::new();
+            for input in content.slice() {
+                bytes.extend_from_slice(input);
+            }
+            let bytes = bytes.freeze();
+            if self.map.write().unwrap()[tpe].insert(*id, bytes).is_some() {
                 return Err(
                     RusticError::new(ErrorKind::Backend, "ID `{id}` already exists.")
                         .attach_context("id", id.to_string()),

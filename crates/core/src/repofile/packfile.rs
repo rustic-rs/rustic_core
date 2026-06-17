@@ -386,7 +386,7 @@ impl<'a> PackHeaderRef<'a> {
     ///
     /// * If writing the binary representation failed
     pub(crate) fn to_binary(&self) -> PackFileResult<Vec<u8>> {
-        let mut writer = Cursor::new(Vec::with_capacity(self.pack_size() as usize));
+        let mut writer = Cursor::new(Vec::with_capacity(self.size() as usize));
         // collect header entries
         for blob in self.0 {
             HeaderEntry::from_blob(blob)

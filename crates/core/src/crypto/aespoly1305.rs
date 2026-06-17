@@ -90,7 +90,7 @@ impl CryptoKey for Key {
             return Err(RusticError::new(
                 ErrorKind::Cryptography,
                 "Data is too short (less than 16 bytes), cannot decrypt.",
-            ))?;
+            ));
         }
 
         let nonce = Nonce::from_slice(&data[0..16]);
