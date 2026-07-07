@@ -38,6 +38,7 @@ mod integration {
     mod restore;
     mod rewrite;
     mod snapshots;
+    mod upload;
     mod vfs;
     use super::*;
 }

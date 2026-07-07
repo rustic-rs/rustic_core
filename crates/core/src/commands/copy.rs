@@ -102,6 +102,7 @@ pub(crate) fn copy<'a, R: IndexedFull, S: IndexedIds>(
         BlobType::Data,
         indexer.clone(),
         pack_sizer,
+        repo_dest.upload_concurrency(),
     )?;
     let data_blobs: Vec<_> = data_ids
         .into_iter()
@@ -126,6 +127,7 @@ pub(crate) fn copy<'a, R: IndexedFull, S: IndexedIds>(
         BlobType::Tree,
         indexer.clone(),
         pack_sizer,
+        repo_dest.upload_concurrency(),
     )?;
 
     let trees: Vec<_> = tree_ids

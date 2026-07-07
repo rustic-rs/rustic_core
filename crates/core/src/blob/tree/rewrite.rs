@@ -133,8 +133,9 @@ impl<'a, BE: DecryptFullBackend, I: ReadGlobalIndex> Rewriter<'a, BE, I> {
         config: &ConfigFile,
         opts: &RewriteTreesOptions,
         dry_run: bool,
+        upload_concurrency: usize,
     ) -> RusticResult<Self> {
-        let modifier = TreeModifier::new(be, index, config, dry_run)?;
+        let modifier = TreeModifier::new(be, index, config, dry_run, upload_concurrency)?;
         let visitor = RewriteVisitor::new(opts)?;
         Ok(Self { modifier, visitor })
     }

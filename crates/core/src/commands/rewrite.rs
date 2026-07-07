@@ -59,6 +59,7 @@ pub(crate) fn rewrite_snapshots_and_trees<S: IndexedFull>(
         repo.config(),
         tree_opts,
         opts.dry_run,
+        repo.upload_concurrency(),
     )?;
 
     let snapshots: Vec<_> = snapshots

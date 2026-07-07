@@ -1387,6 +1387,7 @@ pub(crate) fn prune_repository<S: Open>(
             BlobType::Tree,
             indexer.clone(),
             pack_sizer[BlobType::Tree],
+            repo.upload_concurrency(),
         )?;
 
         let data_repacker = BlobCopier::new(
@@ -1395,6 +1396,7 @@ pub(crate) fn prune_repository<S: Open>(
             BlobType::Data,
             indexer.clone(),
             pack_sizer[BlobType::Data],
+            repo.upload_concurrency(),
         )?;
 
         // write new pack files and index files

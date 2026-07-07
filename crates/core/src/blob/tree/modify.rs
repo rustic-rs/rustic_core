@@ -84,11 +84,23 @@ pub struct TreeModifier<'a, BE: DecryptWriteBackend, I: ReadGlobalIndex> {
 }
 
 impl<'a, BE: DecryptFullBackend, I: ReadGlobalIndex> TreeModifier<'a, BE, I> {
-    pub fn new(be: &'a BE, index: &'a I, config: &ConfigFile, dry_run: bool) -> RusticResult<Self> {
+    pub fn new(
+        be: &'a BE,
+        index: &'a I,
+        config: &ConfigFile,
+        dry_run: bool,
+        upload_concurrency: usize,
+    ) -> RusticResult<Self> {
         let indexer = Indexer::new(be.clone()).into_shared();
         let pack_sizer =
             PackSizer::from_config(config, BlobType::Tree, index.total_size(BlobType::Tree));
-        let packer = Packer::new(be.clone(), BlobType::Tree, indexer.clone(), pack_sizer)?;
+        let packer = Packer::new(
+            be.clone(),
+            BlobType::Tree,
+            indexer.clone(),
+            pack_sizer,
+            upload_concurrency,
+        )?;
 
         Ok(Self {
             be,

@@ -83,13 +83,22 @@ impl<'a, BE: DecryptFullBackend, I: ReadGlobalIndex> Archiver<'a, BE, I> {
         config: &ConfigFile,
         parent: Parent,
         mut snap: SnapshotFile,
+        upload_concurrency: usize,
     ) -> RusticResult<Self> {
         let indexer = Indexer::new(be.clone()).into_shared();
         let mut summary = snap.summary.take().unwrap_or_default();
         summary.backup_start = Zoned::now();
 
-        let file_archiver = FileArchiver::new(be.clone(), index, indexer.clone(), config)?;
-        let tree_archiver = TreeArchiver::new(be.clone(), index, indexer.clone(), config, summary)?;
+        let file_archiver =
+            FileArchiver::new(be.clone(), index, indexer.clone(), config, upload_concurrency)?;
+        let tree_archiver = TreeArchiver::new(
+            be.clone(),
+            index,
+            indexer.clone(),
+            config,
+            summary,
+            upload_concurrency,
+        )?;
 
         Ok(Self {
             file_archiver,

@@ -284,7 +284,14 @@ where
 
     let be = DryRunBackend::new(repo.dbe().clone(), opts.dry_run);
     info!("starting to backup {backup_paths:?} ...");
-    let archiver = Archiver::new(be, index, repo.config(), parent, snap)?;
+    let archiver = Archiver::new(
+        be,
+        index,
+        repo.config(),
+        parent,
+        snap,
+        repo.upload_concurrency(),
+    )?;
     let p = repo.progress_bytes("backing up...");
 
     archiver.archive(

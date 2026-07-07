@@ -174,7 +174,8 @@ pub(crate) fn repair_snapshots<S: IndexedFull>(
     }
 
     let mut state = RepairState::new(opts, repo.index());
-    let modifier = TreeModifier::new(be, repo.index(), config_file, dry_run)?;
+    let modifier =
+        TreeModifier::new(be, repo.index(), config_file, dry_run, repo.upload_concurrency())?;
 
     for mut snap in snapshots {
         let snap_id = snap.id;

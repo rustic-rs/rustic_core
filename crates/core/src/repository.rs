@@ -144,7 +144,21 @@ pub struct RepositoryOptions {
     #[cfg_attr(feature = "clap", clap(long, global = true))]
     #[cfg_attr(feature = "merge", merge(strategy = conflate::option::overwrite_none))]
     pub warm_up_batch: Option<usize>,
+
+    /// Number of pack files to upload concurrently when writing to the backend
+    /// (backup, copy, repack). Each in-flight upload holds a full pack in
+    /// memory, so peak memory scales with this value. It is tuned for network
+    /// throughput (a single connection cannot saturate a high-latency link),
+    /// not CPU cores. Defaults to 8.
+    #[cfg_attr(feature = "clap", clap(long, global = true, value_name = "N"))]
+    #[cfg_attr(feature = "merge", merge(strategy = conflate::option::overwrite_none))]
+    pub upload_concurrency: Option<usize>,
 }
+
+/// Default number of pack files uploaded concurrently.
+///
+/// See [`RepositoryOptions::upload_concurrency`].
+pub(crate) const DEFAULT_UPLOAD_CONCURRENCY: usize = 8;
 
 #[derive(Debug, Clone)]
 /// A `Repository` allows all kind of actions to be performed.
@@ -260,6 +274,15 @@ impl<S> Repository<S> {
     /// Start a new progress, which is hidden
     pub fn progress_hidden(&self) -> Progress {
         Progress::new(HiddenProgress)
+    }
+
+    /// The number of pack files to upload concurrently, with the default
+    /// applied. See [`RepositoryOptions::upload_concurrency`].
+    pub(crate) fn upload_concurrency(&self) -> usize {
+        self.opts
+            .upload_concurrency
+            .unwrap_or(DEFAULT_UPLOAD_CONCURRENCY)
+            .max(1)
     }
 
     /// Start a new progress spinner. Note that this progress doesn't get a length and is not advanced, only finished.

@@ -65,10 +65,11 @@ impl<'a, BE: DecryptWriteBackend, I: ReadGlobalIndex> TreeArchiver<'a, BE, I> {
         indexer: SharedIndexer<BE>,
         config: &ConfigFile,
         summary: SnapshotSummary,
+        upload_concurrency: usize,
     ) -> RusticResult<Self> {
         let pack_sizer =
             PackSizer::from_config(config, BlobType::Tree, index.total_size(BlobType::Tree));
-        let tree_packer = Packer::new(be, BlobType::Tree, indexer, pack_sizer)?;
+        let tree_packer = Packer::new(be, BlobType::Tree, indexer, pack_sizer, upload_concurrency)?;
 
         Ok(Self {
             tree: Tree::new(),

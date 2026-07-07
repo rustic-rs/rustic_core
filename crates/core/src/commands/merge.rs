@@ -111,6 +111,7 @@ pub(crate) fn merge_trees<S: IndexedTree>(
         BlobType::Tree,
         indexer.clone(),
         pack_sizer,
+        repo.upload_concurrency(),
     )?;
 
     let save = |tree: Tree| -> RusticResult<_> {

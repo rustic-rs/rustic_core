@@ -61,10 +61,11 @@ impl<'a, BE: DecryptWriteBackend, I: ReadGlobalIndex> FileArchiver<'a, BE, I> {
         index: &'a I,
         indexer: SharedIndexer<BE>,
         config: &ConfigFile,
+        upload_concurrency: usize,
     ) -> RusticResult<Self> {
         let pack_sizer =
             PackSizer::from_config(config, BlobType::Data, index.total_size(BlobType::Data));
-        let data_packer = Packer::new(be, BlobType::Data, indexer, pack_sizer)?;
+        let data_packer = Packer::new(be, BlobType::Data, indexer, pack_sizer, upload_concurrency)?;
 
         Ok(Self {
             index,

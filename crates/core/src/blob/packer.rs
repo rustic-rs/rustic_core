@@ -241,12 +241,14 @@ impl<BE: DecryptWriteBackend> Packer<BE> {
         blob_type: BlobType,
         indexer: SharedIndexer<BE>,
         pack_sizer: PackSizer,
+        upload_concurrency: usize,
     ) -> RusticResult<Self> {
         let raw_packer = Arc::new(RwLock::new(RawPacker::new(
             be.clone(),
             blob_type,
             indexer.clone(),
             pack_sizer,
+            upload_concurrency,
         )));
 
         let (tx, rx) = bounded(0);
@@ -446,15 +448,22 @@ impl<BE: DecryptWriteBackend> RawPacker<BE> {
     /// * `indexer` - The indexer to write to.
     /// * `config` - The config file.
     /// * `total_size` - The total size of the pack file.
-    fn new(be: BE, blob_type: BlobType, indexer: SharedIndexer<BE>, pack_sizer: PackSizer) -> Self {
+    fn new(
+        be: BE,
+        blob_type: BlobType,
+        indexer: SharedIndexer<BE>,
+        pack_sizer: PackSizer,
+        upload_concurrency: usize,
+    ) -> Self {
         let file_writer = Some(Actor::new(
             FileWriterHandle {
                 be: be.clone(),
                 indexer,
                 cacheable: blob_type.is_cacheable(),
             },
-            1,
-            1,
+            // Buffer enough packs to keep every upload worker fed.
+            upload_concurrency,
+            upload_concurrency,
         ));
 
         Self {
@@ -748,8 +757,9 @@ impl Actor {
     fn new<BE: DecryptWriteBackend>(
         fwh: FileWriterHandle<BE>,
         queue_len: usize,
-        _par: usize,
+        par: usize,
     ) -> Self {
+        let par = par.max(1);
         let (tx, rx) = bounded(queue_len);
         let (finish_tx, finish_rx) = bounded::<RusticResult<()>>(0);
 
@@ -763,7 +773,11 @@ impl Actor {
                         (file, PackId::from(id), index)
                     })
                     .readahead_scoped(scope)
-                    .map(|load| fwh.process(load))
+                    // Upload up to `par` packs concurrently. `process` is the
+                    // backend `write_bytes` call, so this opens `par` backend
+                    // connections instead of one. Results are yielded in input
+                    // order, so the first upload error still propagates.
+                    .parallel_map_scoped_custom(scope, |o| o.threads(par), |load| fwh.process(load))
                     .readahead_scoped(scope)
                     .try_for_each(|index| fwh.index(index?));
                 _ = finish_tx.send(status);
@@ -879,8 +893,9 @@ impl<BE: DecryptFullBackend> BlobCopier<BE> {
         blob_type: BlobType,
         indexer: SharedIndexer<BE>,
         pack_sizer: PackSizer,
+        upload_concurrency: usize,
     ) -> RusticResult<Self> {
-        let packer = Packer::new(be_dst, blob_type, indexer, pack_sizer)?;
+        let packer = Packer::new(be_dst, blob_type, indexer, pack_sizer, upload_concurrency)?;
         Ok(Self {
             be_src,
             packer,
