@@ -68,15 +68,15 @@ serde = { version = "1.0.228" }
 serde-aux = { version = "4.7.0", default-features = false }
 serde_derive = "1.0.228"
 serde_json = "1.0.149"
-serde_with = { version = "3.16.1", features = ["base64"] }
+serde_with = { version = "3.21.0", features = ["base64"] }
 
 # local source/destination
-cached = { version = "1.1.0", default-features = false, features = ["proc_macro"] }
+cached = { version = "2.0.2", default-features = false, features = ["proc_macro"] }
 dunce = "1.0.5"
 filetime = "0.2.27"
 ignore = "0.4.25"
 nix = { version = "0.31.1", default-features = false, features = ["user", "fs"] }
-path-dedot = "3.1.1"
+path-dedot = "4.0.1"
 walkdir = "2.5.0"
 
 # cache
@@ -95,12 +95,12 @@ backon = "1.6.0"
 bytes = { workspace = true }
 bytesize = "2.3.1"
 ecow = "0.3.0"
-enum-map = { workspace = true }
+enum-map = "2.7.3"
 enumset = { version = "1.1.10", features = ["serde"] }
 gethostname = "1.1.0"
-itertools = "0.14.0"
+itertools = "0.15.0"
 jiff = { version = "0.2.19", features = ["logging", "serde"] }
-quick_cache = "0.6.18"
+quick_cache = "0.7.0"
 sha2 = "0.11.0"
 shell-words = "1.1.1"
 smallvec = { version = "1.15.1", features = ["union"] }
@@ -116,7 +116,7 @@ anyhow = { workspace = true }
 flate2 = "1.1.9"
 globset = "0.4.18"
 insta = { version = "1.46.3", features = ["redactions", "ron"] }
-mockall = "0.14"
+mockall = "0.15"
 pretty_assertions = "1.4.1"
 proptest = { version = "1.10.0", default-features = false, features = ["std"] }
 rstest = { workspace = true }
