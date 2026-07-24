@@ -3,7 +3,7 @@ use std::sync::Arc;
 use bytes::Bytes;
 
 use crate::{
-    backend::{FileType, ReadBackend, WriteBackend},
+    backend::{BytesList, FileType, ReadBackend, WriteBackend},
     error::RusticResult,
     id::Id,
 };
@@ -71,8 +71,14 @@ impl WriteBackend for WarmUpAccessBackend {
         self.be.create()
     }
 
-    fn write_bytes(&self, tpe: FileType, id: &Id, cacheable: bool, buf: Bytes) -> RusticResult<()> {
-        self.be.write_bytes(tpe, id, cacheable, buf)
+    fn write_bytes(
+        &self,
+        tpe: FileType,
+        id: &Id,
+        cacheable: bool,
+        content: BytesList,
+    ) -> RusticResult<()> {
+        self.be.write_bytes(tpe, id, cacheable, content)
     }
 
     fn remove(&self, tpe: FileType, id: &Id, cacheable: bool) -> RusticResult<()> {

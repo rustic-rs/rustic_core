@@ -99,7 +99,7 @@ fn copy(
     files.into_par_iter().try_for_each(|id| {
         let file = from.read_full(file_type, &id)?;
         let length = u64::try_from(file.len()).expect("file len should fit into u64");
-        to.write_bytes(file_type, &id, false, file)?;
+        to.write_bytes(file_type, &id, false, file.into())?;
         p.inc(length);
         Ok(())
     })

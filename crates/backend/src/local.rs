@@ -1,7 +1,7 @@
 use std::{
     fmt::Debug,
     fs::{self, File, Metadata},
-    io::{Read, Seek, SeekFrom, Write},
+    io::{Read, Seek, SeekFrom},
     path::{Path, PathBuf},
     process::Command,
 };
@@ -12,8 +12,8 @@ use log::{debug, error, trace, warn};
 use walkdir::WalkDir;
 
 use rustic_core::{
-    ALL_FILE_TYPES, CommandInput, ErrorKind, FileType, Id, ReadBackend, RusticError, RusticResult,
-    WriteBackend,
+    ALL_FILE_TYPES, BytesList, CommandInput, ErrorKind, FileType, Id, ReadBackend, RusticError,
+    RusticResult, WriteBackend,
 };
 
 /// A local backend.
@@ -470,19 +470,13 @@ impl WriteBackend for LocalBackend {
         tpe: FileType,
         id: &Id,
         _cacheable: bool,
-        buf: Bytes,
+        content: BytesList,
     ) -> RusticResult<()> {
-        fn write_local_file(filename: &Path, buf: &[u8]) -> RusticResult<()> {
-            let length = buf.len().try_into().map_err(|err| {
-                RusticError::with_source(
-                    ErrorKind::Internal,
-                    "Failed to convert length `{length}` to u64.",
-                    err,
-                )
-                .attach_context("length", buf.len().to_string())
-                .ask_report()
-            })?;
-
+        fn write_local_file(
+            filename: &Path,
+            mut reader: impl Read,
+            length: u64,
+        ) -> RusticResult<()> {
             let mut file = fs::OpenOptions::new()
                 .create(true)
                 .truncate(true)
@@ -507,7 +501,7 @@ impl WriteBackend for LocalBackend {
                     .attach_context("path", filename.to_string_lossy())
             })?;
 
-            file.write_all(buf).map_err(|err| {
+            _ = std::io::copy(&mut reader, &mut file).map_err(|err| {
                 RusticError::with_source(
                     ErrorKind::InputOutput,
                     "Failed to write to the buffer: `{path}`. Please check the file and try again.",
@@ -526,7 +520,7 @@ impl WriteBackend for LocalBackend {
             Ok(())
         }
 
-        trace!("writing tpe: {:?}, id: {}", &tpe, &id);
+        trace!("writing tpe: {tpe:?}, id: {id}");
         let filename = self.path(tpe, id);
 
         let parent = self.base_path(tpe, id);
@@ -545,7 +539,13 @@ impl WriteBackend for LocalBackend {
 
         // Write to temporary file
         let filename_tmp = parent.join(Self::filename(tpe, id) + "-tmp-");
-        match write_local_file(&filename_tmp, &buf) {
+        let size = content.size();
+        let reader = content.reader();
+        match write_local_file(
+            &filename_tmp,
+            reader,
+            size.try_into().expect("size too large for u64"), // should not happen
+        ) {
             Ok(file) => file,
             Err(err) => {
                 // Clean-up in case of error
@@ -585,7 +585,7 @@ impl WriteBackend for LocalBackend {
     ///
     /// * If the file could not be removed.
     fn remove(&self, tpe: FileType, id: &Id, _cacheable: bool) -> RusticResult<()> {
-        trace!("removing tpe: {:?}, id: {}", &tpe, &id);
+        trace!("removing tpe: {tpe:?}, id: {id}");
         let filename = self.path(tpe, id);
         fs::remove_file(&filename).map_err(|err|
             RusticError::with_source(

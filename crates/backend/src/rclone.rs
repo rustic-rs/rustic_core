@@ -376,8 +376,14 @@ impl WriteBackend for RcloneBackend {
     /// * `id` - The id of the file.
     /// * `cacheable` - Whether the data should be cached.
     /// * `buf` - The data to write.
-    fn write_bytes(&self, tpe: FileType, id: &Id, cacheable: bool, buf: Bytes) -> RusticResult<()> {
-        self.rest.write_bytes(tpe, id, cacheable, buf)
+    fn write_bytes(
+        &self,
+        tpe: FileType,
+        id: &Id,
+        cacheable: bool,
+        content: rustic_core::BytesList,
+    ) -> RusticResult<()> {
+        self.rest.write_bytes(tpe, id, cacheable, content)
     }
 
     /// Removes the given file.

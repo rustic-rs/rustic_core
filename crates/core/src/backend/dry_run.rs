@@ -3,7 +3,7 @@ use zstd::decode_all;
 
 use crate::{
     backend::{
-        FileType, ReadBackend, WriteBackend,
+        BytesList, FileType, ReadBackend, WriteBackend,
         decrypt::{DecryptFullBackend, DecryptReadBackend, DecryptWriteBackend},
     },
     error::{ErrorKind, RusticError, RusticResult},
@@ -159,11 +159,17 @@ impl<BE: DecryptFullBackend> WriteBackend for DryRunBackend<BE> {
         }
     }
 
-    fn write_bytes(&self, tpe: FileType, id: &Id, cacheable: bool, buf: Bytes) -> RusticResult<()> {
+    fn write_bytes(
+        &self,
+        tpe: FileType,
+        id: &Id,
+        cacheable: bool,
+        content: BytesList,
+    ) -> RusticResult<()> {
         if self.dry_run {
             Ok(())
         } else {
-            self.be.write_bytes(tpe, id, cacheable, buf)
+            self.be.write_bytes(tpe, id, cacheable, content)
         }
     }
 
