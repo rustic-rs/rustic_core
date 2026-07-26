@@ -21,7 +21,7 @@ use tokio::runtime::Runtime;
 use typed_path::UnixPathBuf;
 
 use rustic_core::{
-    ALL_FILE_TYPES, BytesList, ErrorKind, FileType, Id, ReadBackend, ReadSource, ReadSourceEntry,
+    ALL_FILE_TYPES, BytesList, ErrorKind, Excludes, FileType, Id, ReadBackend, ReadSource, ReadSourceEntry,
     ReadSourceOpen, RusticError, RusticResult, WriteBackend,
     repofile::{Node, NodeType},
 };
@@ -209,9 +209,12 @@ impl OpenDALBackend {
 
     /// Turn this `OpenDALBackend into a ReadSource`
     ///
+    /// # Arguments
+    /// * `excludes` - The exclude patterns to apply
+    ///
     /// # Errors
-    /// If listing fails
-    pub fn as_source(self) -> RusticResult<OpenDALReadSource> {
+    /// If listing fails or exclude patterns cannot be compiled
+    pub fn as_source(self, excludes: &Excludes) -> RusticResult<OpenDALReadSource> {
         let list_options = ListOptions {
             recursive: true,
             ..Default::default()
@@ -237,6 +240,32 @@ impl OpenDALBackend {
             })
             .collect();
         entries.sort_unstable_by(|e1, e2| e1.path().cmp(e2.path()));
+
+        if !excludes.is_empty() {
+            let matcher = excludes.as_override()?;
+            let mut ignoring: Option<String> = None;
+
+            entries.retain(|e| {
+                let path = e.path();
+                let path = path.strip_suffix('/').unwrap_or(path);
+                let is_dir = e.metadata().is_dir();
+
+                if let Some(ref prefix) = ignoring {
+                    if !path.starts_with(prefix) {
+                        ignoring = None;
+                    } else {
+                        return false;
+                    }
+                }
+
+                matcher.matched(path, is_dir).is_ignore().then(|| {
+                    if is_dir {
+                        ignoring = Some(path.to_string() + "/")
+                    }
+                    false
+                }).unwrap_or(true)
+            });
+        }
 
         Ok(OpenDALReadSource {
             entries,
