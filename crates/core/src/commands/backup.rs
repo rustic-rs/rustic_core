@@ -332,14 +332,17 @@ pub(crate) fn backup<S: IndexedIds>(
     let snap = if *source == backup_stdin {
         let path = PathBuf::from(&opts.stdin_filename);
         let backup_paths = vec![path.clone()];
+        // for stdin, use no parent
+        let mut opts = opts.clone();
+        opts.parent_opts.force = true;
         if let Some(command) = &opts.stdin_command {
             let src = ChildStdoutSource::new(command, path)?;
-            let res = archive(repo, opts, &src, snap, &backup_paths)?;
+            let res = archive(repo, &opts, &src, snap, &backup_paths)?;
             src.finish()?;
             res
         } else {
             let src = StdinSource::new(path);
-            archive(repo, opts, &src, snap, &backup_paths)?
+            archive(repo, &opts, &src, snap, &backup_paths)?
         }
     } else {
         let backup_path = source.paths();
