@@ -101,6 +101,7 @@ opendal = { version = "0.57.0", features = ["blocking", "services-b2", "services
 anyhow = { workspace = true }
 rstest = { workspace = true }
 toml = "1.0.3"
+dotenvy = "0.15.7"
 
 [lints]
 workspace = true

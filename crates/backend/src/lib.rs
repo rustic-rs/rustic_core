@@ -65,6 +65,10 @@ pub mod util;
 #[cfg(feature = "opendal")]
 pub mod opendal;
 
+/// Progress counting layer for the `OpenDAL` backend.
+#[cfg(feature = "opendal")]
+mod progress_layer;
+
 /// `Rclone` backend for Rustic.
 #[cfg(feature = "rclone")]
 pub mod rclone;

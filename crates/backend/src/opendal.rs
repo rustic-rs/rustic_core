@@ -14,7 +14,7 @@ use opendal::{
     Entry, Metadata,
     blocking::{Operator, StdReader},
     layers::{ConcurrentLimitLayer, LoggingLayer, RetryLayer, ThrottleLayer},
-    options::{ListOptions, ReadOptions},
+    options::{ListOptions, ReadOptions, WriteOptions},
 };
 use rayon::prelude::{IntoParallelIterator, ParallelIterator};
 use tokio::runtime::Runtime;
@@ -26,15 +26,27 @@ use rustic_core::{
     repofile::{Node, NodeType},
 };
 
+use crate::progress_layer::{ProgressLayer, WrittenCounter};
+
 mod constants {
     /// Default number of retries
     pub(super) const DEFAULT_RETRY: usize = 5;
+
+    /// Chunk size used for streaming (multipart) writes.
+    ///
+    /// 8 MiB is above the 5 MiB minimum part size required by S3-style
+    /// backends (including Tencent COS). Feeding data in chunks of this
+    /// size bypasses opendal's single-shot `write_once` optimization and
+    /// forces a real multipart upload, so progress is reported per part
+    /// instead of in one jump at the end.
+    pub(super) const CHUNK_SIZE: usize = 8 * 1024 * 1024;
 }
 
 /// `OpenDALBackend` contains a wrapper around an blocking operator of the `OpenDAL` library.
 #[derive(Clone, Debug)]
 pub struct OpenDALBackend {
     operator: Operator,
+    counter: Option<WrittenCounter>,
 }
 
 fn runtime() -> &'static Runtime {
@@ -68,7 +80,7 @@ impl FromStr for Throttle {
                         "Parsing ByteSize from throttle string `{string}` failed",
                         err,
                     )
-                    .attach_context("string", s)
+                        .attach_context("string", s)
                 })
             })
             .map(|b| -> RusticResult<u32> {
@@ -79,7 +91,7 @@ impl FromStr for Throttle {
                         "Converting ByteSize `{bytesize}` to u32 failed",
                         err,
                     )
-                    .attach_context("bytesize", bytesize.to_string())
+                        .attach_context("bytesize", bytesize.to_string())
                 })
             });
 
@@ -113,6 +125,31 @@ impl OpenDALBackend {
     ///
     /// A new `OpenDAL` backend.
     pub fn new(path: impl AsRef<str>, options: BTreeMap<String, String>) -> RusticResult<Self> {
+        Self::new_with_progress(path, options, None)
+    }
+
+    /// Create a new openDAL backend, optionally attaching a byte-counting layer.
+    ///
+    /// # Arguments
+    ///
+    /// * `path` - The path to the `OpenDAL` backend.
+    /// * `options` - Additional options for the `OpenDAL` backend.
+    /// * `counter` - Optional shared counter. When `Some`, a `ProgressLayer` is
+    ///   attached *outside* the `RetryLayer` so that each logical write is counted
+    ///   exactly once (retried re-transmissions are NOT double-counted).
+    ///
+    /// # Errors
+    ///
+    /// * If the path is not a valid `OpenDAL` path.
+    ///
+    /// # Returns
+    ///
+    /// A new `OpenDAL` backend.
+    pub fn new_with_progress(
+        path: impl AsRef<str>,
+        options: BTreeMap<String, String>,
+        counter: Option<WrittenCounter>,
+    ) -> RusticResult<Self> {
         let max_retries = match options.get("retry").map(String::as_str) {
             Some("false" | "off") => 0,
             None | Some("default") => constants::DEFAULT_RETRY,
@@ -122,7 +159,7 @@ impl OpenDALBackend {
                     "Parsing retry value `{value}` failed, the value must be a valid integer.",
                     err,
                 )
-                .attach_context("value", value.to_string())
+                    .attach_context("value", value.to_string())
             })?,
         };
         let connections = options
@@ -134,7 +171,7 @@ impl OpenDALBackend {
                         "Parsing connections value `{value}` failed, the value must be a valid integer.",
                         err,
                     )
-                    .attach_context("value", c)
+                        .attach_context("value", c)
                 })
             })
             .transpose()?;
@@ -157,10 +194,17 @@ impl OpenDALBackend {
                     "Creating Operator from path `{path}` failed. Please check the given schema and options.",
                     err,
                 )
-                .attach_context("path", path.as_ref().to_string())
-                .attach_context("schema", scheme.to_string())
+                    .attach_context("path", path.as_ref().to_string())
+                    .attach_context("schema", scheme.to_string())
             })?
             .layer(RetryLayer::new().with_max_times(max_retries).with_jitter());
+
+        // Attach the byte-counting layer *outside* the RetryLayer so that each
+        // logical write is counted exactly once (retried re-transmissions are
+        // NOT double-counted).
+        if let Some(counter) = &counter {
+            operator = operator.layer(ProgressLayer::new(counter.clone()));
+        }
 
         if let Some(Throttle { bandwidth, burst }) = throttle {
             operator = operator.layer(ThrottleLayer::new(bandwidth, burst));
@@ -177,10 +221,10 @@ impl OpenDALBackend {
                 "Creating blocking Operator from path `{path}` failed.",
                 err,
             )
-            .attach_context("path", path.as_ref().to_string())
+                .attach_context("path", path.as_ref().to_string())
         })?;
 
-        Ok(Self { operator })
+        Ok(Self { operator, counter })
     }
 
     /// Return a path for the given file type and id.
@@ -204,7 +248,7 @@ impl OpenDALBackend {
                 .join(&hex_id[..]),
             _ => UnixPathBuf::from(tpe.dirname()).join(&hex_id[..]),
         }
-        .to_string()
+            .to_string()
     }
 
     /// Turn this `OpenDALBackend into a ReadSource`
@@ -273,7 +317,7 @@ impl ReadBackend for OpenDALBackend {
                         "Path `config` does not exist.",
                         err,
                     )
-                    .ask_report()
+                        .ask_report()
                 })? {
                     vec![Id::default()]
                 } else {
@@ -319,8 +363,8 @@ impl ReadBackend for OpenDALBackend {
         fn length(entry: &Metadata, file_name: &str, tpe: FileType) -> Option<u32> {
             let length = entry.content_length();
             length.try_into().inspect_err(|err| {
-                    error!("Failed to convert file length {length} of {file_name} to u32 while listing {tpe}: {err}");
-                }).ok()
+                error!("Failed to convert file length {length} of {file_name} to u32 while listing {tpe}: {err}");
+            }).ok()
         }
 
         trace!("listing tpe: {tpe:?}");
@@ -334,7 +378,7 @@ impl ReadBackend for OpenDALBackend {
                         "Getting Metadata of type `{type}` failed in the backend. Please check if `{type}` exists.",
                         err,
                     )
-                    .attach_context("type", tpe.to_string())
+                        .attach_context("type", tpe.to_string())
                 ),
             };
         }
@@ -382,9 +426,9 @@ impl ReadBackend for OpenDALBackend {
                     "Reading file `{path}` failed in the backend. Please check if the given path is correct.",
                     err,
                 )
-                .attach_context("path", path)
-                .attach_context("type", tpe.to_string())
-                .attach_context("id", id.to_string())
+                    .attach_context("path", path)
+                    .attach_context("type", tpe.to_string())
+                    .attach_context("id", id.to_string())
             )?
             .to_bytes())
     }
@@ -414,11 +458,11 @@ impl ReadBackend for OpenDALBackend {
                     "Partially reading file `{path}` failed in the backend. Please check if the given path is correct.",
                     err,
                 )
-                .attach_context("path", path)
-                .attach_context("type", tpe.to_string())
-                .attach_context("id", id.to_string())
-                .attach_context("offset", offset.to_string())
-                .attach_context("length", length.to_string())
+                    .attach_context("path", path)
+                    .attach_context("type", tpe.to_string())
+                    .attach_context("id", id.to_string())
+                    .attach_context("offset", offset.to_string())
+                    .attach_context("length", length.to_string())
             )?
             .to_bytes())
     }
@@ -456,9 +500,9 @@ impl WriteBackend for OpenDALBackend {
                         "Creating directory `{path}` failed in the backend `{location}`. Please check if the given path is correct.",
                         err,
                     )
-                    .attach_context("path", path)
-                    .attach_context("location", self.location())
-                    .attach_context("type", tpe.to_string())
+                        .attach_context("path", path)
+                        .attach_context("location", self.location())
+                        .attach_context("type", tpe.to_string())
                 )?;
         }
         // creating 256 dirs can be slow on remote backends, hence we parallelize it.
@@ -466,10 +510,10 @@ impl WriteBackend for OpenDALBackend {
             .into_par_iter()
             .try_for_each(|i| {
                 let path = UnixPathBuf::from("data")
-                        .join(hex::encode([i]))
-                        .to_string_lossy()
-                        .to_string()
-                        + "/";
+                    .join(hex::encode([i]))
+                    .to_string_lossy()
+                    .to_string()
+                    + "/";
 
                 self.operator.create_dir(&path).map_err(|err|
                     RusticError::with_source(
@@ -477,8 +521,8 @@ impl WriteBackend for OpenDALBackend {
                         "Creating directory `{path}` failed in the backend `{location}`. Please check if the given path is correct.",
                         err,
                     )
-                    .attach_context("path", path)
-                    .attach_context("location", self.location())
+                        .attach_context("path", path)
+                        .attach_context("location", self.location())
                 )
             })?;
 
@@ -502,16 +546,38 @@ impl WriteBackend for OpenDALBackend {
     ) -> RusticResult<()> {
         trace!("writing tpe: {:?}, id: {}", &tpe, &id);
         let filename = self.path(tpe, id);
-        _ = self.operator.write(&filename, buf).map_err(|err| {
+
+        let map_write_err = |err| {
             RusticError::with_source(
                 ErrorKind::Backend,
                 "Writing file `{path}` failed in the backend. Please check if the given path is correct.",
                 err,
             )
-            .attach_context("path", filename)
-            .attach_context("type", tpe.to_string())
-            .attach_context("id", id.to_string())
-        })?;
+                .attach_context("path", filename.clone())
+                .attach_context("type", tpe.to_string())
+                .attach_context("id", id.to_string())
+        };
+
+        if self.counter.is_some() {
+            // Progress path: chunked writer so ProgressLayer fires per part.
+            let write_options = WriteOptions {
+                chunk: Some(constants::CHUNK_SIZE),
+                ..Default::default()
+            };
+            let mut writer = self
+                .operator
+                .writer_options(&filename, write_options)
+                .map_err(map_write_err)?;
+            for chunk in buf.chunks(constants::CHUNK_SIZE) {
+                writer
+                    .write(Bytes::copy_from_slice(chunk))
+                    .map_err(map_write_err)?;
+            }
+            _ = writer.close().map_err(map_write_err)?;
+        } else {
+            // Default path: single one-shot write, unchanged behavior.
+            _ = self.operator.write(&filename, buf).map_err(map_write_err)?;
+        }
 
         Ok(())
     }
@@ -532,9 +598,9 @@ impl WriteBackend for OpenDALBackend {
                 "Deleting file `{path}` failed in the backend. Please check if the given path is correct.",
                 err,
             )
-            .attach_context("path", filename)
-            .attach_context("type", tpe.to_string())
-            .attach_context("id", id.to_string())
+                .attach_context("path", filename)
+                .attach_context("type", tpe.to_string())
+                .attach_context("id", id.to_string())
         })?;
         Ok(())
     }
@@ -640,14 +706,14 @@ impl ReadSourceOpen for OpenFile {
         let reader = || self.0.operator.reader(&path)?.into_std_read(..);
 
         let reader = reader()
-        .map_err(|err| {
-            RusticError::with_source(
-                ErrorKind::InputOutput,
-                "Failed to open file at `{path}`. Please make sure the file exists and is accessible.",
-                err,
-            )
-            .attach_context("path", path)
-        })?;
+            .map_err(|err| {
+                RusticError::with_source(
+                    ErrorKind::InputOutput,
+                    "Failed to open file at `{path}`. Please make sure the file exists and is accessible.",
+                    err,
+                )
+                    .attach_context("path", path)
+            })?;
         Ok(reader)
     }
 }
@@ -687,7 +753,7 @@ impl Iterator for OpenDALLister {
                 open,
             }
         }))
-        .transpose()
+            .transpose()
     }
 }
 
