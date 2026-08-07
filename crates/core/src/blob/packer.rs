@@ -60,7 +60,7 @@ pub(super) mod constants {
     /// The maximum number of blobs in a pack
     pub(super) const MAX_COUNT: u32 = 10_000;
     /// The maximum age of a pack
-    pub(super) const MAX_AGE: Duration = Duration::from_secs(300);
+    pub(super) const MAX_AGE: Duration = Duration::from_mins(5);
 }
 
 /// The pack sizer is responsible for computing the size of the pack file.

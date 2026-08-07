@@ -29,7 +29,7 @@ pub(super) mod constants {
 
     /// Default timeout for the client
     /// This is set to 10 minutes
-    pub(super) const DEFAULT_TIMEOUT: Duration = Duration::from_secs(600);
+    pub(super) const DEFAULT_TIMEOUT: Duration = Duration::from_mins(10);
 }
 
 fn construct_backoff_error(err: reqwest::Error) -> Box<RusticError> {

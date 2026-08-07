@@ -19,7 +19,7 @@ pub(super) mod constants {
     /// The maximum number of blobs to index before saving the index.
     pub(super) const MAX_COUNT: usize = 50_000;
     /// The maximum age of an index before saving the index.
-    pub(super) const MAX_AGE: Duration = Duration::from_secs(300);
+    pub(super) const MAX_AGE: Duration = Duration::from_mins(5);
 }
 
 pub(crate) type SharedIndexer<BE> = Arc<RwLock<Indexer<BE>>>;
