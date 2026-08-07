@@ -246,8 +246,7 @@ impl OpenDALBackend {
             let mut ignoring: Option<String> = None;
 
             entries.retain(|e| {
-                let path = e.path();
-                let path = path.strip_suffix('/').unwrap_or(path);
+                let path = "/".to_string() + e.path().trim_matches('/');
                 let is_dir = e.metadata().is_dir();
 
                 if let Some(ref prefix) = ignoring {
@@ -258,7 +257,7 @@ impl OpenDALBackend {
                     }
                 }
 
-                matcher.matched(path, is_dir).is_ignore().then(|| {
+                matcher.matched(&path, is_dir).is_ignore().then(|| {
                     if is_dir {
                         ignoring = Some(path.to_string() + "/")
                     }
