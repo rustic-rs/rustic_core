@@ -21,8 +21,8 @@ use tokio::runtime::Runtime;
 use typed_path::UnixPathBuf;
 
 use rustic_core::{
-    ALL_FILE_TYPES, BytesList, ErrorKind, Excludes, FileType, Id, ReadBackend, ReadSource, ReadSourceEntry,
-    ReadSourceOpen, RusticError, RusticResult, WriteBackend,
+    ALL_FILE_TYPES, BytesList, ErrorKind, Excludes, FileType, Id, ReadBackend, ReadSource,
+    ReadSourceEntry, ReadSourceOpen, RusticError, RusticResult, WriteBackend,
     repofile::{Node, NodeType},
 };
 
@@ -249,20 +249,23 @@ impl OpenDALBackend {
                 let path = "/".to_string() + e.path().trim_matches('/');
                 let is_dir = e.metadata().is_dir();
 
-                if let Some(ref prefix) = ignoring {
-                    if !path.starts_with(prefix) {
-                        ignoring = None;
-                    } else {
+                if let Some(prefix) = &ignoring {
+                    if path.starts_with(prefix) {
                         return false;
                     }
+                    ignoring = None;
                 }
 
-                matcher.matched(&path, is_dir).is_ignore().then(|| {
-                    if is_dir {
-                        ignoring = Some(path.to_string() + "/")
+                if matcher.matched(&path, is_dir).is_ignore() {
+                    {
+                        if is_dir {
+                            ignoring = Some(path + "/");
+                        }
+                        false
                     }
-                    false
-                }).unwrap_or(true)
+                } else {
+                    true
+                }
             });
         }
 
