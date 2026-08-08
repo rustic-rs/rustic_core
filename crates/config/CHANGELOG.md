@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 ## [unreleased]
 
+## [0.2.5](https://github.com/rustic-rs/rustic_core/compare/rustic_config-v0.2.4...rustic_config-v0.2.5) - 2026-08-08
+
+### Other
+
+- *(deps)* bump opendal to 0.58.1 ([#539](https://github.com/rustic-rs/rustic_core/pull/539))
+
 ## [0.2.4](https://github.com/rustic-rs/rustic_core/compare/rustic_config-v0.2.3...rustic_config-v0.2.4) - 2026-02-09
 
 ### Other
