@@ -13,7 +13,6 @@ rustic_testuing - library for test support in rustic-rs
 [dependencies]
 aho-corasick = { workspace = true }
 bytes = { workspace = true }
-enum-map = { workspace = true }
 rustic_core = { workspace = true }
 tempfile = { workspace = true }
 
