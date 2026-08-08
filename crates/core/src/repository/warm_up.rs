@@ -59,16 +59,15 @@ fn read_progress_output<R: io::Read>(reader: R, invocation_size: u64, progress: 
     let mut current: u64 = 0;
 
     for line in reader.lines().map_while(Result::ok) {
-        let report: PackProgress = match serde_json::from_str(&line) {
-            Ok(report) => report,
-            Err(_) => {
-                // For debugging/auditing purposes, log non-JSON stdout lines at info level.
-                // Empty lines are ignored.
-                if !line.is_empty() {
-                    info!("[warmup] {line}");
-                }
-                continue;
+        let report: PackProgress = if let Ok(report) = serde_json::from_str(&line) {
+            report
+        } else {
+            // For debugging/auditing purposes, log non-JSON stdout lines at info level.
+            // Empty lines are ignored.
+            if !line.is_empty() {
+                info!("[warmup] {line}");
             }
+            continue;
         };
 
         if report.ty != PACK_PROGRESS_TYPE {
@@ -260,55 +259,56 @@ fn warm_up_batch_singular(
     let file_type = tpe.to_string();
 
     // Spawn a reader for each child's stdout while the commands run concurrently.
-    let mut readers = Vec::with_capacity(batch.len());
+    let readers: Vec<_> = batch
+        .iter()
+        .map(|id| {
+            let path = backend.warmup_path(tpe, id);
+            let id = id.to_hex().to_string();
 
-    for id in batch {
-        let path = backend.warmup_path(tpe, id);
-        let id = id.to_hex().to_string();
+            let args: Vec<_> = command
+                .args()
+                .iter()
+                .map(|c| {
+                    c.replace("%tpe", &file_type)
+                        .replace("%id", &id)
+                        .replace("%path", &path)
+                })
+                .collect();
 
-        let args: Vec<_> = command
-            .args()
-            .iter()
-            .map(|c| {
-                c.replace("%tpe", &file_type)
-                    .replace("%id", &id)
-                    .replace("%path", &path)
+            debug!("spawning {command:?} for id {id:?}...");
+
+            let mut child = (|| {
+                Command::new(command.command())
+                    .args(&args)
+                    .stdout(Stdio::piped())
+                    .spawn()
             })
-            .collect();
+            .retry(execute_cmd_retry())
+            .when(|err| err.kind() == io::ErrorKind::ExecutableFileBusy)
+            .notify(|err, duration| {
+                debug!("spawn failed with ETXTBSY, retrying in {duration:?}: {err}");
+            })
+            .call()
+            .map_err(|err| {
+                RusticError::with_source(
+                    ErrorKind::ExternalCommand,
+                    "Error in spawning warm-up command `{command}`.",
+                    err,
+                )
+                .attach_context("command", command.to_string())
+                .attach_context("id", &id)
+                .attach_context("type", format!("{ty:?}"))
+            })?;
 
-        debug!("spawning {command:?} for id {id:?}...");
-
-        let mut child = (|| {
-            Command::new(command.command())
-                .args(&args)
-                .stdout(Stdio::piped())
-                .spawn()
+            let stdout = child.stdout.take().expect("stdout was piped");
+            let progress = progress.clone();
+            let handle = thread::spawn(move || {
+                // Singular mode handles one pack per command instance.
+                read_progress_output(stdout, 1, &progress)
+            });
+            Ok((child, id, handle))
         })
-        .retry(execute_cmd_retry())
-        .when(|err| err.kind() == io::ErrorKind::ExecutableFileBusy)
-        .notify(|err, duration| {
-            debug!("spawn failed with ETXTBSY, retrying in {duration:?}: {err}");
-        })
-        .call()
-        .map_err(|err| {
-            RusticError::with_source(
-                ErrorKind::ExternalCommand,
-                "Error in spawning warm-up command `{command}`.",
-                err,
-            )
-            .attach_context("command", command.to_string())
-            .attach_context("id", &id)
-            .attach_context("type", format!("{ty:?}"))
-        })?;
-
-        let stdout = child.stdout.take().expect("stdout was piped");
-        let progress = progress.clone();
-        let handle = thread::spawn(move || {
-            // Singular mode handles one pack per command instance.
-            read_progress_output(stdout, 1, &progress)
-        });
-        readers.push((child, id, handle));
-    }
+        .collect::<RusticResult<_>>()?;
 
     let mut failed_ids = Vec::new();
 
@@ -327,7 +327,7 @@ fn warm_up_batch_singular(
         })?;
 
         let current = handle.join().map_err(|err| {
-            let msg = format!("Thread panicked: {:?}", err);
+            let msg = format!("Thread panicked: {err:?}");
             RusticError::new(
                 ErrorKind::ExternalCommand,
                 format!("Error joining warm-up command thread: {msg}"),
@@ -337,10 +337,10 @@ fn warm_up_batch_singular(
             .attach_context("type", format!("{ty:?}"))
         })?;
 
-        if !status.success() {
-            failed_ids.push((id, status));
-        } else {
+        if status.success() {
             finalize_progress(current, 1, progress);
+        } else {
+            failed_ids.push((id, status));
         }
     }
 
@@ -452,7 +452,7 @@ fn warm_up_batch_plural(
     })?;
 
     let current = handle.join().map_err(|err| {
-        let msg = format!("Thread panicked: {:?}", err);
+        let msg = format!("Thread panicked: {err:?}");
         RusticError::new(
             ErrorKind::ExternalCommand,
             format!("Error joining warm-up command thread: {msg}"),
