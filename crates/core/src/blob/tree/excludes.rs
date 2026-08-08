@@ -40,7 +40,12 @@ impl Excludes {
         self == &Self::default()
     }
 
-    pub(crate) fn as_override(&self) -> RusticResult<Override> {
+    /// Convert excludes to an Override for glob pattern matching
+    ///
+    /// # Errors
+    ///
+    /// * If glob patterns cannot be compiled into an override
+    pub fn as_override(&self) -> RusticResult<Override> {
         let mut override_builder = OverrideBuilder::new("");
         for g in &self.globs {
             _ = override_builder.add(g).map_err(|err| {

@@ -21,8 +21,8 @@ use tokio::runtime::Runtime;
 use typed_path::UnixPathBuf;
 
 use rustic_core::{
-    ALL_FILE_TYPES, BytesList, ErrorKind, FileType, Id, ReadBackend, ReadSource, ReadSourceEntry,
-    ReadSourceOpen, RusticError, RusticResult, WriteBackend,
+    ALL_FILE_TYPES, BytesList, ErrorKind, Excludes, FileType, Id, ReadBackend, ReadSource,
+    ReadSourceEntry, ReadSourceOpen, RusticError, RusticResult, WriteBackend,
     repofile::{Node, NodeType},
 };
 
@@ -209,9 +209,12 @@ impl OpenDALBackend {
 
     /// Turn this `OpenDALBackend into a ReadSource`
     ///
+    /// # Arguments
+    /// * `excludes` - The exclude patterns to apply
+    ///
     /// # Errors
-    /// If listing fails
-    pub fn as_source(self) -> RusticResult<OpenDALReadSource> {
+    /// If listing fails or exclude patterns cannot be compiled
+    pub fn as_source(self, excludes: &Excludes) -> RusticResult<OpenDALReadSource> {
         let list_options = ListOptions {
             recursive: true,
             ..Default::default()
@@ -237,6 +240,34 @@ impl OpenDALBackend {
             })
             .collect();
         entries.sort_unstable_by(|e1, e2| e1.path().cmp(e2.path()));
+
+        if !excludes.is_empty() {
+            let matcher = excludes.as_override()?;
+            let mut ignoring: Option<String> = None;
+
+            entries.retain(|e| {
+                let path = "/".to_string() + e.path().trim_matches('/');
+                let is_dir = e.metadata().is_dir();
+
+                if let Some(prefix) = &ignoring {
+                    if path.starts_with(prefix) {
+                        return false;
+                    }
+                    ignoring = None;
+                }
+
+                if matcher.matched(&path, is_dir).is_ignore() {
+                    {
+                        if is_dir {
+                            ignoring = Some(path + "/");
+                        }
+                        false
+                    }
+                } else {
+                    true
+                }
+            });
+        }
 
         Ok(OpenDALReadSource {
             entries,
