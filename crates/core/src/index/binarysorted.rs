@@ -9,13 +9,13 @@ use crate::{
     },
 };
 
-/// A sorted entry in the index.
+/// A sorted entry in the index. This has a size of 48 bytes (32 bytes for the id, 4 bytes for the pack index and 12 bytes for the location)
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) struct SortedEntry {
     /// The ID of the entry.
     id: BlobId,
     /// The index of the pack containing the entry.
-    pack_idx: usize,
+    pack_idx: u32,
     /// The location of the entry in the pack.
     location: BlobLocation,
 }
@@ -54,7 +54,7 @@ pub struct IndexCollector(BlobTypeMap<TypeIndexCollector>);
 pub struct PackIndexes {
     c: Index,
     tpe: BlobType,
-    idx: BlobTypeMap<(usize, usize)>,
+    idx: BlobTypeMap<(u32, usize)>,
 }
 
 #[derive(Debug)]
@@ -134,7 +134,8 @@ impl Extend<IndexPack> for IndexCollector {
             let blob_type = p.blob_type();
             let size = p.pack_size();
 
-            let idx = self.0[blob_type].packs.len();
+            let idx = u32::try_from(self.0[blob_type].packs.len())
+                .expect("pack count doesn't fit into u32");
             self.0[blob_type].packs.push((p.id, size));
 
             self.0[blob_type].total_size += u64::from(size);
@@ -167,7 +168,9 @@ impl Iterator for PackIndexes {
     fn next(&mut self) -> Option<Self::Item> {
         let (pack_idx, idx) = loop {
             let (pack_idx, idx) = &mut self.idx[self.tpe];
-            if *pack_idx >= self.c.0[self.tpe].packs.len() {
+            let pack_count = u32::try_from(self.c.0[self.tpe].packs.len())
+                .expect("pack count should fit into u32");
+            if *pack_idx >= pack_count {
                 if self.tpe == BlobType::Data {
                     return None;
                 }
@@ -178,7 +181,7 @@ impl Iterator for PackIndexes {
         };
 
         let mut pack = IndexPack {
-            id: self.c.0[self.tpe].packs[*pack_idx],
+            id: self.c.0[self.tpe].packs[*pack_idx as usize],
             ..Default::default()
         };
 
@@ -233,7 +236,11 @@ impl ReadIndex for Index {
 
         vec.binary_search_by_key(id, |e| e.id).ok().map(|index| {
             let be = &vec[index];
-            IndexEntry::new(blob_type, self.0[blob_type].packs[be.pack_idx], be.location)
+            IndexEntry::new(
+                blob_type,
+                self.0[blob_type].packs[be.pack_idx as usize],
+                be.location,
+            )
         })
     }
 
