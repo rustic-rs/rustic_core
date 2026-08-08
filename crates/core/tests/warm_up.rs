@@ -5,6 +5,7 @@ use std::{
     io::Read,
     path::Path,
     sync::Arc,
+    sync::atomic::{AtomicU64, Ordering},
 };
 
 use anyhow::Result;
@@ -12,7 +13,10 @@ use rstest::rstest;
 use serde::{Deserialize, Serialize};
 use tempfile::tempdir;
 
-use rustic_core::{CommandInput, Id, RepositoryBackends, RepositoryOptions, repofile::PackId};
+use rustic_core::{
+    CommandInput, Id, Progress, ProgressBars, ProgressType, RepositoryBackends, RepositoryOptions,
+    RusticProgress, repofile::PackId,
+};
 use rustic_testing::backend::in_memory_backend::InMemoryBackend;
 
 // Test constants
@@ -59,31 +63,7 @@ done
 "#,
     );
 
-    // Write the script and sync to disk to avoid "Text file busy" errors
-    {
-        use std::io::Write;
-        let mut file = File::create(&script_path)?;
-        file.write_all(script_content.as_bytes())?;
-        file.sync_all()?;
-        // Explicitly drop the file handle before setting permissions
-        drop(file);
-    }
-
-    // Make script executable
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        let mut perms = fs::metadata(&script_path)?.permissions();
-        perms.set_mode(0o755);
-        fs::set_permissions(&script_path, perms)?;
-
-        // Sync the parent directory to ensure metadata changes are committed
-        if let Some(parent) = script_path.parent()
-            && let Ok(dir_file) = File::open(parent)
-        {
-            let _ = dir_file.sync_all();
-        }
-    }
+    write_executable_script(&script_path, &script_content)?;
 
     let command: CommandInput = script_path.to_string_lossy().to_string().parse()?;
 
@@ -100,6 +80,33 @@ fn create_test_script(log_dir: &Path) -> Result<(tempfile::TempDir, CommandInput
 #[cfg(not(windows))]
 fn create_failing_script(log_dir: &Path) -> Result<(tempfile::TempDir, CommandInput)> {
     create_test_script_with_exit_code(log_dir, 1)
+}
+
+/// Write a script to disk and mark it executable.
+#[cfg(not(windows))]
+fn write_executable_script(path: &Path, content: &str) -> Result<()> {
+    {
+        use std::io::Write;
+        let mut file = File::create(path)?;
+        file.write_all(content.as_bytes())?;
+        file.sync_all()?;
+    }
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mut perms = fs::metadata(path)?.permissions();
+        perms.set_mode(0o755);
+        fs::set_permissions(path, perms)?;
+
+        if let Some(parent) = path.parent()
+            && let Ok(dir_file) = File::open(parent)
+        {
+            let _ = dir_file.sync_all();
+        }
+    }
+
+    Ok(())
 }
 
 /// Helper to parse log files in a directory and extract call count and arguments
@@ -711,6 +718,174 @@ fn test_warm_up_backend_path_mode() -> Result<()> {
             "Third part should be 64-character hex ID"
         );
     }
+
+    Ok(())
+}
+
+/// Progress implementation that records total increments.
+#[derive(Debug, Clone)]
+struct RecordingProgressBars {
+    pos: Arc<AtomicU64>,
+}
+
+impl ProgressBars for RecordingProgressBars {
+    fn progress(&self, _progress_type: ProgressType, _prefix: &str) -> Progress {
+        Progress::new(RecordingProgress {
+            pos: self.pos.clone(),
+        })
+    }
+}
+
+#[derive(Debug, Clone)]
+struct RecordingProgress {
+    pos: Arc<AtomicU64>,
+}
+
+impl RusticProgress for RecordingProgress {
+    fn is_hidden(&self) -> bool {
+        false
+    }
+    fn set_length(&self, _len: u64) {}
+    fn set_title(&self, _title: &str) {}
+    fn inc(&self, inc: u64) {
+        let _ = self.pos.fetch_add(inc, Ordering::Relaxed);
+    }
+    fn finish(&self) {}
+}
+
+#[cfg(not(windows))]
+#[test]
+fn test_warm_up_progress_protocol_plural() -> Result<()> {
+    let dir = tempdir()?;
+    let script_path = dir.path().join("progress.sh");
+
+    let script_content = r#"#!/usr/bin/env bash
+warm=0
+for arg in "$@"; do
+  warm=$((warm+1))
+  echo "{\"type\":\"pack-progress\",\"warm\":$warm}"
+done
+"#;
+    write_executable_script(&script_path, script_content)?;
+
+    let cmd_str = format!("{} %ids", script_path.to_string_lossy());
+    let command: CommandInput = cmd_str.parse()?;
+
+    let pos = Arc::new(AtomicU64::new(0));
+    let repo = rustic_core::Repository::new_with_progress(
+        &RepositoryOptions::default()
+            .warm_up_command(command)
+            .warm_up_batch(5usize),
+        &RepositoryBackends::new(Arc::new(InMemoryBackend::new()), None),
+        RecordingProgressBars { pos: pos.clone() },
+    )?;
+
+    let num_packs = 12;
+    let pack_ids = create_test_ids(num_packs);
+
+    repo.warm_up(pack_ids.iter().copied())?;
+
+    assert_eq!(pos.load(Ordering::Relaxed), num_packs as u64);
+
+    Ok(())
+}
+
+#[cfg(not(windows))]
+#[test]
+fn test_warm_up_progress_protocol_singular() -> Result<()> {
+    let dir = tempdir()?;
+    let script_path = dir.path().join("progress.sh");
+
+    let script_content = r#"#!/usr/bin/env bash
+echo '{"type":"pack-progress","warm":1}'
+"#;
+    write_executable_script(&script_path, script_content)?;
+
+    let cmd_str = format!("{} %id", script_path.to_string_lossy());
+    let command: CommandInput = cmd_str.parse()?;
+
+    let pos = Arc::new(AtomicU64::new(0));
+    let repo = rustic_core::Repository::new_with_progress(
+        &RepositoryOptions::default()
+            .warm_up_command(command)
+            .warm_up_batch(1usize),
+        &RepositoryBackends::new(Arc::new(InMemoryBackend::new()), None),
+        RecordingProgressBars { pos: pos.clone() },
+    )?;
+
+    let num_packs = 5;
+    let pack_ids = create_test_ids(num_packs);
+
+    repo.warm_up(pack_ids.iter().copied())?;
+
+    assert_eq!(pos.load(Ordering::Relaxed), num_packs as u64);
+
+    Ok(())
+}
+
+#[cfg(not(windows))]
+#[test]
+fn test_warm_up_progress_protocol_fallback() -> Result<()> {
+    let dir = tempdir()?;
+    let script_path = dir.path().join("silent.sh");
+
+    let script_content = "#!/usr/bin/env bash\n";
+    write_executable_script(&script_path, script_content)?;
+
+    let cmd_str = format!("{} %ids", script_path.to_string_lossy());
+    let command: CommandInput = cmd_str.parse()?;
+
+    let pos = Arc::new(AtomicU64::new(0));
+    let repo = rustic_core::Repository::new_with_progress(
+        &RepositoryOptions::default()
+            .warm_up_command(command)
+            .warm_up_batch(4usize),
+        &RepositoryBackends::new(Arc::new(InMemoryBackend::new()), None),
+        RecordingProgressBars { pos: pos.clone() },
+    )?;
+
+    let num_packs = 9;
+    let pack_ids = create_test_ids(num_packs);
+
+    repo.warm_up(pack_ids.iter().copied())?;
+
+    assert_eq!(pos.load(Ordering::Relaxed), num_packs as u64);
+
+    Ok(())
+}
+
+#[cfg(not(windows))]
+#[test]
+fn test_warm_up_progress_protocol_ignores_invalid_lines() -> Result<()> {
+    let dir = tempdir()?;
+    let script_path = dir.path().join("noisy.sh");
+
+    let script_content = r#"#!/usr/bin/env bash
+echo 'this is not json'
+echo '{}'
+echo '{"type":"other","warm":100}'
+echo '{"type":"pack-progress","warm":999}'
+"#;
+    write_executable_script(&script_path, script_content)?;
+
+    let cmd_str = format!("{} %ids", script_path.to_string_lossy());
+    let command: CommandInput = cmd_str.parse()?;
+
+    let pos = Arc::new(AtomicU64::new(0));
+    let repo = rustic_core::Repository::new_with_progress(
+        &RepositoryOptions::default()
+            .warm_up_command(command)
+            .warm_up_batch(3usize),
+        &RepositoryBackends::new(Arc::new(InMemoryBackend::new()), None),
+        RecordingProgressBars { pos: pos.clone() },
+    )?;
+
+    let num_packs = 3;
+    let pack_ids = create_test_ids(num_packs);
+
+    repo.warm_up(pack_ids.iter().copied())?;
+
+    assert_eq!(pos.load(Ordering::Relaxed), num_packs as u64);
 
     Ok(())
 }
