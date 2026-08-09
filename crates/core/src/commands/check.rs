@@ -8,10 +8,10 @@ use std::{
     sync::Mutex,
 };
 
-use bytes::Bytes;
 use bytesize::ByteSize;
 use derive_setters::Setters;
 use displaydoc::Display;
+use itertools::Itertools;
 use jiff::Zoned;
 use log::{debug, error, warn};
 use rand::{Rng, prelude::SliceRandom, rng};
@@ -22,8 +22,8 @@ use zstd::stream::decode_all;
 use crate::{
     DataId, ErrorKind, RusticError, TreeId,
     backend::{FileType, ReadBackend, cache::Cache, decrypt::DecryptReadBackend, node::NodeType},
-    blob::{BlobId, BlobType, tree::TreeStreamerOnce},
-    crypto::hasher::hash,
+    blob::{BlobId, BlobLocations, BlobType, tree::TreeStreamerOnce},
+    crypto::hasher::{Hasher, hash},
     error::RusticResult,
     id::Id,
     index::{
@@ -303,15 +303,8 @@ pub(crate) fn check_repository<S: Open>(
 
         packs.into_par_iter().for_each(|pack| {
             let id = pack.id;
-            match be.read_full(FileType::Pack, &id) {
-                Err(err) => {
-                    collector.add_error(CheckError::ErrorReadingPack { id, source: err });
-                }
-                Ok(data) => {
-                    if let Err(err) = check_pack(be, pack, data, &p, &collector) {
-                        collector.add_error(CheckError::ErrorCheckingPack { id, source: err });
-                    }
-                }
+            if let Err(err) = check_pack(be, pack, &p, &collector) {
+                collector.add_error(CheckError::ErrorCheckingPack { id, source: err });
             }
         });
         p.finish();
@@ -718,30 +711,100 @@ fn check_trees<S: Open>(
 fn check_pack(
     be: &impl DecryptReadBackend,
     index_pack: IndexPack,
-    mut data: Bytes,
     p: &Progress,
     collector: &CheckResultsCollector,
 ) -> RusticResult<()> {
     let id = index_pack.id;
     let size = index_pack.pack_size();
-    if data.len() != size as usize {
-        collector.add_error(CheckError::PackSizeMismatch {
-            id,
-            size: data.len(),
-            expected: size as usize,
-        });
-        return Ok(());
+    let header_len = PackHeaderRef::from_index_pack(&index_pack).size();
+    let mut blobs = index_pack.blobs;
+    blobs.sort_unstable();
+
+    let mut hasher = Hasher::new();
+
+    // check blobs by reading chunks of blobs at one time
+    let blob_chunks: Vec<_> = blobs
+        .iter()
+        .map(|blob| BlobLocations::from_blob_location(blob.location, blob.id))
+        .coalesce(BlobLocations::coalesce)
+        .collect();
+    for chunk in blob_chunks {
+        let mut data = match be.read_partial(FileType::Pack, &id, false, chunk.offset, chunk.length)
+        {
+            Ok(data) => data,
+            Err(err) => {
+                collector.add_error(CheckError::ErrorReadingPack { id, source: err });
+                continue;
+            }
+        };
+        hasher.update(&data);
+
+        for (blob, blob_id) in chunk.blobs {
+            let mut blob_data = be.decrypt(&data.split_to(blob.length as usize))?;
+
+            // TODO: this is identical to backend/decrypt.rs; unify these two parts!
+            if let Some(length) = blob.uncompressed_length {
+                blob_data = decode_all(&*blob_data).unwrap();
+                if blob_data.len() != length.get() as usize {
+                    collector.add_error(CheckError::PackBlobLengthMismatch { id, blob_id });
+                }
+            }
+
+            let comp_id = BlobId::from(hash(&blob_data));
+            if blob_id != comp_id {
+                collector.add_error(CheckError::PackBlobHashMismatch {
+                    id,
+                    blob_id,
+                    comp_id,
+                });
+            }
+            p.inc(blob.length.into());
+        }
     }
 
-    let comp_id = PackId::from(hash(&data));
+    // read pack header
+    let mut data = match be.read_partial(
+        FileType::Pack,
+        &id,
+        false,
+        size - header_len - 4,
+        header_len + 4,
+    ) {
+        Ok(data) => data,
+        Err(err) => {
+            collector.add_error(CheckError::ErrorReadingPack { id, source: err });
+            return Ok(());
+        }
+    };
+    hasher.update(&data);
+
+    let comp_id = PackId::from(hasher.finalize());
     if id != comp_id {
         collector.add_error(CheckError::PackHashMismatch { id, comp_id });
         return Ok(());
     }
 
+    // check header
+    let header = be.decrypt(&data.split_to(header_len as usize))?;
+    let pack_blobs = PackHeader::from_binary(&header)
+        .map_err(|err| {
+            RusticError::with_source(
+                ErrorKind::Internal,
+                "Error reading pack header for id `{pack_id}`",
+                err,
+            )
+            .attach_context("pack_id", id.to_string())
+            .ask_report()
+        })?
+        .into_blobs();
+    if pack_blobs != blobs {
+        collector.add_error(CheckError::PackHeaderMismatchIndex { id });
+        debug!("pack file header: {pack_blobs:?}");
+        debug!("index: {blobs:?}");
+    }
+
     // check header length
-    let header_len = PackHeaderRef::from_index_pack(&index_pack).size();
-    let pack_header_len = PackHeaderLength::from_binary(&data.split_off(data.len() - 4))
+    let pack_header_len = PackHeaderLength::from_binary(&data)
         .map_err(|err| {
             RusticError::with_source(
                 ErrorKind::Internal,
@@ -759,57 +822,8 @@ fn check_pack(
             length: pack_header_len,
             computed: header_len,
         });
-        return Ok(());
-    }
-
-    // check header
-    let header = be.decrypt(&data.split_off(data.len() - header_len as usize))?;
-
-    let pack_blobs = PackHeader::from_binary(&header)
-        .map_err(|err| {
-            RusticError::with_source(
-                ErrorKind::Internal,
-                "Error reading pack header for id `{pack_id}`",
-                err,
-            )
-            .attach_context("pack_id", id.to_string())
-            .ask_report()
-        })?
-        .into_blobs();
-    let mut blobs = index_pack.blobs;
-    blobs.sort_unstable();
-    if pack_blobs != blobs {
-        collector.add_error(CheckError::PackHeaderMismatchIndex { id });
-        debug!("pack file header: {pack_blobs:?}");
-        debug!("index: {blobs:?}");
-        return Ok(());
     }
     p.inc(u64::from(header_len) + 4);
-
-    // check blobs
-    for blob in blobs {
-        let blob_id = blob.id;
-        let mut blob_data = be.decrypt(&data.split_to(blob.location.length as usize))?;
-
-        // TODO: this is identical to backend/decrypt.rs; unify these two parts!
-        if let Some(length) = blob.location.uncompressed_length {
-            blob_data = decode_all(&*blob_data).unwrap();
-            if blob_data.len() != length.get() as usize {
-                collector.add_error(CheckError::PackBlobLengthMismatch { id, blob_id });
-            }
-        }
-
-        let comp_id = BlobId::from(hash(&blob_data));
-        if blob.id != comp_id {
-            collector.add_error(CheckError::PackBlobHashMismatch {
-                id,
-                blob_id,
-                comp_id,
-            });
-        }
-        p.inc(blob.location.length.into());
-    }
-
     Ok(())
 }
 
