@@ -86,7 +86,7 @@ pub struct SnapshotModification {
 }
 
 // cache description if read from file
-#[cached(size = 1)]
+#[cached(max_size = 1)]
 fn get_description_from_file(path: PathBuf) -> Result<String, String> {
     std::fs::read_to_string(path).map_err(|err| format!("{err:?}"))
 }
