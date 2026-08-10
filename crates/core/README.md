@@ -123,10 +123,12 @@ fn main() -> Result<(), Box<dyn Error>> {
         .to_snapshot()?;
 
     // Create snapshot
-    let snap = repo.backup(&backup_opts, &source, snap)?;
+    let cancel = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));  
+    let snap = repo.backup(&backup_opts, &source, snap, &cancel)?;
 
     println!("successfully created snapshot:\n{snap:#?}");
     Ok(())
+}
 ```
 
 ### Example: Restoring a snapshot

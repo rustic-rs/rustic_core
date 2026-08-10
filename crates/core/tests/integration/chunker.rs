@@ -18,28 +18,29 @@ fn test_chunker_params(
     set_up_repo: Result<RepoOpen>,
     insta_snapshotfile_redaction: Settings,
 ) -> Result<()> {
-    // uncomment for logging output
-    // SimpleLogger::init(log::LevelFilter::Debug, Config::default())?;
+    // uncomment for logging output  
+    // SimpleLogger::init(log::LevelFilter::Debug, Config::default())?;  
 
-    // Fixtures
+    // Fixtures  
     let (source, mut repo) = (tar_gz_testdata?, set_up_repo?.to_indexed_ids()?);
+    let cancel = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
 
     let paths = &source.path_list();
 
-    // set fixed size chunker with a given chunk size
+    // set fixed size chunker with a given chunk size  
     let config_opts = ConfigOptions::default()
         .set_chunker(Chunker::FixedSize)
         .set_chunk_size(ByteSize(8000));
 
     assert!(repo.apply_config(&config_opts)?);
 
-    // we use as_path to not depend on the actual tempdir
+    // we use as_path to not depend on the actual tempdir  
     let opts = BackupOptions::default().as_path(PathBuf::from_str("test")?);
-    let snapshot = repo.backup(&opts, paths, SnapshotFile::default())?;
+    let snapshot = repo.backup(&opts, paths, SnapshotFile::default(), &cancel)?;
 
-    // We can also bind to scope ( https://docs.rs/insta/latest/insta/struct.Settings.html#method.bind_to_scope )
-    // But I think that can get messy with a lot of tests, also checking which settings are currently applied
-    // will be probably harder
+    // We can also bind to scope ( https://docs.rs/insta/latest/insta/struct.Settings.html#method.bind_to_scope )  
+    // But I think that can get messy with a lot of tests, also checking which settings are currently applied  
+    // will be probably harder  
     insta_snapshotfile_redaction.bind(|| {
         assert_ron_snapshot!("chunker-fixedsize", &snapshot);
     });

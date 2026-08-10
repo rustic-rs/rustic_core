@@ -142,6 +142,8 @@ pub enum ErrorKind {
     Verification,
     /// the virtual filesystem
     Vfs,
+    /// a cancelled operation      
+    Cancelled, 
 }
 
 #[derive(thiserror::Error, Debug)]

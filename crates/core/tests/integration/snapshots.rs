@@ -18,6 +18,7 @@ use rustic_core::{BackupOptions, Grouped, IndexedIdsStatus, Repository, Snapshot
 fn repo_and_snapshots() -> (Repository<IndexedIdsStatus>, Vec<SnapshotFile>) {
     let repo = set_up_repo().unwrap().to_indexed_ids().unwrap();
     let source = tar_gz_testdata().unwrap();
+    let cancel = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
 
     let snapshot_timestamp = [
         Timestamp::from_second(1_752_483_600)
@@ -32,7 +33,7 @@ fn repo_and_snapshots() -> (Repository<IndexedIdsStatus>, Vec<SnapshotFile>) {
     ];
     let mut snapshot_files = Vec::new();
 
-    // we use as_path to not depend on the actual tempdir
+    // we use as_path to not depend on the actual tempdir  
     let backup_options = BackupOptions::default().as_path(PathBuf::from_str("test").unwrap());
     for snap_ts in snapshot_timestamp {
         let snapshot_file = repo
@@ -43,6 +44,7 @@ fn repo_and_snapshots() -> (Repository<IndexedIdsStatus>, Vec<SnapshotFile>) {
                     time: snap_ts,
                     ..Default::default()
                 },
+                &cancel,
             )
             .unwrap();
         snapshot_files.push(snapshot_file);
@@ -88,7 +90,7 @@ fn test_get_snapshot_latest_id(
     let (repo, snapshots) = repo_and_snapshots;
     let res = repo.get_snapshots_from_strs(&[String::from("latest")], |_| true)?;
 
-    // latest => most recent
+    // latest => most recent  
     assert_eq!(res, vec![snapshots[2].clone()]);
     Ok(())
 }

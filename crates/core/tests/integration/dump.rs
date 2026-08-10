@@ -13,18 +13,18 @@ use rustic_core::{
 
 use super::{RepoOpen, set_up_repo};
 
-/// Build a deterministic byte payload of the requested length.
+/// Build a deterministic byte payload of the requested length.  
 fn payload(len: usize) -> Vec<u8> {
     (0..len)
         .map(|i| u8::try_from(i % 251).expect("251 always fits in u8"))
         .collect()
 }
 
-/// Backup a single file with the given content into `repo`, configuring the
-/// fixed-size chunker so the file reliably splits into multiple blobs.
-///
-/// Returns the repository in the [`IndexedFullStatus`] state along with the
-/// snapshot path that points at the backed-up file.
+/// Backup a single file with the given content into `repo`, configuring the  
+/// fixed-size chunker so the file reliably splits into multiple blobs.  
+///  
+/// Returns the repository in the [`IndexedFullStatus`] state along with the  
+/// snapshot path that points at the backed-up file.  
 fn backup_single_file(
     repo: RepoOpen,
     name: &str,
@@ -42,7 +42,8 @@ fn backup_single_file(
 
     let paths = PathList::from_iter([file_path]);
     let opts = BackupOptions::default().as_path(PathBuf::from_str(name)?);
-    let _snapshot = repo.backup(&opts, &paths, SnapshotFile::default())?;
+    let cancel = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let _snapshot = repo.backup(&opts, &paths, SnapshotFile::default(), &cancel)?;
 
     Ok((repo.to_indexed()?, format!("latest:{name}")))
 }
@@ -53,8 +54,8 @@ fn test_dump_multi_blob_matches_source(set_up_repo: Result<RepoOpen>) -> Result<
     let (repo, snapshot_path) = backup_single_file(set_up_repo?, "file.bin", &data)?;
     let node = repo.node_from_snapshot_path(&snapshot_path, |_| true)?;
 
-    // Sanity: the configured chunker must have produced more than one blob,
-    // otherwise the parallel path is never taken.
+    // Sanity: the configured chunker must have produced more than one blob,  
+    // otherwise the parallel path is never taken.  
     let blob_count = node.content.as_ref().map_or(0, Vec::len);
     assert!(
         blob_count > 1,

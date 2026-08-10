@@ -33,24 +33,25 @@ fn test_prune(
     // Fixtures
     let (source, mut repo) = (tar_gz_testdata?, set_up_repo?.to_indexed_ids()?);
     _ = repo.apply_config(&opts)?;
+    let cancel = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
 
     let opts = BackupOptions::default();
 
     // first backup
     let paths = PathList::from_iter(Some(source.0.path().join("0/0/9")));
-    let snapshot1 = repo.backup(&opts, &paths, SnapshotFile::default())?;
+    let snapshot1 = repo.backup(&opts, &paths, SnapshotFile::default(), &cancel)?;
 
     // re-read index
     let repo = repo.to_indexed_ids()?;
     // second backup
     let paths = PathList::from_iter(Some(source.0.path().join("0/0/9/2")));
-    let _ = repo.backup(&opts, &paths, SnapshotFile::default())?;
+    let _ = repo.backup(&opts, &paths, SnapshotFile::default(), &cancel)?;
 
     // re-read index
     let repo = repo.to_indexed_ids()?;
     // third backup
     let paths = PathList::from_iter(Some(source.0.path().join("0/0/9/3")));
-    let _ = repo.backup(&opts, &paths, SnapshotFile::default())?;
+    let _ = repo.backup(&opts, &paths, SnapshotFile::default(), &cancel)?;
 
     // drop index
     let repo = repo.drop_index();

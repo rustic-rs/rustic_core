@@ -4,6 +4,8 @@ pub(crate) mod tree;
 pub(crate) mod tree_archiver;
 
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread::scope;
 
 use jiff::Zoned;
@@ -18,7 +20,7 @@ use crate::{
     },
     backend::{ReadSource, ReadSourceEntry, decrypt::DecryptFullBackend},
     blob::BlobType,
-    error::RusticResult,
+    error::{ErrorKind, RusticError, RusticResult},
     index::{
         ReadGlobalIndex,
         indexer::{Indexer, SharedIndexer},
@@ -132,6 +134,7 @@ impl<'a, BE: DecryptFullBackend, I: ReadGlobalIndex> Archiver<'a, BE, I> {
         skip_identical_parent: bool,
         no_scan: bool,
         p: &Progress,
+        cancel: &Arc<AtomicBool>,
     ) -> RusticResult<SnapshotFile>
     where
         R: ReadSource + 'static,
@@ -141,7 +144,7 @@ impl<'a, BE: DecryptFullBackend, I: ReadGlobalIndex> Archiver<'a, BE, I> {
         scope(|s| -> RusticResult<_> {
             // determine backup size in parallel to running backup
             let src_size_handle = s.spawn(|| {
-                if !no_scan && !p.is_hidden() {
+                if !no_scan && !p.is_hidden() && !cancel.load(Ordering::Relaxed) {
                     match src.size() {
                         Ok(Some(size)) => p.set_length(size),
                         Ok(None) => {}
@@ -191,17 +194,24 @@ impl<'a, BE: DecryptFullBackend, I: ReadGlobalIndex> Archiver<'a, BE, I> {
                     }
                 },
             )
-            // archive files in parallel
-            .parallel_map_scoped(s, |item| self.file_archiver.process(item, p))
-            .readahead_scoped(s)
-            .filter_map(|item| match item {
-                Ok(item) => Some(item),
-                Err(err) => {
-                    warn!("ignoring error: {}", err.display_log());
-                    None
-                }
-            })
-            .try_for_each(|item| self.tree_archiver.add(item))?;
+                .parallel_map_scoped(s, |item| self.file_archiver.process(item, p))
+                .readahead_scoped(s)
+                .filter_map(|item| match item {
+                    Ok(item) => Some(item),
+                    Err(err) => {
+                        warn!("ignoring error: {}", err.display_log());
+                        None
+                    }
+                })
+                .try_for_each(|item| {
+                    if cancel.load(Ordering::Relaxed) {
+                        return Err(RusticError::new(
+                            ErrorKind::Cancelled,
+                            "The backup was cancelled by the user.",
+                        ));
+                    }
+                    self.tree_archiver.add(item)
+                })?;
 
             src_size_handle
                 .join()

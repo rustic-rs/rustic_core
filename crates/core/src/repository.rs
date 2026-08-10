@@ -10,6 +10,7 @@ use std::{
     io::Write,
     path::{Path, PathBuf},
     sync::Arc,
+    sync::atomic::AtomicBool,
 };
 
 use bytes::Bytes;
@@ -1671,21 +1672,24 @@ impl<S: IndexedIds> Repository<S> {
     /// * `opts` - The options to use
     /// * `source` - The source to backup
     /// * `snap` - The snapshot to modify and save
+    /// * `cancel` - Cooperative cancel flag; set to `true` externally to abort
+    ///   the backup at the next checkpoint (returns [`ErrorKind::Cancelled`]).
     ///
     /// # Errors
     ///
     // TODO: Document errors
     ///
     /// # Returns
-    ///  
+    ///
     /// The saved snapshot.
     pub fn backup(
         &self,
         opts: &BackupOptions,
         source: &PathList,
         snap: SnapshotFile,
+        cancel: &Arc<AtomicBool>,
     ) -> RusticResult<SnapshotFile> {
-        commands::backup::backup(self, opts, source, snap)
+        commands::backup::backup(self, opts, source, snap, cancel)
     }
 
     /// Run a backup of `source` using a `ReadSource`.
@@ -1697,13 +1701,16 @@ impl<S: IndexedIds> Repository<S> {
     /// * `opts` - The options to use
     /// * `src` - The source to backup
     /// * `snap` - The snapshot to modify and save
+    /// * `backup_paths` - The paths to backup
+    /// * `cancel` - Cooperative cancel flag; set to `true` externally to abort
+    ///   the backup at the next checkpoint (returns [`ErrorKind::Cancelled`]).
     ///
     /// # Errors
     ///
     // TODO: Document errors
     ///
     /// # Returns
-    ///  
+    ///
     /// The saved snapshot.
     pub fn archive<R>(
         &self,
@@ -1711,6 +1718,7 @@ impl<S: IndexedIds> Repository<S> {
         src: &R,
         snap: SnapshotFile,
         backup_paths: &[PathBuf],
+        cancel: &Arc<AtomicBool>,
     ) -> RusticResult<SnapshotFile>
     where
         S: IndexedIds,
@@ -1718,7 +1726,7 @@ impl<S: IndexedIds> Repository<S> {
         <R as ReadSource>::Open: Send,
         <R as ReadSource>::Iter: Send,
     {
-        commands::backup::archive(self, opts, src, snap, backup_paths)
+        commands::backup::archive(self, opts, src, snap, backup_paths, cancel)
     }
 }
 

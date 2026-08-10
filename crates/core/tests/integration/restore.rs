@@ -21,9 +21,10 @@ fn test_restore_preserves_hardlinks(
     set_up_repo: Result<RepoOpen>,
 ) -> Result<()> {
     let (source, repo) = (tar_gz_testdata?, set_up_repo?.to_indexed_ids()?);
+    let cancel = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
 
     let opts = BackupOptions::default().as_path(PathBuf::from_str("test")?);
-    let _snapshot = repo.backup(&opts, &source.path_list(), SnapshotFile::default())?;
+    let _snapshot = repo.backup(&opts, &source.path_list(), SnapshotFile::default(), &cancel)?;
 
     let repo = repo.to_indexed()?;
     let node = repo.node_from_snapshot_path("latest", |_| true)?;

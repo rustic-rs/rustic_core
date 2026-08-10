@@ -10,21 +10,22 @@ use super::{RepoOpen, TestSource, set_up_repo, tar_gz_testdata};
 
 #[rstest]
 fn test_copy(tar_gz_testdata: Result<TestSource>, set_up_repo: Result<RepoOpen>) -> Result<()> {
-    // uncomment for logging output
-    // SimpleLogger::init(log::LevelFilter::Debug, Config::default())?;
+    // uncomment for logging output  
+    // SimpleLogger::init(log::LevelFilter::Debug, Config::default())?;  
 
-    // Fixtures
+    // Fixtures  
     let (source, repo) = (tar_gz_testdata?, set_up_repo?.to_indexed_ids()?);
+    let cancel = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
 
     let paths = &source.path_list();
 
-    // we use as_path to not depend on the actual tempdir
+    // we use as_path to not depend on the actual tempdir  
     let opts = BackupOptions::default().as_path(PathBuf::from_str("test")?);
 
-    // first backup
-    let snap = repo.backup(&opts, paths, SnapshotFile::default())?;
+    // first backup  
+    let snap = repo.backup(&opts, paths, SnapshotFile::default(), &cancel)?;
 
-    // re-read index
+    // re-read index  
     let repo = repo.to_indexed()?;
 
     let target = super::set_up_repo()?;

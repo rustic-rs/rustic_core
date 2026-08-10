@@ -12,39 +12,40 @@ fn test_append_only(
     tar_gz_testdata: Result<TestSource>,
     set_up_repo: Result<RepoOpen>,
 ) -> Result<()> {
-    // uncomment for logging output
-    // SimpleLogger::init(log::LevelFilter::Debug, Config::default())?;
+    // uncomment for logging output  
+    // SimpleLogger::init(log::LevelFilter::Debug, Config::default())?;  
 
-    // Fixtures
+    // Fixtures  
     let (source, mut repo) = (tar_gz_testdata?, set_up_repo?.to_indexed_ids()?);
+    let cancel = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
 
-    // set repo to append-only mode
+    // set repo to append-only mode  
     let config_opts = ConfigOptions::default().set_append_only(true);
     assert!(repo.apply_config(&config_opts)?);
 
     let paths = &source.path_list();
 
-    // backup should still work
+    // backup should still work  
     let opts = BackupOptions::default().as_path(PathBuf::from_str("test")?);
-    let snap = repo.backup(&opts, paths, SnapshotFile::default())?;
+    let snap = repo.backup(&opts, paths, SnapshotFile::default(), &cancel)?;
 
-    // deleting snapshots should fail
+    // deleting snapshots should fail  
     assert!(repo.delete_snapshots(&[snap.id]).is_err());
 
-    // pruning should fail
+    // pruning should fail  
     let prune_options = PruneOptions::default();
     let prune_plan = repo.prune_plan(&prune_options)?;
     assert!(repo.prune(&prune_options, prune_plan).is_err());
 
-    // modifying config should fail
+    // modifying config should fail  
     let config_opts = ConfigOptions::default().set_extra_verify(false);
     assert!(repo.apply_config(&config_opts).is_err());
 
-    // disable append-only-mode
+    // disable append-only-mode  
     let config_opts = ConfigOptions::default().set_append_only(false);
     assert!(repo.apply_config(&config_opts)?);
 
-    // operations should now work
+    // operations should now work  
     repo.delete_snapshots(&[snap.id])?;
     let prune_plan = repo.prune_plan(&prune_options)?;
     repo.prune(&prune_options, prune_plan)?;

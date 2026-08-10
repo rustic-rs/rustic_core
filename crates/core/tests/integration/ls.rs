@@ -22,12 +22,13 @@ fn test_ls(
 ) -> Result<()> {
     // Fixtures
     let (source, repo) = (tar_gz_testdata?, set_up_repo?.to_indexed_ids()?);
+    let cancel = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
     let paths = &source.path_list();
 
     // we use as_path to not depend on the actual tempdir
     let opts = BackupOptions::default().as_path(PathBuf::from_str("test")?);
     // backup test-data
-    let snapshot = repo.backup(&opts, paths, SnapshotFile::default())?;
+    let snapshot = repo.backup(&opts, paths, SnapshotFile::default(), &cancel)?;
 
     // test non-existing entries
     let mut node = Node::new_node(

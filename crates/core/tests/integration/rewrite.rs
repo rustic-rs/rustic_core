@@ -24,19 +24,20 @@ fn test_rewrite(
     insta_snapshotfile_redaction: Settings,
     insta_node_redaction: Settings,
 ) -> Result<()> {
-    // uncomment for logging output
-    // SimpleLogger::init(log::LevelFilter::Debug, Config::default())?;
+    // uncomment for logging output  
+    // SimpleLogger::init(log::LevelFilter::Debug, Config::default())?;  
 
-    // Fixtures
+    // Fixtures  
     let (source, repo) = (tar_gz_testdata?, set_up_repo?.to_indexed_ids()?);
+    let cancel = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
 
     let paths = &source.path_list();
 
-    // we use as_path to not depend on the actual tempdir
+    // we use as_path to not depend on the actual tempdir  
     let backup_opts = BackupOptions::default().as_path(PathBuf::from_str("test")?);
 
-    // first backup
-    let snapshot = repo.backup(&backup_opts, paths, SnapshotFile::default())?;
+    // first backup  
+    let snapshot = repo.backup(&backup_opts, paths, SnapshotFile::default(), &cancel)?;
 
     let modification = SnapshotModification::default()
         .set_label("label".to_string())
@@ -62,7 +63,7 @@ fn test_rewrite(
         .excludes(Excludes::default().globs(vec!["!/test/0/0/9/6*".to_string()]))
         .node_modification(NodeModification::default());
 
-    // with dry_run
+    // with dry_run  
     rewrite_opts.dry_run = true;
     let rewrite_snaps_dryrun =
         repo.rewrite_snapshots_and_trees(snaps.clone(), &rewrite_opts, &rewrite_tree_params)?;
@@ -78,13 +79,13 @@ fn test_rewrite(
     assert_eq!(rewrite_snaps_dryrun, rewrite_snaps);
     assert_eq!(rewrite_snaps.len(), 1);
 
-    // re-read index
+    // re-read index  
     let repo = repo.to_indexed_ids()?;
 
-    // re-read index
+    // re-read index  
     let repo = repo.to_indexed_ids()?;
 
-    // test entries
+    // test entries  
     let mut node = Node::new_node(
         OsStr::new(""),
         rustic_core::repofile::NodeType::Dir,
@@ -100,16 +101,16 @@ fn test_rewrite(
         assert_with_win("rewrite-nodes", &entries);
     });
 
-    // backup with excludes
-    let glob = "!".to_string() + source.path().to_str().unwrap() + "/0/0/9/6*"; // other exclude as we use as-path
+    // backup with excludes  
+    let glob = "!".to_string() + source.path().to_str().unwrap() + "/0/0/9/6*"; // other exclude as we use as-path  
 
-    // #[cfg(windows)]
-    let glob = glob.replace('\\', "/"); // correct windows paths for glob
+    // #[cfg(windows)]  
+    let glob = glob.replace('\\', "/"); // correct windows paths for glob  
 
     let excludes = Excludes::default().globs(vec![glob]);
     let backup_opts = backup_opts.excludes(excludes);
-    let snapshot = repo.backup(&backup_opts, paths, SnapshotFile::default())?;
-    // trees should be identical
+    let snapshot = repo.backup(&backup_opts, paths, SnapshotFile::default(), &cancel)?;
+    // trees should be identical  
     assert_eq!(snapshot.tree, rewrite_snaps[0].tree);
 
     Ok(())

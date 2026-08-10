@@ -228,6 +228,7 @@ pub(crate) fn archive<R, S>(
     src: &R,
     mut snap: SnapshotFile,
     backup_paths: &[PathBuf],
+    cancel: &std::sync::Arc<std::sync::atomic::AtomicBool>,
 ) -> RusticResult<SnapshotFile>
 where
     S: IndexedIds,
@@ -294,6 +295,7 @@ where
         opts.parent_opts.skip_if_unchanged,
         opts.no_scan,
         &p,
+        cancel,
     )
 }
 
@@ -326,6 +328,7 @@ pub(crate) fn backup<S: IndexedIds>(
     opts: &BackupOptions,
     source: &PathList,
     snap: SnapshotFile,
+    cancel: &std::sync::Arc<std::sync::atomic::AtomicBool>,
 ) -> RusticResult<SnapshotFile> {
     let backup_stdin = PathList::from_string("-")?;
 
@@ -334,12 +337,12 @@ pub(crate) fn backup<S: IndexedIds>(
         let backup_paths = vec![path.clone()];
         if let Some(command) = &opts.stdin_command {
             let src = ChildStdoutSource::new(command, path)?;
-            let res = archive(repo, opts, &src, snap, &backup_paths)?;
+            let res = archive(repo, opts, &src, snap, &backup_paths, cancel)?;
             src.finish()?;
             res
         } else {
             let src = StdinSource::new(path);
-            archive(repo, opts, &src, snap, &backup_paths)?
+            archive(repo, opts, &src, snap, &backup_paths, cancel)?
         }
     } else {
         let backup_path = source.paths();
@@ -349,7 +352,7 @@ pub(crate) fn backup<S: IndexedIds>(
             &opts.ignore_filter_opts,
             &backup_path,
         )?;
-        archive(repo, opts, &src, snap, &backup_path)?
+        archive(repo, opts, &src, snap, &backup_path, cancel)?
     };
 
     Ok(snap)

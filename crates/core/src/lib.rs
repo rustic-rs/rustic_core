@@ -72,7 +72,8 @@ implement [`serde::Serialize`] and [`serde::Deserialize`].
     let source = PathList::from_string("src").unwrap().sanitize().unwrap();
 
     // run the backup and return the snapshot pointing to the backup'ed data.
-    let snap = repo.backup(&backup_opts, &source, snap).unwrap();
+    let cancel = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let snap = repo.backup(&backup_opts, &source, snap, &cancel).unwrap();
     // assert_eq!(&snap.paths, ["src"]);
 
     // Get all snapshots from the repository
