@@ -18,6 +18,22 @@ pub fn hash(data: &[u8]) -> Id {
     Id::new(Sha256::digest(data).into())
 }
 
+pub struct Hasher(Sha256);
+
+impl Hasher {
+    pub fn new() -> Self {
+        Self(Sha256::default())
+    }
+
+    pub fn update(&mut self, data: &[u8]) {
+        self.0.update(data);
+    }
+
+    pub fn finalize(self) -> Id {
+        Id::new(self.0.finalize().into())
+    }
+}
+
 /// Hashes the data from a [`Read`]er.
 ///
 /// # Arguments
@@ -32,7 +48,7 @@ pub fn hash(data: &[u8]) -> Id {
 /// The hash Id of the data.
 pub fn hash_reader(mut reader: impl Read) -> Result<Id> {
     let mut buffer = [0; 4096];
-    let mut hasher = Sha256::default();
+    let mut hasher = Hasher::new();
 
     loop {
         match reader.read(&mut buffer) {
@@ -43,8 +59,7 @@ pub fn hash_reader(mut reader: impl Read) -> Result<Id> {
             }
             Ok(count) => {
                 if count == 0 {
-                    let id = hasher.finalize();
-                    break Ok(Id::new(id.into()));
+                    break Ok(hasher.finalize());
                 }
                 hasher.update(&buffer[..count]);
             }

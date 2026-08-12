@@ -41,13 +41,8 @@ fn hot_cold(tar_gz_testdata: Result<TestSource>) -> Result<()> {
     // get all snapshots and check them
     let all_snapshots = repo.get_all_snapshots()?;
     assert_eq!(vec![snapshot], all_snapshots);
-    repo.check(CheckOptions::default())?.is_ok()?;
-    // check with read_data should fail - as accessing packs from the cold storage is not implemented
-    assert!(
-        repo.check(CheckOptions::default().read_data(true))?
-            .is_ok()
-            .is_err()
-    );
+    repo.check(CheckOptions::default().read_data(true))?
+        .is_ok()?;
 
     // remove keys, config and index files from hot repository
     for tpe in [FileType::Key, FileType::Config, FileType::Index] {
