@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.7.0](https://github.com/rustic-rs/rustic_core/compare/rustic_backend-v0.6.2...rustic_backend-v0.7.0) - 2026-08-16
+
+### Added
+
+- implement some exclude options for opendal source ([#535](https://github.com/rustic-rs/rustic_core/pull/535))
+- [**breaking**] refactor packer and optimize memory allocations ([#533](https://github.com/rustic-rs/rustic_core/pull/533))
+
+### Other
+
+- *(deps)* bump opendal to 0.58.1 ([#539](https://github.com/rustic-rs/rustic_core/pull/539))
+
 ## [0.6.2](https://github.com/rustic-rs/rustic_core/compare/rustic_backend-v0.6.1...rustic_backend-v0.6.2) - 2026-06-01
 
 ### Added

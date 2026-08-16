@@ -2,6 +2,26 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.13.0](https://github.com/rustic-rs/rustic_core/compare/rustic_core-v0.12.0...rustic_core-v0.13.0) - 2026-08-16
+
+### Added
+
+- stdio protocol between warmup program and rustic ([#1782](https://github.com/rustic-rs/rustic_core/pull/1782)) ([#524](https://github.com/rustic-rs/rustic_core/pull/524))
+- implement some exclude options for opendal source ([#535](https://github.com/rustic-rs/rustic_core/pull/535))
+- Add sparse file support for restore ([#530](https://github.com/rustic-rs/rustic_core/pull/530))
+- [**breaking**] refactor packer and optimize memory allocations ([#533](https://github.com/rustic-rs/rustic_core/pull/533))
+
+### Fixed
+
+- read full packs from cold backend in hot/cold case ([#542](https://github.com/rustic-rs/rustic_core/pull/542))
+- use no parent for stdin source ([#536](https://github.com/rustic-rs/rustic_core/pull/536))
+
+### Other
+
+- *(deps)* dependency updates ([#541](https://github.com/rustic-rs/rustic_core/pull/541))
+- *(deps)* bump opendal to 0.58.1 ([#539](https://github.com/rustic-rs/rustic_core/pull/539))
+- reduce memory usage for index ([#537](https://github.com/rustic-rs/rustic_core/pull/537))
+
 ## [0.12.0](https://github.com/rustic-rs/rustic_core/compare/rustic_core-v0.11.0...rustic_core-v0.12.0) - 2026-06-01
 
 ### Added
