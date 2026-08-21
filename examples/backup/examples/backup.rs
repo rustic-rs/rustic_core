@@ -5,6 +5,8 @@ use rustic_core::{
 };
 use simplelog::{Config, LevelFilter, SimpleLogger};
 use std::error::Error;
+use std::sync::Arc;
+use std::sync::atomic::AtomicBool;
 
 fn main() -> Result<(), Box<dyn Error>> {
     // Display info logs
@@ -30,7 +32,8 @@ fn main() -> Result<(), Box<dyn Error>> {
         .to_snapshot()?;
 
     // Create snapshot
-    let snap = repo.backup(&backup_opts, &source, snap)?;
+    let cancel = Arc::new(AtomicBool::new(false));
+    let snap = repo.backup(&backup_opts, &source, snap, &cancel)?;
 
     println!("successfully created snapshot:\n{snap:#?}");
     Ok(())
