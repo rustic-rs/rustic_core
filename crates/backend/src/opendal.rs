@@ -558,7 +558,18 @@ impl WriteBackend for OpenDALBackend {
                 .attach_context("id", id.to_string())
         };
 
-        if self.counter.is_some() {
+        // Only take the chunked progress path when BOTH conditions hold:
+        //   1. a progress counter is attached (ProgressLayer is active), and
+        //   2. the backend actually supports multiple writes (multipart-style).
+        // Some opendal services (e.g. WebDAV, fs, dropbox) only provide a
+        // OneShotWriter and reject a second `write()` call with
+        // "OneShotWriter doesn't support multiple write". For those we must
+        // fall back to a single one-shot write. Progress is still reported by
+        // ProgressLayer during that single write (the file's progress just
+        // jumps at once instead of per-chunk), which is acceptable.
+        let write_can_multi = self.operator.info().full_capability().write_can_multi;
+
+        if self.counter.is_some() && write_can_multi {
             // Progress path: chunked writer so ProgressLayer fires per part.
             let write_options = WriteOptions {
                 chunk: Some(constants::CHUNK_SIZE),
@@ -575,7 +586,8 @@ impl WriteBackend for OpenDALBackend {
             }
             _ = writer.close().map_err(map_write_err)?;
         } else {
-            // Default path: single one-shot write, unchanged behavior.
+            // Default / one-shot path: covers both "no progress counter" and
+            // "progress enabled but backend only supports OneShot (e.g. WebDAV)".
             _ = self.operator.write(&filename, buf).map_err(map_write_err)?;
         }
 
