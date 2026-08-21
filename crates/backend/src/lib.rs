@@ -61,6 +61,9 @@ pub mod local;
 /// Utility functions for the backend.
 pub mod util;
 
+#[cfg(feature = "reqwest")]
+pub(crate) mod reqwest;
+
 /// `OpenDAL` backend for Rustic.
 #[cfg(feature = "opendal")]
 pub mod opendal;

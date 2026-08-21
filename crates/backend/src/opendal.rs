@@ -11,11 +11,12 @@ use bytes::Bytes;
 use bytesize::ByteSize;
 use log::{error, trace, warn};
 use opendal::{
-    Entry, Metadata,
+    Entry, HttpTransporter, Metadata, OperationContext,
     blocking::{Operator, StdReader},
     layers::{ConcurrentLimitLayer, LoggingLayer, RetryLayer, ThrottleLayer},
     options::{ListOptions, ReadOptions},
 };
+use opendal_http_transport_reqwest::ReqwestTransport;
 use rayon::prelude::{IntoParallelIterator, ParallelIterator};
 use tokio::runtime::Runtime;
 use typed_path::UnixPathBuf;
@@ -25,6 +26,8 @@ use rustic_core::{
     ReadSourceEntry, ReadSourceOpen, RusticError, RusticResult, WriteBackend,
     repofile::{Node, NodeType},
 };
+
+use crate::reqwest::reqwest_client;
 
 mod constants {
     /// Default number of retries
@@ -144,6 +147,10 @@ impl OpenDALBackend {
             .map(|t| Throttle::from_str(t))
             .transpose()?;
 
+        let client = reqwest_client(&options)?;
+        let http_transport = HttpTransporter::new(ReqwestTransport::new(client));
+        let operation_context = OperationContext::new().with_http_transport(http_transport);
+
         let scheme = path
             .as_ref()
             .split(':')
@@ -159,7 +166,7 @@ impl OpenDALBackend {
                 )
                 .attach_context("path", path.as_ref().to_string())
                 .attach_context("schema", scheme.to_string())
-            })?
+            })?.with_context(operation_context)
             .layer(RetryLayer::new().with_max_times(max_retries).with_jitter());
 
         if let Some(Throttle { bandwidth, burst }) = throttle {
