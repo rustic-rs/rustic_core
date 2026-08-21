@@ -2338,6 +2338,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "lockable"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3b0f35193d57711b7b4730a3b888a5033347fb7be1ee9a64a755fa4ee013ef80"
+dependencies = [
+ "derive_more",
+ "futures",
+ "itertools 0.14.0",
+ "tokio",
+]
+
+[[package]]
 name = "log"
 version = "0.4.33"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4324,6 +4336,7 @@ dependencies = [
  "integer-sqrt",
  "itertools 0.15.0",
  "jiff",
+ "lockable",
  "log",
  "mockall",
  "nix",

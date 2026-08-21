@@ -8,6 +8,7 @@ use std::{
 
 use bytes::Bytes;
 use dirs::cache_dir;
+use lockable::LockPool;
 use log::{trace, warn};
 use walkdir::WalkDir;
 
@@ -26,12 +27,15 @@ use crate::{
 /// # Type Parameters
 ///
 /// * `BE` - The backend to cache.
-#[derive(Clone, Debug)]
+#[derive(Clone, derive_more::Debug)]
 pub struct CachedBackend {
     /// The backend to cache.
     be: Arc<dyn WriteBackend>,
     /// The cache.
     cache: Cache,
+    /// we need some locking to prevent parallel write access on cache files
+    #[debug(skip)]
+    lock_pool: Arc<LockPool<Id>>,
 }
 
 impl CachedBackend {
@@ -41,7 +45,12 @@ impl CachedBackend {
     ///
     /// * `BE` - The backend to cache.
     pub fn new_cache(be: Arc<dyn WriteBackend>, cache: Cache) -> Arc<dyn WriteBackend> {
-        Arc::new(Self { be, cache })
+        let lock_pool = Arc::new(LockPool::new());
+        Arc::new(Self {
+            be,
+            cache,
+            lock_pool,
+        })
     }
 }
 
@@ -95,6 +104,12 @@ impl ReadBackend for CachedBackend {
     /// The data read.
     fn read_full(&self, tpe: FileType, id: &Id) -> RusticResult<Bytes> {
         if tpe.is_cacheable() {
+            let guard = self.lock_pool.blocking_lock(*id);
+            if self.cache.path(tpe, id).exists() {
+                // early drop the lock guard, so we can read the cache in parallel.
+                drop(guard);
+            }
+
             match self.cache.read_full(tpe, id) {
                 Ok(Some(data)) => return Ok(data),
                 Ok(None) => {}
@@ -144,6 +159,12 @@ impl ReadBackend for CachedBackend {
         length: u32,
     ) -> RusticResult<Bytes> {
         if cacheable || tpe.is_cacheable() {
+            let guard = self.lock_pool.blocking_lock(*id);
+            if self.cache.path(tpe, id).exists() {
+                // early drop the lock guard, so we can read the cache in parallel.
+                drop(guard);
+            }
+
             match self.cache.read_partial(tpe, id, offset, length) {
                 Ok(Some(data)) => return Ok(data),
                 Ok(None) => {}
@@ -207,13 +228,14 @@ impl WriteBackend for CachedBackend {
         cacheable: bool,
         content: BytesList,
     ) -> RusticResult<()> {
-        if (cacheable || tpe.is_cacheable())
-            && let Err(err) = self.cache.write_bytes(tpe, id, &content)
-        {
-            warn!(
-                "Error in cache backend writing {tpe:?},{id}: {}",
-                err.display_log()
-            );
+        if cacheable || tpe.is_cacheable() {
+            let _guard = self.lock_pool.blocking_lock(*id);
+            if let Err(err) = self.cache.write_bytes(tpe, id, &content) {
+                warn!(
+                    "Error in cache backend writing {tpe:?},{id}: {}",
+                    err.display_log()
+                );
+            }
         }
         self.be.write_bytes(tpe, id, cacheable, content)
     }
@@ -227,13 +249,14 @@ impl WriteBackend for CachedBackend {
     /// * `tpe` - The type of the file.
     /// * `id` - The id of the file.
     fn remove(&self, tpe: FileType, id: &Id, cacheable: bool) -> RusticResult<()> {
-        if (cacheable || tpe.is_cacheable())
-            && let Err(err) = self.cache.remove(tpe, id)
-        {
-            warn!(
-                "Error in cache backend removing {tpe:?},{id}: {}",
-                err.display_log()
-            );
+        if cacheable || tpe.is_cacheable() {
+            let _guard = self.lock_pool.blocking_lock(*id);
+            if let Err(err) = self.cache.remove(tpe, id) {
+                warn!(
+                    "Error in cache backend removing {tpe:?},{id}: {}",
+                    err.display_log()
+                );
+            }
         }
         self.be.remove(tpe, id, cacheable)
     }
