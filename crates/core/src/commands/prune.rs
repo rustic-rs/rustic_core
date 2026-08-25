@@ -254,8 +254,35 @@ pub struct DebugStatsKey {
     pub status: EnumSet<PackStatus>,
 }
 
-#[derive(Debug, Default, Serialize)]
+#[derive(Debug, Default)]
+/// Detailed debug statistics, keyed by decision and blob type.
+///
+/// For human-readable formats, the structured key is serialized as a sequence
+/// of `key`/`stats` entries so it can be represented in JSON.
 pub struct DebugStats(pub BTreeMap<DebugStatsKey, DebugDetailedStats>);
+
+#[derive(Serialize)]
+struct DebugStatsEntry<'a> {
+    key: &'a DebugStatsKey,
+    stats: &'a DebugDetailedStats,
+}
+
+impl Serialize for DebugStats {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        if serializer.is_human_readable() {
+            serializer.collect_seq(
+                self.0
+                    .iter()
+                    .map(|(key, stats)| DebugStatsEntry { key, stats }),
+            )
+        } else {
+            self.0.serialize(serializer)
+        }
+    }
+}
 
 impl DebugStats {
     fn add(&mut self, pi: &PackInfo, todo: PackToDo, status: EnumSet<PackStatus>) {
@@ -283,7 +310,7 @@ impl DebugStats {
 }
 
 /// Statistics about what is deleted or kept within `prune`
-#[derive(Default, Debug, Clone, Copy)]
+#[derive(Default, Debug, Clone, Copy, Serialize)]
 pub struct DeleteStats {
     /// Number of blobs to remove
     pub remove: u64,
@@ -299,7 +326,7 @@ impl DeleteStats {
         self.remove + self.recover + self.keep
     }
 }
-#[derive(Debug, Default, Clone, Copy)]
+#[derive(Debug, Default, Clone, Copy, Serialize)]
 /// Statistics about packs within `prune`
 pub struct PackStats {
     /// Number of used packs
@@ -314,7 +341,7 @@ pub struct PackStats {
     pub keep: u64,
 }
 
-#[derive(Debug, Default, Clone, Copy, Add)]
+#[derive(Debug, Default, Clone, Copy, Add, Serialize)]
 /// Statistics about sizes within `prune`
 pub struct SizeStats {
     /// Number of used blobs
@@ -347,7 +374,7 @@ impl SizeStats {
 }
 
 /// Statistics about a [`PrunePlan`]
-#[derive(Default, Debug)]
+#[derive(Default, Debug, Serialize)]
 pub struct PruneStats {
     /// Statistics about pack count
     pub packs_to_delete: DeleteStats,
@@ -1629,4 +1656,53 @@ fn find_used_blobs<S>(
     }
 
     Ok(ids)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn prune_stats_serialize_to_json() {
+        let stats = PruneStats {
+            packs_unref: 7,
+            debug: DebugStats(BTreeMap::from([(
+                DebugStatsKey {
+                    todo: PackToDo::Keep,
+                    blob_type: BlobType::Data,
+                    status: EnumSet::only(PackStatus::HasUsedBlobs),
+                },
+                DebugDetailedStats {
+                    packs: 1,
+                    unused_blobs: 2,
+                    unused_size: 3,
+                    used_blobs: 4,
+                    used_size: 5,
+                },
+            )])),
+            ..Default::default()
+        };
+
+        let json = serde_json::to_value(stats).unwrap();
+        assert_eq!(json["packs_unref"], 7);
+        assert!(json.get("blobs").is_some());
+        assert!(json.get("size").is_some());
+        assert_eq!(
+            json["debug"],
+            serde_json::json!([{
+                "key": {
+                    "todo": "Keep",
+                    "blob_type": "data",
+                    "status": ["HasUsedBlobs"],
+                },
+                "stats": {
+                    "packs": 1,
+                    "unused_blobs": 2,
+                    "unused_size": 3,
+                    "used_blobs": 4,
+                    "used_size": 5,
+                },
+            }])
+        );
+    }
 }
