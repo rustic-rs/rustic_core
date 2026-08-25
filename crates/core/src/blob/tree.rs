@@ -636,6 +636,24 @@ pub struct TreeStreamerOnce {
     finished_ids: usize,
 }
 
+fn forward_loaded_trees<F>(
+    in_rx: Receiver<(PathBuf, TreeId, usize)>,
+    out_tx: Sender<RusticResult<(PathBuf, Tree, usize)>>,
+    load_tree: F,
+) where
+    F: Fn(TreeId) -> RusticResult<Tree>,
+{
+    for (path, id, count) in in_rx {
+        if out_tx
+            .send(load_tree(id).map(|tree| (path, tree, count)))
+            .is_err()
+        {
+            // The consumer stopped after an error. No more work can be observed.
+            break;
+        }
+    }
+}
+
 impl TreeStreamerOnce {
     /// Creates a new `TreeStreamerOnce`.
     ///
@@ -670,11 +688,7 @@ impl TreeStreamerOnce {
             let in_rx = in_rx.clone();
             let out_tx = out_tx.clone();
             let _join_handle = std::thread::spawn(move || {
-                for (path, id, count) in in_rx {
-                    out_tx
-                        .send(Tree::from_backend(&be, &index, id).map(|tree| (path, tree, count)))
-                        .unwrap();
-                }
+                forward_loaded_trees(in_rx, out_tx, |id| Tree::from_backend(&be, &index, id));
             });
         }
 
@@ -948,4 +962,29 @@ pub(crate) fn merge_nodes(
         summary.total_bytes_processed += node.meta.size;
     }
     Ok(node)
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::PathBuf;
+
+    use crossbeam_channel::{bounded, unbounded};
+
+    use super::{Tree, forward_loaded_trees};
+
+    #[test]
+    fn tree_loader_exits_when_output_receiver_is_dropped() {
+        let (_, id) = Tree::new().serialize().unwrap();
+        let (in_tx, in_rx) = unbounded();
+        let (out_tx, out_rx) = bounded(1);
+        in_tx.send((PathBuf::new(), id, 0)).unwrap();
+        drop(in_tx);
+        drop(out_rx);
+
+        let loader = std::thread::spawn(move || {
+            forward_loaded_trees(in_rx, out_tx, |_| Ok(Tree::new()));
+        });
+
+        loader.join().unwrap();
+    }
 }
