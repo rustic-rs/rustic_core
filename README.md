@@ -12,6 +12,13 @@
 <a href="https://crates.io/crates/rustic_core"><img src="https://img.shields.io/crates/d/rustic_core.svg" /></a>
 <p>
 
+<a href="https://opendal.apache.org/">
+<picture>
+<source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/apache/opendal/main/website/static/img/logo_dark.svg">
+<img src="https://raw.githubusercontent.com/apache/opendal/main/website/static/img/logo.svg" alt="Powered by Apache OpenDAL" height="64" />
+</picture>
+</a>
+
 ## About
 
 This library is powering [rustic-rs](https://crates.io/crates/rustic-rs). A

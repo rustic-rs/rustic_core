@@ -10,6 +10,13 @@
 <a href="https://crates.io/crates/rustic_backend"><img src="https://img.shields.io/crates/d/rustic_backend.svg" /></a>
 <p>
 
+<a href="https://opendal.apache.org/">
+<picture>
+<source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/apache/opendal/main/website/static/img/logo_dark.svg">
+<img src="https://raw.githubusercontent.com/apache/opendal/main/website/static/img/logo.svg" alt="Powered by Apache OpenDAL" height="64" />
+</picture>
+</a>
+
 ## News
 
 We temporarily disabled the `service-ftp` feature on the `opendal` backend due
