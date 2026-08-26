@@ -52,10 +52,13 @@ pub(crate) fn dump<S: IndexedFull>(
     let index_entries: Vec<_> = content
         .iter()
         .map(|id| {
-            repo.index().get_data(id).ok_or_else(|| {
-                RusticError::new(ErrorKind::Internal, "Data Blob `{id}`  not found in index")
-                    .attach_context("id", id.to_string())
-            })
+            repo.index()
+                .get_data(id)
+                .map(|entry| (BlobId::from(**id), entry))
+                .ok_or_else(|| {
+                    RusticError::new(ErrorKind::Internal, "Data Blob `{id}`  not found in index")
+                        .attach_context("id", id.to_string())
+                })
         })
         .collect::<RusticResult<_>>()?;
 
@@ -63,7 +66,7 @@ pub(crate) fn dump<S: IndexedFull>(
     scope(|s| -> RusticResult<()> {
         index_entries
             .iter()
-            .parallel_map_scoped(s, |ie| ie.read_data(be))
+            .parallel_map_scoped(s, |(id, ie)| ie.read_data(be, id))
             .try_for_each(|res| write_blob(w, &res?))
     })
 }

@@ -24,7 +24,7 @@ use crate::{
         decrypt::DecryptReadBackend,
         node::{Metadata, Node, NodeType},
     },
-    blob::{BlobType, tree::excludes::Excludes},
+    blob::{BlobId, BlobType, tree::excludes::Excludes},
     crypto::hasher::hash,
     error::{ErrorKind, RusticError, RusticResult},
     impl_blobid,
@@ -148,7 +148,7 @@ impl Tree {
                 )
                 .attach_context("tree_id", id.to_string())
             })?
-            .read_data(be)?;
+            .read_data(be, &BlobId::from(*id))?;
 
         let tree = serde_json::from_slice(&data).map_err(|err| {
             RusticError::with_source(
