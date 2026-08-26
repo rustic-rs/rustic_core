@@ -522,7 +522,8 @@ impl WriteBackend for LocalBackend {
 
         trace!("writing tpe: {tpe:?}, id: {id}");
         let filename = self.path(tpe, id);
-        let replaces_existing_file = filename.exists();
+        let replaces_existing_config =
+            tpe == FileType::Config && self.post_delete_command.is_some() && filename.exists();
 
         let parent = self.base_path(tpe, id);
 
@@ -566,8 +567,8 @@ impl WriteBackend for LocalBackend {
             .ask_report()
         })?;
 
-        // Replacing a file bypasses `remove`, so invoke its hook explicitly.
-        if replaces_existing_file
+        // Replacing the config bypasses `remove`, so invoke its hook explicitly.
+        if replaces_existing_config
             && let Some(command) = &self.post_delete_command
             && let Err(err) = Self::call_command(tpe, id, &filename, command)
         {
@@ -626,7 +627,7 @@ mod tests {
     use super::LocalBackend;
 
     #[test]
-    fn replacing_a_file_runs_delete_hook_before_create_hook() {
+    fn replacing_config_runs_delete_hook_before_create_hook() {
         let repo = env::temp_dir().join(format!(
             "rustic-local-backend-test-{}-{}",
             process::id(),
