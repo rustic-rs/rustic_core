@@ -67,6 +67,7 @@ pub enum LocalDestinationErrorKind {
     FileDoesNotHaveParent(PathBuf),
     #[cfg(any(
         target_os = "macos",
+        target_os = "ios",
         target_os = "openbsd",
         all(target_os = "android", target_pointer_width = "32")
     ))]
@@ -666,11 +667,12 @@ impl LocalDestination {
             NodeType::Dev { device } => {
                 #[cfg(not(any(
                     target_os = "macos",
+                    target_os = "ios",
                     target_os = "openbsd",
                     all(target_os = "android", target_pointer_width = "32")
                 )))]
                 let device = *device;
-                #[cfg(any(target_os = "macos", target_os = "openbsd"))]
+                #[cfg(any(target_os = "macos", target_os = "ios", target_os = "openbsd"))]
                 let device = i32::try_from(*device).map_err(|err| {
                     LocalDestinationErrorKind::DeviceIdConversionFailed {
                         target: "i32".to_string(),
@@ -692,11 +694,12 @@ impl LocalDestination {
             NodeType::Chardev { device } => {
                 #[cfg(not(any(
                     target_os = "macos",
+                    target_os = "ios",
                     target_os = "openbsd",
                     all(target_os = "android", target_pointer_width = "32")
                 )))]
                 let device = *device;
-                #[cfg(any(target_os = "macos", target_os = "openbsd"))]
+                #[cfg(any(target_os = "macos", target_os = "ios", target_os = "openbsd"))]
                 let device = i32::try_from(*device).map_err(|err| {
                     LocalDestinationErrorKind::DeviceIdConversionFailed {
                         target: "i32".to_string(),
