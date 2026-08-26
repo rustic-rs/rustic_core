@@ -64,7 +64,7 @@ This crate exposes a few features for controlling dependency usage:
 
 ```rust
 use rustic_backend::BackendOptions;
-use rustic_core::{ConfigOptions, KeyOptions, Repository, RepositoryOptions};
+use rustic_core::{Credentials, ConfigOptions, KeyOptions, Repository, RepositoryOptions};
 use simplelog::{Config, LevelFilter, SimpleLogger};
 use std::error::Error;
 
@@ -78,10 +78,11 @@ fn main() -> Result<(), Box<dyn Error>> {
         .to_backends()?;
 
     // Init repository
-    let repo_opts = RepositoryOptions::default().password("test");
+    let creds = Credentials::Password("test".into());
+    let repo_opts = RepositoryOptions::default();
     let key_opts = KeyOptions::default();
     let config_opts = ConfigOptions::default();
-    let _repo = Repository::new(&repo_opts, &backends)?.init(&key_opts, &config_opts)?;
+    let _repo = Repository::new(&repo_opts, &backends)?.init(&creds, &key_opts, &config_opts)?;
 
     // -> use _repo for any operation on an open repository
     Ok(())
@@ -92,7 +93,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
 ```rust
 use rustic_backend::BackendOptions;
-use rustic_core::{BackupOptions, PathList, Repository, RepositoryOptions, SnapshotOptions};
+use rustic_core::{BackupOptions, Credentials, PathList, Repository, RepositoryOptions, SnapshotOptions};
 use simplelog::{Config, LevelFilter, SimpleLogger};
 use std::error::Error;
 
@@ -107,10 +108,11 @@ fn main() -> Result<(), Box<dyn Error>> {
         .to_backends()?;
 
     // Open repository
-    let repo_opts = RepositoryOptions::default().password("test");
+    let creds = Credentials::Password("test".into());
+    let repo_opts = RepositoryOptions::default();
 
     let repo = Repository::new(&repo_opts, &backends)?
-        .open()?
+        .open(&creds)?
         .to_indexed_ids()?;
 
     let backup_opts = BackupOptions::default();
@@ -131,7 +133,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
 ```rust
 use rustic_backend::BackendOptions;
-use rustic_core::{LocalDestination, LsOptions, Repository, RepositoryOptions, RestoreOptions};
+use rustic_core::{Credentials, LocalDestination, LsOptions, Repository, RepositoryOptions, RestoreOptions};
 use simplelog::{Config, LevelFilter, SimpleLogger};
 use std::error::Error;
 
@@ -145,9 +147,10 @@ fn main() -> Result<(), Box<dyn Error>> {
         .to_backends()?;
 
     // Open repository
-    let repo_opts = RepositoryOptions::default().password("test");
+    let creds = Credentials::Password("test".into());
+    let repo_opts = RepositoryOptions::default();
     let repo = Repository::new(&repo_opts, &backends)?
-        .open()?
+        .open(&creds)?
         .to_indexed()?;
 
     // use latest snapshot without filtering snapshots
@@ -175,7 +178,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
 ```rust
 use rustic_backend::BackendOptions;
-use rustic_core::{CheckOptions, Repository, RepositoryOptions};
+use rustic_core::{CheckOptions, Credentials, Repository, RepositoryOptions};
 use simplelog::{Config, LevelFilter, SimpleLogger};
 use std::error::Error;
 
@@ -189,8 +192,9 @@ fn main() -> Result<(), Box<dyn Error>> {
         .to_backends()?;
 
     // Open repository
-    let repo_opts = RepositoryOptions::default().password("test");
-    let repo = Repository::new(&repo_opts, &backends)?.open()?;
+    let creds = Credentials::Password("test".into());
+    let repo_opts = RepositoryOptions::default();
+    let repo = Repository::new(&repo_opts, &backends)?.open(&creds)?;
 
     // Check repository with standard options but omitting cache checks
     let opts = CheckOptions::default().trust_cache(true);
