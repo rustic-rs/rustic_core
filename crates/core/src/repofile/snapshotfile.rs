@@ -46,8 +46,8 @@ pub enum SnapshotFileErrorKind {
     ValueNotAllowed(String),
     /// removing dots from paths failed: `{0:?}`
     RemovingDotsFromPathFailed(std::io::Error),
-    /// canonicalizing path failed: `{0:?}`
-    CanonicalizingPathFailed(std::io::Error),
+    /// canonicalizing path `{0:?}` failed: `{1:?}`
+    CanonicalizingPathFailed(PathBuf, std::io::Error),
 }
 
 pub(crate) type SnapshotFileResult<T> = Result<T, SnapshotFileErrorKind>;
@@ -1255,7 +1255,10 @@ impl PathList {
             self.0 = self
                 .0
                 .into_iter()
-                .map(|p| canonicalize(p).map_err(SnapshotFileErrorKind::CanonicalizingPathFailed))
+                .map(|p| {
+                    canonicalize(&p)
+                        .map_err(|err| SnapshotFileErrorKind::CanonicalizingPathFailed(p, err))
+                })
                 .collect::<Result<_, _>>()?;
         }
         Ok(self.merge())
@@ -1367,6 +1370,25 @@ mod tests {
         let path_list = PathList::from_iter(input);
         let result = path_list.to_string();
         assert_eq!(expected, &result);
+    }
+
+    #[test]
+    fn path_list_sanitize_error_includes_path() {
+        let tempdir = tempfile::tempdir().unwrap();
+        let missing_path = tempdir.path().join("missing");
+
+        let err = PathList::from_iter([missing_path.clone()])
+            .sanitize()
+            .unwrap_err();
+
+        assert!(
+            err.to_string()
+                .contains(&missing_path.display().to_string())
+        );
+        assert!(matches!(
+            err,
+            SnapshotFileErrorKind::CanonicalizingPathFailed(path, _) if path == missing_path
+        ));
     }
 
     fn fake_snapshot_file_with_id_time(
