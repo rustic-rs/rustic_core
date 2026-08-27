@@ -522,6 +522,8 @@ impl WriteBackend for LocalBackend {
 
         trace!("writing tpe: {tpe:?}, id: {id}");
         let filename = self.path(tpe, id);
+        let replaces_existing_config =
+            tpe == FileType::Config && self.post_delete_command.is_some() && filename.exists();
 
         let parent = self.base_path(tpe, id);
 
@@ -565,6 +567,14 @@ impl WriteBackend for LocalBackend {
             .ask_report()
         })?;
 
+        // Replacing the config bypasses `remove`, so invoke its hook explicitly.
+        if replaces_existing_config
+            && let Some(command) = &self.post_delete_command
+            && let Err(err) = Self::call_command(tpe, id, &filename, command)
+        {
+            warn!("post-delete: {}", err.display_log());
+        }
+
         if let Some(command) = &self.post_create_command
             && let Err(err) = Self::call_command(tpe, id, &filename, command)
         {
@@ -601,5 +611,65 @@ impl WriteBackend for LocalBackend {
             warn!("post-delete: {}", err.display_log());
         }
         Ok(())
+    }
+}
+
+#[cfg(all(test, unix))]
+mod tests {
+    use std::{
+        env, fs, process,
+        time::{SystemTime, UNIX_EPOCH},
+    };
+
+    use bytes::Bytes;
+    use rustic_core::{FileType, Id, WriteBackend};
+
+    use super::LocalBackend;
+
+    #[test]
+    fn replacing_config_runs_delete_hook_before_create_hook() {
+        let repo = env::temp_dir().join(format!(
+            "rustic-local-backend-test-{}-{}",
+            process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        fs::create_dir(&repo).unwrap();
+        let marker = repo.join("hooks-ran");
+        let options = [
+            (
+                "post-create-command".to_string(),
+                format!("sh -c 'printf create >> {}'", marker.display()),
+            ),
+            (
+                "post-delete-command".to_string(),
+                format!("sh -c 'printf delete >> {}'", marker.display()),
+            ),
+        ];
+        let backend = LocalBackend::new(repo.to_string_lossy(), options).unwrap();
+        backend.create().unwrap();
+
+        backend
+            .write_bytes(
+                FileType::Config,
+                &Id::default(),
+                false,
+                Bytes::from_static(b"first").into(),
+            )
+            .unwrap();
+        backend
+            .write_bytes(
+                FileType::Config,
+                &Id::default(),
+                false,
+                Bytes::from_static(b"second").into(),
+            )
+            .unwrap();
+
+        let hooks_ran = fs::read_to_string(marker).unwrap();
+        fs::remove_dir_all(repo).unwrap();
+        assert_eq!(hooks_ran, "createdeletecreate");
     }
 }
