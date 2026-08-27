@@ -671,9 +671,12 @@ impl TreeStreamerOnce {
             let out_tx = out_tx.clone();
             let _join_handle = std::thread::spawn(move || {
                 for (path, id, count) in in_rx {
-                    out_tx
+                    if out_tx
                         .send(Tree::from_backend(&be, &index, id).map(|tree| (path, tree, count)))
-                        .unwrap();
+                        .is_err()
+                    {
+                        break;
+                    }
                 }
             });
         }
