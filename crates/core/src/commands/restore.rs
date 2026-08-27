@@ -15,11 +15,11 @@ use walkdir::{DirEntry, WalkDir};
 use crate::{
     backend::{
         FileType, ReadBackend,
-        decrypt::DecryptReadBackend,
+        decrypt::{DecryptReadBackend, verify_blob_id},
         local_destination::LocalDestination,
         node::{Node, NodeType},
     },
-    blob::{BlobLocation, BlobLocations},
+    blob::{BlobId, BlobLocation, BlobLocations},
     error::{ErrorKind, RusticError, RusticResult},
     repofile::packfile::PackId,
     repository::{IndexedFull, IndexedTree, Open, Repository},
@@ -31,7 +31,7 @@ pub(crate) mod constants {
 }
 
 type Filenames = Vec<PathBuf>;
-type RestoreInfo = BTreeMap<(PackId, BlobLocation), SmallVec<[FileLocation; 1]>>;
+type RestoreInfo = BTreeMap<(PackId, BlobLocation, BlobId), SmallVec<[FileLocation; 1]>>;
 
 #[allow(clippy::struct_excessive_bools)]
 #[cfg_attr(feature = "clap", derive(clap::Parser))]
@@ -482,10 +482,12 @@ pub(crate) fn set_metadata(
         .unwrap_or_else(|_| warn!("restore {}: setting file times failed.", path.display()));
 }
 
+type RestoreBlobDestinations = (BlobId, SmallVec<[(usize, u64); 1]>);
+
 struct PackInfo {
     pack_id: PackId,
     from_file: Option<(usize, u64, u32)>,
-    locations: BlobLocations<SmallVec<[(usize, u64); 1]>>,
+    locations: BlobLocations<RestoreBlobDestinations>,
 }
 
 impl PackInfo {
@@ -554,13 +556,14 @@ fn restore_contents<S: Open>(
     }
 
     let sizes = &Mutex::new(file_lengths);
+    let errors = Mutex::new(None);
 
     let p = repo.progress_bytes("restoring file contents...");
     p.set_length(restore_size);
 
     let packs: Vec<_> = restore_info
         .into_iter()
-        .map(|((pack_id, bl), fls)| {
+        .map(|((pack_id, bl, blob_id), fls)| {
             let from_file = fls
                 .iter()
                 .find(|fl| fl.matches)
@@ -575,7 +578,7 @@ fn restore_contents<S: Open>(
             PackInfo {
                 pack_id,
                 from_file,
-                locations: BlobLocations::from_blob_location(bl, name_dests),
+                locations: BlobLocations::from_blob_location(bl, (blob_id, name_dests)),
             }
         })
         // optimize reading from backend by reading many blobs in a row
@@ -609,6 +612,7 @@ fn restore_contents<S: Open>(
         } in packs
         {
             let p = &p;
+            let errors = &errors;
 
             if !blobs.is_empty() {
                 // TODO: error handling!
@@ -627,10 +631,10 @@ fn restore_contents<S: Open>(
                     };
 
                     // save into needed files in parallel
-                    for (bl, name_dests) in blobs {
+                    for (bl, (blob_id, name_dests)) in blobs {
                         let size = bl.data_length().into();
                         let data = if from_file.is_some() {
-                            read_data.clone()
+                            verify_blob_id(&read_data, &blob_id).map(|()| read_data.clone())
                         } else {
                             let start = usize::try_from(bl.offset - offset)
                                 .expect("convert from u32 to usize should not fail!");
@@ -639,8 +643,19 @@ fn restore_contents<S: Open>(
                             be.read_encrypted_from_partial(
                                 &read_data[start..end],
                                 bl.uncompressed_length,
+                                &blob_id,
                             )
-                            .unwrap()
+                        };
+                        let data = match data {
+                            Ok(data) => data,
+                            Err(err) => {
+                                let mut error = errors.lock().unwrap();
+                                if error.is_none() {
+                                    *error = Some(err);
+                                }
+                                drop(error);
+                                return;
+                            }
                         };
                         let is_sparse = match sparse {
                             SparseRestore::ByContent => data.iter().all(|&b| b == 0),
@@ -672,6 +687,13 @@ fn restore_contents<S: Open>(
     });
 
     p.finish();
+
+    let error = errors
+        .into_inner()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    if let Some(err) = error {
+        return Err(err);
+    }
 
     Ok(())
 }
@@ -810,7 +832,7 @@ impl RestorePlan {
                 .as_mut()
                 .is_some_and(|file| id.blob_matches_reader(length, file));
 
-            let blob_location = self.r.entry((ie.pack, bl)).or_default();
+            let blob_location = self.r.entry((ie.pack, bl, BlobId::from(**id))).or_default();
             blob_location.push(FileLocation {
                 file_idx,
                 file_start: file_pos,
@@ -845,7 +867,7 @@ impl RestorePlan {
             .iter()
             // filter out packs which we need
             .filter(|(_, fls)| fls.iter().all(|fl| !fl.matches))
-            .map(|((pack, _), _)| *pack)
+            .map(|((pack, _, _), _)| *pack)
             .dedup()
             .collect()
     }

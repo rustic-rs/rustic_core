@@ -10,7 +10,7 @@ pub use zstd::compression_level_range;
 use crate::{
     BytesList, Progress,
     backend::{FileType, ReadBackend, WriteBackend},
-    blob::BlobLocation,
+    blob::{BlobId, BlobLocation},
     crypto::{CryptoKey, hasher::hash},
     error::{ErrorKind, RusticError, RusticResult},
     id::Id,
@@ -21,6 +21,25 @@ use crate::{
 #[must_use]
 pub fn max_compression_level() -> i32 {
     *compression_level_range().end()
+}
+
+/// Verifies that plaintext content matches its content-addressed blob ID.
+///
+/// # Errors
+///
+/// Returns a verification error when the content hash differs from `expected_id`.
+pub(crate) fn verify_blob_id(data: &[u8], expected_id: &BlobId) -> RusticResult<()> {
+    let actual_id = BlobId::from(hash(data));
+    if actual_id != *expected_id {
+        return Err(RusticError::new(
+            ErrorKind::Verification,
+            "Blob content hash does not match its expected ID.",
+        )
+        .attach_context("expected_id", expected_id.to_string())
+        .attach_context("actual_id", actual_id.to_string()));
+    }
+
+    Ok(())
 }
 
 /// A backend that can decrypt data.
@@ -63,6 +82,7 @@ pub trait DecryptReadBackend: ReadBackend + Clone + 'static {
     ///
     /// * `data` - The partial data to decrypt.
     /// * `uncompressed_length` - The length of the uncompressed data.
+    /// * `expected_id` - The expected ID of the plaintext blob.
     ///
     /// # Errors
     ///
@@ -72,6 +92,7 @@ pub trait DecryptReadBackend: ReadBackend + Clone + 'static {
         &self,
         data: &[u8],
         uncompressed_length: Option<NonZeroU32>,
+        expected_id: &BlobId,
     ) -> RusticResult<Bytes> {
         let mut data = self.decrypt(data)?;
         if let Some(length) = uncompressed_length {
@@ -93,6 +114,9 @@ pub trait DecryptReadBackend: ReadBackend + Clone + 'static {
                 .ask_report());
             }
         }
+
+        verify_blob_id(&data, expected_id)?;
+
         Ok(data.into())
     }
 
@@ -106,6 +130,7 @@ pub trait DecryptReadBackend: ReadBackend + Clone + 'static {
     /// * `offset` - The offset to read from.
     /// * `length` - The length to read.
     /// * `uncompressed_length` - The length of the uncompressed data.
+    /// * `expected_id` - The expected ID of the plaintext blob.
     ///
     /// # Errors
     ///
@@ -116,20 +141,18 @@ pub trait DecryptReadBackend: ReadBackend + Clone + 'static {
         id: &Id,
         cacheable: bool,
         location: BlobLocation,
+        expected_id: &BlobId,
     ) -> RusticResult<Bytes> {
         self.read_encrypted_from_partial(
             &self.read_partial(tpe, id, cacheable, location.offset, location.length)?,
             location.uncompressed_length,
+            expected_id,
         )
         .map_err(|err| {
-            RusticError::with_source(
-                ErrorKind::Cryptography,
-                "error processing {tpe}:{id} at {location}",
-                err,
-            )
-            .attach_context("tpe", tpe.to_string())
-            .attach_context("id", id.to_string())
-            .attach_context("location", format!("{location:?}"))
+            err.prepend_guidance_line("error processing {tpe}:{id} at {location}")
+                .attach_context("tpe", tpe.to_string())
+                .attach_context("id", id.to_string())
+                .attach_context("location", format!("{location:?}"))
         })
     }
 
@@ -512,8 +535,12 @@ impl<C: CryptoKey> DecryptBackend<C> {
         data: &[u8],
     ) -> RusticResult<()> {
         if self.extra_verify {
-            let data_check =
-                self.read_encrypted_from_partial(data_encrypted, uncompressed_length)?;
+            let expected_id = BlobId::from(hash(data));
+            let data_check = self.read_encrypted_from_partial(
+                data_encrypted,
+                uncompressed_length,
+                &expected_id,
+            )?;
 
             if data != data_check {
                 return Err(
@@ -766,6 +793,28 @@ mod tests {
         data_encrypted[5] = !data_encrypted[5];
         // will be detected
         assert!(be.very_data(&data_encrypted, ul, data).is_err());
+        Ok(())
+    }
+
+    #[test]
+    fn rejects_replayed_blob() -> Result<()> {
+        for compression in [None, Some(0)] {
+            let (mut be, expected) = init();
+            be.set_zstd(compression);
+            let replayed = b"{evil}";
+            assert_eq!(expected.len(), replayed.len());
+
+            let (expected_encrypted, _, expected_length) = be.encrypt_data(expected)?;
+            let (replayed_encrypted, _, replayed_length) = be.encrypt_data(replayed)?;
+            assert_eq!(expected_encrypted.len(), replayed_encrypted.len());
+            assert_eq!(expected_length, replayed_length);
+
+            let expected_id = BlobId::from(hash(expected));
+            assert!(
+                be.read_encrypted_from_partial(&replayed_encrypted, replayed_length, &expected_id,)
+                    .is_err()
+            );
+        }
         Ok(())
     }
 }
