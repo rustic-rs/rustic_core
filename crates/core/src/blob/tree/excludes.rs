@@ -12,22 +12,34 @@ use crate::{ErrorKind, RusticError, RusticResult};
 #[non_exhaustive]
 /// Options for including/excluding based on globs
 pub struct Excludes {
-    /// Glob pattern to exclude/include (can be specified multiple times)
+    /// Glob pattern to include/exclude (can be specified multiple times).
+    ///
+    /// A pattern without `!` includes only matching paths. To exclude matching
+    /// paths while including all other paths, prefix it with `!`, for example
+    /// `!**/*.tmp`.
     #[cfg_attr(feature = "clap", clap(long = "glob", value_name = "GLOB"))]
     #[cfg_attr(feature = "merge", merge(strategy = conflate::vec::overwrite_empty))]
     pub globs: Vec<String>,
 
-    /// Same as --glob pattern but ignores the casing of filenames
+    /// Same as `--glob`, but ignores the casing of filenames.
+    ///
+    /// A pattern without `!` includes only matching paths. To exclude matching
+    /// paths while including all other paths, prefix it with `!`.
     #[cfg_attr(feature = "clap", clap(long = "iglob", value_name = "GLOB"))]
     #[cfg_attr(feature = "merge", merge(strategy = conflate::vec::overwrite_empty))]
     pub iglobs: Vec<String>,
 
-    /// Read glob patterns to exclude/include from this file (can be specified multiple times)
+    /// Read `--glob` patterns from this file (can be specified multiple times).
+    ///
+    /// Each line has the same semantics as `--glob`: a pattern without `!`
+    /// includes only matching paths, while `!pattern` excludes matching paths.
     #[cfg_attr(feature = "clap", clap(long = "glob-file", value_name = "FILE",))]
     #[cfg_attr(feature = "merge", merge(strategy = conflate::vec::overwrite_empty))]
     pub glob_files: Vec<String>,
 
-    /// Same as --glob-file ignores the casing of filenames in patterns
+    /// Same as `--glob-file`, but ignores the casing of filenames in patterns.
+    ///
+    /// Each line has the same semantics as `--iglob`.
     #[cfg_attr(feature = "clap", clap(long = "iglob-file", value_name = "FILE",))]
     #[cfg_attr(feature = "merge", merge(strategy = conflate::vec::overwrite_empty))]
     pub iglob_files: Vec<String>,
@@ -137,5 +149,27 @@ impl Excludes {
             .ask_report()
         })?;
         Ok(overrides)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Excludes;
+
+    #[test]
+    fn glob_patterns_use_override_include_exclude_semantics() {
+        let includes = Excludes::default()
+            .globs(vec!["**/*.tmp".to_owned()])
+            .as_override()
+            .expect("glob should compile");
+        assert!(includes.matched("dir/file.tmp", false).is_whitelist());
+        assert!(includes.matched("dir/file.txt", false).is_ignore());
+
+        let excludes = Excludes::default()
+            .globs(vec!["!**/*.tmp".to_owned()])
+            .as_override()
+            .expect("glob should compile");
+        assert!(excludes.matched("dir/file.tmp", false).is_ignore());
+        assert!(excludes.matched("dir/file.txt", false).is_none());
     }
 }
