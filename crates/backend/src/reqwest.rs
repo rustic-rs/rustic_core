@@ -94,6 +94,20 @@ pub fn reqwest_client(options: &BTreeMap<String, String>) -> RusticResult<Client
             client_builder = client_builder.add_root_certificate(get_cacert(value)?);
         } else if option == "tls-client-cert" {
             client_builder = client_builder.identity(get_tls_client_cert(value)?);
+        } else if option == "http-insecure-tls" {
+            match value.parse() {
+                Err(err) => warn!("cannot use value for `http-insecure-tls`: {err}"),
+                Ok(insecure_tls) => {
+                    client_builder = client_builder.danger_accept_invalid_certs(insecure_tls);
+                }
+            }
+        } else if option == "http-referer" {
+            match value.parse() {
+                Err(err) => warn!("cannot use value for `http-referer`: {err}"),
+                Ok(referer) => {
+                    client_builder = client_builder.referer(referer);
+                }
+            }
         }
     }
 
