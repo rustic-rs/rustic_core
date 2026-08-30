@@ -1,35 +1,32 @@
-use std::io::Read;
+use std::collections::BTreeMap;
 use std::str::FromStr;
+use std::sync::OnceLock;
 use std::time::Duration;
 
 use backon::{BlockingRetryable, ExponentialBuilder};
 use bytes::Bytes;
-use jiff::SignedDuration;
+use futures_util::stream;
 use log::{trace, warn};
 use reqwest::{
-    Url,
-    blocking::{Body, Client, ClientBuilder},
+    Body, Client, Url,
     header::{HeaderMap, HeaderValue},
 };
 use serde::Deserialize;
+use tokio::runtime::Runtime;
 
 use rustic_core::{
     BytesList, ErrorKind, FileType, Id, ReadBackend, RusticError, RusticResult, WriteBackend,
 };
+
+use crate::reqwest::reqwest_client;
 
 /// joining URL failed on: `{0}`
 #[derive(thiserror::Error, Clone, Copy, Debug, displaydoc::Display)]
 pub struct JoiningUrlFailedError(url::ParseError);
 
 pub(super) mod constants {
-    use std::time::Duration;
-
     /// Default number of retries
     pub(super) const DEFAULT_RETRY: usize = 5;
-
-    /// Default timeout for the client
-    /// This is set to 10 minutes
-    pub(super) const DEFAULT_TIMEOUT: Duration = Duration::from_mins(10);
 }
 
 fn construct_backoff_error(err: reqwest::Error) -> Box<RusticError> {
@@ -38,55 +35,6 @@ fn construct_backoff_error(err: reqwest::Error) -> Box<RusticError> {
         "Backoff failed, please check the logs for more information.",
         err,
     )
-}
-
-fn read_file_contents(log_name: &str, path: &str) -> RusticResult<Vec<u8>> {
-    let mut buf = Vec::new();
-    let _ = std::fs::File::open(path)
-        .map_err(|err| {
-            RusticError::with_source(
-                ErrorKind::InvalidInput,
-                "Cannot open {log_name} `{path}`",
-                err,
-            )
-            .attach_context("path", path)
-            .attach_context("log_name", log_name)
-        })?
-        .read_to_end(&mut buf)
-        .map_err(|err| {
-            RusticError::with_source(
-                ErrorKind::InvalidInput,
-                "Cannot read {log_name} `{path}`",
-                err,
-            )
-            .attach_context("path", path)
-            .attach_context("log_name", log_name)
-        })?;
-    Ok(buf)
-}
-
-fn get_cacert(value: &str) -> RusticResult<reqwest::Certificate> {
-    let buf = read_file_contents("cacert", value)?;
-    reqwest::Certificate::from_pem(&buf).map_err(|err| {
-        RusticError::with_source(
-            ErrorKind::InvalidInput,
-            "Cannot parse cacert `{value}`",
-            err,
-        )
-        .attach_context("value", value)
-    })
-}
-
-fn get_tls_client_cert(value: &str) -> RusticResult<reqwest::Identity> {
-    let buf = read_file_contents("tls-client-cert", value)?;
-    reqwest::Identity::from_pem(&buf).map_err(|err| {
-        RusticError::with_source(
-            ErrorKind::InvalidInput,
-            "Cannot parse tls-client-cert `{value}`",
-            err,
-        )
-        .attach_context("value", value)
-    })
 }
 
 /// A backend implementation that uses REST to access the backend.
@@ -98,6 +46,16 @@ pub struct RestBackend {
     client: Client,
     /// The ``BackoffBuilder`` we use
     backoff: ExponentialBuilder,
+}
+
+fn runtime() -> &'static Runtime {
+    static RUNTIME: OnceLock<Runtime> = OnceLock::new();
+    RUNTIME.get_or_init(|| {
+        tokio::runtime::Builder::new_multi_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+    })
 }
 
 impl RestBackend {
@@ -137,10 +95,7 @@ impl RestBackend {
     ///
     /// * If the url could not be parsed.
     /// * If the client could not be built.
-    pub fn new(
-        url: impl AsRef<str>,
-        options: impl IntoIterator<Item = (String, String)>,
-    ) -> RusticResult<Self> {
+    pub fn new(url: impl AsRef<str>, options: BTreeMap<String, String>) -> RusticResult<Self> {
         let url = url.as_ref().to_string();
 
         let url = if url.ends_with('/') {
@@ -160,10 +115,7 @@ impl RestBackend {
         let mut headers = HeaderMap::new();
         _ = headers.insert("User-Agent", HeaderValue::from_static("rustic"));
 
-        // set default timeout to 10 minutes (we can have *large* packfiles)
-        let mut timeout = constants::DEFAULT_TIMEOUT;
-
-        let mut client_builder = ClientBuilder::new().default_headers(headers);
+        let client = reqwest_client(&options)?;
 
         // backon doesn't allow us to specify `None` for `max_delay`
         // see <https://github.com/Xuanwo/backon/pull/160>
@@ -171,7 +123,6 @@ impl RestBackend {
             .with_max_delay(Duration::MAX) // no maximum elapsed time; we count number of retries
             .with_max_times(constants::DEFAULT_RETRY);
 
-        // FIXME: If we have multiple times the same option, this could lead to unexpected behavior
         for (option, value) in options {
             if option == "retry" {
                 let max_retries = match value.as_str() {
@@ -188,29 +139,8 @@ impl RestBackend {
                     })?,
                 };
                 backoff = backoff.with_max_times(max_retries);
-            } else if option == "timeout" {
-                timeout = SignedDuration::from_str(&value).map_err(|err| {
-                    RusticError::with_source(
-                        ErrorKind::InvalidInput,
-                        "Could not parse value `{value}` as duration. Invalid value for option `{option}`.",
-                        err,
-                    )
-                    .attach_context("value", value)
-                    .attach_context("option", "timeout")
-                })?.try_into()
-                // ignore conversation errors, but print out warning
-                .inspect_err(|err| warn!("cannot use timeout: {err}"))
-                .unwrap_or_default();
-            } else if option == "cacert" {
-                client_builder = client_builder.add_root_certificate(get_cacert(&value)?);
-            } else if option == "tls-client-cert" {
-                client_builder = client_builder.identity(get_tls_client_cert(&value)?);
             }
         }
-
-        let client = client_builder.timeout(timeout).build().map_err(|err| {
-            RusticError::with_source(ErrorKind::Backend, "Failed to build HTTP client", err)
-        })?;
 
         Ok(Self {
             url,
@@ -300,32 +230,43 @@ impl ReadBackend for RestBackend {
         })?;
 
         self.retry_notify(|| {
-            if tpe == FileType::Config {
-                return Ok(
-                    if self.client.head(url.clone()).send()?.status().is_success() {
-                        vec![(Id::default(), 0)]
-                    } else {
-                        Vec::new()
-                    },
-                );
-            }
+            runtime().block_on(async {
+                if tpe == FileType::Config {
+                    return Ok(
+                        if self
+                            .client
+                            .head(url.clone())
+                            .send()
+                            .await?
+                            .status()
+                            .is_success()
+                        {
+                            vec![(Id::default(), 0)]
+                        } else {
+                            Vec::new()
+                        },
+                    );
+                }
 
-            let list = self
-                .client
-                .get(url.clone())
-                .header("Accept", "application/vnd.x.restic.rest.v2")
-                .send()?
-                .error_for_status()?
-                .json::<Option<Vec<ListEntry>>>()? // use Option to be handle null json value
-                .unwrap_or_default();
+                let list = self
+                    .client
+                    .get(url.clone())
+                    .header("Accept", "application/vnd.x.restic.rest.v2")
+                    .send()
+                    .await?
+                    .error_for_status()?
+                    .json::<Option<Vec<ListEntry>>>() // use Option to  handle null json value
+                    .await?
+                    .unwrap_or_default();
 
-            Ok(list
-                .into_iter()
-                .filter_map(|entry| {
-                    let id = Id::parse_some(&entry.name, tpe)?;
-                    Some((id, entry.size))
-                })
-                .collect())
+                Ok(list
+                    .into_iter()
+                    .filter_map(|entry| {
+                        let id = Id::parse_some(&entry.name, tpe)?;
+                        Some((id, entry.size))
+                    })
+                    .collect())
+            })
         })
         .map_err(construct_backoff_error)
     }
@@ -349,11 +290,15 @@ impl ReadBackend for RestBackend {
             .map_err(|err| construct_join_url_error(err, tpe, id, &self.url))?;
 
         self.retry_notify(|| {
-            self.client
-                .get(url.clone())
-                .send()?
-                .error_for_status()?
-                .bytes()
+            runtime().block_on(async {
+                self.client
+                    .get(url.clone())
+                    .send()
+                    .await?
+                    .error_for_status()?
+                    .bytes()
+                    .await
+            })
         })
         .map_err(construct_backoff_error)
     }
@@ -391,12 +336,16 @@ impl ReadBackend for RestBackend {
         })?;
 
         self.retry_notify(|| {
-            self.client
-                .get(url.clone())
-                .header("Range", header_value.clone())
-                .send()?
-                .error_for_status()?
-                .bytes()
+            runtime().block_on(async {
+                self.client
+                    .get(url.clone())
+                    .header("Range", header_value.clone())
+                    .send()
+                    .await?
+                    .error_for_status()?
+                    .bytes()
+                    .await
+            })
         })
         .map_err(construct_backoff_error)
     }
@@ -442,8 +391,15 @@ impl WriteBackend for RestBackend {
         })?;
 
         self.retry_notify(|| {
-            _ = self.client.post(url.clone()).send()?.error_for_status()?;
-            Ok(())
+            runtime().block_on(async {
+                _ = self
+                    .client
+                    .post(url.clone())
+                    .send()
+                    .await?
+                    .error_for_status()?;
+                Ok(())
+            })
         })
         .map_err(construct_backoff_error)
     }
@@ -473,14 +429,24 @@ impl WriteBackend for RestBackend {
             .map_err(|err| construct_join_url_error(err, tpe, id, &self.url))?;
 
         self.retry_notify(|| {
-            let body = Body::new(content.clone().reader());
-            _ = self
-                .client
-                .post(url.clone())
-                .body(body)
-                .send()?
-                .error_for_status()?;
-            Ok(())
+            let stream = stream::iter(
+                content
+                    .clone()
+                    .into_vec()
+                    .into_iter()
+                    .map(|b| -> RusticResult<_> { Ok(b) }),
+            );
+            let body = Body::wrap_stream(stream);
+            runtime().block_on(async {
+                _ = self
+                    .client
+                    .post(url.clone())
+                    .body(body)
+                    .send()
+                    .await?
+                    .error_for_status()?;
+                Ok(())
+            })
         })
         .map_err(construct_backoff_error)
     }
@@ -503,8 +469,15 @@ impl WriteBackend for RestBackend {
             .map_err(|err| construct_join_url_error(err, tpe, id, &self.url))?;
 
         self.retry_notify(|| {
-            _ = self.client.delete(url.clone()).send()?.error_for_status()?;
-            Ok(())
+            runtime().block_on(async {
+                _ = self
+                    .client
+                    .delete(url.clone())
+                    .send()
+                    .await?
+                    .error_for_status()?;
+                Ok(())
+            })
         })
         .map_err(construct_backoff_error)
     }

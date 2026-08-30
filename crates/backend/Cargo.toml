@@ -35,13 +35,22 @@ cli = ["merge", "clap"]
 merge = ["dep:conflate"]
 clap = ["dep:clap"]
 opendal = [
+  "reqwest",
   "dep:opendal",
+  "dep:opendal-http-transport-reqwest",
   "dep:rayon",
   "dep:tokio",
-  "tokio/rt-multi-thread",
   "dep:typed-path",
+  "tokio/rt-multi-thread",
 ]
-rest = ["dep:reqwest", "dep:backon"]
+reqwest = ["dep:reqwest"]
+rest = [
+  "reqwest",
+  "dep:backon",
+  "dep:futures-util",
+  "dep:tokio",
+  "tokio/rt-multi-thread",
+]
 rclone = ["rest", "dep:rand", "dep:semver"]
 
 [dependencies]
@@ -63,7 +72,10 @@ strum = { version = "0.28.0", features = ["derive"] }
 
 # general / backend choosing
 hex = { version = "0.4.3", features = ["serde"] }
+rayon = { version = "1.11.0", optional = true }
 serde = { version = "1.0.228" }
+tokio = { version = "1.49.0", optional = true, default-features = false }
+typed-path = { version = "0.12.2", optional = true }
 url = "2.5.8"
 
 # cli support
@@ -74,9 +86,12 @@ conflate = { version = "0.3.3", optional = true }
 aho-corasick = { workspace = true }
 walkdir = "2.5.0"
 
+# reqwest
+reqwest = { version = "0.13.2", default-features = false, features = ["json", "rustls", "stream"], optional = true }
+
 # rest backend
 backon = { version = "1.6.0", optional = true }
-reqwest = { version = "0.13.2", default-features = false, features = ["json", "rustls", "stream", "blocking"], optional = true }
+futures-util = { version = "0.3.34", default-features = false, optional = true }
 
 # rclone backend
 rand = { version = "0.10.0", optional = true }
@@ -84,18 +99,16 @@ semver = { version = "1.0.27", optional = true }
 
 # opendal backend
 bytesize = "2.3.1"
-rayon = { version = "1.11.0", optional = true }
-tokio = { version = "1.49.0", optional = true, default-features = false }
-typed-path = { version = "0.12.2", optional = true }
+opendal-http-transport-reqwest = { version = "0.58.2", optional = true }
 
 [target.'cfg(not(windows))'.dependencies]
 # opendal backend
 # - sftp is not supported on windows, see https://github.com/apache/incubator-opendal/issues/2963
-opendal = { version = "0.58.1", features = ["blocking", "services-b2", "services-ftp", "services-sftp", "services-swift", "services-azblob", "services-azdls", "services-cos", "services-fs", "services-dropbox", "services-gdrive", "services-gcs", "services-ghac", "services-http", "services-ipmfs", "services-memory", "services-obs", "services-onedrive", "services-oss", "services-pcloud", "services-s3", "services-webdav", "services-webhdfs", "services-azfile", "layers-throttle", "services-yandex-disk"], optional = true }
+opendal = { version = "0.58.2", features = ["blocking", "services-b2", "services-ftp", "services-sftp", "services-swift", "services-azblob", "services-azdls", "services-cos", "services-fs", "services-dropbox", "services-gdrive", "services-gcs", "services-ghac", "services-http", "services-ipmfs", "services-memory", "services-obs", "services-onedrive", "services-oss", "services-pcloud", "services-s3", "services-webdav", "services-webhdfs", "services-azfile", "layers-throttle", "services-yandex-disk"], optional = true }
 
 [target.'cfg(windows)'.dependencies]
 # opendal backend
-opendal = { version = "0.58.1", features = ["blocking", "services-b2", "services-ftp", "services-swift", "services-azblob", "services-azdls", "services-cos", "services-fs", "services-dropbox", "services-gdrive", "services-gcs", "services-ghac", "services-http", "services-ipmfs", "services-memory", "services-obs", "services-onedrive", "services-oss", "services-pcloud", "services-s3", "services-webdav", "services-webhdfs", "services-azfile", "layers-throttle", "services-yandex-disk"], optional = true }
+opendal = { version = "0.58.2", features = ["blocking", "services-b2", "services-ftp", "services-swift", "services-azblob", "services-azdls", "services-cos", "services-fs", "services-dropbox", "services-gdrive", "services-gcs", "services-ghac", "services-http", "services-ipmfs", "services-memory", "services-obs", "services-onedrive", "services-oss", "services-pcloud", "services-s3", "services-webdav", "services-webhdfs", "services-azfile", "layers-throttle", "services-yandex-disk"], optional = true }
 
 [dev-dependencies]
 anyhow = { workspace = true }
