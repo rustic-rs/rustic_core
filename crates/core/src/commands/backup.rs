@@ -289,7 +289,7 @@ where
 
     archiver.archive(
         src,
-        &backup_paths[0],
+        backup_paths,
         as_path.as_ref(),
         opts.parent_opts.skip_if_unchanged,
         opts.no_scan,

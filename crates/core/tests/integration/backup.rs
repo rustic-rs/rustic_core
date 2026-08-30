@@ -307,3 +307,124 @@ fn test_backup_excludes_xattr_entries(set_up_repo: Result<RepoOpen>) -> Result<(
 
     Ok(())
 }
+
+// Regression test: backing up TWO sources in a single `PathList` (as rustic's
+// CLI does for `rustic backup <path1> <path2>`) must preserve the files of ALL
+// sources. Introduced with the fix for #1905; previously the second source's
+// files were silently dropped (or panic'd with StripPrefixError).
+#[cfg(not(any(windows, target_os = "openbsd")))]
+#[rstest]
+fn test_backup_multi_source_preserves_files_of_all_sources(
+    set_up_repo: Result<RepoOpen>,
+) -> Result<()> {
+    use std::ffi::OsStr;
+    use std::fs;
+
+    use rustic_core::{
+        LsOptions, RusticResult,
+        repofile::{Metadata, Node, NodeType},
+    };
+
+    let tmp = tempfile::tempdir()?;
+    let src1 = tmp.path().join("src1");
+    let src2 = tmp.path().join("src2");
+    fs::create_dir(&src1)?;
+    fs::create_dir(&src2)?;
+    fs::write(src1.join("file1.txt"), "one")?;
+    fs::write(src2.join("file2.txt"), "two")?;
+
+    let repo = set_up_repo?.to_indexed_ids()?;
+    // Two sources passed in one backup call - the multi-source path that
+    // rustic's CLI uses for `rustic backup <path1> <path2>`.
+    let paths = PathList::from_iter([src1, src2]);
+    let opts = BackupOptions::default().as_path(PathBuf::from("test"));
+
+    let snapshot = repo.backup(&opts, &paths, SnapshotFile::default())?;
+
+    let repo = repo.to_indexed_ids()?;
+    let mut root_node = Node::new_node(OsStr::new(""), NodeType::Dir, Metadata::default());
+    root_node.subtree = Some(snapshot.tree);
+
+    let mut paths: Vec<PathBuf> = repo
+        .ls(&root_node, &LsOptions::default())?
+        .collect::<RusticResult<Vec<_>>>()?
+        .into_iter()
+        .map(|(path, _)| path)
+        .collect();
+    paths.sort();
+
+    let expected = vec![
+        PathBuf::from("test"),
+        PathBuf::from("test/src1"),
+        PathBuf::from("test/src1/file1.txt"),
+        PathBuf::from("test/src2"),
+        PathBuf::from("test/src2/file2.txt"),
+    ];
+
+    assert_eq!(expected, paths, "all sources' files must be preserved");
+
+    Ok(())
+}
+
+// Same scenario as above but without `--as-path`, which is the mode rustic
+// uses when no explicit snapshot path is given.
+#[cfg(not(any(windows, target_os = "openbsd")))]
+#[rstest]
+fn test_backup_multi_source_preserves_files_without_as_path(
+    set_up_repo: Result<RepoOpen>,
+) -> Result<()> {
+    use std::fs;
+
+    use rustic_core::{LsOptions, RusticResult, repofile::{Metadata, Node, NodeType}};
+
+    let tmp = tempfile::tempdir()?;
+    let src1 = tmp.path().join("src1");
+    let src2 = tmp.path().join("src2");
+    fs::create_dir(&src1)?;
+    fs::create_dir(&src2)?;
+    fs::write(src1.join("file1.txt"), "one")?;
+    fs::write(src2.join("file2.txt"), "two")?;
+
+    let repo = set_up_repo?.to_indexed_ids()?;
+    let paths = PathList::from_iter([src1, src2]);
+    let opts = BackupOptions::default();
+
+    let snapshot = repo.backup(&opts, &paths, SnapshotFile::default())?;
+
+    let repo = repo.to_indexed_ids()?;
+    let mut root_node = Node::new_node(
+        std::ffi::OsStr::new(""),
+        NodeType::Dir,
+        Metadata::default(),
+    );
+    root_node.subtree = Some(snapshot.tree);
+
+    let mut paths: Vec<PathBuf> = repo
+        .ls(&root_node, &LsOptions::default())?
+        .collect::<RusticResult<Vec<_>>>()?
+        .into_iter()
+        .map(|(path, _)| path)
+        .collect();
+    paths.sort();
+
+    // without as_path, the tree keeps each source root as a top-level subtree.
+    assert!(
+        paths.iter().any(|p| p.ends_with("src1/file1.txt")),
+        "first source file missing: {paths:?}"
+    );
+    assert!(
+        paths.iter().any(|p| p.ends_with("src2/file2.txt")),
+        "second source file missing: {paths:?}"
+    );
+    // both files must be actual entries (not just the dir trees)
+    assert_eq!(
+        paths
+            .iter()
+            .filter(|p| p.to_string_lossy().ends_with(".txt"))
+            .count(),
+        2,
+        "expected exactly 2 file entries: {paths:?}"
+    );
+
+    Ok(())
+}

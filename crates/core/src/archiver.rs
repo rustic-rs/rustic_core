@@ -3,7 +3,7 @@ pub(crate) mod parent;
 pub(crate) mod tree;
 pub(crate) mod tree_archiver;
 
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::thread::scope;
 
 use jiff::Zoned;
@@ -114,7 +114,7 @@ impl<'a, BE: DecryptFullBackend, I: ReadGlobalIndex> Archiver<'a, BE, I> {
     ///
     /// * `index` - The index to read from.
     /// * `src` - The source to archive.
-    /// * `backup_path` - The path to the backup.
+    /// * `backup_paths` - The backup path(s) to use.
     /// * `as_path` - The path to archive the backup as.
     /// * `skip_identical_parent` - skip saving of snapshot if tree is identical to parent tree.
     /// * `p` - The progress bar.
@@ -127,7 +127,7 @@ impl<'a, BE: DecryptFullBackend, I: ReadGlobalIndex> Archiver<'a, BE, I> {
     pub fn archive<R>(
         mut self,
         src: &R,
-        backup_path: &Path,
+        backup_paths: &[PathBuf],
         as_path: Option<&PathBuf>,
         skip_identical_parent: bool,
         no_scan: bool,
@@ -158,9 +158,26 @@ impl<'a, BE: DecryptFullBackend, I: ReadGlobalIndex> Archiver<'a, BE, I> {
                 }
                 Ok(ReadSourceEntry { path, node, open }) => {
                     let snapshot_path = if let Some(as_path) = as_path {
-                        as_path
-                            .clone()
-                            .join(path.strip_prefix(backup_path).unwrap())
+                        let relative = backup_paths
+                            .iter()
+                            .find_map(|p| path.strip_prefix(p).ok().map(|r| (p, r.to_path_buf())))
+                            .map_or_else(
+                                || path.clone(),
+                                |(root, rel)| {
+                                    if backup_paths.len() > 1 {
+                                        // under as_path, keep each source as its own
+                                        // subtree to avoid collisions between sources
+                                        let name = root
+                                            .file_name()
+                                            .unwrap_or(root.as_os_str())
+                                            .to_os_string();
+                                        PathBuf::from(name).join(rel)
+                                    } else {
+                                        rel
+                                    }
+                                },
+                            );
+                        as_path.clone().join(relative)
                     } else {
                         path
                     };

@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+### Fixed
+
+- backup with multiple source paths preserves the files of all sources instead of silently dropping the second source's files (or panicking with `StripPrefixError`) ([rustic#1905](https://github.com/rustic-rs/rustic/issues/1905))
+
 ## [0.13.0](https://github.com/rustic-rs/rustic_core/compare/rustic_core-v0.12.0...rustic_core-v0.13.0) - 2026-08-16
 
 ### Added
