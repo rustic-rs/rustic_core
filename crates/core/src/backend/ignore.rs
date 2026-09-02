@@ -283,6 +283,17 @@ impl ReadSource for LocalSource {
     }
 }
 
+fn ignore_error_path(err: &ignore::Error) -> String {
+    match err {
+        ignore::Error::WithPath { path, .. } => path.display().to_string(),
+        ignore::Error::WithDepth { err, .. } | ignore::Error::WithLineNumber { err, .. } => {
+            ignore_error_path(err)
+        }
+        ignore::Error::Loop { child, .. } => child.display().to_string(),
+        _ => String::new(),
+    }
+}
+
 // Walk doesn't implement Debug
 #[allow(missing_debug_implementations)]
 pub struct LocalSourceWalker {
@@ -304,23 +315,24 @@ impl Iterator for LocalSourceWalker {
             item => item,
         }
         .map(|e| {
-            self.save_opts
-                .map_entry(e.map_err(|err| {
-                    RusticError::with_source(
-                        ErrorKind::Internal,
-                        "Failed to get next entry from walk iterator.",
-                        err,
-                    )
-                    .ask_report()
-                })?)
-                .map_err(|err| {
-                    RusticError::with_source(
-                        ErrorKind::Internal,
-                        "Failed to map Directory entry to ReadSourceEntry.",
-                        err,
-                    )
-                    .ask_report()
-                })
+            let entry = e.map_err(|err| {
+                let path = ignore_error_path(&err);
+                RusticError::with_source(
+                    ErrorKind::InputOutput,
+                    "Failed to read source path `{path}`.",
+                    err,
+                )
+                .attach_context("path", path)
+            })?;
+            let path = entry.path().display().to_string();
+            self.save_opts.map_entry(entry).map_err(|err| {
+                RusticError::with_source(
+                    ErrorKind::InputOutput,
+                    "Failed to map directory entry `{path}` to a backup source entry.",
+                    err,
+                )
+                .attach_context("path", path)
+            })
         })
     }
 }

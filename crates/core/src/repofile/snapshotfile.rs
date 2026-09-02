@@ -247,6 +247,13 @@ pub struct SnapshotSummary {
 
     /// Total duration that the rustic command ran in seconds
     pub total_duration: f64,
+
+    /// Number of source files/directories that could not be read during this backup run.
+    ///
+    /// This is not persisted in the snapshot file; it is only set on a snapshot
+    /// returned from a just-completed backup.
+    #[serde(skip)]
+    pub error_count: u64,
 }
 
 impl Default for SnapshotSummary {
@@ -275,6 +282,7 @@ impl Default for SnapshotSummary {
             backup_end: Zoned::now(),
             backup_duration: Default::default(),
             total_duration: Default::default(),
+            error_count: Default::default(),
         }
     }
 }

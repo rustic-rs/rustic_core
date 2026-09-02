@@ -307,3 +307,51 @@ fn test_backup_excludes_xattr_entries(set_up_repo: Result<RepoOpen>) -> Result<(
 
     Ok(())
 }
+
+#[cfg(unix)]
+struct RestorePerms<'a>(&'a Path);
+
+#[cfg(unix)]
+impl Drop for RestorePerms<'_> {
+    fn drop(&mut self) {
+        use std::fs::{self, Permissions};
+        use std::os::unix::fs::PermissionsExt;
+        let _ = fs::set_permissions(self.0, Permissions::from_mode(0o644));
+    }
+}
+
+#[cfg(unix)]
+#[rstest]
+fn test_backup_unreadable_file_sets_error_count(set_up_repo: Result<RepoOpen>) -> Result<()> {
+    use std::fs::{self, File, Permissions};
+    use std::os::unix::fs::PermissionsExt;
+
+    let tmp = tempfile::tempdir()?;
+    let base = tmp.path();
+    fs::write(base.join("ok.txt"), "ok")?;
+    let secret = base.join("secret.txt");
+    fs::write(&secret, "secret")?;
+    fs::set_permissions(&secret, Permissions::from_mode(0o000))?;
+    let _restore = RestorePerms(&secret);
+
+    if File::open(&secret).is_ok() {
+        // e.g. running as root; mode bits are not enforced
+        return Ok(());
+    }
+
+    let repo = set_up_repo?.to_indexed_ids()?;
+    let paths = PathList::from_iter(Some(base.to_path_buf()));
+    let opts = BackupOptions::default().as_path(PathBuf::from("test"));
+    let snapshot = repo.backup(&opts, &paths, SnapshotFile::default())?;
+
+    let summary = snapshot.summary.as_ref().expect("backup sets a summary");
+    assert!(
+        summary.error_count >= 1,
+        "expected at least one source-file error, got {}",
+        summary.error_count
+    );
+    assert_ne!(snapshot.id, SnapshotFile::default().id);
+    assert!(summary.total_files_processed >= 1);
+
+    Ok(())
+}

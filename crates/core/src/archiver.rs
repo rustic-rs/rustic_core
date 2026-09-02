@@ -4,6 +4,7 @@ pub(crate) mod tree;
 pub(crate) mod tree_archiver;
 
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::thread::scope;
 
 use jiff::Zoned;
@@ -18,13 +19,20 @@ use crate::{
     },
     backend::{ReadSource, ReadSourceEntry, decrypt::DecryptFullBackend},
     blob::BlobType,
-    error::RusticResult,
+    error::{RusticError, RusticResult},
     index::{
         ReadGlobalIndex,
         indexer::{Indexer, SharedIndexer},
     },
     repofile::{configfile::ConfigFile, snapshotfile::SnapshotFile},
 };
+
+/// Report a source-file error, count it, and continue the backup.
+fn report_source_error(p: &Progress, errors: &AtomicU64, during: &'static str, err: &RusticError) {
+    _ = errors.fetch_add(1, Ordering::Relaxed);
+    let item = err.context_value("path").unwrap_or("");
+    p.error(item, during, &err.display_log());
+}
 
 #[derive(thiserror::Error, Debug, displaydoc::Display)]
 /// Tree stack empty
@@ -138,6 +146,8 @@ impl<'a, BE: DecryptFullBackend, I: ReadGlobalIndex> Archiver<'a, BE, I> {
         <R as ReadSource>::Open: Send,
         <R as ReadSource>::Iter: Send,
     {
+        let error_count = AtomicU64::new(0);
+
         scope(|s| -> RusticResult<_> {
             // determine backup size in parallel to running backup
             let src_size_handle = s.spawn(|| {
@@ -153,7 +163,7 @@ impl<'a, BE: DecryptFullBackend, I: ReadGlobalIndex> Archiver<'a, BE, I> {
             // filter out errors and handle as_path
             let iter = src.entries().filter_map(|item| match item {
                 Err(err) => {
-                    warn!("ignoring error: {}", err.display_log());
+                    report_source_error(p, &error_count, "scan", &err);
                     None
                 }
                 Ok(ReadSourceEntry { path, node, open }) => {
@@ -197,7 +207,7 @@ impl<'a, BE: DecryptFullBackend, I: ReadGlobalIndex> Archiver<'a, BE, I> {
             .filter_map(|item| match item {
                 Ok(item) => Some(item),
                 Err(err) => {
-                    warn!("ignoring error: {}", err.display_log());
+                    report_source_error(p, &error_count, "archival", &err);
                     None
                 }
             })
@@ -213,6 +223,7 @@ impl<'a, BE: DecryptFullBackend, I: ReadGlobalIndex> Archiver<'a, BE, I> {
         let stats = self.file_archiver.finalize()?;
         let (id, mut summary) = self.tree_archiver.finalize(self.parent.tree_id())?;
         stats.apply(&mut summary, BlobType::Data);
+        summary.error_count = error_count.load(Ordering::Relaxed);
         self.snap.tree = id;
 
         self.indexer.write().unwrap().finalize()?;
