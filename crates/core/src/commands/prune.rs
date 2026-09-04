@@ -22,12 +22,11 @@ use crate::{
     backend::{
         FileType, ReadBackend,
         decrypt::{DecryptReadBackend, DecryptWriteBackend},
-        node::NodeType,
     },
     blob::{
         BlobId, BlobLocations, BlobType, BlobTypeMap, Initialize,
         packer::{BlobCopier, CopyPackBlobs, PackSizer},
-        tree::TreeStreamerOnce,
+        tree::{TreeStreamer, UsedBlobsTree},
     },
     error::{ErrorKind, RusticError, RusticResult},
     index::{
@@ -1608,25 +1607,11 @@ fn find_used_blobs<S>(
         .collect();
     let p = repo.progress_counter("finding used blobs...");
 
-    let mut tree_streamer = TreeStreamerOnce::new(be, index, snap_trees, p)?;
+    let mut tree_streamer = TreeStreamer::<UsedBlobsTree>::new(be, index, snap_trees, p)?;
     while let Some(item) = tree_streamer.next().transpose()? {
-        let (_, tree) = item;
-        for node in tree.nodes {
-            match node.node_type {
-                NodeType::File => {
-                    ids.extend(
-                        node.content
-                            .iter()
-                            .flatten()
-                            .map(|id| (BlobId::from(**id), 0)),
-                    );
-                }
-                NodeType::Dir => {
-                    _ = ids.insert(BlobId::from(*node.subtree.unwrap()), 0);
-                }
-                _ => {} // nothing to do
-            }
-        }
+        let (_, used) = item;
+        ids.extend(used.file_blobs.into_iter().map(|id| (BlobId::from(id), 0)));
+        ids.extend(used.dir_trees.into_iter().map(|id| (BlobId::from(id), 0)));
     }
 
     Ok(ids)

@@ -1,6 +1,7 @@
 pub mod excludes;
 pub mod modify;
 pub mod rewrite;
+mod used_blobs;
 
 use std::{
     borrow::Cow,
@@ -70,9 +71,51 @@ fn tree_loader_count() -> usize {
         .clamp(constants::MIN_TREE_LOADER, constants::MAX_TREE_LOADER)
 }
 
-pub(crate) type TreeStreamItem = RusticResult<(PathBuf, Tree)>;
 type NodeStreamItem = RusticResult<(PathBuf, Node)>;
 impl_blobid!(TreeId, BlobType::Tree);
+
+pub(crate) use used_blobs::UsedBlobsTree;
+
+/// A tree loaded by [`TreeStreamerOnce`].
+///
+/// Prune uses [`UsedBlobsTree`] so it does not allocate full [`Node`]s.
+pub(crate) trait LoadedTree: Send + 'static {
+    fn load<BE: DecryptReadBackend, I: ReadGlobalIndex>(
+        be: &BE,
+        index: &I,
+        id: TreeId,
+    ) -> RusticResult<Self>
+    where
+        Self: Sized;
+
+    fn child_trees(&self, parent: &Path) -> Vec<(PathBuf, TreeId)>;
+}
+
+fn read_tree_bytes<BE: DecryptReadBackend, I: ReadGlobalIndex>(
+    be: &BE,
+    index: &I,
+    id: TreeId,
+) -> RusticResult<bytes::Bytes> {
+    index
+        .get_tree(&id)
+        .ok_or_else(|| {
+            RusticError::new(
+                ErrorKind::Internal,
+                "Tree ID `{tree_id}` not found in index",
+            )
+            .attach_context("tree_id", id.to_string())
+        })?
+        .read_data(be)
+}
+
+fn tree_json_error(err: serde_json::Error) -> Box<RusticError> {
+    RusticError::with_source(
+        ErrorKind::Internal,
+        "Failed to deserialize tree from JSON.",
+        err,
+    )
+    .ask_report()
+}
 
 #[derive(Default, Serialize, Deserialize, Clone, Debug)]
 /// A [`Tree`] is a list of [`Node`]s
@@ -152,27 +195,8 @@ impl Tree {
         index: &impl ReadGlobalIndex,
         id: TreeId,
     ) -> RusticResult<Self> {
-        let data = index
-            .get_tree(&id)
-            .ok_or_else(|| {
-                RusticError::new(
-                    ErrorKind::Internal,
-                    "Tree ID `{tree_id}` not found in index",
-                )
-                .attach_context("tree_id", id.to_string())
-            })?
-            .read_data(be)?;
-
-        let tree = serde_json::from_slice(&data).map_err(|err| {
-            RusticError::with_source(
-                ErrorKind::Internal,
-                "Failed to deserialize tree from JSON.",
-                err,
-            )
-            .ask_report()
-        })?;
-
-        Ok(tree)
+        let data = read_tree_bytes(be, index, id)?;
+        serde_json::from_slice(&data).map_err(tree_json_error)
     }
 
     /// Creates a new node from a path.
@@ -628,19 +652,61 @@ where
     }
 }
 
+impl LoadedTree for Tree {
+    fn load<BE: DecryptReadBackend, I: ReadGlobalIndex>(
+        be: &BE,
+        index: &I,
+        id: TreeId,
+    ) -> RusticResult<Self> {
+        Self::from_backend(be, index, id)
+    }
+
+    fn child_trees(&self, parent: &Path) -> Vec<(PathBuf, TreeId)> {
+        self.nodes
+            .iter()
+            .filter_map(|node| {
+                let id = node.subtree?;
+                let mut path = parent.to_path_buf();
+                path.push(node.name());
+                Some((path, id))
+            })
+            .collect()
+    }
+}
+
+impl LoadedTree for UsedBlobsTree {
+    fn load<BE: DecryptReadBackend, I: ReadGlobalIndex>(
+        be: &BE,
+        index: &I,
+        id: TreeId,
+    ) -> RusticResult<Self> {
+        let data = read_tree_bytes(be, index, id)?;
+        used_blobs::parse_used_blobs_tree(&data).map_err(tree_json_error)
+    }
+
+    fn child_trees(&self, _parent: &Path) -> Vec<(PathBuf, TreeId)> {
+        self.dir_trees
+            .iter()
+            .copied()
+            .map(|id| (PathBuf::new(), id))
+            .collect()
+    }
+}
+
 /// [`TreeStreamerOnce`] recursively visits all trees and subtrees, but each tree ID only once
 ///
 /// # Type Parameters
 ///
+/// * `T` - The loaded tree type. Defaults to a full [`Tree`].
 /// * `P` - The progress indicator
 #[derive(Debug)]
-pub struct TreeStreamerOnce {
+pub struct TreeStreamer<T> {
     /// The visited tree IDs
     visited: HashSet<TreeId>,
     /// The queue to send tree IDs to
     queue_in: Option<Sender<(PathBuf, TreeId, usize)>>,
     /// The queue to receive trees from
-    queue_out: Receiver<RusticResult<(PathBuf, Tree, usize)>>,
+    queue_out: Receiver<RusticResult<(PathBuf, T, usize)>>,
     /// The progress indicator
     p: Progress,
     /// The number of trees that are not yet finished
@@ -649,7 +715,10 @@ pub struct TreeStreamerOnce {
     finished_ids: usize,
 }
 
-impl TreeStreamerOnce {
+/// Recursively visits all trees and subtrees, but each tree ID only once.
+pub type TreeStreamerOnce = TreeStreamer<Tree>;
+
+impl<T: LoadedTree> TreeStreamer<T> {
     /// Creates a new `TreeStreamerOnce`.
     ///
     /// # Type Parameters
@@ -686,7 +755,7 @@ impl TreeStreamerOnce {
             let _join_handle = std::thread::spawn(move || {
                 for (path, id, count) in in_rx {
                     if out_tx
-                        .send(Tree::from_backend(&be, &index, id).map(|tree| (path, tree, count)))
+                        .send(T::load(&be, &index, id).map(|tree| (path, tree, count)))
                         .is_err()
                     {
                         break;
@@ -761,8 +830,8 @@ impl TreeStreamerOnce {
     }
 }
 
-impl Iterator for TreeStreamerOnce {
-    type Item = TreeStreamItem;
+impl<T: LoadedTree> Iterator for TreeStreamer<T> {
+    type Item = RusticResult<(PathBuf, T)>;
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.counter.len() == self.finished_ids {
@@ -785,25 +854,21 @@ impl Iterator for TreeStreamerOnce {
             Ok(Err(err)) => return Some(Err(err)),
         };
 
-        for node in &tree.nodes {
-            if let Some(id) = node.subtree {
-                let mut path = path.clone();
-                path.push(node.name());
-                match self.add_pending(path.clone(), id, count) {
-                    Ok(_) => {}
-                    Err(err) => {
-                        return Some(Err(err).map_err(|err| {
-                            RusticError::with_source(
-                                ErrorKind::Internal,
-                                "Failed to add tree ID `{tree_id}` to pending queue (`{count}`).",
-                                err,
-                            )
-                            .attach_context("path", path.display().to_string())
-                            .attach_context("tree_id", id.to_string())
-                            .attach_context("count", count.to_string())
-                            .ask_report()
-                        }));
-                    }
+        for (child_path, id) in tree.child_trees(&path) {
+            match self.add_pending(child_path.clone(), id, count) {
+                Ok(_) => {}
+                Err(err) => {
+                    return Some(Err(err).map_err(|err| {
+                        RusticError::with_source(
+                            ErrorKind::Internal,
+                            "Failed to add tree ID `{tree_id}` to pending queue (`{count}`).",
+                            err,
+                        )
+                        .attach_context("path", child_path.display().to_string())
+                        .attach_context("tree_id", id.to_string())
+                        .attach_context("count", count.to_string())
+                        .ask_report()
+                    }));
                 }
             }
         }
