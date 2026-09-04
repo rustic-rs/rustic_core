@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## Unreleased
+
+### Fixed
+
+- log OpenDAL retries as a single line instead of dumping the error `Debug` tree
+
 ## [0.7.0](https://github.com/rustic-rs/rustic_core/compare/rustic_backend-v0.6.2...rustic_backend-v0.7.0) - 2026-08-16
 
 ### Added
