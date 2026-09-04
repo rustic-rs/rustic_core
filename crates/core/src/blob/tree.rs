@@ -725,6 +725,21 @@ impl<T: LoadedTree> TreeStreamer<T> {
         ids: Vec<TreeId>,
         p: Progress,
     ) -> RusticResult<Self> {
+        Self::new_with_on_load(be, index, ids, p, |_| {})
+    }
+
+    /// Like [`Self::new`], and runs `on_load` in each loader thread after a tree
+    /// is decoded so prune can record used blob ids without a single consumer.
+    pub fn new_with_on_load<BE: DecryptReadBackend, I: ReadGlobalIndex, F>(
+        be: &BE,
+        index: &I,
+        ids: Vec<TreeId>,
+        p: Progress,
+        on_load: F,
+    ) -> RusticResult<Self>
+    where
+        F: Fn(&T) + Send + Sync + Clone + 'static,
+    {
         p.set_length(ids.len() as u64);
 
         let loaders = be.tree_loader_count();
@@ -739,12 +754,11 @@ impl<T: LoadedTree> TreeStreamer<T> {
             let index = index.clone();
             let in_rx = in_rx.clone();
             let out_tx = out_tx.clone();
+            let on_load = on_load.clone();
             let _join_handle = std::thread::spawn(move || {
                 for (path, id, count) in in_rx {
-                    if out_tx
-                        .send(T::load(&be, &index, id).map(|tree| (path, tree, count)))
-                        .is_err()
-                    {
+                    let loaded = T::load(&be, &index, id).inspect(|tree| on_load(tree));
+                    if out_tx.send(loaded.map(|tree| (path, tree, count))).is_err() {
                         break;
                     }
                 }

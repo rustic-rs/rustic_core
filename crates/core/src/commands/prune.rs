@@ -6,6 +6,7 @@ use std::{
     cmp::Ordering,
     collections::{BTreeMap, BTreeSet, HashMap},
     str::FromStr,
+    sync::{Arc, Mutex},
 };
 
 use bytesize::ByteSize;
@@ -1583,6 +1584,47 @@ impl PackInfo {
     }
 }
 
+const USED_ID_SHARDS: usize = 16;
+
+/// Used blob ids filled from tree-loader threads.
+///
+/// A single `HashMap` on the streamer consumer serialized prune's used-blob
+/// walk. Shard so loaders insert without that bottleneck.
+struct ShardedUsedIds {
+    shards: [Mutex<HashMap<BlobId, u8>>; USED_ID_SHARDS],
+}
+
+impl ShardedUsedIds {
+    fn new() -> Self {
+        Self {
+            shards: std::array::from_fn(|_| Mutex::new(HashMap::new())),
+        }
+    }
+
+    fn insert(&self, id: BlobId) {
+        let i = (id.as_u32() as usize) & (USED_ID_SHARDS - 1);
+        _ = self.shards[i]
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .insert(id, 0);
+    }
+
+    fn take_hashmap(&self) -> HashMap<BlobId, u8> {
+        let mut out = HashMap::new();
+        for shard in &self.shards {
+            let mut map = shard
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            if out.is_empty() {
+                out = std::mem::take(&mut *map);
+            } else {
+                out.extend(std::mem::take(&mut *map));
+            }
+        }
+        out
+    }
+}
+
 /// Find used blobs in repo and return a map of used ids.
 ///
 /// # Arguments
@@ -1616,18 +1658,25 @@ fn find_used_blobs<S>(
         .try_collect()?;
     p.finish();
 
-    let mut ids: HashMap<_, _> = snap_trees
-        .iter()
-        .map(|id| (BlobId::from(**id), 0))
-        .collect();
+    let ids = Arc::new(ShardedUsedIds::new());
+    for id in &snap_trees {
+        ids.insert(BlobId::from(**id));
+    }
     let p = repo.progress_counter("finding used blobs...");
+    let ids_loader = Arc::clone(&ids);
 
-    let mut tree_streamer = TreeStreamer::<UsedBlobsTree>::new(be, index, snap_trees, p)?;
+    let mut tree_streamer =
+        TreeStreamer::<UsedBlobsTree>::new_with_on_load(be, index, snap_trees, p, move |used| {
+            for id in &used.file_blobs {
+                ids_loader.insert(BlobId::from(*id));
+            }
+            for id in &used.dir_trees {
+                ids_loader.insert(BlobId::from(*id));
+            }
+        })?;
     while let Some(item) = tree_streamer.next().transpose()? {
-        let (_, used) = item;
-        ids.extend(used.file_blobs.into_iter().map(|id| (BlobId::from(id), 0)));
-        ids.extend(used.dir_trees.into_iter().map(|id| (BlobId::from(id), 0)));
+        let _ = item;
     }
 
-    Ok(ids)
+    Ok(ids.take_hashmap())
 }
