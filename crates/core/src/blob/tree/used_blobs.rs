@@ -180,23 +180,14 @@ pub(crate) struct UsedBlobsTree {
     pub dir_trees: Vec<TreeId>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Default, Deserialize)]
 #[serde(rename_all = "lowercase")]
 enum UsedBlobKind {
     File,
     Dir,
+    #[default]
     #[serde(other)]
     Other,
-}
-
-#[derive(Debug, Deserialize)]
-struct UsedBlobNode {
-    #[serde(rename = "type")]
-    kind: UsedBlobKind,
-    #[serde(default, deserialize_with = "deserialize_data_ids")]
-    content: Vec<DataId>,
-    #[serde(default, deserialize_with = "deserialize_opt_tree_id")]
-    subtree: Option<TreeId>,
 }
 
 impl<'de> Deserialize<'de> for UsedBlobsTree {
@@ -257,20 +248,72 @@ impl<'de> Visitor<'de> for NodesSeed<'_> {
     }
 
     fn visit_seq<A: SeqAccess<'de>>(self, mut seq: A) -> Result<Self::Value, A::Error> {
-        while let Some(node) = seq.next_element::<UsedBlobNode>()? {
-            match node.kind {
-                UsedBlobKind::File => {
-                    self.0.file_blobs.extend(node.content);
+        while seq.next_element_seed(NodeSeed(self.0))?.is_some() {}
+        Ok(())
+    }
+}
+
+struct NodeSeed<'a>(&'a mut UsedBlobsTree);
+
+impl<'de> DeserializeSeed<'de> for NodeSeed<'_> {
+    type Value = ();
+
+    fn deserialize<D: Deserializer<'de>>(self, deserializer: D) -> Result<Self::Value, D::Error> {
+        deserializer.deserialize_map(self)
+    }
+}
+
+impl<'de> Visitor<'de> for NodeSeed<'_> {
+    type Value = ();
+
+    fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str("a restic tree node object")
+    }
+
+    fn visit_map<A: MapAccess<'de>>(self, mut map: A) -> Result<Self::Value, A::Error> {
+        let mut kind = UsedBlobKind::Other;
+        let mut content = Vec::new();
+        let mut subtree = None;
+        while let Some(key) = map.next_key::<Cow<'_, str>>()? {
+            match key.as_ref() {
+                "type" => kind = map.next_value()?,
+                "content" => content = map.next_value_seed(DataIdsSeed)?,
+                "subtree" => subtree = map.next_value_seed(OptTreeIdSeed)?,
+                _ => {
+                    let _: IgnoredAny = map.next_value()?;
                 }
-                UsedBlobKind::Dir => {
-                    if let Some(subtree) = node.subtree {
-                        self.0.dir_trees.push(subtree);
-                    }
-                }
-                UsedBlobKind::Other => {}
             }
         }
+        match kind {
+            UsedBlobKind::File => self.0.file_blobs.append(&mut content),
+            UsedBlobKind::Dir => {
+                if let Some(id) = subtree {
+                    self.0.dir_trees.push(id);
+                }
+            }
+            UsedBlobKind::Other => {}
+        }
         Ok(())
+    }
+}
+
+struct DataIdsSeed;
+
+impl<'de> DeserializeSeed<'de> for DataIdsSeed {
+    type Value = Vec<DataId>;
+
+    fn deserialize<D: Deserializer<'de>>(self, deserializer: D) -> Result<Self::Value, D::Error> {
+        deserialize_data_ids(deserializer)
+    }
+}
+
+struct OptTreeIdSeed;
+
+impl<'de> DeserializeSeed<'de> for OptTreeIdSeed {
+    type Value = Option<TreeId>;
+
+    fn deserialize<D: Deserializer<'de>>(self, deserializer: D) -> Result<Self::Value, D::Error> {
+        deserialize_opt_tree_id(deserializer)
     }
 }
 
