@@ -13,7 +13,7 @@ use std::{
     str::{self, Utf8Error},
 };
 
-use crossbeam_channel::{Receiver, Sender, bounded, unbounded};
+use crossbeam_channel::{Receiver, Sender, TrySendError, bounded};
 use derive_setters::Setters;
 use ignore::Match;
 use ignore::overrides::Override;
@@ -703,6 +703,8 @@ impl LoadedTree for UsedBlobsTree {
 pub struct TreeStreamer<T> {
     /// The visited tree IDs
     visited: HashSet<TreeId>,
+    /// Depth-first backlog of tree IDs not yet sent to a loader.
+    backlog: Vec<(PathBuf, TreeId, usize)>,
     /// The queue to send tree IDs to
     queue_in: Option<Sender<(PathBuf, TreeId, usize)>>,
     /// The queue to receive trees from
@@ -745,7 +747,10 @@ impl<T: LoadedTree> TreeStreamer<T> {
 
         let loaders = tree_loader_count();
         let (out_tx, out_rx) = bounded(loaders.saturating_mul(4).max(32));
-        let (in_tx, in_rx) = unbounded();
+        // Bound the loader input so we do not dump every snapshot root at once.
+        // Combined with a LIFO backlog this keeps workers on recently discovered
+        // children (depth-first), which hits the same cached packs.
+        let (in_tx, in_rx) = bounded(loaders);
 
         for _ in 0..loaders {
             let be = be.clone();
@@ -767,6 +772,7 @@ impl<T: LoadedTree> TreeStreamer<T> {
         let counter = vec![0; ids.len()];
         let mut streamer = Self {
             visited: HashSet::new(),
+            backlog: Vec::new(),
             queue_in: Some(in_tx),
             queue_out: out_rx,
             p,
@@ -775,58 +781,59 @@ impl<T: LoadedTree> TreeStreamer<T> {
         };
 
         for (count, id) in ids.into_iter().enumerate() {
-            if !streamer
-                .add_pending(PathBuf::new(), id, count)
-                .map_err(|err| {
-                    RusticError::with_source(
-                        ErrorKind::Internal,
-                        "Failed to add tree ID `{tree_id}` to unbounded pending queue (`{count}`).",
-                        err,
-                    )
-                    .attach_context("tree_id", id.to_string())
-                    .attach_context("count", count.to_string())
-                    .ask_report()
-                })?
-            {
+            if !streamer.add_pending(PathBuf::new(), id, count) {
                 streamer.p.inc(1);
                 streamer.finished_ids += 1;
             }
         }
+        streamer.fill_queue().map_err(|err| {
+            RusticError::with_source(
+                ErrorKind::Internal,
+                "Failed to send tree IDs to loader queue.",
+                err,
+            )
+            .ask_report()
+        })?;
 
         Ok(streamer)
     }
 
-    /// Adds a tree ID to the queue.
-    ///
-    /// # Arguments
-    ///
-    /// * `path` - The path of the tree.
-    /// * `id` - The ID of the tree.
-    /// * `count` - The index of the tree.
+    /// Pushes a tree ID onto the depth-first backlog if it has not been seen.
     ///
     /// # Returns
     ///
-    /// Whether the tree ID was added to the queue.
-    ///
-    /// # Errors
-    ///
-    /// * If sending the message fails.
-    fn add_pending(&mut self, path: PathBuf, id: TreeId, count: usize) -> TreeResult<bool> {
+    /// Whether the tree ID was added.
+    fn add_pending(&mut self, path: PathBuf, id: TreeId, count: usize) -> bool {
         if self.visited.insert(id) {
-            self.queue_in
-                .as_ref()
-                .unwrap()
-                .send((path, id, count))
-                .map_err(|err| TreeErrorKind::Channel {
-                    kind: "sending crossbeam message",
-                    source: err.into(),
-                })?;
-
             self.counter[count] += 1;
-            Ok(true)
+            self.backlog.push((path, id, count));
+            true
         } else {
-            Ok(false)
+            false
         }
+    }
+
+    /// Sends backlog items to loaders, last-in first, until the input channel is full.
+    fn fill_queue(&mut self) -> TreeResult<()> {
+        let Some(tx) = self.queue_in.as_ref() else {
+            return Ok(());
+        };
+        while let Some(job) = self.backlog.pop() {
+            match tx.try_send(job) {
+                Ok(()) => {}
+                Err(TrySendError::Full(job)) => {
+                    self.backlog.push(job);
+                    break;
+                }
+                Err(TrySendError::Disconnected(_)) => {
+                    return Err(TreeErrorKind::Channel {
+                        kind: "sending crossbeam message",
+                        source: "loader queue disconnected".into(),
+                    });
+                }
+            }
+        }
+        Ok(())
     }
 }
 
@@ -854,23 +861,19 @@ impl<T: LoadedTree> Iterator for TreeStreamer<T> {
             Ok(Err(err)) => return Some(Err(err)),
         };
 
-        for (child_path, id) in tree.child_trees(&path) {
-            match self.add_pending(child_path.clone(), id, count) {
-                Ok(_) => {}
-                Err(err) => {
-                    return Some(Err(err).map_err(|err| {
-                        RusticError::with_source(
-                            ErrorKind::Internal,
-                            "Failed to add tree ID `{tree_id}` to pending queue (`{count}`).",
-                            err,
-                        )
-                        .attach_context("path", child_path.display().to_string())
-                        .attach_context("tree_id", id.to_string())
-                        .attach_context("count", count.to_string())
-                        .ask_report()
-                    }));
-                }
-            }
+        // Push children last-to-first so the next pop is the first child (DFS).
+        for (child_path, id) in tree.child_trees(&path).into_iter().rev() {
+            _ = self.add_pending(child_path, id, count);
+        }
+        if let Err(err) = self.fill_queue() {
+            return Some(Err(err).map_err(|err| {
+                RusticError::with_source(
+                    ErrorKind::Internal,
+                    "Failed to send tree IDs to loader queue.",
+                    err,
+                )
+                .ask_report()
+            }));
         }
 
         self.counter[count] -= 1;
