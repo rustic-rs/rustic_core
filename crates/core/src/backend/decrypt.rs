@@ -191,9 +191,9 @@ pub trait DecryptReadBackend: ReadBackend + Clone + 'static {
     fn stream_list<F: RepoFile>(&self, list: Vec<F::Id>, p: &Progress) -> StreamResult<F::Id, F> {
         p.set_length(list.len() as u64);
         // Index/snapshot files are small; on B2 this is RTT-bound (one GET each).
-        // Restic uses `connections + GOMAXPROCS`. Keep extra workers so some can
-        // GET while others decrypt/parse, and buffer so send does not stall IO.
-        let workers = (rayon::current_num_threads() + 16).clamp(16, 32);
+        // Cached backends report fewer workers when the files are already local.
+        let ids: Vec<_> = list.iter().map(|id| **id).collect();
+        let workers = self.prefetch_workers(F::TYPE, &ids);
         let (tx, rx) = bounded(workers.saturating_mul(2));
         let be = self.clone();
         let p = p.clone();
@@ -650,6 +650,10 @@ impl<C: CryptoKey> ReadBackend for DecryptBackend<C> {
 
     fn list_with_size(&self, tpe: FileType) -> RusticResult<Vec<(Id, u32)>> {
         self.be.list_with_size(tpe)
+    }
+
+    fn prefetch_workers(&self, tpe: FileType, ids: &[Id]) -> usize {
+        self.be.prefetch_workers(tpe, ids)
     }
 
     fn read_full(&self, tpe: FileType, id: &Id) -> RusticResult<Bytes> {

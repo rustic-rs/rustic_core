@@ -89,6 +89,23 @@ impl ReadBackend for CachedBackend {
         self.be.location()
     }
 
+    fn prefetch_workers(&self, tpe: FileType, ids: &[Id]) -> usize {
+        if ids.is_empty() {
+            return 1;
+        }
+        let hits = ids
+            .iter()
+            .filter(|id| self.cache.path(tpe, id).is_file())
+            .count();
+        // Warm cache: few readers so we do not thrash local disk. Cold cache:
+        // extra workers for high-latency GETs.
+        if hits.saturating_mul(4) >= ids.len().saturating_mul(3) {
+            rayon::current_num_threads().clamp(2, 4)
+        } else {
+            (rayon::current_num_threads() + 16).clamp(16, 32)
+        }
+    }
+
     /// Lists all files with their size of the given type.
     ///
     /// # Arguments

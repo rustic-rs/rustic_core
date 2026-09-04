@@ -15,6 +15,7 @@ use std::{io::Read, ops::Deref, path::PathBuf, sync::Arc};
 use bytes::{Buf, Bytes, buf::Reader};
 use enum_map::Enum;
 use log::trace;
+use rayon::current_num_threads;
 
 #[cfg(test)]
 use mockall::mock;
@@ -104,6 +105,14 @@ pub trait ReadBackend: Send + Sync + 'static {
     ///
     /// * If the files could not be listed.
     fn list_with_size(&self, tpe: FileType) -> RusticResult<Vec<(Id, u32)>>;
+
+    /// How many parallel readers to use for `stream_list` of these files.
+    ///
+    /// Remote backends keep extra workers for B2 RTTs. Cached backends use a
+    /// few workers when the files are already on disk so we do not thrash HDD.
+    fn prefetch_workers(&self, _tpe: FileType, _ids: &[Id]) -> usize {
+        (current_num_threads() + 16).clamp(16, 32)
+    }
 
     /// Lists all files of the given type.
     ///
@@ -447,6 +456,9 @@ impl ReadBackend for Arc<dyn WriteBackend> {
     }
     fn list_with_size(&self, tpe: FileType) -> RusticResult<Vec<(Id, u32)>> {
         self.deref().list_with_size(tpe)
+    }
+    fn prefetch_workers(&self, tpe: FileType, ids: &[Id]) -> usize {
+        self.deref().prefetch_workers(tpe, ids)
     }
     fn list(&self, tpe: FileType) -> RusticResult<Vec<Id>> {
         self.deref().list(tpe)
