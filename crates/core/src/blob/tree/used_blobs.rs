@@ -10,7 +10,168 @@ use serde::{
     de::{self, DeserializeSeed, IgnoredAny, MapAccess, SeqAccess, Visitor},
 };
 
-use crate::blob::{DataId, tree::TreeId};
+use crate::{
+    Id,
+    blob::{DataId, tree::TreeId},
+};
+
+/// Nibble lookup: 0–15 for hex digits, `0xFF` otherwise.
+const fn hex_nibble_table() -> [u8; 256] {
+    let mut t = [0xff_u8; 256];
+    let mut i: u8 = 0;
+    while i < 10 {
+        t[b'0' as usize + i as usize] = i;
+        i += 1;
+    }
+    i = 0;
+    while i < 6 {
+        t[b'a' as usize + i as usize] = 10 + i;
+        t[b'A' as usize + i as usize] = 10 + i;
+        i += 1;
+    }
+    t
+}
+
+const HEX_NIBBLE: [u8; 256] = hex_nibble_table();
+
+#[inline]
+fn decode_hex32(src: &[u8]) -> Option<[u8; 32]> {
+    if src.len() != 64 {
+        return None;
+    }
+    let mut out = [0_u8; 32];
+    let mut i = 0;
+    while i < 32 {
+        let hi = HEX_NIBBLE[src[i * 2] as usize];
+        let lo = HEX_NIBBLE[src[i * 2 + 1] as usize];
+        if (hi | lo) == 0xff {
+            return None;
+        }
+        out[i] = (hi << 4) | lo;
+        i += 1;
+    }
+    Some(out)
+}
+
+fn parse_hex_id(s: &str) -> Option<Id> {
+    decode_hex32(s.as_bytes()).map(Id::new)
+}
+
+struct HexDataIdVisitor;
+
+impl Visitor<'_> for HexDataIdVisitor {
+    type Value = DataId;
+
+    fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str("a 64-character hex blob id")
+    }
+
+    fn visit_str<E: de::Error>(self, v: &str) -> Result<Self::Value, E> {
+        parse_hex_id(v)
+            .map(DataId::from)
+            .ok_or_else(|| E::invalid_value(de::Unexpected::Str(v), &self))
+    }
+}
+
+struct HexTreeIdVisitor;
+
+impl Visitor<'_> for HexTreeIdVisitor {
+    type Value = TreeId;
+
+    fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str("a 64-character hex tree id")
+    }
+
+    fn visit_str<E: de::Error>(self, v: &str) -> Result<Self::Value, E> {
+        parse_hex_id(v)
+            .map(TreeId::from)
+            .ok_or_else(|| E::invalid_value(de::Unexpected::Str(v), &self))
+    }
+}
+
+fn deserialize_data_ids<'de, D: Deserializer<'de>>(
+    deserializer: D,
+) -> Result<Vec<DataId>, D::Error> {
+    struct SeqVisitor;
+
+    impl<'de> Visitor<'de> for SeqVisitor {
+        type Value = Vec<DataId>;
+
+        fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+            formatter.write_str("an array of hex blob ids")
+        }
+
+        fn visit_unit<E: de::Error>(self) -> Result<Self::Value, E> {
+            Ok(Vec::new())
+        }
+
+        fn visit_none<E: de::Error>(self) -> Result<Self::Value, E> {
+            Ok(Vec::new())
+        }
+
+        fn visit_some<D: Deserializer<'de>>(
+            self,
+            deserializer: D,
+        ) -> Result<Self::Value, D::Error> {
+            deserializer.deserialize_seq(self)
+        }
+
+        fn visit_seq<A: SeqAccess<'de>>(self, mut seq: A) -> Result<Self::Value, A::Error> {
+            let mut out = Vec::new();
+            while let Some(id) = seq.next_element_seed(HexDataIdSeed)? {
+                out.push(id);
+            }
+            Ok(out)
+        }
+    }
+
+    deserializer.deserialize_any(SeqVisitor)
+}
+
+struct HexDataIdSeed;
+
+impl<'de> DeserializeSeed<'de> for HexDataIdSeed {
+    type Value = DataId;
+
+    fn deserialize<D: Deserializer<'de>>(self, deserializer: D) -> Result<Self::Value, D::Error> {
+        deserializer.deserialize_str(HexDataIdVisitor)
+    }
+}
+
+fn deserialize_opt_tree_id<'de, D: Deserializer<'de>>(
+    deserializer: D,
+) -> Result<Option<TreeId>, D::Error> {
+    struct OptVisitor;
+
+    impl<'de> Visitor<'de> for OptVisitor {
+        type Value = Option<TreeId>;
+
+        fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+            formatter.write_str("a hex tree id or null")
+        }
+
+        fn visit_unit<E: de::Error>(self) -> Result<Self::Value, E> {
+            Ok(None)
+        }
+
+        fn visit_none<E: de::Error>(self) -> Result<Self::Value, E> {
+            Ok(None)
+        }
+
+        fn visit_some<D: Deserializer<'de>>(
+            self,
+            deserializer: D,
+        ) -> Result<Self::Value, D::Error> {
+            deserializer.deserialize_str(HexTreeIdVisitor).map(Some)
+        }
+
+        fn visit_str<E: de::Error>(self, v: &str) -> Result<Self::Value, E> {
+            HexTreeIdVisitor.visit_str(v).map(Some)
+        }
+    }
+
+    deserializer.deserialize_any(OptVisitor)
+}
 
 /// Compact tree contents used by prune's used-blob walk.
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
@@ -32,9 +193,9 @@ enum UsedBlobKind {
 struct UsedBlobNode {
     #[serde(rename = "type")]
     kind: UsedBlobKind,
-    #[serde(default)]
-    content: Option<Vec<DataId>>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "deserialize_data_ids")]
+    content: Vec<DataId>,
+    #[serde(default, deserialize_with = "deserialize_opt_tree_id")]
     subtree: Option<TreeId>,
 }
 
@@ -99,9 +260,7 @@ impl<'de> Visitor<'de> for NodesSeed<'_> {
         while let Some(node) = seq.next_element::<UsedBlobNode>()? {
             match node.kind {
                 UsedBlobKind::File => {
-                    if let Some(content) = node.content {
-                        self.0.file_blobs.extend(content);
-                    }
+                    self.0.file_blobs.extend(node.content);
                 }
                 UsedBlobKind::Dir => {
                     if let Some(subtree) = node.subtree {
@@ -203,5 +362,20 @@ mod tests {
         let used = parse_used_blobs_tree(json.as_bytes()).unwrap();
         assert_eq!(used.file_blobs.len(), 1);
         assert!(used.dir_trees.is_empty());
+    }
+
+    #[test]
+    fn hex_ids_accept_uppercase_and_reject_garbage() {
+        let upper = format!(
+            r#"{{"nodes":[{{"type":"file","content":["{}"]}}]}}"#,
+            FILE_ID.to_uppercase()
+        );
+        assert_eq!(
+            parse_used_blobs_tree(upper.as_bytes()).unwrap().file_blobs,
+            vec![FILE_ID.parse::<DataId>().unwrap()]
+        );
+        assert!(
+            parse_used_blobs_tree(br#"{"nodes":[{"type":"file","content":["zzzz"]}]}"#).is_err()
+        );
     }
 }
