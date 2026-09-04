@@ -1416,14 +1416,15 @@ pub(crate) fn prune_repository<S: Open>(
                     })
                     .collect();
 
-                // TODO: repack in parallel
-                for blobs in blob_chunks {
+                // Range-GETs for holes in the same pack run in parallel. The
+                // packer already serializes writes via its channel / lock.
+                blob_chunks.into_par_iter().try_for_each(|blobs| {
                     if opts.fast_repack {
-                        repacker.copy_fast(blobs, &p)?;
+                        repacker.copy_fast(blobs, &p)
                     } else {
-                        repacker.copy(blobs, &p)?;
+                        repacker.copy(blobs, &p)
                     }
-                }
+                })?;
                 Ok(())
             })?;
         _ = tree_repacker.finalize()?;
