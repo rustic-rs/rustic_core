@@ -5,7 +5,7 @@ pub mod rewrite;
 use std::{
     borrow::Cow,
     cmp::Ordering,
-    collections::{BTreeMap, BTreeSet, BinaryHeap},
+    collections::{BTreeMap, BinaryHeap, HashSet},
     ffi::OsStr,
     mem,
     path::{Component, Path, PathBuf, Prefix},
@@ -16,6 +16,7 @@ use crossbeam_channel::{Receiver, Sender, bounded, unbounded};
 use derive_setters::Setters;
 use ignore::Match;
 use ignore::overrides::Override;
+use rayon::current_num_threads;
 use serde::{Deserialize, Deserializer};
 use serde_derive::Serialize;
 
@@ -53,8 +54,20 @@ pub enum TreeErrorKind {
 pub(crate) type TreeResult<T> = Result<T, TreeErrorKind>;
 
 pub(super) mod constants {
-    /// The maximum number of trees that are loaded in parallel
-    pub(super) const MAX_TREE_LOADER: usize = 4;
+    /// Minimum / maximum tree-loader threads for `TreeStreamerOnce`.
+    ///
+    /// Four was too few on high-latency backends (B2): prune's "finding used
+    /// blobs..." walks every unique tree with a pack range GET. Restic uses
+    /// `connections + GOMAXPROCS` workers. We scale with Rayon (2× CPUs,
+    /// clamped) so a 4-core box gets 8 loaders, not 4.
+    pub(super) const MIN_TREE_LOADER: usize = 8;
+    pub(super) const MAX_TREE_LOADER: usize = 32;
+}
+
+fn tree_loader_count() -> usize {
+    current_num_threads()
+        .saturating_mul(2)
+        .clamp(constants::MIN_TREE_LOADER, constants::MAX_TREE_LOADER)
 }
 
 pub(crate) type TreeStreamItem = RusticResult<(PathBuf, Tree)>;
@@ -623,7 +636,7 @@ where
 #[derive(Debug)]
 pub struct TreeStreamerOnce {
     /// The visited tree IDs
-    visited: BTreeSet<TreeId>,
+    visited: HashSet<TreeId>,
     /// The queue to send tree IDs to
     queue_in: Option<Sender<(PathBuf, TreeId, usize)>>,
     /// The queue to receive trees from
@@ -661,10 +674,11 @@ impl TreeStreamerOnce {
     ) -> RusticResult<Self> {
         p.set_length(ids.len() as u64);
 
-        let (out_tx, out_rx) = bounded(constants::MAX_TREE_LOADER);
+        let loaders = tree_loader_count();
+        let (out_tx, out_rx) = bounded(loaders.saturating_mul(4).max(32));
         let (in_tx, in_rx) = unbounded();
 
-        for _ in 0..constants::MAX_TREE_LOADER {
+        for _ in 0..loaders {
             let be = be.clone();
             let index = index.clone();
             let in_rx = in_rx.clone();
@@ -683,7 +697,7 @@ impl TreeStreamerOnce {
 
         let counter = vec![0; ids.len()];
         let mut streamer = Self {
-            visited: BTreeSet::new(),
+            visited: HashSet::new(),
             queue_in: Some(in_tx),
             queue_out: out_rx,
             p,
