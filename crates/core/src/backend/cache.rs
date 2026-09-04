@@ -106,6 +106,17 @@ impl ReadBackend for CachedBackend {
         }
     }
 
+    fn tree_loader_count(&self) -> usize {
+        // Warm pack cache: local preads. 2×CPUs loaders oversubscribe QEMU
+        // vCPUs (KVM PV spinlocks + musl malloc). Cold cache: keep extra
+        // loaders for B2 RTTs.
+        if self.cache.has_cached_packs() {
+            rayon::current_num_threads().clamp(4, 8)
+        } else {
+            self.be.tree_loader_count()
+        }
+    }
+
     /// Lists all files with their size of the given type.
     ///
     /// # Arguments
@@ -396,6 +407,15 @@ impl Cache {
             path,
             open_files: Arc::new(OpenFileCache::new(constants::OPEN_FILE_CAPACITY)),
         })
+    }
+
+    /// True if at least one pack file is already in this cache.
+    #[must_use]
+    pub fn has_cached_packs(&self) -> bool {
+        WalkDir::new(self.path.join(FileType::Pack.dirname()))
+            .into_iter()
+            .filter_map(Result::ok)
+            .any(|e| e.file_type().is_file())
     }
 
     /// Returns the path to the location of this [`Cache`].

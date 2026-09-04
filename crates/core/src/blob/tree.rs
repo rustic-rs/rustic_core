@@ -17,7 +17,6 @@ use crossbeam_channel::{Receiver, Sender, TrySendError, bounded};
 use derive_setters::Setters;
 use ignore::Match;
 use ignore::overrides::Override;
-use rayon::current_num_threads;
 use serde::{Deserialize, Deserializer};
 use serde_derive::Serialize;
 
@@ -53,23 +52,6 @@ pub enum TreeErrorKind {
 }
 
 pub(crate) type TreeResult<T> = Result<T, TreeErrorKind>;
-
-pub(super) mod constants {
-    /// Minimum / maximum tree-loader threads for `TreeStreamerOnce`.
-    ///
-    /// Four was too few on high-latency backends (B2): prune's "finding used
-    /// blobs..." walks every unique tree with a pack range GET. Restic uses
-    /// `connections + GOMAXPROCS` workers. We scale with Rayon (2× CPUs,
-    /// clamped) so a 4-core box gets 8 loaders, not 4.
-    pub(super) const MIN_TREE_LOADER: usize = 8;
-    pub(super) const MAX_TREE_LOADER: usize = 32;
-}
-
-fn tree_loader_count() -> usize {
-    current_num_threads()
-        .saturating_mul(2)
-        .clamp(constants::MIN_TREE_LOADER, constants::MAX_TREE_LOADER)
-}
 
 type NodeStreamItem = RusticResult<(PathBuf, Node)>;
 impl_blobid!(TreeId, BlobType::Tree);
@@ -745,7 +727,7 @@ impl<T: LoadedTree> TreeStreamer<T> {
     ) -> RusticResult<Self> {
         p.set_length(ids.len() as u64);
 
-        let loaders = tree_loader_count();
+        let loaders = be.tree_loader_count();
         let (out_tx, out_rx) = bounded(loaders.saturating_mul(4).max(32));
         // Bound the loader input so we do not dump every snapshot root at once.
         // Combined with a LIFO backlog this keeps workers on recently discovered

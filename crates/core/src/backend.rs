@@ -114,6 +114,14 @@ pub trait ReadBackend: Send + Sync + 'static {
         (current_num_threads() + 16).clamp(16, 32)
     }
 
+    /// How many threads to spawn to load trees (`TreeStreamer`).
+    ///
+    /// Remote backends use `2 × CPUs` (8–32) so prune is not RTT-bound on B2.
+    /// Cached backends use fewer when pack files are already on disk.
+    fn tree_loader_count(&self) -> usize {
+        current_num_threads().saturating_mul(2).clamp(8, 32)
+    }
+
     /// Lists all files of the given type.
     ///
     /// # Arguments
@@ -459,6 +467,9 @@ impl ReadBackend for Arc<dyn WriteBackend> {
     }
     fn prefetch_workers(&self, tpe: FileType, ids: &[Id]) -> usize {
         self.deref().prefetch_workers(tpe, ids)
+    }
+    fn tree_loader_count(&self) -> usize {
+        self.deref().tree_loader_count()
     }
     fn list(&self, tpe: FileType) -> RusticResult<Vec<Id>> {
         self.deref().list(tpe)

@@ -656,6 +656,10 @@ impl<C: CryptoKey> ReadBackend for DecryptBackend<C> {
         self.be.prefetch_workers(tpe, ids)
     }
 
+    fn tree_loader_count(&self) -> usize {
+        self.be.tree_loader_count()
+    }
+
     fn read_full(&self, tpe: FileType, id: &Id) -> RusticResult<Bytes> {
         self.be.read_full(tpe, id)
     }
