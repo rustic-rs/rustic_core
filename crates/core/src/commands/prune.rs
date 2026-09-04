@@ -4,7 +4,7 @@
 /// accessors along with logging macros. Customize as you see fit.
 use std::{
     cmp::Ordering,
-    collections::{BTreeMap, BTreeSet},
+    collections::{BTreeMap, BTreeSet, HashMap},
     str::FromStr,
 };
 
@@ -584,7 +584,7 @@ pub struct PrunePlan {
     /// The time the plan was created
     time: Zoned,
     /// The ids of the blobs which are used
-    used_ids: BTreeMap<BlobId, u8>,
+    used_ids: HashMap<BlobId, u8>,
     /// The ids of the existing packs
     existing_packs: BTreeMap<PackId, u32>,
     /// The packs which should be repacked
@@ -604,7 +604,7 @@ impl PrunePlan {
     /// * `existing_packs` - The ids of the existing packs
     /// * `index_files` - The index files
     fn new(
-        used_ids: BTreeMap<BlobId, u8>,
+        used_ids: HashMap<BlobId, u8>,
         existing_packs: BTreeMap<PackId, u32>,
         index_files: Vec<(IndexId, IndexFile)>,
     ) -> Self {
@@ -1492,8 +1492,8 @@ impl PackInfo {
     /// # Arguments
     ///
     /// * `pack` - The `PrunePack` to create the `PackInfo` from
-    /// * `used_ids` - The `BTreeMap` of used ids
-    fn from_pack(pack: &PrunePack, used_ids: &mut BTreeMap<BlobId, u8>) -> Self {
+    /// * `used_ids` - The map of used ids
+    fn from_pack(pack: &PrunePack, used_ids: &mut HashMap<BlobId, u8>) -> Self {
         let mut pi = Self {
             blob_type: pack.blob_type,
             used_blobs: 0,
@@ -1585,7 +1585,7 @@ fn find_used_blobs<S>(
     be: &impl DecryptReadBackend,
     index: &impl ReadGlobalIndex,
     ignore_snaps: &[SnapshotId],
-) -> RusticResult<BTreeMap<BlobId, u8>> {
+) -> RusticResult<HashMap<BlobId, u8>> {
     let ignore_snaps: BTreeSet<_> = ignore_snaps.iter().collect();
 
     let p = repo.progress_counter("reading snapshots...");
@@ -1602,7 +1602,7 @@ fn find_used_blobs<S>(
         .try_collect()?;
     p.finish();
 
-    let mut ids: BTreeMap<_, _> = snap_trees
+    let mut ids: HashMap<_, _> = snap_trees
         .iter()
         .map(|id| (BlobId::from(**id), 0))
         .collect();
