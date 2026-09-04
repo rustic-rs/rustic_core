@@ -702,6 +702,24 @@ pub struct TreeStreamer<T> {
 /// Recursively visits all trees and subtrees, but each tree ID only once.
 pub type TreeStreamerOnce = TreeStreamer<Tree>;
 
+fn ignore_loaded_tree<T>(_: &T) {}
+
+/// Called from each tree-loader thread after a tree is decoded.
+pub(crate) trait OnTreeLoad<T>: Send + 'static {
+    fn on_load(&mut self, tree: &T);
+    fn finish(self)
+    where
+        Self: Sized,
+    {
+    }
+}
+
+impl<T, F: FnMut(&T) + Send + 'static> OnTreeLoad<T> for F {
+    fn on_load(&mut self, tree: &T) {
+        self(tree);
+    }
+}
+
 impl<T: LoadedTree> TreeStreamer<T> {
     /// Creates a new `TreeStreamerOnce`.
     ///
@@ -725,20 +743,23 @@ impl<T: LoadedTree> TreeStreamer<T> {
         ids: Vec<TreeId>,
         p: Progress,
     ) -> RusticResult<Self> {
-        Self::new_with_on_load(be, index, ids, p, |_| {})
+        Self::new_with_on_load(be, index, ids, p, || ignore_loaded_tree)
     }
 
-    /// Like [`Self::new`], and runs `on_load` in each loader thread after a tree
-    /// is decoded so prune can record used blob ids without a single consumer.
-    pub fn new_with_on_load<BE: DecryptReadBackend, I: ReadGlobalIndex, F>(
+    /// Like [`Self::new`], but each loader thread gets its own `on_load` from
+    /// `factory` so prune can fill a thread-local used-id map with no locks.
+    pub fn new_with_on_load<BE, I, F, H>(
         be: &BE,
         index: &I,
         ids: Vec<TreeId>,
         p: Progress,
-        on_load: F,
+        mut factory: F,
     ) -> RusticResult<Self>
     where
-        F: Fn(&T) + Send + Sync + Clone + 'static,
+        BE: DecryptReadBackend,
+        I: ReadGlobalIndex,
+        F: FnMut() -> H,
+        H: OnTreeLoad<T>,
     {
         p.set_length(ids.len() as u64);
 
@@ -754,14 +775,15 @@ impl<T: LoadedTree> TreeStreamer<T> {
             let index = index.clone();
             let in_rx = in_rx.clone();
             let out_tx = out_tx.clone();
-            let on_load = on_load.clone();
+            let mut on_load = factory();
             let _join_handle = std::thread::spawn(move || {
                 for (path, id, count) in in_rx {
-                    let loaded = T::load(&be, &index, id).inspect(|tree| on_load(tree));
+                    let loaded = T::load(&be, &index, id).inspect(|tree| on_load.on_load(tree));
                     if out_tx.send(loaded.map(|tree| (path, tree, count))).is_err() {
                         break;
                     }
                 }
+                on_load.finish();
             });
         }
 

@@ -6,7 +6,7 @@ use std::{
     cmp::Ordering,
     collections::{BTreeMap, BTreeSet, HashMap},
     str::FromStr,
-    sync::{Arc, Mutex},
+    sync::mpsc::{self, Sender},
 };
 
 use bytesize::ByteSize;
@@ -27,7 +27,7 @@ use crate::{
     blob::{
         BlobId, BlobLocations, BlobType, BlobTypeMap, Initialize,
         packer::{BlobCopier, CopyPackBlobs, PackSizer},
-        tree::{TreeStreamer, UsedBlobsTree},
+        tree::{OnTreeLoad, TreeStreamer, UsedBlobsTree},
     },
     error::{ErrorKind, RusticError, RusticResult},
     index::{
@@ -1584,44 +1584,24 @@ impl PackInfo {
     }
 }
 
-const USED_ID_SHARDS: usize = 16;
-
-/// Used blob ids filled from tree-loader threads.
-///
-/// A single `HashMap` on the streamer consumer serialized prune's used-blob
-/// walk. Shard so loaders insert without that bottleneck.
-struct ShardedUsedIds {
-    shards: [Mutex<HashMap<BlobId, u8>>; USED_ID_SHARDS],
+/// Per-loader used-id map. Inserts take no lock; maps are merged after the walk.
+struct UsedIdAcc {
+    map: HashMap<BlobId, u8>,
+    tx: Sender<HashMap<BlobId, u8>>,
 }
 
-impl ShardedUsedIds {
-    fn new() -> Self {
-        Self {
-            shards: std::array::from_fn(|_| Mutex::new(HashMap::new())),
+impl OnTreeLoad<UsedBlobsTree> for UsedIdAcc {
+    fn on_load(&mut self, tree: &UsedBlobsTree) {
+        for id in &tree.file_blobs {
+            _ = self.map.insert(BlobId::from(*id), 0);
+        }
+        for id in &tree.dir_trees {
+            _ = self.map.insert(BlobId::from(*id), 0);
         }
     }
 
-    fn insert(&self, id: BlobId) {
-        let i = (id.as_u32() as usize) & (USED_ID_SHARDS - 1);
-        _ = self.shards[i]
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .insert(id, 0);
-    }
-
-    fn take_hashmap(&self) -> HashMap<BlobId, u8> {
-        let mut out = HashMap::new();
-        for shard in &self.shards {
-            let mut map = shard
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner);
-            if out.is_empty() {
-                out = std::mem::take(&mut *map);
-            } else {
-                out.extend(std::mem::take(&mut *map));
-            }
-        }
-        out
+    fn finish(self) {
+        _ = self.tx.send(self.map);
     }
 }
 
@@ -1658,25 +1638,28 @@ fn find_used_blobs<S>(
         .try_collect()?;
     p.finish();
 
-    let ids = Arc::new(ShardedUsedIds::new());
-    for id in &snap_trees {
-        ids.insert(BlobId::from(**id));
-    }
+    let mut ids: HashMap<_, _> = snap_trees
+        .iter()
+        .map(|id| (BlobId::from(**id), 0))
+        .collect();
     let p = repo.progress_counter("finding used blobs...");
-    let ids_loader = Arc::clone(&ids);
-
+    let (maps_tx, maps_rx) = mpsc::channel();
     let mut tree_streamer =
-        TreeStreamer::<UsedBlobsTree>::new_with_on_load(be, index, snap_trees, p, move |used| {
-            for id in &used.file_blobs {
-                ids_loader.insert(BlobId::from(*id));
-            }
-            for id in &used.dir_trees {
-                ids_loader.insert(BlobId::from(*id));
+        TreeStreamer::<UsedBlobsTree>::new_with_on_load(be, index, snap_trees, p, {
+            let maps_tx = maps_tx.clone();
+            move || UsedIdAcc {
+                map: HashMap::new(),
+                tx: maps_tx.clone(),
             }
         })?;
+    drop(maps_tx);
     while let Some(item) = tree_streamer.next().transpose()? {
         let _ = item;
     }
+    drop(tree_streamer);
+    while let Ok(map) = maps_rx.recv() {
+        ids.extend(map);
+    }
 
-    Ok(ids.take_hashmap())
+    Ok(ids)
 }
