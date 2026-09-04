@@ -703,6 +703,13 @@ impl PrunePlan {
 
         let mut index_files = Vec::new();
 
+        // Pack listing is a full B2 prefix walk and does not depend on the
+        // index or used-blob set. Run it while we read the index and trees.
+        let pack_list = {
+            let be = be.clone();
+            std::thread::spawn(move || be.list_with_size(FileType::Pack))
+        };
+
         let p = repo.progress_counter("reading index...");
         let mut index_collector = IndexCollector::new(IndexType::OnlyTrees);
 
@@ -724,13 +731,20 @@ impl PrunePlan {
             (used_ids, total_size)
         };
 
-        // list existing pack files
+        // list existing pack files (started before index/tree work)
         let p = repo.progress_spinner("getting packs from repository...");
-        let existing_packs: BTreeMap<_, _> = be
-            .list_with_size(FileType::Pack)?
-            .into_iter()
-            .map(|(id, size)| (PackId::from(id), size))
-            .collect();
+        let existing_packs: BTreeMap<_, _> = match pack_list.join() {
+            Ok(listed) => listed?
+                .into_iter()
+                .map(|(id, size)| (PackId::from(id), size))
+                .collect(),
+            Err(_) => {
+                return Err(RusticError::new(
+                    ErrorKind::Internal,
+                    "Pack listing thread panicked.",
+                ));
+            }
+        };
         p.finish();
 
         let mut pruner = Self::new(used_ids, existing_packs, index_files);
