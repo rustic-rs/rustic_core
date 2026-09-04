@@ -38,6 +38,7 @@ SnapshotFile(
     backup_end: "[backup_end]",
     backup_duration: "[backup_duration]",
     total_duration: "[total_duration]",
+    error_count: 0,
   )),
   id: "[id]",
 )

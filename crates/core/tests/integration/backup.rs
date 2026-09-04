@@ -309,18 +309,6 @@ fn test_backup_excludes_xattr_entries(set_up_repo: Result<RepoOpen>) -> Result<(
 }
 
 #[cfg(unix)]
-struct RestorePerms<'a>(&'a Path);
-
-#[cfg(unix)]
-impl Drop for RestorePerms<'_> {
-    fn drop(&mut self) {
-        use std::fs::{self, Permissions};
-        use std::os::unix::fs::PermissionsExt;
-        let _ = fs::set_permissions(self.0, Permissions::from_mode(0o644));
-    }
-}
-
-#[cfg(unix)]
 #[rstest]
 fn test_backup_unreadable_file_sets_error_count(set_up_repo: Result<RepoOpen>) -> Result<()> {
     use std::fs::{self, File, Permissions};
@@ -332,7 +320,6 @@ fn test_backup_unreadable_file_sets_error_count(set_up_repo: Result<RepoOpen>) -
     let secret = base.join("secret.txt");
     fs::write(&secret, "secret")?;
     fs::set_permissions(&secret, Permissions::from_mode(0o000))?;
-    let _restore = RestorePerms(&secret);
 
     if File::open(&secret).is_ok() {
         // e.g. running as root; mode bits are not enforced
@@ -352,6 +339,13 @@ fn test_backup_unreadable_file_sets_error_count(set_up_repo: Result<RepoOpen>) -
     );
     assert_ne!(snapshot.id, SnapshotFile::default().id);
     assert!(summary.total_files_processed >= 1);
+
+    let loaded = repo.get_snapshot_from_str(&snapshot.id.to_string(), |_| true)?;
+    assert_eq!(
+        loaded.summary.as_ref().map(|s| s.error_count),
+        Some(summary.error_count),
+        "error_count should be persisted in the snapshot file when non-zero"
+    );
 
     Ok(())
 }

@@ -63,7 +63,7 @@ impl Progress {
     /// * `item` - Usually the path of the problematic file or directory
     /// * `during` - What was being attempted, e.g. `"scan"` or `"archival"`
     /// * `message` - Error message
-    pub fn error(&self, item: &str, during: &str, message: &str) {
+    pub fn error(&self, item: Option<&str>, during: &str, message: &str) {
         self.0.error(item, during, message);
     }
 }
@@ -109,11 +109,10 @@ pub trait RusticProgress: Send + Sync + 'static + std::fmt::Debug {
     /// * `item` - Usually the path of the problematic file or directory
     /// * `during` - What was being attempted, e.g. `"scan"` or `"archival"`
     /// * `message` - Error message
-    fn error(&self, item: &str, during: &str, message: &str) {
-        if item.is_empty() {
-            warn!("{during}: {message}");
-        } else {
-            warn!("error: {during} {item}: {message}");
+    fn error(&self, item: Option<&str>, during: &str, message: &str) {
+        match item {
+            Some(item) => warn!("error: {during} {item}: {message}"),
+            None => warn!("{during}: {message}"),
         }
     }
 }

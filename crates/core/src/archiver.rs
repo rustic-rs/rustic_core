@@ -30,8 +30,7 @@ use crate::{
 /// Report a source-file error, count it, and continue the backup.
 fn report_source_error(p: &Progress, errors: &AtomicU64, during: &'static str, err: &RusticError) {
     _ = errors.fetch_add(1, Ordering::Relaxed);
-    let item = err.context_value("path").unwrap_or("");
-    p.error(item, during, &err.display_log());
+    p.error(err.context_value("path"), during, &err.display_log());
 }
 
 #[derive(thiserror::Error, Debug, displaydoc::Display)]

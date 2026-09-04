@@ -283,14 +283,14 @@ impl ReadSource for LocalSource {
     }
 }
 
-fn ignore_error_path(err: &ignore::Error) -> String {
+fn ignore_error_path(err: &ignore::Error) -> Option<String> {
     match err {
-        ignore::Error::WithPath { path, .. } => path.display().to_string(),
+        ignore::Error::WithPath { path, .. } => Some(path.display().to_string()),
         ignore::Error::WithDepth { err, .. } | ignore::Error::WithLineNumber { err, .. } => {
             ignore_error_path(err)
         }
-        ignore::Error::Loop { child, .. } => child.display().to_string(),
-        _ => String::new(),
+        ignore::Error::Loop { child, .. } => Some(child.display().to_string()),
+        _ => None,
     }
 }
 
@@ -317,12 +317,23 @@ impl Iterator for LocalSourceWalker {
         .map(|e| {
             let entry = e.map_err(|err| {
                 let path = ignore_error_path(&err);
-                RusticError::with_source(
-                    ErrorKind::InputOutput,
-                    "Failed to read source path `{path}`.",
-                    err,
-                )
-                .attach_context("path", path)
+                let rustic_err = if path.is_some() {
+                    RusticError::with_source(
+                        ErrorKind::InputOutput,
+                        "Failed to read source path `{path}`.",
+                        err,
+                    )
+                } else {
+                    RusticError::with_source(
+                        ErrorKind::InputOutput,
+                        "Failed to read source path.",
+                        err,
+                    )
+                };
+                match path {
+                    Some(path) => rustic_err.attach_context("path", path),
+                    None => rustic_err,
+                }
             })?;
             let path = entry.path().display().to_string();
             self.save_opts.map_entry(entry).map_err(|err| {
