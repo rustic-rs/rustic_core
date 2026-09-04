@@ -1,9 +1,43 @@
-use std::{num::NonZeroU32, sync::Arc};
+use std::{cell::RefCell, num::NonZeroU32, sync::Arc};
 
 use bytes::Bytes;
 use crossbeam_channel::{Receiver, bounded};
 use rayon::{prelude::*, spawn};
 use zstd::stream::{copy_encode, decode_all, encode_all};
+
+/// Decode zstd with a decompressor kept on this thread.
+///
+/// `zstd::decode_all` builds a new `DCtx` per call. Tree walking does that for
+/// every blob and showed up as `ZSTD_createDCtx` / `munmap` / page faults.
+fn zstd_decompress(data: &[u8], uncompressed_len: usize) -> RusticResult<Vec<u8>> {
+    thread_local! {
+        static DECOMPRESSOR: RefCell<Option<zstd::bulk::Decompressor<'static>>> =
+            const { RefCell::new(None) };
+    }
+
+    DECOMPRESSOR.with(|slot| {
+        let mut slot = slot.borrow_mut();
+        if slot.is_none() {
+            *slot = Some(zstd::bulk::Decompressor::new().map_err(|err| {
+                RusticError::with_source(
+                    ErrorKind::Internal,
+                    "Failed to create zstd decompressor.",
+                    err,
+                )
+            })?);
+        }
+        slot.as_mut()
+            .expect("zstd decompressor is initialized")
+            .decompress(data, uncompressed_len)
+            .map_err(|err| {
+                RusticError::with_source(
+                    ErrorKind::Internal,
+                    "Failed to decode zstd compressed data. The data may be corrupted.",
+                    err,
+                )
+            })
+    })
+}
 
 pub use zstd::compression_level_range;
 
@@ -75,13 +109,7 @@ pub trait DecryptReadBackend: ReadBackend + Clone + 'static {
     ) -> RusticResult<Bytes> {
         let mut data = self.decrypt(data)?;
         if let Some(length) = uncompressed_length {
-            data = decode_all(&*data).map_err(|err| {
-                RusticError::with_source(
-                    ErrorKind::Internal,
-                    "Failed to decode zstd compressed data. The data may be corrupted.",
-                    err,
-                )
-            })?;
+            data = zstd_decompress(&data, length.get() as usize)?;
 
             if data.len() != length.get() as usize {
                 return Err(RusticError::new(
