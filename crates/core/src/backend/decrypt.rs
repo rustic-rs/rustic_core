@@ -5,29 +5,46 @@ use crossbeam_channel::{Receiver, bounded};
 use rayon::{prelude::*, spawn};
 use zstd::stream::{copy_encode, decode_all, encode_all};
 
+thread_local! {
+    static ZSTD: RefCell<ZstdTls> = const {
+        RefCell::new(ZstdTls {
+            decompressor: None,
+            buf: Vec::new(),
+        })
+    };
+}
+
+struct ZstdTls {
+    decompressor: Option<zstd::bulk::Decompressor<'static>>,
+    buf: Vec<u8>,
+}
+
+fn zstd_tls_decompressor(
+    slot: &mut ZstdTls,
+) -> RusticResult<&mut zstd::bulk::Decompressor<'static>> {
+    if slot.decompressor.is_none() {
+        slot.decompressor = Some(zstd::bulk::Decompressor::new().map_err(|err| {
+            RusticError::with_source(
+                ErrorKind::Internal,
+                "Failed to create zstd decompressor.",
+                err,
+            )
+        })?);
+    }
+    Ok(slot
+        .decompressor
+        .as_mut()
+        .expect("zstd decompressor is initialized"))
+}
+
 /// Decode zstd with a decompressor kept on this thread.
 ///
 /// `zstd::decode_all` builds a new `DCtx` per call. Tree walking does that for
 /// every blob and showed up as `ZSTD_createDCtx` / `munmap` / page faults.
 fn zstd_decompress(data: &[u8], uncompressed_len: usize) -> RusticResult<Vec<u8>> {
-    thread_local! {
-        static DECOMPRESSOR: RefCell<Option<zstd::bulk::Decompressor<'static>>> =
-            const { RefCell::new(None) };
-    }
-
-    DECOMPRESSOR.with(|slot| {
+    ZSTD.with(|slot| {
         let mut slot = slot.borrow_mut();
-        if slot.is_none() {
-            *slot = Some(zstd::bulk::Decompressor::new().map_err(|err| {
-                RusticError::with_source(
-                    ErrorKind::Internal,
-                    "Failed to create zstd decompressor.",
-                    err,
-                )
-            })?);
-        }
-        slot.as_mut()
-            .expect("zstd decompressor is initialized")
+        zstd_tls_decompressor(&mut slot)?
             .decompress(data, uncompressed_len)
             .map_err(|err| {
                 RusticError::with_source(
@@ -36,6 +53,48 @@ fn zstd_decompress(data: &[u8], uncompressed_len: usize) -> RusticResult<Vec<u8>
                     err,
                 )
             })
+    })
+}
+
+/// Decompress into a thread-local buffer and run `f` on the plaintext.
+///
+/// Prune tree walking used to allocate a new uncompressed `Vec` per blob,
+/// which showed up as `kernel_init_pages`. The buffer keeps capacity on this
+/// thread so later trees reuse the same pages.
+fn zstd_decompress_with<R>(
+    data: &[u8],
+    uncompressed_len: usize,
+    f: impl FnOnce(&[u8]) -> RusticResult<R>,
+) -> RusticResult<R> {
+    ZSTD.with(|slot| {
+        let mut slot = slot.borrow_mut();
+        let ZstdTls { decompressor, buf } = &mut *slot;
+        if decompressor.is_none() {
+            *decompressor = Some(zstd::bulk::Decompressor::new().map_err(|err| {
+                RusticError::with_source(
+                    ErrorKind::Internal,
+                    "Failed to create zstd decompressor.",
+                    err,
+                )
+            })?);
+        }
+        buf.clear();
+        if buf.capacity() < uncompressed_len {
+            buf.reserve(uncompressed_len);
+        }
+        let written = decompressor
+            .as_mut()
+            .expect("zstd decompressor is initialized")
+            .decompress_to_buffer(data, buf)
+            .map_err(|err| {
+                RusticError::with_source(
+                    ErrorKind::Internal,
+                    "Failed to decode zstd compressed data. The data may be corrupted.",
+                    err,
+                )
+            })?;
+        buf.truncate(written);
+        f(buf)
     })
 }
 
@@ -122,6 +181,34 @@ pub trait DecryptReadBackend: ReadBackend + Clone + 'static {
             }
         }
         Ok(data.into())
+    }
+
+    /// Decrypt and decompress `data`, then run `f` on the plaintext without
+    /// allocating a new uncompressed `Vec` on every call.
+    fn with_decoded_from_partial<R>(
+        &self,
+        data: &[u8],
+        uncompressed_length: Option<NonZeroU32>,
+        f: impl FnOnce(&[u8]) -> RusticResult<R>,
+    ) -> RusticResult<R> {
+        let decrypted = self.decrypt(data)?;
+        if let Some(length) = uncompressed_length {
+            let expected = length.get() as usize;
+            zstd_decompress_with(&decrypted, expected, |plain| {
+                if plain.len() != expected {
+                    return Err(RusticError::new(
+                        ErrorKind::Internal,
+                        "Length of uncompressed data `{actual_length}` does not match the given length `{expected_length}`.",
+                    )
+                    .attach_context("expected_length", length.get().to_string())
+                    .attach_context("actual_length", plain.len().to_string())
+                    .ask_report());
+                }
+                f(plain)
+            })
+        } else {
+            f(&decrypted)
+        }
     }
 
     /// Reads the given file with the given offset and length.

@@ -663,8 +663,18 @@ impl LoadedTree for UsedBlobsTree {
         index: &I,
         id: TreeId,
     ) -> RusticResult<Self> {
-        let data = read_tree_bytes(be, index, id)?;
-        used_blobs::parse_used_blobs_tree(&data).map_err(tree_json_error)
+        index
+            .get_tree(&id)
+            .ok_or_else(|| {
+                RusticError::new(
+                    ErrorKind::Internal,
+                    "Tree ID `{tree_id}` not found in index",
+                )
+                .attach_context("tree_id", id.to_string())
+            })?
+            .with_decoded(be, |data| {
+                used_blobs::parse_used_blobs_tree(data).map_err(tree_json_error)
+            })
     }
 
     fn child_trees(&self, _parent: &Path) -> Vec<(PathBuf, TreeId)> {
