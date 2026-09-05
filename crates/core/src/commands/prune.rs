@@ -72,13 +72,89 @@ impl Hash for UsedId {
     }
 }
 
-type UsedIdMap = HashMap<UsedId, u8, BuildHasherDefault<UsedIdHasher>>;
+type UsedIdShard = HashMap<UsedId, u8, BuildHasherDefault<UsedIdHasher>>;
+
+/// Used blob ids, sharded so the post-walk `HashMap` fill can run in parallel.
+#[derive(Debug)]
+struct UsedIdMap {
+    shards: Vec<UsedIdShard>,
+}
+
+impl Default for UsedIdMap {
+    fn default() -> Self {
+        Self {
+            shards: (0..constants::USED_ID_SHARDS)
+                .map(|_| UsedIdShard::default())
+                .collect(),
+        }
+    }
+}
+
+impl UsedIdMap {
+    #[inline]
+    fn shard(id: &UsedId) -> usize {
+        usize::try_from(id.0.as_u64() & (constants::USED_ID_SHARDS as u64 - 1)).unwrap_or(0)
+    }
+
+    fn from_lists(lists: Vec<Vec<UsedId>>) -> Self {
+        let total: usize = lists.iter().map(Vec::len).sum();
+        let cap = (total / constants::USED_ID_SHARDS).saturating_add(64);
+        let mut buckets: Vec<Vec<UsedId>> = (0..constants::USED_ID_SHARDS)
+            .map(|_| Vec::with_capacity(cap))
+            .collect();
+        for list in lists {
+            for id in list {
+                buckets[Self::shard(&id)].push(id);
+            }
+        }
+        let shards = buckets
+            .into_par_iter()
+            .map(|mut v| {
+                v.sort_unstable();
+                v.dedup();
+                let mut map =
+                    UsedIdShard::with_capacity_and_hasher(v.len(), BuildHasherDefault::default());
+                map.extend(v.into_iter().map(|id| (id, 0)));
+                map
+            })
+            .collect();
+        Self { shards }
+    }
+
+    #[cfg(test)]
+    fn get(&self, id: &UsedId) -> Option<&u8> {
+        self.shards[Self::shard(id)].get(id)
+    }
+
+    #[inline]
+    fn get_mut(&mut self, id: &UsedId) -> Option<&mut u8> {
+        let i = Self::shard(id);
+        self.shards[i].get_mut(id)
+    }
+
+    #[cfg(test)]
+    fn insert(&mut self, id: UsedId, v: u8) -> Option<u8> {
+        let i = Self::shard(&id);
+        self.shards[i].insert(id, v)
+    }
+
+    fn remove(&mut self, id: &UsedId) -> Option<u8> {
+        let i = Self::shard(id);
+        self.shards[i].remove(id)
+    }
+
+    fn iter(&self) -> impl Iterator<Item = (&UsedId, &u8)> + '_ {
+        self.shards.iter().flat_map(HashMap::iter)
+    }
+}
 
 pub(super) mod constants {
     /// Minimum size of an index file to be considered for pruning
     pub(super) const MIN_INDEX_LEN: usize = 10_000;
     /// Per-loader used-id vec start size. Avoids grow during the walk.
     pub(super) const USED_ID_VEC_CAP: usize = 1 << 21;
+    /// Parallel `HashMap` shards for the used-id merge. Power of two.
+    pub(super) const USED_ID_SHARDS: usize = 16;
 }
 
 #[allow(clippy::struct_excessive_bools)]
@@ -837,7 +913,7 @@ impl PrunePlan {
     ///
     /// * If a blob is missing
     fn check(&self) -> RusticResult<()> {
-        for (id, count) in &self.used_ids {
+        for (id, count) in self.used_ids.iter() {
             if *count == 0 {
                 return Err(RusticError::new(
                     ErrorKind::Internal,
@@ -1682,9 +1758,9 @@ fn find_used_blobs<S>(
         .try_collect()?;
     p.finish();
 
-    let mut ids: UsedIdMap = snap_trees
+    let snap_ids: Vec<UsedId> = snap_trees
         .iter()
-        .map(|id| (UsedId(BlobId::from(**id)), 0))
+        .map(|id| UsedId(BlobId::from(**id)))
         .collect();
     let p = repo.progress_counter("finding used blobs...");
     let (ids_tx, ids_rx) = mpsc::channel();
@@ -1701,13 +1777,9 @@ fn find_used_blobs<S>(
         let _ = item;
     }
     drop(tree_streamer);
-    let lists: Vec<_> = ids_rx.iter().collect();
-    ids.reserve(lists.iter().map(Vec::len).sum());
-    for list in lists {
-        ids.extend(list.into_iter().map(|id| (id, 0)));
-    }
-
-    Ok(ids)
+    let mut lists: Vec<_> = ids_rx.iter().collect();
+    lists.push(snap_ids);
+    Ok(UsedIdMap::from_lists(lists))
 }
 
 #[cfg(test)]
@@ -1755,5 +1827,21 @@ mod used_id_hash_tests {
         ids.sort_unstable();
         ids.dedup();
         assert_eq!(ids, vec![a, b, c]);
+    }
+
+    #[test]
+    fn from_lists_merges_across_loaders_and_shards() {
+        let a = UsedId(blob(ID_A));
+        let b = UsedId(blob(ID_B));
+        let c = UsedId(blob(ID_C));
+        let map = UsedIdMap::from_lists(vec![vec![a, a, c], vec![c, b]]);
+        assert_eq!(map.get(&a).copied(), Some(0));
+        assert_eq!(map.get(&b).copied(), Some(0));
+        assert_eq!(map.get(&c).copied(), Some(0));
+        assert_eq!(map.iter().count(), 3);
+        let mut map = map;
+        assert_eq!(map.remove(&b), Some(0));
+        assert!(map.get(&b).is_none());
+        assert_eq!(map.iter().count(), 2);
     }
 }
