@@ -231,7 +231,7 @@ impl<'a> Scan<'a> {
             }
             first = false;
             if object {
-                self.skip_string()?;
+                _ = self.parse_short_string()?;
                 self.skip_ws();
                 self.expect(b':')?;
             }
