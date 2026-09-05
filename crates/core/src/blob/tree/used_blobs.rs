@@ -1,14 +1,10 @@
 //! Stream-decode restic trees for prune without materializing `Node`s.
 //!
-//! Prune only needs file content blob ids and directory subtree ids. Full
-//! `Tree` deserialize also allocates names, metadata, and xattrs.
+//! Prune only needs file content blob ids and directory subtree ids. A
+//! dedicated JSON scanner skips names, metadata, and xattrs without UTF-8
+//! validation or serde parse of unused fields.
 
-use std::{borrow::Cow, fmt};
-
-use serde::{
-    Deserialize, Deserializer,
-    de::{self, DeserializeSeed, IgnoredAny, MapAccess, SeqAccess, Visitor},
-};
+use serde::de::Error as DeError;
 
 use crate::{
     Id,
@@ -53,133 +49,7 @@ fn decode_hex32(src: &[u8]) -> Option<[u8; 32]> {
     Some(out)
 }
 
-fn parse_hex_id(s: &str) -> Option<Id> {
-    decode_hex32(s.as_bytes()).map(Id::new)
-}
-
-struct HexDataIdVisitor;
-
-impl<'de> Visitor<'de> for HexDataIdVisitor {
-    type Value = DataId;
-
-    fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter.write_str("a 64-character hex blob id")
-    }
-
-    fn visit_str<E: de::Error>(self, v: &str) -> Result<Self::Value, E> {
-        parse_hex_id(v)
-            .map(DataId::from)
-            .ok_or_else(|| E::invalid_value(de::Unexpected::Str(v), &self))
-    }
-
-    fn visit_borrowed_str<E: de::Error>(self, v: &'de str) -> Result<Self::Value, E> {
-        self.visit_str(v)
-    }
-}
-
-struct HexTreeIdVisitor;
-
-impl<'de> Visitor<'de> for HexTreeIdVisitor {
-    type Value = TreeId;
-
-    fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter.write_str("a 64-character hex tree id")
-    }
-
-    fn visit_str<E: de::Error>(self, v: &str) -> Result<Self::Value, E> {
-        parse_hex_id(v)
-            .map(TreeId::from)
-            .ok_or_else(|| E::invalid_value(de::Unexpected::Str(v), &self))
-    }
-
-    fn visit_borrowed_str<E: de::Error>(self, v: &'de str) -> Result<Self::Value, E> {
-        self.visit_str(v)
-    }
-}
-
-fn deserialize_data_ids<'de, D: Deserializer<'de>>(
-    deserializer: D,
-) -> Result<Vec<DataId>, D::Error> {
-    struct SeqVisitor;
-
-    impl<'de> Visitor<'de> for SeqVisitor {
-        type Value = Vec<DataId>;
-
-        fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-            formatter.write_str("an array of hex blob ids")
-        }
-
-        fn visit_unit<E: de::Error>(self) -> Result<Self::Value, E> {
-            Ok(Vec::new())
-        }
-
-        fn visit_none<E: de::Error>(self) -> Result<Self::Value, E> {
-            Ok(Vec::new())
-        }
-
-        fn visit_some<D: Deserializer<'de>>(
-            self,
-            deserializer: D,
-        ) -> Result<Self::Value, D::Error> {
-            deserializer.deserialize_seq(self)
-        }
-
-        fn visit_seq<A: SeqAccess<'de>>(self, mut seq: A) -> Result<Self::Value, A::Error> {
-            let mut out = Vec::new();
-            while let Some(id) = seq.next_element_seed(HexDataIdSeed)? {
-                out.push(id);
-            }
-            Ok(out)
-        }
-    }
-
-    deserializer.deserialize_any(SeqVisitor)
-}
-
-struct HexDataIdSeed;
-
-impl<'de> DeserializeSeed<'de> for HexDataIdSeed {
-    type Value = DataId;
-
-    fn deserialize<D: Deserializer<'de>>(self, deserializer: D) -> Result<Self::Value, D::Error> {
-        deserializer.deserialize_str(HexDataIdVisitor)
-    }
-}
-
-fn deserialize_opt_tree_id<'de, D: Deserializer<'de>>(
-    deserializer: D,
-) -> Result<Option<TreeId>, D::Error> {
-    struct OptVisitor;
-
-    impl<'de> Visitor<'de> for OptVisitor {
-        type Value = Option<TreeId>;
-
-        fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-            formatter.write_str("a hex tree id or null")
-        }
-
-        fn visit_unit<E: de::Error>(self) -> Result<Self::Value, E> {
-            Ok(None)
-        }
-
-        fn visit_none<E: de::Error>(self) -> Result<Self::Value, E> {
-            Ok(None)
-        }
-
-        fn visit_some<D: Deserializer<'de>>(
-            self,
-            deserializer: D,
-        ) -> Result<Self::Value, D::Error> {
-            deserializer.deserialize_str(HexTreeIdVisitor).map(Some)
-        }
-
-        fn visit_str<E: de::Error>(self, v: &str) -> Result<Self::Value, E> {
-            HexTreeIdVisitor.visit_str(v).map(Some)
-        }
-    }
-
-    deserializer.deserialize_any(OptVisitor)
-}
+type ScanError = serde_json::Error;
 
 /// Compact tree contents used by prune's used-blob walk.
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
@@ -188,145 +58,361 @@ pub(crate) struct UsedBlobsTree {
     pub dir_trees: Vec<TreeId>,
 }
 
-#[derive(Debug, Default, Deserialize)]
-#[serde(rename_all = "lowercase")]
+#[derive(Debug, Default, Clone, Copy)]
 enum UsedBlobKind {
     File,
     Dir,
     #[default]
-    #[serde(other)]
     Other,
 }
 
-impl<'de> Deserialize<'de> for UsedBlobsTree {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        deserializer.deserialize_map(UsedBlobsTreeVisitor)
-    }
+struct Scan<'a> {
+    buf: &'a [u8],
+    pos: usize,
 }
 
-struct UsedBlobsTreeVisitor;
-
-impl<'de> Visitor<'de> for UsedBlobsTreeVisitor {
-    type Value = UsedBlobsTree;
-
-    fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter.write_str("a restic tree object")
+impl<'a> Scan<'a> {
+    fn err<T>(msg: &'static str) -> Result<T, ScanError> {
+        Err(DeError::custom(msg))
     }
 
-    fn visit_map<A: MapAccess<'de>>(self, mut map: A) -> Result<Self::Value, A::Error> {
-        let mut tree = UsedBlobsTree::default();
-        while let Some(key) = map.next_key::<Cow<'_, str>>()? {
-            if key == "nodes" {
-                map.next_value_seed(NodesSeed(&mut tree))?;
-            } else {
-                let _: IgnoredAny = map.next_value()?;
+    #[inline]
+    fn peek(&self) -> Option<u8> {
+        self.buf.get(self.pos).copied()
+    }
+
+    #[inline]
+    fn bump(&mut self) {
+        self.pos += 1;
+    }
+
+    fn skip_ws(&mut self) {
+        while matches!(self.peek(), Some(b' ' | b'\t' | b'\n' | b'\r')) {
+            self.bump();
+        }
+    }
+
+    #[inline]
+    fn eat(&mut self, c: u8) -> bool {
+        if self.peek() == Some(c) {
+            self.bump();
+            true
+        } else {
+            false
+        }
+    }
+
+    fn expect(&mut self, c: u8) -> Result<(), ScanError> {
+        if self.eat(c) {
+            Ok(())
+        } else {
+            Self::err("unexpected JSON token")
+        }
+    }
+
+    fn skip_lit(&mut self, lit: &[u8]) -> Result<(), ScanError> {
+        let rest = self.buf.get(self.pos..).unwrap_or(&[]);
+        if rest.starts_with(lit) {
+            self.pos += lit.len();
+            Ok(())
+        } else {
+            Self::err("invalid JSON literal")
+        }
+    }
+
+    fn try_null(&mut self) -> Result<bool, ScanError> {
+        if self.peek() == Some(b'n') {
+            self.skip_lit(b"null")?;
+            Ok(true)
+        } else {
+            Ok(false)
+        }
+    }
+
+    /// Skip the rest of a JSON string. `pos` is already past the opening quote.
+    fn skip_string_body(&mut self) -> Result<(), ScanError> {
+        let bytes = self.buf.get(self.pos..).unwrap_or(&[]);
+        let mut i = 0;
+        while i < bytes.len() {
+            match bytes[i..].iter().position(|&b| b == b'"' || b == b'\\') {
+                None => break,
+                Some(rel) => {
+                    i += rel;
+                    if bytes[i] == b'"' {
+                        self.pos += i + 1;
+                        return Ok(());
+                    }
+                    if i + 1 >= bytes.len() {
+                        return Self::err("unterminated string escape");
+                    }
+                    i += 2;
+                }
             }
+        }
+        Self::err("unterminated string")
+    }
+
+    fn skip_string(&mut self) -> Result<(), ScanError> {
+        if !self.eat(b'"') {
+            return Self::err("expected string");
+        }
+        self.skip_string_body()
+    }
+
+    fn skip_digits(&mut self) -> bool {
+        let start = self.pos;
+        while matches!(self.peek(), Some(b'0'..=b'9')) {
+            self.bump();
+        }
+        self.pos > start
+    }
+
+    fn skip_number(&mut self) -> Result<(), ScanError> {
+        let _ = self.eat(b'-');
+        if !self.skip_digits() {
+            return Self::err("invalid number");
+        }
+        if self.eat(b'.') && !self.skip_digits() {
+            return Self::err("invalid number");
+        }
+        if matches!(self.peek(), Some(b'e' | b'E')) {
+            self.bump();
+            if matches!(self.peek(), Some(b'+' | b'-')) {
+                self.bump();
+            }
+            if !self.skip_digits() {
+                return Self::err("invalid number");
+            }
+        }
+        Ok(())
+    }
+
+    fn skip_value(&mut self) -> Result<(), ScanError> {
+        self.skip_ws();
+        match self.peek() {
+            Some(b'"') => self.skip_string(),
+            Some(b'{') => self.skip_comma_list(b'{', b'}', true),
+            Some(b'[') => self.skip_comma_list(b'[', b']', false),
+            Some(b't') => self.skip_lit(b"true"),
+            Some(b'f') => self.skip_lit(b"false"),
+            Some(b'n') => self.skip_lit(b"null"),
+            Some(b'-' | b'0'..=b'9') => self.skip_number(),
+            _ => Self::err("expected JSON value"),
+        }
+    }
+
+    fn skip_comma_list(&mut self, open: u8, close: u8, object: bool) -> Result<(), ScanError> {
+        self.expect(open)?;
+        let mut first = true;
+        loop {
+            self.skip_ws();
+            if self.eat(close) {
+                return Ok(());
+            }
+            if !first {
+                self.expect(b',')?;
+                self.skip_ws();
+                if self.eat(close) {
+                    return Self::err("trailing comma");
+                }
+            }
+            first = false;
+            if object {
+                self.skip_string()?;
+                self.skip_ws();
+                self.expect(b':')?;
+            }
+            self.skip_value()?;
+        }
+    }
+
+    /// Object key as raw bytes. Escaped keys are skipped and returned empty.
+    fn parse_key(&mut self) -> Result<&'a [u8], ScanError> {
+        if !self.eat(b'"') {
+            return Self::err("expected object key");
+        }
+        let start = self.pos;
+        while let Some(b) = self.peek() {
+            if b == b'\\' {
+                self.skip_string_body()?;
+                return Ok(b"");
+            }
+            if b == b'"' {
+                let key = &self.buf[start..self.pos];
+                self.bump();
+                return Ok(key);
+            }
+            self.bump();
+        }
+        Self::err("unterminated string")
+    }
+
+    fn parse_kind(&mut self) -> Result<UsedBlobKind, ScanError> {
+        self.skip_ws();
+        if !self.eat(b'"') {
+            return Self::err("expected type string");
+        }
+        let start = self.pos;
+        self.skip_string_body()?;
+        Ok(match &self.buf[start..self.pos - 1] {
+            b"file" => UsedBlobKind::File,
+            b"dir" => UsedBlobKind::Dir,
+            _ => UsedBlobKind::Other,
+        })
+    }
+
+    fn parse_hex_id(&mut self) -> Result<Id, ScanError> {
+        self.skip_ws();
+        if !self.eat(b'"') {
+            return Self::err("expected hex id string");
+        }
+        let rest = self.buf.get(self.pos..).unwrap_or(&[]);
+        if rest.len() >= 65
+            && rest[64] == b'"'
+            && let Some(bytes) = decode_hex32(&rest[..64])
+        {
+            self.pos += 65;
+            return Ok(Id::new(bytes));
+        }
+        self.skip_string_body()?;
+        Self::err("invalid hex blob id")
+    }
+
+    fn parse_content(&mut self, tree: &mut UsedBlobsTree) -> Result<(), ScanError> {
+        self.skip_ws();
+        if self.try_null()? {
+            return Ok(());
+        }
+        self.expect(b'[')?;
+        let mut first = true;
+        loop {
+            self.skip_ws();
+            if self.eat(b']') {
+                return Ok(());
+            }
+            if !first {
+                self.expect(b',')?;
+                self.skip_ws();
+                if self.eat(b']') {
+                    return Self::err("trailing comma");
+                }
+            }
+            first = false;
+            tree.file_blobs.push(DataId::from(self.parse_hex_id()?));
+        }
+    }
+
+    fn parse_subtree(&mut self, tree: &mut UsedBlobsTree) -> Result<(), ScanError> {
+        self.skip_ws();
+        if self.try_null()? {
+            return Ok(());
+        }
+        tree.dir_trees.push(TreeId::from(self.parse_hex_id()?));
+        Ok(())
+    }
+
+    fn parse_node(&mut self, tree: &mut UsedBlobsTree) -> Result<(), ScanError> {
+        self.skip_ws();
+        self.expect(b'{')?;
+        let files_at = tree.file_blobs.len();
+        let dirs_at = tree.dir_trees.len();
+        let mut kind = UsedBlobKind::Other;
+        let mut first = true;
+        loop {
+            self.skip_ws();
+            if self.eat(b'}') {
+                break;
+            }
+            if !first {
+                self.expect(b',')?;
+                self.skip_ws();
+                if self.eat(b'}') {
+                    return Self::err("trailing comma");
+                }
+            }
+            first = false;
+            let key = self.parse_key()?;
+            self.skip_ws();
+            self.expect(b':')?;
+            match key {
+                b"type" => kind = self.parse_kind()?,
+                b"content" => self.parse_content(tree)?,
+                b"subtree" => self.parse_subtree(tree)?,
+                _ => self.skip_value()?,
+            }
+        }
+        match kind {
+            UsedBlobKind::File => tree.dir_trees.truncate(dirs_at),
+            UsedBlobKind::Dir => tree.file_blobs.truncate(files_at),
+            UsedBlobKind::Other => {
+                tree.file_blobs.truncate(files_at);
+                tree.dir_trees.truncate(dirs_at);
+            }
+        }
+        Ok(())
+    }
+
+    fn parse_nodes(&mut self, tree: &mut UsedBlobsTree) -> Result<(), ScanError> {
+        self.skip_ws();
+        if self.try_null()? {
+            return Ok(());
+        }
+        self.expect(b'[')?;
+        let mut first = true;
+        loop {
+            self.skip_ws();
+            if self.eat(b']') {
+                return Ok(());
+            }
+            if !first {
+                self.expect(b',')?;
+                self.skip_ws();
+                if self.eat(b']') {
+                    return Self::err("trailing comma");
+                }
+            }
+            first = false;
+            self.parse_node(tree)?;
+        }
+    }
+
+    fn parse_tree(&mut self) -> Result<UsedBlobsTree, ScanError> {
+        self.skip_ws();
+        self.expect(b'{')?;
+        let mut tree = UsedBlobsTree::default();
+        let mut first = true;
+        loop {
+            self.skip_ws();
+            if self.eat(b'}') {
+                break;
+            }
+            if !first {
+                self.expect(b',')?;
+                self.skip_ws();
+                if self.eat(b'}') {
+                    return Self::err("trailing comma");
+                }
+            }
+            first = false;
+            let key = self.parse_key()?;
+            self.skip_ws();
+            self.expect(b':')?;
+            if key == b"nodes" {
+                self.parse_nodes(&mut tree)?;
+            } else {
+                self.skip_value()?;
+            }
+        }
+        self.skip_ws();
+        if self.pos != self.buf.len() {
+            return Self::err("trailing JSON");
         }
         Ok(tree)
     }
 }
 
-struct NodesSeed<'a>(&'a mut UsedBlobsTree);
-
-impl<'de> DeserializeSeed<'de> for NodesSeed<'_> {
-    type Value = ();
-
-    fn deserialize<D: Deserializer<'de>>(self, deserializer: D) -> Result<Self::Value, D::Error> {
-        deserializer.deserialize_any(self)
-    }
-}
-
-impl<'de> Visitor<'de> for NodesSeed<'_> {
-    type Value = ();
-
-    fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter.write_str("a nodes array or null")
-    }
-
-    fn visit_unit<E: de::Error>(self) -> Result<Self::Value, E> {
-        Ok(())
-    }
-
-    fn visit_none<E: de::Error>(self) -> Result<Self::Value, E> {
-        Ok(())
-    }
-
-    fn visit_some<D: Deserializer<'de>>(self, deserializer: D) -> Result<Self::Value, D::Error> {
-        deserializer.deserialize_seq(self)
-    }
-
-    fn visit_seq<A: SeqAccess<'de>>(self, mut seq: A) -> Result<Self::Value, A::Error> {
-        while seq.next_element_seed(NodeSeed(self.0))?.is_some() {}
-        Ok(())
-    }
-}
-
-struct NodeSeed<'a>(&'a mut UsedBlobsTree);
-
-impl<'de> DeserializeSeed<'de> for NodeSeed<'_> {
-    type Value = ();
-
-    fn deserialize<D: Deserializer<'de>>(self, deserializer: D) -> Result<Self::Value, D::Error> {
-        deserializer.deserialize_map(self)
-    }
-}
-
-impl<'de> Visitor<'de> for NodeSeed<'_> {
-    type Value = ();
-
-    fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter.write_str("a restic tree node object")
-    }
-
-    fn visit_map<A: MapAccess<'de>>(self, mut map: A) -> Result<Self::Value, A::Error> {
-        let mut kind = UsedBlobKind::Other;
-        let mut content = Vec::new();
-        let mut subtree = None;
-        while let Some(key) = map.next_key::<Cow<'_, str>>()? {
-            match key.as_ref() {
-                "type" => kind = map.next_value()?,
-                "content" => content = map.next_value_seed(DataIdsSeed)?,
-                "subtree" => subtree = map.next_value_seed(OptTreeIdSeed)?,
-                _ => {
-                    let _: IgnoredAny = map.next_value()?;
-                }
-            }
-        }
-        match kind {
-            UsedBlobKind::File => self.0.file_blobs.append(&mut content),
-            UsedBlobKind::Dir => {
-                if let Some(id) = subtree {
-                    self.0.dir_trees.push(id);
-                }
-            }
-            UsedBlobKind::Other => {}
-        }
-        Ok(())
-    }
-}
-
-struct DataIdsSeed;
-
-impl<'de> DeserializeSeed<'de> for DataIdsSeed {
-    type Value = Vec<DataId>;
-
-    fn deserialize<D: Deserializer<'de>>(self, deserializer: D) -> Result<Self::Value, D::Error> {
-        deserialize_data_ids(deserializer)
-    }
-}
-
-struct OptTreeIdSeed;
-
-impl<'de> DeserializeSeed<'de> for OptTreeIdSeed {
-    type Value = Option<TreeId>;
-
-    fn deserialize<D: Deserializer<'de>>(self, deserializer: D) -> Result<Self::Value, D::Error> {
-        deserialize_opt_tree_id(deserializer)
-    }
-}
-
 pub(crate) fn parse_used_blobs_tree(data: &[u8]) -> Result<UsedBlobsTree, serde_json::Error> {
-    serde_json::from_slice(data)
+    Scan { buf: data, pos: 0 }.parse_tree()
 }
 
 #[cfg(test)]
@@ -428,5 +514,24 @@ mod tests {
         assert!(
             parse_used_blobs_tree(br#"{"nodes":[{"type":"file","content":["zzzz"]}]}"#).is_err()
         );
+    }
+
+    #[test]
+    fn skips_escaped_names_and_accepts_content_before_type() {
+        let json =
+            format!(r#"{{"nodes":[{{"name":"quo\"te","content":["{FILE_ID}"],"type":"file"}}]}}"#);
+        let used = parse_used_blobs_tree(json.as_bytes()).unwrap();
+        assert_eq!(used.file_blobs, vec![FILE_ID.parse::<DataId>().unwrap()]);
+        assert!(used.dir_trees.is_empty());
+    }
+
+    #[test]
+    fn file_content_is_ignored_on_dirs_and_other_types() {
+        let json = format!(
+            r#"{{"nodes":[{{"type":"dir","content":["{FILE_ID}"],"subtree":"{TREE_ID}"}},{{"type":"symlink","content":["{FILE_ID}"]}}]}}"#
+        );
+        let used = parse_used_blobs_tree(json.as_bytes()).unwrap();
+        assert!(used.file_blobs.is_empty());
+        assert_eq!(used.dir_trees, vec![TREE_ID.parse::<TreeId>().unwrap()]);
     }
 }
