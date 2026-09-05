@@ -247,6 +247,18 @@ pub struct SnapshotSummary {
 
     /// Total duration that the rustic command ran in seconds
     pub total_duration: f64,
+
+    /// Number of source files/directories that could not be read during this backup run.
+    ///
+    /// Serialized only when non-zero so existing restic/rustic snapshots stay unchanged.
+    #[serde(default, skip_serializing_if = "u64_is_zero")]
+    pub error_count: u64,
+}
+
+// serde `skip_serializing_if` always passes a reference.
+#[allow(clippy::trivially_copy_pass_by_ref)]
+const fn u64_is_zero(value: &u64) -> bool {
+    *value == 0
 }
 
 impl Default for SnapshotSummary {
@@ -275,6 +287,7 @@ impl Default for SnapshotSummary {
             backup_end: Zoned::now(),
             backup_duration: Default::default(),
             total_duration: Default::default(),
+            error_count: Default::default(),
         }
     }
 }
@@ -1609,5 +1622,25 @@ mod tests {
         .unwrap();
         let ids: Vec<_> = snaps.iter().map(|sn| *sn.id).collect();
         assert_eq!(ids, vec![id3, id1, id3]);
+    }
+
+    #[test]
+    fn error_count_omitted_from_json_when_zero() {
+        let summary = SnapshotSummary::default();
+        let json = serde_json::to_value(&summary).unwrap();
+        assert!(json.get("error_count").is_none());
+    }
+
+    #[test]
+    fn error_count_serialized_when_nonzero() {
+        let summary = SnapshotSummary {
+            error_count: 3,
+            ..Default::default()
+        };
+        let json = serde_json::to_value(&summary).unwrap();
+        assert_eq!(json["error_count"], 3);
+
+        let decoded: SnapshotSummary = serde_json::from_value(json).unwrap();
+        assert_eq!(decoded.error_count, 3);
     }
 }
