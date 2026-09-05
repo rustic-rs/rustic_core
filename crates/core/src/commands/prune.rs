@@ -152,7 +152,8 @@ pub(super) mod constants {
     /// Minimum size of an index file to be considered for pruning
     pub(super) const MIN_INDEX_LEN: usize = 10_000;
     /// Per-loader used-id vec start size. Avoids grow during the walk.
-    pub(super) const USED_ID_VEC_CAP: usize = 1 << 21;
+    /// ~22M unique blobs / 8 loaders plus dups; 4M slots is 128 MiB/loader.
+    pub(super) const USED_ID_VEC_CAP: usize = 1 << 22;
     /// Parallel `HashMap` shards for the used-id merge. Power of two.
     pub(super) const USED_ID_SHARDS: usize = 16;
 }
