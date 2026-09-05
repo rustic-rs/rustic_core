@@ -1241,7 +1241,7 @@ impl PathList {
         self.0.clone()
     }
 
-    /// Sanitize paths: Parse dots, absolutize if needed and merge paths.
+    /// Sanitize paths: Parse dots, absolutize if needed and sort paths.
     ///
     /// # Errors
     ///
@@ -1261,27 +1261,15 @@ impl PathList {
                 })
                 .collect::<Result<_, _>>()?;
         }
-        Ok(self.merge())
+        Ok(self.sort())
     }
 
-    /// Sort paths and filters out subpaths of already existing paths.
+    /// Sort paths.
     #[must_use]
-    pub fn merge(self) -> Self {
+    pub fn sort(self) -> Self {
         let mut paths = self.0;
         // sort paths
         paths.sort_unstable();
-
-        let mut root_path = None;
-
-        // filter out subpaths
-        paths.retain(|path| match &root_path {
-            Some(root_path) if path.starts_with(root_path) => false,
-            _ => {
-                root_path = Some(path.clone());
-                true
-            }
-        });
-
         Self(paths)
     }
 }
