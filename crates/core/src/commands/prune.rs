@@ -4,7 +4,8 @@
 /// accessors along with logging macros. Customize as you see fit.
 use std::{
     cmp::Ordering,
-    collections::{BTreeMap, BTreeSet},
+    collections::{BTreeMap, BTreeSet, HashMap},
+    hash::{BuildHasherDefault, Hash, Hasher},
     str::FromStr,
     sync::mpsc::{self, Sender},
 };
@@ -17,7 +18,6 @@ use itertools::Itertools;
 use jiff::{Span, Timestamp, Zoned};
 use log::{info, warn};
 use rayon::prelude::{IntoParallelIterator, ParallelIterator};
-use rustc_hash::FxHashMap;
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -44,11 +44,41 @@ use crate::{
     repository::{Open, Repository},
 };
 
-type UsedIdMap = FxHashMap<BlobId, u8>;
+/// SHA-256 blob ids are already uniform; use the first 8 bytes as the hash.
+#[derive(Default)]
+struct UsedIdHasher(u64);
+
+impl Hasher for UsedIdHasher {
+    fn write(&mut self, _: &[u8]) {}
+
+    #[inline]
+    fn write_u64(&mut self, i: u64) {
+        self.0 = i;
+    }
+
+    #[inline]
+    fn finish(&self) -> u64 {
+        self.0
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct UsedId(BlobId);
+
+impl Hash for UsedId {
+    #[inline]
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        state.write_u64(self.0.as_u64());
+    }
+}
+
+type UsedIdMap = HashMap<UsedId, u8, BuildHasherDefault<UsedIdHasher>>;
 
 pub(super) mod constants {
     /// Minimum size of an index file to be considered for pruning
     pub(super) const MIN_INDEX_LEN: usize = 10_000;
+    /// Per-loader used-id map start size. Avoids grow/rehash during the walk.
+    pub(super) const USED_ID_MAP_CAP: usize = 1 << 21;
 }
 
 #[allow(clippy::struct_excessive_bools)]
@@ -792,7 +822,7 @@ impl PrunePlan {
             .flat_map(|index| &index.packs)
             .flat_map(|pack| &pack.blobs)
         {
-            if let Some(count) = self.used_ids.get_mut(&blob.id) {
+            if let Some(count) = self.used_ids.get_mut(&UsedId(blob.id)) {
                 // note that duplicates are only counted up to 255. If there are more
                 // duplicates, the number is set to 255. This may imply that later on
                 // not the "best" pack is chosen to have that blob marked as used.
@@ -813,7 +843,7 @@ impl PrunePlan {
                     ErrorKind::Internal,
                     "Blob ID `{blob_id}` is missing in index files.",
                 )
-                .attach_context("blob_id", id.to_string())
+                .attach_context("blob_id", id.0.to_string())
                 .ask_report());
             }
         }
@@ -1109,7 +1139,7 @@ impl PrunePlan {
                 }
                 PackToDo::Keep | PackToDo::Recover => {
                     for blob in &pack.blobs {
-                        _ = self.used_ids.remove(&blob.id);
+                        _ = self.used_ids.remove(&UsedId(blob.id));
                     }
                     check_size()?;
                 }
@@ -1336,7 +1366,7 @@ pub(crate) fn prune_repository<S: Open>(
                         indexer.add_remove(pack)?;
                     }
                     pack.blobs
-                        .retain(|blob| used_ids.remove(&blob.id).is_some()); // don't save duplicate blobs
+                        .retain(|blob| used_ids.remove(&UsedId(blob.id)).is_some()); // don't save duplicate blobs
                     // sort blobs to later allow coalescing
                     pack.blobs.sort_unstable();
                     repack_packs.push(pack);
@@ -1528,7 +1558,7 @@ impl PackInfo {
         // If we found a needed blob, we stop and process the information that the pack is actually needed.
         let first_needed = pack.blobs.iter().position(|blob| {
             let length = blob.location.length;
-            match used_ids.get_mut(&blob.id) {
+            match used_ids.get_mut(&UsedId(blob.id)) {
                 None | Some(0) => {
                     pi.unused_size += length;
                     pi.unused_blobs += 1;
@@ -1554,7 +1584,7 @@ impl PackInfo {
             // The pack is actually needed.
             // We reprocess the blobs up to the first needed one and mark all blobs which are generally needed as used.
             for blob in &pack.blobs[..first_needed] {
-                match used_ids.get_mut(&blob.id) {
+                match used_ids.get_mut(&UsedId(blob.id)) {
                     None | Some(0) => {} // already correctly marked
                     Some(count) => {
                         // remark blob as used
@@ -1568,7 +1598,7 @@ impl PackInfo {
             }
             // Then we process the remaining blobs and mark all blobs which are generally needed as used in this blob
             for blob in &pack.blobs[first_needed + 1..] {
-                match used_ids.get_mut(&blob.id) {
+                match used_ids.get_mut(&UsedId(blob.id)) {
                     None | Some(0) => {
                         pi.unused_size += blob.location.length;
                         pi.unused_blobs += 1;
@@ -1596,10 +1626,10 @@ struct UsedIdAcc {
 impl OnTreeLoad<UsedBlobsTree> for UsedIdAcc {
     fn on_load(&mut self, tree: &UsedBlobsTree) {
         for id in &tree.file_blobs {
-            _ = self.map.insert(BlobId::from(*id), 0);
+            _ = self.map.insert(UsedId(BlobId::from(*id)), 0);
         }
         for id in &tree.dir_trees {
-            _ = self.map.insert(BlobId::from(*id), 0);
+            _ = self.map.insert(UsedId(BlobId::from(*id)), 0);
         }
     }
 
@@ -1643,7 +1673,7 @@ fn find_used_blobs<S>(
 
     let mut ids: UsedIdMap = snap_trees
         .iter()
-        .map(|id| (BlobId::from(**id), 0))
+        .map(|id| (UsedId(BlobId::from(**id)), 0))
         .collect();
     let p = repo.progress_counter("finding used blobs...");
     let (maps_tx, maps_rx) = mpsc::channel();
@@ -1651,7 +1681,10 @@ fn find_used_blobs<S>(
         TreeStreamer::<UsedBlobsTree>::new_with_on_load(be, index, snap_trees, p, {
             let maps_tx = maps_tx.clone();
             move || UsedIdAcc {
-                map: UsedIdMap::default(),
+                map: UsedIdMap::with_capacity_and_hasher(
+                    constants::USED_ID_MAP_CAP,
+                    BuildHasherDefault::default(),
+                ),
                 tx: maps_tx.clone(),
             }
         })?;
@@ -1660,9 +1693,48 @@ fn find_used_blobs<S>(
         let _ = item;
     }
     drop(tree_streamer);
-    while let Ok(map) = maps_rx.recv() {
+    let maps: Vec<_> = maps_rx.iter().collect();
+    ids.reserve(maps.iter().map(HashMap::len).sum());
+    for map in maps {
         ids.extend(map);
     }
 
     Ok(ids)
+}
+
+#[cfg(test)]
+mod used_id_hash_tests {
+    use super::*;
+    use std::hash::BuildHasher;
+    use std::str::FromStr;
+
+    const ID_A: &str = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+    const ID_B: &str = "0123456789abcdefffffffffffffffffffffffffffffffffffffffffffffffff";
+    const ID_C: &str = "fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210";
+
+    fn blob(s: &str) -> BlobId {
+        BlobId::from_str(s).unwrap()
+    }
+
+    #[test]
+    fn hash_is_first_eight_bytes_and_collides_only_on_prefix() {
+        let hasher = BuildHasherDefault::<UsedIdHasher>::default();
+        let a = UsedId(blob(ID_A));
+        let b = UsedId(blob(ID_B));
+        let c = UsedId(blob(ID_C));
+        assert_eq!(hasher.hash_one(&a), a.0.as_u64());
+        assert_eq!(
+            hasher.hash_one(&a),
+            u64::from_le_bytes([0x01, 0x23, 0x45, 0x67, 0x89, 0xab, 0xcd, 0xef])
+        );
+        assert_eq!(hasher.hash_one(&a), hasher.hash_one(&b));
+        assert_ne!(a, b);
+        assert_ne!(hasher.hash_one(&a), hasher.hash_one(&c));
+
+        let mut map = UsedIdMap::default();
+        assert!(map.insert(a, 0).is_none());
+        assert!(map.insert(b, 1).is_none());
+        assert_eq!(map.get(&a).copied(), Some(0));
+        assert_eq!(map.get(&b).copied(), Some(1));
+    }
 }
