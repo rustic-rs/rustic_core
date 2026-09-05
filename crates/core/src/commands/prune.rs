@@ -62,7 +62,7 @@ impl Hasher for UsedIdHasher {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 struct UsedId(BlobId);
 
 impl Hash for UsedId {
@@ -77,8 +77,8 @@ type UsedIdMap = HashMap<UsedId, u8, BuildHasherDefault<UsedIdHasher>>;
 pub(super) mod constants {
     /// Minimum size of an index file to be considered for pruning
     pub(super) const MIN_INDEX_LEN: usize = 10_000;
-    /// Per-loader used-id map start size. Avoids grow/rehash during the walk.
-    pub(super) const USED_ID_MAP_CAP: usize = 1 << 21;
+    /// Per-loader used-id vec start size. Avoids grow during the walk.
+    pub(super) const USED_ID_VEC_CAP: usize = 1 << 21;
 }
 
 #[allow(clippy::struct_excessive_bools)]
@@ -1617,24 +1617,35 @@ impl PackInfo {
     }
 }
 
-/// Per-loader used-id map. Inserts take no lock; maps are merged after the walk.
+/// Per-loader used-id list. Push during the walk; sort+dedup in `finish`.
 struct UsedIdAcc {
-    map: UsedIdMap,
-    tx: Sender<UsedIdMap>,
+    ids: Vec<UsedId>,
+    tx: Sender<Vec<UsedId>>,
 }
 
 impl OnTreeLoad<UsedBlobsTree> for UsedIdAcc {
     fn on_load(&mut self, tree: &UsedBlobsTree) {
-        for id in &tree.file_blobs {
-            _ = self.map.insert(UsedId(BlobId::from(*id)), 0);
-        }
-        for id in &tree.dir_trees {
-            _ = self.map.insert(UsedId(BlobId::from(*id)), 0);
-        }
+        self.ids
+            .reserve(tree.file_blobs.len() + tree.dir_trees.len());
+        self.ids.extend(
+            tree.file_blobs
+                .iter()
+                .copied()
+                .map(|id| UsedId(BlobId::from(id))),
+        );
+        self.ids.extend(
+            tree.dir_trees
+                .iter()
+                .copied()
+                .map(|id| UsedId(BlobId::from(id))),
+        );
     }
 
     fn finish(self) {
-        _ = self.tx.send(self.map);
+        let mut ids = self.ids;
+        ids.sort_unstable();
+        ids.dedup();
+        _ = self.tx.send(ids);
     }
 }
 
@@ -1676,27 +1687,24 @@ fn find_used_blobs<S>(
         .map(|id| (UsedId(BlobId::from(**id)), 0))
         .collect();
     let p = repo.progress_counter("finding used blobs...");
-    let (maps_tx, maps_rx) = mpsc::channel();
+    let (ids_tx, ids_rx) = mpsc::channel();
     let mut tree_streamer =
         TreeStreamer::<UsedBlobsTree>::new_with_on_load(be, index, snap_trees, p, {
-            let maps_tx = maps_tx.clone();
+            let ids_tx = ids_tx.clone();
             move || UsedIdAcc {
-                map: UsedIdMap::with_capacity_and_hasher(
-                    constants::USED_ID_MAP_CAP,
-                    BuildHasherDefault::default(),
-                ),
-                tx: maps_tx.clone(),
+                ids: Vec::with_capacity(constants::USED_ID_VEC_CAP),
+                tx: ids_tx.clone(),
             }
         })?;
-    drop(maps_tx);
+    drop(ids_tx);
     while let Some(item) = tree_streamer.next().transpose()? {
         let _ = item;
     }
     drop(tree_streamer);
-    let maps: Vec<_> = maps_rx.iter().collect();
-    ids.reserve(maps.iter().map(HashMap::len).sum());
-    for map in maps {
-        ids.extend(map);
+    let lists: Vec<_> = ids_rx.iter().collect();
+    ids.reserve(lists.iter().map(Vec::len).sum());
+    for list in lists {
+        ids.extend(list.into_iter().map(|id| (id, 0)));
     }
 
     Ok(ids)
@@ -1736,5 +1744,16 @@ mod used_id_hash_tests {
         assert!(map.insert(b, 1).is_none());
         assert_eq!(map.get(&a).copied(), Some(0));
         assert_eq!(map.get(&b).copied(), Some(1));
+    }
+
+    #[test]
+    fn sort_dedup_keeps_unique_ids() {
+        let a = UsedId(blob(ID_A));
+        let b = UsedId(blob(ID_B));
+        let c = UsedId(blob(ID_C));
+        let mut ids = vec![c, a, a, b, c, a];
+        ids.sort_unstable();
+        ids.dedup();
+        assert_eq!(ids, vec![a, b, c]);
     }
 }
