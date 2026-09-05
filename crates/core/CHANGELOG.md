@@ -2,6 +2,24 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.13.1](https://github.com/rustic-rs/rustic_core/compare/rustic_core-v0.13.0...rustic_core-v0.13.1) - 2026-09-05
+
+### Added
+
+- count unreadable source files during backup ([#561](https://github.com/rustic-rs/rustic_core/pull/561))
+- impl Serialize/Deserialize and Merge for ConfigOptions ([#559](https://github.com/rustic-rs/rustic_core/pull/559))
+
+### Fixed
+
+- stop tree workers after receiver closes ([#546](https://github.com/rustic-rs/rustic_core/pull/546))
+- include path in canonicalization errors ([#548](https://github.com/rustic-rs/rustic_core/pull/548))
+- iOS build ([#553](https://github.com/rustic-rs/rustic_core/pull/553))
+- protect cache backend with locks ([#544](https://github.com/rustic-rs/rustic_core/pull/544))
+
+### Other
+
+- update core README credential API ([#549](https://github.com/rustic-rs/rustic_core/pull/549))
+
 ## [0.13.0](https://github.com/rustic-rs/rustic_core/compare/rustic_core-v0.12.0...rustic_core-v0.13.0) - 2026-08-16
 
 ### Added
