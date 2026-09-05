@@ -6,6 +6,7 @@
 
 use std::borrow::Cow;
 
+use memchr::memchr2;
 use serde::de::Error as DeError;
 
 use crate::{
@@ -36,53 +37,22 @@ const HEX_NIBBLE: [u8; 256] = hex_nibble_table();
 fn find_unescaped_quote(bytes: &[u8]) -> Result<usize, ScanError> {
     let n = bytes.len();
     let mut i = 0;
-    while i + 16 <= n {
-        if let Some(off) = first_quote_or_slash(load_u64_ne(bytes, i)) {
-            i += off;
-        } else if let Some(off) = first_quote_or_slash(load_u64_ne(bytes, i + 8)) {
-            i += 8 + off;
-        } else {
-            i += 16;
-            continue;
-        }
-        match bytes[i] {
-            b'"' => return Ok(i),
-            b'\\' => {
-                if i + 1 >= n {
-                    return Scan::err("unterminated string escape");
-                }
-                i += 2;
-            }
-            _ => i += 1,
-        }
-    }
-    while i + 8 <= n {
-        if let Some(off) = first_quote_or_slash(load_u64_ne(bytes, i)) {
-            i += off;
-            match bytes[i] {
-                b'"' => return Ok(i),
-                b'\\' => {
-                    if i + 1 >= n {
-                        return Scan::err("unterminated string escape");
-                    }
-                    i += 2;
-                }
-                _ => i += 1,
-            }
-        } else {
-            i += 8;
-        }
-    }
     while i < n {
-        match bytes[i] {
-            b'"' => return Ok(i),
-            b'\\' => {
-                if i + 1 >= n {
-                    return Scan::err("unterminated string escape");
+        match memchr2(b'"', b'\\', &bytes[i..]) {
+            None => break,
+            Some(rel) => {
+                i += rel;
+                match bytes[i] {
+                    b'"' => return Ok(i),
+                    b'\\' => {
+                        if i + 1 >= n {
+                            return Scan::err("unterminated string escape");
+                        }
+                        i += 2;
+                    }
+                    _ => i += 1,
                 }
-                i += 2;
             }
-            _ => i += 1,
         }
     }
     Scan::err("unterminated string")
