@@ -32,6 +32,62 @@ const fn hex_nibble_table() -> [u8; 256] {
 
 const HEX_NIBBLE: [u8; 256] = hex_nibble_table();
 
+/// Index of the closing `"` in a JSON string body (after the opening quote).
+fn find_unescaped_quote(bytes: &[u8]) -> Result<usize, ScanError> {
+    let n = bytes.len();
+    let mut i = 0;
+    while i + 16 <= n {
+        if let Some(off) = first_quote_or_slash(load_u64_ne(bytes, i)) {
+            i += off;
+        } else if let Some(off) = first_quote_or_slash(load_u64_ne(bytes, i + 8)) {
+            i += 8 + off;
+        } else {
+            i += 16;
+            continue;
+        }
+        match bytes[i] {
+            b'"' => return Ok(i),
+            b'\\' => {
+                if i + 1 >= n {
+                    return Scan::err("unterminated string escape");
+                }
+                i += 2;
+            }
+            _ => i += 1,
+        }
+    }
+    while i + 8 <= n {
+        if let Some(off) = first_quote_or_slash(load_u64_ne(bytes, i)) {
+            i += off;
+            match bytes[i] {
+                b'"' => return Ok(i),
+                b'\\' => {
+                    if i + 1 >= n {
+                        return Scan::err("unterminated string escape");
+                    }
+                    i += 2;
+                }
+                _ => i += 1,
+            }
+        } else {
+            i += 8;
+        }
+    }
+    while i < n {
+        match bytes[i] {
+            b'"' => return Ok(i),
+            b'\\' => {
+                if i + 1 >= n {
+                    return Scan::err("unterminated string escape");
+                }
+                i += 2;
+            }
+            _ => i += 1,
+        }
+    }
+    Scan::err("unterminated string")
+}
+
 #[inline]
 fn decode_hex32(src: &[u8]) -> Option<[u8; 32]> {
     if src.len() != 64 {
@@ -134,24 +190,9 @@ impl<'a> Scan<'a> {
     /// Skip the rest of a JSON string. `pos` is already past the opening quote.
     fn skip_string_body(&mut self) -> Result<(), ScanError> {
         let bytes = self.buf.get(self.pos..).unwrap_or(&[]);
-        let mut i = 0;
-        while i < bytes.len() {
-            match bytes[i..].iter().position(|&b| b == b'"' || b == b'\\') {
-                None => break,
-                Some(rel) => {
-                    i += rel;
-                    if bytes[i] == b'"' {
-                        self.pos += i + 1;
-                        return Ok(());
-                    }
-                    if i + 1 >= bytes.len() {
-                        return Self::err("unterminated string escape");
-                    }
-                    i += 2;
-                }
-            }
-        }
-        Self::err("unterminated string")
+        let i = find_unescaped_quote(bytes)?;
+        self.pos += i + 1;
+        Ok(())
     }
 
     fn skip_string(&mut self) -> Result<(), ScanError> {
@@ -591,5 +632,28 @@ mod tests {
         ] {
             assert!(parse_used_blobs_tree(json.as_bytes()).is_err(), "{json}");
         }
+    }
+    #[test]
+    fn find_unescaped_quote_handles_escapes_and_long_bodies() {
+        assert_eq!(find_unescaped_quote(b"\"").unwrap(), 0);
+        assert_eq!(find_unescaped_quote(b"hello\"").unwrap(), 5);
+        assert_eq!(find_unescaped_quote(br#"quo\"te""#).unwrap(), 7);
+        assert_eq!(find_unescaped_quote(br#"foo\\""#).unwrap(), 5);
+        let long = [b'a'; 80];
+        let mut body = long.to_vec();
+        body.push(b'"');
+        assert_eq!(find_unescaped_quote(&body).unwrap(), 80);
+        assert!(find_unescaped_quote(b"noend").is_err());
+        assert!(find_unescaped_quote(b"abc\\").is_err());
+    }
+
+    #[test]
+    fn skips_long_unescaped_names() {
+        let name = "n".repeat(80);
+        let json = format!(
+            r#"{{"nodes":[{{"name":"{name}","mtime":"2020-01-01T00:00:00+00:00","type":"file","content":["{FILE_ID}"]}}]}}"#
+        );
+        let used = parse_used_blobs_tree(json.as_bytes()).unwrap();
+        assert_eq!(used.file_blobs, vec![FILE_ID.parse::<DataId>().unwrap()]);
     }
 }
