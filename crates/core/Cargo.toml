@@ -53,6 +53,7 @@ log = { workspace = true }
 crossbeam-channel = "0.5.15"
 pariter = "0.6.0"
 rayon = "1.11.0"
+rustc-hash = "2.1.1"
 
 # crypto
 aes256ctr_poly1305aes = { version = "0.2.1", features = ["std"] } # we need std here for error impls

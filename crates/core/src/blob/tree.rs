@@ -6,7 +6,7 @@ mod used_blobs;
 use std::{
     borrow::Cow,
     cmp::Ordering,
-    collections::{BTreeMap, BinaryHeap, HashSet},
+    collections::{BTreeMap, BinaryHeap},
     ffi::OsStr,
     mem,
     path::{Component, Path, PathBuf, Prefix},
@@ -17,6 +17,7 @@ use crossbeam_channel::{Receiver, Sender, TrySendError, bounded};
 use derive_setters::Setters;
 use ignore::Match;
 use ignore::overrides::Override;
+use rustc_hash::FxHashSet;
 use serde::{Deserialize, Deserializer};
 use serde_derive::Serialize;
 
@@ -684,7 +685,7 @@ impl LoadedTree for UsedBlobsTree {
 #[derive(Debug)]
 pub struct TreeStreamer<T> {
     /// The visited tree IDs
-    visited: HashSet<TreeId>,
+    visited: FxHashSet<TreeId>,
     /// Depth-first backlog of tree IDs not yet sent to a loader.
     backlog: Vec<(PathBuf, TreeId, usize)>,
     /// The queue to send tree IDs to
@@ -789,7 +790,7 @@ impl<T: LoadedTree> TreeStreamer<T> {
 
         let counter = vec![0; ids.len()];
         let mut streamer = Self {
-            visited: HashSet::new(),
+            visited: FxHashSet::default(),
             backlog: Vec::new(),
             queue_in: Some(in_tx),
             queue_out: out_rx,

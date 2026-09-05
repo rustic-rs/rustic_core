@@ -59,7 +59,7 @@ fn parse_hex_id(s: &str) -> Option<Id> {
 
 struct HexDataIdVisitor;
 
-impl Visitor<'_> for HexDataIdVisitor {
+impl<'de> Visitor<'de> for HexDataIdVisitor {
     type Value = DataId;
 
     fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -71,11 +71,15 @@ impl Visitor<'_> for HexDataIdVisitor {
             .map(DataId::from)
             .ok_or_else(|| E::invalid_value(de::Unexpected::Str(v), &self))
     }
+
+    fn visit_borrowed_str<E: de::Error>(self, v: &'de str) -> Result<Self::Value, E> {
+        self.visit_str(v)
+    }
 }
 
 struct HexTreeIdVisitor;
 
-impl Visitor<'_> for HexTreeIdVisitor {
+impl<'de> Visitor<'de> for HexTreeIdVisitor {
     type Value = TreeId;
 
     fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -86,6 +90,10 @@ impl Visitor<'_> for HexTreeIdVisitor {
         parse_hex_id(v)
             .map(TreeId::from)
             .ok_or_else(|| E::invalid_value(de::Unexpected::Str(v), &self))
+    }
+
+    fn visit_borrowed_str<E: de::Error>(self, v: &'de str) -> Result<Self::Value, E> {
+        self.visit_str(v)
     }
 }
 

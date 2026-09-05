@@ -4,7 +4,7 @@
 /// accessors along with logging macros. Customize as you see fit.
 use std::{
     cmp::Ordering,
-    collections::{BTreeMap, BTreeSet, HashMap},
+    collections::{BTreeMap, BTreeSet},
     str::FromStr,
     sync::mpsc::{self, Sender},
 };
@@ -17,6 +17,7 @@ use itertools::Itertools;
 use jiff::{Span, Timestamp, Zoned};
 use log::{info, warn};
 use rayon::prelude::{IntoParallelIterator, ParallelIterator};
+use rustc_hash::FxHashMap;
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -42,6 +43,8 @@ use crate::{
     },
     repository::{Open, Repository},
 };
+
+type UsedIdMap = FxHashMap<BlobId, u8>;
 
 pub(super) mod constants {
     /// Minimum size of an index file to be considered for pruning
@@ -584,7 +587,7 @@ pub struct PrunePlan {
     /// The time the plan was created
     time: Zoned,
     /// The ids of the blobs which are used
-    used_ids: HashMap<BlobId, u8>,
+    used_ids: UsedIdMap,
     /// The ids of the existing packs
     existing_packs: BTreeMap<PackId, u32>,
     /// The packs which should be repacked
@@ -604,7 +607,7 @@ impl PrunePlan {
     /// * `existing_packs` - The ids of the existing packs
     /// * `index_files` - The index files
     fn new(
-        used_ids: HashMap<BlobId, u8>,
+        used_ids: UsedIdMap,
         existing_packs: BTreeMap<PackId, u32>,
         index_files: Vec<(IndexId, IndexFile)>,
     ) -> Self {
@@ -1508,7 +1511,7 @@ impl PackInfo {
     ///
     /// * `pack` - The `PrunePack` to create the `PackInfo` from
     /// * `used_ids` - The map of used ids
-    fn from_pack(pack: &PrunePack, used_ids: &mut HashMap<BlobId, u8>) -> Self {
+    fn from_pack(pack: &PrunePack, used_ids: &mut UsedIdMap) -> Self {
         let mut pi = Self {
             blob_type: pack.blob_type,
             used_blobs: 0,
@@ -1586,8 +1589,8 @@ impl PackInfo {
 
 /// Per-loader used-id map. Inserts take no lock; maps are merged after the walk.
 struct UsedIdAcc {
-    map: HashMap<BlobId, u8>,
-    tx: Sender<HashMap<BlobId, u8>>,
+    map: UsedIdMap,
+    tx: Sender<UsedIdMap>,
 }
 
 impl OnTreeLoad<UsedBlobsTree> for UsedIdAcc {
@@ -1621,7 +1624,7 @@ fn find_used_blobs<S>(
     be: &impl DecryptReadBackend,
     index: &impl ReadGlobalIndex,
     ignore_snaps: &[SnapshotId],
-) -> RusticResult<HashMap<BlobId, u8>> {
+) -> RusticResult<UsedIdMap> {
     let ignore_snaps: BTreeSet<_> = ignore_snaps.iter().collect();
 
     let p = repo.progress_counter("reading snapshots...");
@@ -1638,7 +1641,7 @@ fn find_used_blobs<S>(
         .try_collect()?;
     p.finish();
 
-    let mut ids: HashMap<_, _> = snap_trees
+    let mut ids: UsedIdMap = snap_trees
         .iter()
         .map(|id| (BlobId::from(**id), 0))
         .collect();
@@ -1648,7 +1651,7 @@ fn find_used_blobs<S>(
         TreeStreamer::<UsedBlobsTree>::new_with_on_load(be, index, snap_trees, p, {
             let maps_tx = maps_tx.clone();
             move || UsedIdAcc {
-                map: HashMap::new(),
+                map: UsedIdMap::default(),
                 tx: maps_tx.clone(),
             }
         })?;
