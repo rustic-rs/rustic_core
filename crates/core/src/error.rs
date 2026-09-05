@@ -374,8 +374,7 @@ impl RusticError {
     pub fn context_value(&self, key: &str) -> Option<&str> {
         self.context
             .iter()
-            .find(|(k, _)| k == key)
-            .map(|(_, v)| v.as_str())
+            .find_map(|(k, v)| (k == key).then_some(v.as_str()))
     }
 
     /// Returns a String representation for logging purposes.
