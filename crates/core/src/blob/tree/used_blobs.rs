@@ -169,11 +169,7 @@ mod tests {
             .filter(|n| matches!(n.node_type, crate::backend::node::NodeType::File))
             .flat_map(|n| n.content.iter().flatten().copied())
             .collect();
-        let full_dirs: Vec<_> = full
-            .nodes
-            .iter()
-            .filter_map(|n| n.subtree)
-            .collect();
+        let full_dirs: Vec<_> = full.nodes.iter().filter_map(|n| n.subtree).collect();
 
         assert_eq!(used.file_blobs, full_files);
         assert_eq!(used.dir_trees, full_dirs);
@@ -203,9 +199,7 @@ mod tests {
 
     #[test]
     fn ignores_unknown_tree_keys() {
-        let json = format!(
-            r#"{{"extra":1,"nodes":[{{"type":"file","content":["{FILE_ID}"]}}]}}"#
-        );
+        let json = format!(r#"{{"extra":1,"nodes":[{{"type":"file","content":["{FILE_ID}"]}}]}}"#);
         let used = parse_used_blobs_tree(json.as_bytes()).unwrap();
         assert_eq!(used.file_blobs.len(), 1);
         assert!(used.dir_trees.is_empty());

@@ -28,7 +28,65 @@ mod constants {
     pub(super) const OPEN_FILE_CAPACITY: usize = 2048;
 }
 
-type OpenFileCache = quick_cache::sync::Cache<Id, Arc<File>>;
+type OpenFileCache = quick_cache::sync::Cache<Id, Arc<CachedFile>>;
+
+/// Keep most descriptors available for backend connections and other I/O.
+fn open_file_capacity() -> usize {
+    #[cfg(unix)]
+    if let Ok((soft, _)) =
+        nix::sys::resource::getrlimit(nix::sys::resource::Resource::RLIMIT_NOFILE)
+    {
+        return usize::try_from(soft / 8)
+            .unwrap_or(usize::MAX)
+            .min(constants::OPEN_FILE_CAPACITY);
+    }
+    // Conservative fallback on platforms without a queryable descriptor limit.
+    32
+}
+
+struct CachedFile {
+    file: File,
+    #[cfg(any(test, not(unix)))]
+    seek_lock: std::sync::Mutex<()>,
+}
+
+impl CachedFile {
+    fn new(file: File) -> Self {
+        Self {
+            file,
+            #[cfg(any(test, not(unix)))]
+            seek_lock: std::sync::Mutex::new(()),
+        }
+    }
+
+    fn read_range(&self, offset: u32, length: u32) -> io::Result<Bytes> {
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::FileExt;
+            let mut vec = vec![0; length as usize];
+            self.file.read_exact_at(&mut vec, u64::from(offset))?;
+            Ok(vec.into())
+        }
+        #[cfg(not(unix))]
+        self.read_range_seeking(offset, length)
+    }
+
+    /// Cloned file handles share a cursor. Serialize the entire seek/read pair
+    /// on platforms without positional reads; never clone the cached handle.
+    #[cfg(any(test, not(unix)))]
+    fn read_range_seeking(&self, offset: u32, length: u32) -> io::Result<Bytes> {
+        use std::io::{Seek, SeekFrom};
+        let _guard = self
+            .seek_lock
+            .lock()
+            .map_err(|_| io::Error::other("cache seek lock poisoned"))?;
+        let mut file = &self.file;
+        let mut vec = vec![0; length as usize];
+        _ = file.seek(SeekFrom::Start(u64::from(offset)))?;
+        file.read_exact(&mut vec)?;
+        Ok(vec.into())
+    }
+}
 
 fn is_too_many_open_files(err: &io::Error) -> bool {
     #[cfg(unix)]
@@ -405,7 +463,7 @@ impl Cache {
 
         Ok(Self {
             path,
-            open_files: Arc::new(OpenFileCache::new(constants::OPEN_FILE_CAPACITY)),
+            open_files: Arc::new(OpenFileCache::new(open_file_capacity())),
         })
     }
 
@@ -588,7 +646,7 @@ impl Cache {
         trace!("cache reading tpe: {tpe:?}, id: {id}, offset: {offset}");
 
         if let Some(file) = self.open_files.get(id) {
-            match Self::read_range(&file, offset, length) {
+            match file.read_range(offset, length) {
                 Ok(data) => {
                     trace!("cache hit!");
                     return Ok(Some(data));
@@ -616,7 +674,7 @@ impl Cache {
             }
         };
 
-        let data = Self::read_range(&file, offset, length).map_err(|err| {
+        let data = file.read_range(offset, length).map_err(|err| {
             RusticError::with_source(
                 ErrorKind::InputOutput,
                 "Failed to read at offset `{offset}` from file at `{path}`",
@@ -634,7 +692,7 @@ impl Cache {
         Ok(Some(data))
     }
 
-    fn open_cached(&self, id: &Id, path: &Path) -> io::Result<Option<Arc<File>>> {
+    fn open_cached(&self, id: &Id, path: &Path) -> io::Result<Option<Arc<CachedFile>>> {
         if let Some(file) = self.open_files.get(id) {
             return Ok(Some(file));
         }
@@ -654,27 +712,10 @@ impl Cache {
         }
     }
 
-    fn remember_open(&self, id: &Id, file: File) -> Arc<File> {
-        let file = Arc::new(file);
+    fn remember_open(&self, id: &Id, file: File) -> Arc<CachedFile> {
+        let file = Arc::new(CachedFile::new(file));
         self.open_files.insert(*id, file.clone());
         file
-    }
-
-    fn read_range(file: &File, offset: u32, length: u32) -> io::Result<Bytes> {
-        let mut vec = vec![0; length as usize];
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::FileExt;
-            file.read_exact_at(&mut vec, u64::from(offset))?;
-        }
-        #[cfg(not(unix))]
-        {
-            use std::io::{Seek, SeekFrom};
-            let mut file = file.try_clone()?;
-            file.seek(SeekFrom::Start(u64::from(offset)))?;
-            file.read_exact(&mut vec)?;
-        }
-        Ok(vec.into())
     }
 
     /// Writes the given data to the given file.
@@ -885,10 +926,59 @@ mod tests {
                             .unwrap();
                         let start = usize::try_from(offset).unwrap();
                         assert_eq!(got.as_ref(), &payload[start..start + 16]);
+                        // Exercise the non-Unix implementation on every test platform.
+                        let file = cache.open_files.get(&id).unwrap();
+                        let got = file.read_range_seeking(offset, 16).unwrap();
+                        assert_eq!(got.as_ref(), &payload[start..start + 16]);
                     }
                 });
             }
         });
         assert_eq!(cache.open_files.len(), 1);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn cache_respects_file_descriptor_limit() {
+        use nix::sys::resource::{Resource, getrlimit, setrlimit};
+
+        const CHILD: &str = "RUSTIC_CACHE_FD_LIMIT_TEST";
+        if std::env::var_os(CHILD).is_none() {
+            let output = std::process::Command::new(std::env::current_exe().unwrap())
+                .args([
+                    "--exact",
+                    "backend::cache::tests::cache_respects_file_descriptor_limit",
+                    "--nocapture",
+                    "--test-threads=1",
+                ])
+                .env(CHILD, "1")
+                .output()
+                .unwrap();
+            assert!(
+                output.status.success(),
+                "{}\n{}",
+                String::from_utf8_lossy(&output.stdout),
+                String::from_utf8_lossy(&output.stderr)
+            );
+            return;
+        }
+
+        let (_, hard) = getrlimit(Resource::RLIMIT_NOFILE).unwrap();
+        setrlimit(Resource::RLIMIT_NOFILE, 64.min(hard), hard).unwrap();
+        let (_dir, cache) = new_cache();
+        let ids: Vec<_> = (0..100).map(|_| Id::random()).collect();
+        for id in &ids {
+            cache
+                .write_bytes(FileType::Pack, id, &vec![0_u8; 16].into())
+                .unwrap();
+        }
+        for id in &ids {
+            _ = cache
+                .read_partial(FileType::Pack, id, 0, 4)
+                .unwrap()
+                .unwrap();
+            // Other backend/file operations must still have descriptor headroom.
+            let _other_files: Vec<_> = (0..16).map(|_| File::open("/dev/null").unwrap()).collect();
+        }
     }
 }
