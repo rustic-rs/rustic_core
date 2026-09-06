@@ -91,9 +91,14 @@ impl Default for UsedIdMap {
 }
 
 impl UsedIdMap {
+    /// Shard by bits 28–31 of the id prefix. `UsedIdHasher` feeds the same
+    /// prefix to hashbrown, which takes bucket positions from the low bits and
+    /// the tag byte from the top 7, so sharding on either would leave every
+    /// key in a shard sharing those bits and cost extra probing.
     #[inline]
     fn shard(id: &UsedId) -> usize {
-        usize::try_from(id.0.as_u64() & (constants::USED_ID_SHARDS as u64 - 1)).unwrap_or(0)
+        usize::try_from((id.0.as_u64() >> 28) & (constants::USED_ID_SHARDS as u64 - 1))
+            .unwrap_or(0)
     }
 
     fn from_lists(lists: Vec<Vec<UsedId>>) -> Self {
