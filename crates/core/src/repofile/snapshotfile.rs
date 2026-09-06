@@ -1277,24 +1277,14 @@ impl PathList {
         Ok(self.merge())
     }
 
-    /// Sort paths and filters out subpaths of already existing paths.
+    /// Merge paths: Sort and remove duplicates
     #[must_use]
     pub fn merge(self) -> Self {
         let mut paths = self.0;
         // sort paths
         paths.sort_unstable();
-
-        let mut root_path = None;
-
-        // filter out subpaths
-        paths.retain(|path| match &root_path {
-            Some(root_path) if path.starts_with(root_path) => false,
-            _ => {
-                root_path = Some(path.clone());
-                true
-            }
-        });
-
+        // remove duplicates
+        paths.dedup();
         Self(paths)
     }
 }
