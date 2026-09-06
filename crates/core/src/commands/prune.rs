@@ -97,8 +97,7 @@ impl UsedIdMap {
     /// key in a shard sharing those bits and cost extra probing.
     #[inline]
     fn shard(id: &UsedId) -> usize {
-        usize::try_from((id.0.as_u64() >> 28) & (constants::USED_ID_SHARDS as u64 - 1))
-            .unwrap_or(0)
+        usize::try_from((id.0.as_u64() >> 28) & (constants::USED_ID_SHARDS as u64 - 1)).unwrap_or(0)
     }
 
     fn from_lists(lists: Vec<Vec<UsedId>>) -> Self {
@@ -156,9 +155,6 @@ impl UsedIdMap {
 pub(super) mod constants {
     /// Minimum size of an index file to be considered for pruning
     pub(super) const MIN_INDEX_LEN: usize = 10_000;
-    /// Per-loader used-id vec start size. Avoids grow during the walk.
-    /// ~22M unique blobs / 8 loaders plus dups; 4M slots is 128 MiB/loader.
-    pub(super) const USED_ID_VEC_CAP: usize = 1 << 22;
     /// Parallel `HashMap` shards for the used-id merge. Power of two.
     pub(super) const USED_ID_SHARDS: usize = 16;
 }
@@ -1705,6 +1701,16 @@ struct UsedIdAcc {
     tx: Sender<Vec<UsedId>>,
 }
 
+impl UsedIdAcc {
+    fn new(tx: Sender<Vec<UsedId>>) -> Self {
+        // Allocate only for references actually encountered by this loader.
+        Self {
+            ids: Vec::new(),
+            tx,
+        }
+    }
+}
+
 impl OnTreeLoad<UsedBlobsTree> for UsedIdAcc {
     fn on_load(&mut self, tree: &UsedBlobsTree) {
         self.ids
@@ -1773,10 +1779,7 @@ fn find_used_blobs<S>(
     let mut tree_streamer =
         TreeStreamer::<UsedBlobsTree>::new_with_on_load(be, index, snap_trees, p, {
             let ids_tx = ids_tx.clone();
-            move || UsedIdAcc {
-                ids: Vec::with_capacity(constants::USED_ID_VEC_CAP),
-                tx: ids_tx.clone(),
-            }
+            move || UsedIdAcc::new(ids_tx.clone())
         })?;
     drop(ids_tx);
     while let Some(item) = tree_streamer.next().transpose()? {
@@ -1800,6 +1803,23 @@ mod used_id_hash_tests {
 
     fn blob(s: &str) -> BlobId {
         BlobId::from_str(s).unwrap()
+    }
+
+    #[test]
+    fn loader_allocates_for_actual_references_and_preserves_ids() {
+        let (tx, rx) = mpsc::channel();
+        let mut loader = UsedIdAcc::new(tx);
+        assert_eq!(loader.ids.capacity(), 0);
+        let tree = UsedBlobsTree {
+            file_blobs: vec![ID_A.parse().unwrap(); 3],
+            dir_trees: vec![ID_C.parse().unwrap()],
+        };
+        loader.on_load(&tree);
+        loader.on_load(&tree);
+        assert!(loader.ids.capacity() < 1024);
+        loader.finish();
+        let ids = rx.recv().unwrap();
+        assert_eq!(ids, vec![UsedId(blob(ID_A)), UsedId(blob(ID_C))]);
     }
 
     #[test]
