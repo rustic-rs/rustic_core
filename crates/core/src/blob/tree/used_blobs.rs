@@ -4,6 +4,8 @@
 //! dedicated JSON scanner skips names, metadata, and xattrs without UTF-8
 //! validation or serde parse of unused fields.
 
+use std::borrow::Cow;
+
 use serde::de::Error as DeError;
 
 use crate::{
@@ -226,38 +228,42 @@ impl<'a> Scan<'a> {
         }
     }
 
-    /// Object key as raw bytes. Escaped keys are skipped and returned empty.
-    fn parse_key(&mut self) -> Result<&'a [u8], ScanError> {
-        if !self.eat(b'"') {
-            return Self::err("expected object key");
-        }
+    /// Borrow ordinary ASCII keys and type names; decode JSON escapes only
+    /// on the slow path so escaped live references keep their meaning.
+    fn parse_short_string(&mut self) -> Result<Cow<'a, [u8]>, ScanError> {
+        self.expect(b'"')?;
         let start = self.pos;
-        while let Some(b) = self.peek() {
-            if b == b'\\' {
-                self.skip_string_body()?;
-                return Ok(b"");
+        let bytes = &self.buf[start..];
+        for (i, byte) in bytes.iter().copied().enumerate() {
+            match byte {
+                b'"' => {
+                    self.pos = start + i + 1;
+                    return Ok(Cow::Borrowed(&self.buf[start..start + i]));
+                }
+                b'\\' | 0x80..=0xff => {
+                    self.pos = start + i;
+                    self.skip_string_body()?;
+                    let decoded: String = serde_json::from_slice(&self.buf[start - 1..self.pos])?;
+                    return Ok(Cow::Owned(decoded.into_bytes()));
+                }
+                0..=0x1f => return Self::err("control character in JSON string"),
+                _ => {}
             }
-            if b == b'"' {
-                let key = &self.buf[start..self.pos];
-                self.bump();
-                return Ok(key);
-            }
-            self.bump();
         }
         Self::err("unterminated string")
     }
 
+    fn parse_key(&mut self) -> Result<Cow<'a, [u8]>, ScanError> {
+        self.parse_short_string()
+    }
+
     fn parse_kind(&mut self) -> Result<UsedBlobKind, ScanError> {
         self.skip_ws();
-        if !self.eat(b'"') {
-            return Self::err("expected type string");
-        }
-        let start = self.pos;
-        self.skip_string_body()?;
-        Ok(match &self.buf[start..self.pos - 1] {
+        Ok(match self.parse_short_string()?.as_ref() {
             b"file" => UsedBlobKind::File,
             b"dir" => UsedBlobKind::Dir,
-            _ => UsedBlobKind::Other,
+            b"symlink" | b"dev" | b"chardev" | b"fifo" | b"socket" => UsedBlobKind::Other,
+            _ => return Self::err("unknown node type"),
         })
     }
 
@@ -266,6 +272,7 @@ impl<'a> Scan<'a> {
         if !self.eat(b'"') {
             return Self::err("expected hex id string");
         }
+        let start = self.pos - 1;
         let rest = self.buf.get(self.pos..).unwrap_or(&[]);
         if rest.len() >= 65
             && rest[64] == b'"'
@@ -275,7 +282,10 @@ impl<'a> Scan<'a> {
             return Ok(Id::new(bytes));
         }
         self.skip_string_body()?;
-        Self::err("invalid hex blob id")
+        let decoded: String = serde_json::from_slice(&self.buf[start..self.pos])?;
+        decode_hex32(decoded.as_bytes())
+            .map(Id::new)
+            .ok_or_else(|| DeError::custom("invalid hex blob id"))
     }
 
     fn parse_content(&mut self, tree: &mut UsedBlobsTree) -> Result<(), ScanError> {
@@ -316,7 +326,7 @@ impl<'a> Scan<'a> {
         self.expect(b'{')?;
         let files_at = tree.file_blobs.len();
         let dirs_at = tree.dir_trees.len();
-        let mut kind = UsedBlobKind::Other;
+        let mut kind = None;
         let mut first = true;
         loop {
             self.skip_ws();
@@ -334,14 +344,19 @@ impl<'a> Scan<'a> {
             let key = self.parse_key()?;
             self.skip_ws();
             self.expect(b':')?;
-            match key {
-                b"type" => kind = self.parse_kind()?,
+            match key.as_ref() {
+                b"type" => {
+                    if kind.is_some() {
+                        return Self::err("duplicate node type");
+                    }
+                    kind = Some(self.parse_kind()?);
+                }
                 b"content" => self.parse_content(tree)?,
                 b"subtree" => self.parse_subtree(tree)?,
                 _ => self.skip_value()?,
             }
         }
-        match kind {
+        match kind.ok_or_else(|| <ScanError as DeError>::custom("missing node type"))? {
             UsedBlobKind::File => tree.dir_trees.truncate(dirs_at),
             UsedBlobKind::Dir => tree.file_blobs.truncate(files_at),
             UsedBlobKind::Other => {
@@ -397,7 +412,7 @@ impl<'a> Scan<'a> {
             let key = self.parse_key()?;
             self.skip_ws();
             self.expect(b':')?;
-            if key == b"nodes" {
+            if key.as_ref() == b"nodes" {
                 self.parse_nodes(&mut tree)?;
             } else {
                 self.skip_value()?;
@@ -533,5 +548,48 @@ mod tests {
         let used = parse_used_blobs_tree(json.as_bytes()).unwrap();
         assert!(used.file_blobs.is_empty());
         assert_eq!(used.dir_trees, vec![TREE_ID.parse::<TreeId>().unwrap()]);
+    }
+
+    #[test]
+    fn escaped_live_references_match_full_tree() {
+        let json = format!(
+            r#"{{"nodes":[{{"name":"file","type":"file","content":["{FILE_ID}"]}},{{"name":"dir","type":"dir","subtree":"{TREE_ID}"}}]}}"#
+        );
+        for (plain, escaped) in [
+            (r#""nodes""#, r#""n\u006fdes""#),
+            (r#""type""#, r#""t\u0079pe""#),
+            (r#""content""#, r#""cont\u0065nt""#),
+            (r#""subtree""#, r#""subtr\u0065e""#),
+            (r#""file""#, r#""f\u0069le""#),
+            (r#""dir""#, r#""d\u0069r""#),
+            ("012345", r"\u003012345"),
+            ("fedcba", r"\u0066edcba"),
+        ] {
+            let escaped_json = json.replace(plain, escaped);
+            let full: Tree = serde_json::from_str(&escaped_json).unwrap();
+            let used = parse_used_blobs_tree(escaped_json.as_bytes()).unwrap();
+            let files: Vec<_> = full
+                .nodes
+                .iter()
+                .flat_map(|n| n.content.iter().flatten().copied())
+                .collect();
+            let dirs: Vec<_> = full.nodes.iter().filter_map(|n| n.subtree).collect();
+            assert_eq!(used.file_blobs, files, "{escaped_json}");
+            assert_eq!(used.dir_trees, dirs, "{escaped_json}");
+        }
+    }
+
+    #[test]
+    fn rejects_ambiguous_node_types_and_invalid_escapes() {
+        for json in [
+            r#"{"nodes":[{"type":"future_file"}]}"#,
+            r#"{"nodes":[{"name":"missing type"}]}"#,
+            r#"{"nodes":[{"type":"file","type":"symlink"}]}"#,
+            r#"{"n\qodes":[]}"#,
+            r#"{"nodes":[{"type":"f\qile"}]}"#,
+            r#"{"nodes":[{"type":"file","content":["\q"]}]}"#,
+        ] {
+            assert!(parse_used_blobs_tree(json.as_bytes()).is_err(), "{json}");
+        }
     }
 }
