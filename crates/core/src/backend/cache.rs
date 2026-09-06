@@ -802,7 +802,7 @@ mod tests {
     fn read_partial_reuses_open_file() {
         let (_dir, cache) = new_cache();
         let id = Id::random();
-        let payload: Vec<u8> = (0..4096).map(|i| i as u8).collect();
+        let payload: Vec<u8> = (0..=u8::MAX).cycle().take(4096).collect();
         cache
             .write_bytes(FileType::Pack, &id, &payload.clone().into())
             .unwrap();
@@ -868,7 +868,7 @@ mod tests {
     fn concurrent_partial_reads() {
         let (_dir, cache) = new_cache();
         let id = Id::random();
-        let payload: Vec<u8> = (0..8192).map(|i| (i % 251) as u8).collect();
+        let payload: Vec<u8> = (0..=250_u8).cycle().take(8192).collect();
         cache
             .write_bytes(FileType::Pack, &id, &payload.clone().into())
             .unwrap();
