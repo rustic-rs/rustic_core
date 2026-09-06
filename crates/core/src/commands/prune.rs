@@ -1803,14 +1803,14 @@ mod used_id_hash_tests {
         let a = UsedId(blob(ID_A));
         let b = UsedId(blob(ID_B));
         let c = UsedId(blob(ID_C));
-        assert_eq!(hasher.hash_one(&a), a.0.as_u64());
+        assert_eq!(hasher.hash_one(a), a.0.as_u64());
         assert_eq!(
-            hasher.hash_one(&a),
+            hasher.hash_one(a),
             u64::from_le_bytes([0x01, 0x23, 0x45, 0x67, 0x89, 0xab, 0xcd, 0xef])
         );
-        assert_eq!(hasher.hash_one(&a), hasher.hash_one(&b));
+        assert_eq!(hasher.hash_one(a), hasher.hash_one(b));
         assert_ne!(a, b);
-        assert_ne!(hasher.hash_one(&a), hasher.hash_one(&c));
+        assert_ne!(hasher.hash_one(a), hasher.hash_one(c));
 
         let mut map = UsedIdMap::default();
         assert!(map.insert(a, 0).is_none());
