@@ -26,22 +26,31 @@ mod constants {
     /// Tree walking reads many blobs from the same packs. Opening the cache
     /// file per blob was ~65% of prune CPU in a Time Profiler trace.
     pub(super) const OPEN_FILE_CAPACITY: usize = 2048;
+    /// Descriptors left for sockets, index files, and other I/O.
+    pub(super) const OPEN_FILE_RESERVE: u64 = 64;
 }
 
 type OpenFileCache = quick_cache::sync::Cache<Id, Arc<CachedFile>>;
 
-/// Keep most descriptors available for backend connections and other I/O.
+/// Use up to [`constants::OPEN_FILE_CAPACITY`] cached pack FDs, leaving
+/// [`constants::OPEN_FILE_RESERVE`] for other I/O. `rlimit/8` mapped a Darwin
+/// 8192 soft limit to 1024 handles.
 fn open_file_capacity() -> usize {
     #[cfg(unix)]
     if let Ok((soft, _)) =
         nix::sys::resource::getrlimit(nix::sys::resource::Resource::RLIMIT_NOFILE)
     {
-        return usize::try_from(soft / 8)
-            .unwrap_or(usize::MAX)
-            .min(constants::OPEN_FILE_CAPACITY);
+        return open_file_capacity_from_soft_limit(soft);
     }
     // Conservative fallback on platforms without a queryable descriptor limit.
     32
+}
+
+fn open_file_capacity_from_soft_limit(soft: u64) -> usize {
+    usize::try_from(soft.saturating_sub(constants::OPEN_FILE_RESERVE))
+        .unwrap_or(usize::MAX)
+        .min(constants::OPEN_FILE_CAPACITY)
+        .max(1)
 }
 
 struct CachedFile {
@@ -935,6 +944,14 @@ mod tests {
             }
         });
         assert_eq!(cache.open_files.len(), 1);
+    }
+
+    #[test]
+    fn open_file_capacity_uses_reserve_not_an_eighth() {
+        assert_eq!(open_file_capacity_from_soft_limit(8192), 2048);
+        assert_eq!(open_file_capacity_from_soft_limit(1024), 960);
+        assert_eq!(open_file_capacity_from_soft_limit(64), 1);
+        assert_eq!(open_file_capacity_from_soft_limit(0), 1);
     }
 
     #[cfg(unix)]
