@@ -209,6 +209,18 @@ impl Id {
         u32::from_le_bytes([self.0[0], self.0[1], self.0[2], self.0[3]])
     }
 
+    /// Returns the first 8 bytes as `u64` (little endian).
+    ///
+    /// SHA-256 ids are uniform, so this is enough to bucket a used-blob map
+    /// without hashing all 32 bytes. Equality is still the full id.
+    #[inline]
+    #[must_use]
+    pub const fn as_u64(&self) -> u64 {
+        u64::from_le_bytes([
+            self.0[0], self.0[1], self.0[2], self.0[3], self.0[4], self.0[5], self.0[6], self.0[7],
+        ])
+    }
+
     /// Finds the [`Id`]s starting with the given strings from an iterator over [`Id`]s.
     /// # Type Parameters
     ///
