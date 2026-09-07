@@ -50,16 +50,18 @@ impl IndexEntry {
     /// # Arguments
     ///
     /// * `be` - The backend to read from
+    /// * `id` - The expected ID of the plaintext blob
     ///
     /// # Errors
     ///
     // TODO:  add error! This function will return an error if the blob is not found in the backend.
-    pub fn read_data<B: DecryptReadBackend>(&self, be: &B) -> RusticResult<Bytes> {
+    pub fn read_data<B: DecryptReadBackend>(&self, be: &B, id: &BlobId) -> RusticResult<Bytes> {
         let data = be.read_encrypted_partial(
             FileType::Pack,
             &self.pack,
             self.blob_type.is_cacheable(),
             self.location,
+            id,
         )?;
 
         Ok(data)
@@ -180,7 +182,7 @@ pub trait ReadIndex {
                 .attach_context("id", id.to_string())
                 .attach_context("type", tpe.to_string()))
             },
-            |ie| ie.read_data(be),
+            |ie| ie.read_data(be, id),
         )
     }
 }

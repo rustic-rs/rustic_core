@@ -1030,9 +1030,11 @@ impl<BE: DecryptFullBackend> BlobCopier<BE> {
                 .expect("convert from u32 to usize should not fail!");
             let end = usize::try_from(blob.offset + blob.length - offset)
                 .expect("convert from u32 to usize should not fail!");
-            let data = self
-                .be_src
-                .read_encrypted_from_partial(&read_data[start..end], blob.uncompressed_length)?;
+            let data = self.be_src.read_encrypted_from_partial(
+                &read_data[start..end],
+                blob.uncompressed_length,
+                &blob_id,
+            )?;
 
             self.packer.add(data, blob_id).map_err(|err| {
                 RusticError::with_source(
