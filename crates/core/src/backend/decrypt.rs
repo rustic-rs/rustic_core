@@ -1,9 +1,43 @@
-use std::{num::NonZeroU32, sync::Arc};
+use std::{cell::RefCell, num::NonZeroU32, sync::Arc};
 
 use bytes::Bytes;
 use crossbeam_channel::{Receiver, bounded};
 use rayon::{prelude::*, spawn};
 use zstd::stream::{copy_encode, decode_all, encode_all};
+
+/// Decode zstd with a decompressor kept on this thread.
+///
+/// `zstd::decode_all` builds a new `DCtx` per call. Tree walking does that for
+/// every blob and showed up as `ZSTD_createDCtx` / `munmap` / page faults.
+fn zstd_decompress(data: &[u8], uncompressed_len: usize) -> RusticResult<Vec<u8>> {
+    thread_local! {
+        static DECOMPRESSOR: RefCell<Option<zstd::bulk::Decompressor<'static>>> =
+            const { RefCell::new(None) };
+    }
+
+    DECOMPRESSOR.with(|slot| {
+        let mut slot = slot.borrow_mut();
+        if slot.is_none() {
+            *slot = Some(zstd::bulk::Decompressor::new().map_err(|err| {
+                RusticError::with_source(
+                    ErrorKind::Internal,
+                    "Failed to create zstd decompressor.",
+                    err,
+                )
+            })?);
+        }
+        slot.as_mut()
+            .expect("zstd decompressor is initialized")
+            .decompress(data, uncompressed_len)
+            .map_err(|err| {
+                RusticError::with_source(
+                    ErrorKind::Internal,
+                    "Failed to decode zstd compressed data. The data may be corrupted.",
+                    err,
+                )
+            })
+    })
+}
 
 pub use zstd::compression_level_range;
 
@@ -75,13 +109,7 @@ pub trait DecryptReadBackend: ReadBackend + Clone + 'static {
     ) -> RusticResult<Bytes> {
         let mut data = self.decrypt(data)?;
         if let Some(length) = uncompressed_length {
-            data = decode_all(&*data).map_err(|err| {
-                RusticError::with_source(
-                    ErrorKind::Internal,
-                    "Failed to decode zstd compressed data. The data may be corrupted.",
-                    err,
-                )
-            })?;
+            data = zstd_decompress(&data, length.get() as usize)?;
 
             if data.len() != length.get() as usize {
                 return Err(RusticError::new(
@@ -190,17 +218,26 @@ pub trait DecryptReadBackend: ReadBackend + Clone + 'static {
     /// If the files could not be read.
     fn stream_list<F: RepoFile>(&self, list: Vec<F::Id>, p: &Progress) -> StreamResult<F::Id, F> {
         p.set_length(list.len() as u64);
-        // we use a zero-capacity channel; the loading is typically the bottleneck, not the processing.
-        let (tx, rx) = bounded(0);
+        // Index/snapshot files are small; on B2 this is RTT-bound (one GET each).
+        // Cached backends report fewer workers when the files are already local.
+        let ids: Vec<_> = list.iter().map(|id| **id).collect();
+        let workers = self.prefetch_workers(F::TYPE, &ids);
+        let (tx, rx) = bounded(workers.saturating_mul(2));
         let be = self.clone();
         let p = p.clone();
 
         spawn(move || {
-            _ = list.into_par_iter().try_for_each(|id| {
-                let file = be.get_file::<F>(&id).map(|file| (id, file));
-                p.inc(1);
-                tx.send(file).ok() // abort as soon as possible if sending fails, i.e. if the receiver is dropped
-            });
+            let work = || {
+                _ = list.into_par_iter().try_for_each(|id| {
+                    let file = be.get_file::<F>(&id).map(|file| (id, file));
+                    p.inc(1);
+                    tx.send(file).ok()
+                });
+            };
+            match rayon::ThreadPoolBuilder::new().num_threads(workers).build() {
+                Ok(pool) => pool.install(work),
+                Err(_) => work(),
+            }
         });
         Ok(rx)
     }
@@ -641,6 +678,14 @@ impl<C: CryptoKey> ReadBackend for DecryptBackend<C> {
 
     fn list_with_size(&self, tpe: FileType) -> RusticResult<Vec<(Id, u32)>> {
         self.be.list_with_size(tpe)
+    }
+
+    fn prefetch_workers(&self, tpe: FileType, ids: &[Id]) -> usize {
+        self.be.prefetch_workers(tpe, ids)
+    }
+
+    fn tree_loader_count(&self) -> usize {
+        self.be.tree_loader_count()
     }
 
     fn read_full(&self, tpe: FileType, id: &Id) -> RusticResult<Bytes> {

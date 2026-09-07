@@ -13,8 +13,13 @@ pub(super) mod constants {
     /// The maximum size of pack-part which is read at once from the backend.
     /// (needed to limit the memory size used for large backends)
     pub(crate) const LIMIT_PACK_READ: u32 = 40 * 1024 * 1024; // 40 MiB
-    /// The maximum size of holes which are still read when repacking
-    pub(crate) const MAX_HOLESIZE: u32 = 256 * 1024; // 256 kiB
+    /// Maximum unused gap that is still fetched with the surrounding blobs.
+    ///
+    /// 256 KiB was too small for high-latency object stores (B2): every larger
+    /// hole became another HTTP range GET, and prune/restore issued those
+    /// sequentially. 4 MiB is about one RTT of extra download on a ~100 Mbps
+    /// link, which is cheaper than an extra request.
+    pub(crate) const MAX_HOLESIZE: u32 = 4 * 1024 * 1024; // 4 MiB
 }
 
 /// All [`BlobType`]s which are supported by the repository
