@@ -190,17 +190,26 @@ pub trait DecryptReadBackend: ReadBackend + Clone + 'static {
     /// If the files could not be read.
     fn stream_list<F: RepoFile>(&self, list: Vec<F::Id>, p: &Progress) -> StreamResult<F::Id, F> {
         p.set_length(list.len() as u64);
-        // we use a zero-capacity channel; the loading is typically the bottleneck, not the processing.
-        let (tx, rx) = bounded(0);
+        // Index/snapshot files are small; on B2 this is RTT-bound (one GET each).
+        // Cached backends report fewer workers when the files are already local.
+        let ids: Vec<_> = list.iter().map(|id| **id).collect();
+        let workers = self.prefetch_workers(F::TYPE, &ids);
+        let (tx, rx) = bounded(workers.saturating_mul(2));
         let be = self.clone();
         let p = p.clone();
 
         spawn(move || {
-            _ = list.into_par_iter().try_for_each(|id| {
-                let file = be.get_file::<F>(&id).map(|file| (id, file));
-                p.inc(1);
-                tx.send(file).ok() // abort as soon as possible if sending fails, i.e. if the receiver is dropped
-            });
+            let work = || {
+                _ = list.into_par_iter().try_for_each(|id| {
+                    let file = be.get_file::<F>(&id).map(|file| (id, file));
+                    p.inc(1);
+                    tx.send(file).ok()
+                });
+            };
+            match rayon::ThreadPoolBuilder::new().num_threads(workers).build() {
+                Ok(pool) => pool.install(work),
+                Err(_) => work(),
+            }
         });
         Ok(rx)
     }
@@ -641,6 +650,14 @@ impl<C: CryptoKey> ReadBackend for DecryptBackend<C> {
 
     fn list_with_size(&self, tpe: FileType) -> RusticResult<Vec<(Id, u32)>> {
         self.be.list_with_size(tpe)
+    }
+
+    fn prefetch_workers(&self, tpe: FileType, ids: &[Id]) -> usize {
+        self.be.prefetch_workers(tpe, ids)
+    }
+
+    fn tree_loader_count(&self) -> usize {
+        self.be.tree_loader_count()
     }
 
     fn read_full(&self, tpe: FileType, id: &Id) -> RusticResult<Bytes> {

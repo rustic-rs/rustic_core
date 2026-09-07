@@ -1,7 +1,8 @@
 use std::{
     collections::HashMap,
+    fmt,
     fs::{self, File},
-    io::{self, Read, Seek, SeekFrom},
+    io::{self, Read},
     path::{Path, PathBuf},
     sync::Arc,
 };
@@ -18,6 +19,101 @@ use crate::{
     id::Id,
     repofile::configfile::RepositoryId,
 };
+
+mod constants {
+    /// Pack files kept open for cache `read_partial`.
+    ///
+    /// Tree walking reads many blobs from the same packs. Opening the cache
+    /// file per blob was ~65% of prune CPU in a Time Profiler trace.
+    pub(super) const OPEN_FILE_CAPACITY: usize = 2048;
+    /// Descriptors left for sockets, index files, and other I/O.
+    pub(super) const OPEN_FILE_RESERVE: u64 = 64;
+}
+
+type OpenFileCache = quick_cache::sync::Cache<Id, Arc<CachedFile>>;
+
+/// Use up to [`constants::OPEN_FILE_CAPACITY`] cached pack FDs, leaving
+/// [`constants::OPEN_FILE_RESERVE`] for other I/O. `rlimit/8` mapped a Darwin
+/// 8192 soft limit to 1024 handles.
+fn open_file_capacity() -> usize {
+    #[cfg(unix)]
+    if let Ok((soft, _)) =
+        nix::sys::resource::getrlimit(nix::sys::resource::Resource::RLIMIT_NOFILE)
+    {
+        return open_file_capacity_from_soft_limit(soft);
+    }
+    // Conservative fallback on platforms without a queryable descriptor limit.
+    32
+}
+
+fn open_file_capacity_from_soft_limit(soft: impl Into<u64>) -> usize {
+    usize::try_from(soft.into().saturating_sub(constants::OPEN_FILE_RESERVE))
+        .unwrap_or(usize::MAX)
+        .min(constants::OPEN_FILE_CAPACITY)
+        .max(1)
+}
+
+struct CachedFile {
+    file: File,
+    #[cfg(any(test, not(unix)))]
+    seek_lock: std::sync::Mutex<()>,
+}
+
+impl CachedFile {
+    fn new(file: File) -> Self {
+        Self {
+            file,
+            #[cfg(any(test, not(unix)))]
+            seek_lock: std::sync::Mutex::new(()),
+        }
+    }
+
+    fn read_range(&self, offset: u32, length: u32) -> io::Result<Bytes> {
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::FileExt;
+            let mut vec = vec![0; length as usize];
+            self.file.read_exact_at(&mut vec, u64::from(offset))?;
+            Ok(vec.into())
+        }
+        #[cfg(not(unix))]
+        self.read_range_seeking(offset, length)
+    }
+
+    /// Cloned file handles share a cursor. Serialize the entire seek/read pair
+    /// on platforms without positional reads; never clone the cached handle.
+    #[cfg(any(test, not(unix)))]
+    fn read_range_seeking(&self, offset: u32, length: u32) -> io::Result<Bytes> {
+        use std::io::{Seek, SeekFrom};
+        let _guard = self
+            .seek_lock
+            .lock()
+            .map_err(|_| io::Error::other("cache seek lock poisoned"))?;
+        let mut file = &self.file;
+        let mut vec = vec![0; length as usize];
+        _ = file.seek(SeekFrom::Start(u64::from(offset)))?;
+        file.read_exact(&mut vec)?;
+        Ok(vec.into())
+    }
+}
+
+fn is_too_many_open_files(err: &io::Error) -> bool {
+    #[cfg(unix)]
+    {
+        // POSIX EMFILE / ENFILE. Do not treat 4 as a match: that is EINTR.
+        matches!(err.raw_os_error(), Some(24 | 23))
+    }
+    #[cfg(windows)]
+    {
+        // ERROR_TOO_MANY_OPEN_FILES
+        err.raw_os_error() == Some(4)
+    }
+    #[cfg(not(any(unix, windows)))]
+    {
+        let _ = err;
+        false
+    }
+}
 
 /// Backend that caches data.
 ///
@@ -58,6 +154,34 @@ impl ReadBackend for CachedBackend {
     /// Returns the location of the backend as a String.
     fn location(&self) -> String {
         self.be.location()
+    }
+
+    fn prefetch_workers(&self, tpe: FileType, ids: &[Id]) -> usize {
+        if ids.is_empty() {
+            return 1;
+        }
+        let hits = ids
+            .iter()
+            .filter(|id| self.cache.path(tpe, id).is_file())
+            .count();
+        // Warm cache: few readers so we do not thrash local disk. Cold cache:
+        // extra workers for high-latency GETs.
+        if hits.saturating_mul(4) >= ids.len().saturating_mul(3) {
+            rayon::current_num_threads().clamp(2, 4)
+        } else {
+            (rayon::current_num_threads() + 16).clamp(16, 32)
+        }
+    }
+
+    fn tree_loader_count(&self) -> usize {
+        // Warm pack cache: local preads. 2×CPUs loaders oversubscribe QEMU
+        // vCPUs (KVM PV spinlocks + musl malloc). Cold cache: keep extra
+        // loaders for B2 RTTs.
+        if self.cache.has_cached_packs() {
+            rayon::current_num_threads().clamp(4, 8)
+        } else {
+            self.be.tree_loader_count()
+        }
     }
 
     /// Lists all files with their size of the given type.
@@ -159,12 +283,18 @@ impl ReadBackend for CachedBackend {
         length: u32,
     ) -> RusticResult<Bytes> {
         if cacheable || tpe.is_cacheable() {
-            let guard = self.lock_pool.blocking_lock(*id);
-            if self.cache.path(tpe, id).exists() {
-                // early drop the lock guard, so we can read the cache in parallel.
-                drop(guard);
+            match self.cache.read_partial(tpe, id, offset, length) {
+                Ok(Some(data)) => return Ok(data),
+                Ok(None) => {}
+                Err(err) => warn!(
+                    "Error in cache backend reading {tpe:?},{id}: {}",
+                    err.display_log()
+                ),
             }
 
+            // Miss: serialize fills of the same pack so two threads don't both
+            // download it. Hits above skip this lock and the exists()+open storm.
+            let _guard = self.lock_pool.blocking_lock(*id);
             match self.cache.read_partial(tpe, id, offset, length) {
                 Ok(Some(data)) => return Ok(data),
                 Ok(None) => {}
@@ -263,10 +393,21 @@ impl WriteBackend for CachedBackend {
 }
 
 /// Backend that caches data in a directory.
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct Cache {
     /// The path to the cache.
     path: PathBuf,
+    /// Recently used cache files kept open for `read_partial`.
+    open_files: Arc<OpenFileCache>,
+}
+
+impl fmt::Debug for Cache {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Cache")
+            .field("path", &self.path)
+            .field("open_files", &self.open_files.len())
+            .finish()
+    }
 }
 
 impl Cache {
@@ -329,7 +470,19 @@ impl Cache {
             .attach_context("id", id.to_string())
         })?;
 
-        Ok(Self { path })
+        Ok(Self {
+            path,
+            open_files: Arc::new(OpenFileCache::new(open_file_capacity())),
+        })
+    }
+
+    /// True if at least one pack file is already in this cache.
+    #[must_use]
+    pub fn has_cached_packs(&self) -> bool {
+        WalkDir::new(self.path.join(FileType::Pack.dirname()))
+            .into_iter()
+            .filter_map(Result::ok)
+            .any(|e| e.file_type().is_file())
     }
 
     /// Returns the path to the location of this [`Cache`].
@@ -501,11 +654,23 @@ impl Cache {
     ) -> RusticResult<Option<Bytes>> {
         trace!("cache reading tpe: {tpe:?}, id: {id}, offset: {offset}");
 
-        let path = self.path(tpe, id);
+        if let Some(file) = self.open_files.get(id) {
+            match file.read_range(offset, length) {
+                Ok(data) => {
+                    trace!("cache hit!");
+                    return Ok(Some(data));
+                }
+                Err(_) => {
+                    // Stale or truncated FD; reopen from disk.
+                    _ = self.open_files.remove(id);
+                }
+            }
+        }
 
-        let mut file = match File::open(&path) {
-            Ok(file) => file,
-            Err(err) if err.kind() == io::ErrorKind::NotFound => return Ok(None),
+        let path = self.path(tpe, id);
+        let file = match self.open_cached(id, &path) {
+            Ok(Some(file)) => file,
+            Ok(None) => return Ok(None),
             Err(err) => {
                 return Err(RusticError::with_source(
                     ErrorKind::InputOutput,
@@ -518,23 +683,7 @@ impl Cache {
             }
         };
 
-        _ = file
-            .seek(SeekFrom::Start(u64::from(offset)))
-            .map_err(|err| {
-                RusticError::with_source(
-                    ErrorKind::InputOutput,
-                    "Failed to seek to `{offset}` in file `{path}`",
-                    err,
-                )
-                .attach_context("path", path.display().to_string())
-                .attach_context("tpe", tpe.to_string())
-                .attach_context("id", id.to_string())
-                .attach_context("offset", offset.to_string())
-            })?;
-
-        let mut vec = vec![0; length as usize];
-
-        file.read_exact(&mut vec).map_err(|err| {
+        let data = file.read_range(offset, length).map_err(|err| {
             RusticError::with_source(
                 ErrorKind::InputOutput,
                 "Failed to read at offset `{offset}` from file at `{path}`",
@@ -549,7 +698,33 @@ impl Cache {
 
         trace!("cache hit!");
 
-        Ok(Some(vec.into()))
+        Ok(Some(data))
+    }
+
+    fn open_cached(&self, id: &Id, path: &Path) -> io::Result<Option<Arc<CachedFile>>> {
+        if let Some(file) = self.open_files.get(id) {
+            return Ok(Some(file));
+        }
+
+        match File::open(path) {
+            Ok(file) => Ok(Some(self.remember_open(id, file))),
+            Err(err) if err.kind() == io::ErrorKind::NotFound => Ok(None),
+            Err(err) if is_too_many_open_files(&err) => {
+                self.open_files.clear();
+                match File::open(path) {
+                    Ok(file) => Ok(Some(self.remember_open(id, file))),
+                    Err(err) if err.kind() == io::ErrorKind::NotFound => Ok(None),
+                    Err(err) => Err(err),
+                }
+            }
+            Err(err) => Err(err),
+        }
+    }
+
+    fn remember_open(&self, id: &Id, file: File) -> Arc<CachedFile> {
+        let file = Arc::new(CachedFile::new(file));
+        self.open_files.insert(*id, file.clone());
+        file
     }
 
     /// Writes the given data to the given file.
@@ -627,6 +802,8 @@ impl Cache {
             .attach_context("path", filename.display().to_string())
             .ask_report()
         })?;
+        // Drop any FD pointing at the previous inode.
+        _ = self.open_files.remove(id);
 
         Ok(())
     }
@@ -643,6 +820,7 @@ impl Cache {
     /// * If the file could not be removed.
     pub fn remove(&self, tpe: FileType, id: &Id) -> RusticResult<()> {
         trace!("cache writing tpe: {tpe:?}, id: {id}");
+        _ = self.open_files.remove(id);
         let filename = self.path(tpe, id);
         fs::remove_file(&filename).map_err(|err| {
             RusticError::with_source(
@@ -656,5 +834,168 @@ impl Cache {
         })?;
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::thread;
+
+    fn new_cache() -> (tempfile::TempDir, Cache) {
+        let dir = tempfile::tempdir().unwrap();
+        let cache = Cache::new(RepositoryId::default(), Some(dir.path().to_path_buf())).unwrap();
+        (dir, cache)
+    }
+
+    #[test]
+    fn read_partial_reuses_open_file() {
+        let (_dir, cache) = new_cache();
+        let id = Id::random();
+        let payload: Vec<u8> = (0..=u8::MAX).cycle().take(4096).collect();
+        cache
+            .write_bytes(FileType::Pack, &id, &payload.clone().into())
+            .unwrap();
+
+        for _ in 0..64 {
+            let got = cache
+                .read_partial(FileType::Pack, &id, 100, 50)
+                .unwrap()
+                .unwrap();
+            assert_eq!(got.as_ref(), &payload[100..150]);
+        }
+        assert_eq!(cache.open_files.len(), 1);
+    }
+
+    #[test]
+    fn write_bytes_invalidates_open_file() {
+        let (_dir, cache) = new_cache();
+        let id = Id::random();
+        cache
+            .write_bytes(FileType::Pack, &id, &vec![0_u8; 128].into())
+            .unwrap();
+        assert_eq!(
+            cache
+                .read_partial(FileType::Pack, &id, 0, 4)
+                .unwrap()
+                .unwrap()
+                .as_ref(),
+            &[0, 0, 0, 0]
+        );
+
+        cache
+            .write_bytes(FileType::Pack, &id, &vec![0xff_u8; 128].into())
+            .unwrap();
+        assert_eq!(
+            cache
+                .read_partial(FileType::Pack, &id, 0, 4)
+                .unwrap()
+                .unwrap()
+                .as_ref(),
+            &[0xff, 0xff, 0xff, 0xff]
+        );
+    }
+
+    #[test]
+    fn remove_closes_and_hides_file() {
+        let (_dir, cache) = new_cache();
+        let id = Id::random();
+        cache
+            .write_bytes(FileType::Pack, &id, &vec![1_u8; 16].into())
+            .unwrap();
+        _ = cache.read_partial(FileType::Pack, &id, 0, 4).unwrap();
+        cache.remove(FileType::Pack, &id).unwrap();
+        assert!(
+            cache
+                .read_partial(FileType::Pack, &id, 0, 4)
+                .unwrap()
+                .is_none()
+        );
+        assert_eq!(cache.open_files.len(), 0);
+    }
+
+    #[test]
+    fn concurrent_partial_reads() {
+        let (_dir, cache) = new_cache();
+        let id = Id::random();
+        let payload: Vec<u8> = (0..=250_u8).cycle().take(8192).collect();
+        cache
+            .write_bytes(FileType::Pack, &id, &payload.clone().into())
+            .unwrap();
+        thread::scope(|s| {
+            for t in 0..16 {
+                let cache = &cache;
+                let payload = &payload;
+                _ = s.spawn(move || {
+                    let offset = u32::try_from(t * 16).unwrap();
+                    for _ in 0..100 {
+                        let got = cache
+                            .read_partial(FileType::Pack, &id, offset, 16)
+                            .unwrap()
+                            .unwrap();
+                        let start = usize::try_from(offset).unwrap();
+                        assert_eq!(got.as_ref(), &payload[start..start + 16]);
+                        // Exercise the non-Unix implementation on every test platform.
+                        let file = cache.open_files.get(&id).unwrap();
+                        let got = file.read_range_seeking(offset, 16).unwrap();
+                        assert_eq!(got.as_ref(), &payload[start..start + 16]);
+                    }
+                });
+            }
+        });
+        assert_eq!(cache.open_files.len(), 1);
+    }
+
+    #[test]
+    fn open_file_capacity_uses_reserve_not_an_eighth() {
+        assert_eq!(open_file_capacity_from_soft_limit(8192), 2048);
+        assert_eq!(open_file_capacity_from_soft_limit(1024), 960);
+        assert_eq!(open_file_capacity_from_soft_limit(64), 1);
+        assert_eq!(open_file_capacity_from_soft_limit(0), 1);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn cache_respects_file_descriptor_limit() {
+        use nix::sys::resource::{Resource, getrlimit, setrlimit};
+
+        const CHILD: &str = "RUSTIC_CACHE_FD_LIMIT_TEST";
+        if std::env::var_os(CHILD).is_none() {
+            let output = std::process::Command::new(std::env::current_exe().unwrap())
+                .args([
+                    "--exact",
+                    "backend::cache::tests::cache_respects_file_descriptor_limit",
+                    "--nocapture",
+                    "--test-threads=1",
+                ])
+                .env(CHILD, "1")
+                .output()
+                .unwrap();
+            assert!(
+                output.status.success(),
+                "{}\n{}",
+                String::from_utf8_lossy(&output.stdout),
+                String::from_utf8_lossy(&output.stderr)
+            );
+            return;
+        }
+
+        let (_, hard) = getrlimit(Resource::RLIMIT_NOFILE).unwrap();
+        setrlimit(Resource::RLIMIT_NOFILE, 64.min(hard), hard).unwrap();
+        let (_dir, cache) = new_cache();
+        let ids: Vec<_> = (0..100).map(|_| Id::random()).collect();
+        for id in &ids {
+            cache
+                .write_bytes(FileType::Pack, id, &vec![0_u8; 16].into())
+                .unwrap();
+        }
+        for id in &ids {
+            _ = cache
+                .read_partial(FileType::Pack, id, 0, 4)
+                .unwrap()
+                .unwrap();
+            // Other backend/file operations must still have descriptor headroom.
+            let _other_files: Vec<_> = (0..16).map(|_| File::open("/dev/null").unwrap()).collect();
+        }
     }
 }

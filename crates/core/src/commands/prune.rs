@@ -4,7 +4,7 @@
 /// accessors along with logging macros. Customize as you see fit.
 use std::{
     cmp::Ordering,
-    collections::{BTreeMap, BTreeSet},
+    collections::{BTreeMap, BTreeSet, HashMap},
     str::FromStr,
 };
 
@@ -22,12 +22,11 @@ use crate::{
     backend::{
         FileType, ReadBackend,
         decrypt::{DecryptReadBackend, DecryptWriteBackend},
-        node::NodeType,
     },
     blob::{
         BlobId, BlobLocations, BlobType, BlobTypeMap, Initialize,
         packer::{BlobCopier, CopyPackBlobs, PackSizer},
-        tree::TreeStreamerOnce,
+        tree::{TreeStreamer, UsedBlobsTree},
     },
     error::{ErrorKind, RusticError, RusticResult},
     index::{
@@ -584,7 +583,7 @@ pub struct PrunePlan {
     /// The time the plan was created
     time: Zoned,
     /// The ids of the blobs which are used
-    used_ids: BTreeMap<BlobId, u8>,
+    used_ids: HashMap<BlobId, u8>,
     /// The ids of the existing packs
     existing_packs: BTreeMap<PackId, u32>,
     /// The packs which should be repacked
@@ -604,7 +603,7 @@ impl PrunePlan {
     /// * `existing_packs` - The ids of the existing packs
     /// * `index_files` - The index files
     fn new(
-        used_ids: BTreeMap<BlobId, u8>,
+        used_ids: HashMap<BlobId, u8>,
         existing_packs: BTreeMap<PackId, u32>,
         index_files: Vec<(IndexId, IndexFile)>,
     ) -> Self {
@@ -718,6 +717,14 @@ impl PrunePlan {
         }
         p.finish();
 
+        // Pack listing does not need the used-blob set. Start it after the
+        // index so it does not steal B2 from index GETs, and overlap it with
+        // the tree walk instead.
+        let pack_list = {
+            let be = be.clone();
+            std::thread::spawn(move || be.list_with_size(FileType::Pack))
+        };
+
         let (used_ids, total_size) = {
             let index = GlobalIndex::new_from_index(index_collector.into_index());
             let total_size = BlobTypeMap::init(|blob_type| index.total_size(blob_type));
@@ -725,13 +732,20 @@ impl PrunePlan {
             (used_ids, total_size)
         };
 
-        // list existing pack files
+        // list existing pack files (started before the tree walk)
         let p = repo.progress_spinner("getting packs from repository...");
-        let existing_packs: BTreeMap<_, _> = be
-            .list_with_size(FileType::Pack)?
-            .into_iter()
-            .map(|(id, size)| (PackId::from(id), size))
-            .collect();
+        let existing_packs: BTreeMap<_, _> = match pack_list.join() {
+            Ok(listed) => listed?
+                .into_iter()
+                .map(|(id, size)| (PackId::from(id), size))
+                .collect(),
+            Err(_) => {
+                return Err(RusticError::new(
+                    ErrorKind::Internal,
+                    "Pack listing thread panicked.",
+                ));
+            }
+        };
         p.finish();
 
         let mut pruner = Self::new(used_ids, existing_packs, index_files);
@@ -1416,14 +1430,15 @@ pub(crate) fn prune_repository<S: Open>(
                     })
                     .collect();
 
-                // TODO: repack in parallel
-                for blobs in blob_chunks {
+                // Range-GETs for holes in the same pack run in parallel. The
+                // packer already serializes writes via its channel / lock.
+                blob_chunks.into_par_iter().try_for_each(|blobs| {
                     if opts.fast_repack {
-                        repacker.copy_fast(blobs, &p)?;
+                        repacker.copy_fast(blobs, &p)
                     } else {
-                        repacker.copy(blobs, &p)?;
+                        repacker.copy(blobs, &p)
                     }
-                }
+                })?;
                 Ok(())
             })?;
         _ = tree_repacker.finalize()?;
@@ -1491,8 +1506,8 @@ impl PackInfo {
     /// # Arguments
     ///
     /// * `pack` - The `PrunePack` to create the `PackInfo` from
-    /// * `used_ids` - The `BTreeMap` of used ids
-    fn from_pack(pack: &PrunePack, used_ids: &mut BTreeMap<BlobId, u8>) -> Self {
+    /// * `used_ids` - The map of used ids
+    fn from_pack(pack: &PrunePack, used_ids: &mut HashMap<BlobId, u8>) -> Self {
         let mut pi = Self {
             blob_type: pack.blob_type,
             used_blobs: 0,
@@ -1584,7 +1599,7 @@ fn find_used_blobs<S>(
     be: &impl DecryptReadBackend,
     index: &impl ReadGlobalIndex,
     ignore_snaps: &[SnapshotId],
-) -> RusticResult<BTreeMap<BlobId, u8>> {
+) -> RusticResult<HashMap<BlobId, u8>> {
     let ignore_snaps: BTreeSet<_> = ignore_snaps.iter().collect();
 
     let p = repo.progress_counter("reading snapshots...");
@@ -1601,31 +1616,17 @@ fn find_used_blobs<S>(
         .try_collect()?;
     p.finish();
 
-    let mut ids: BTreeMap<_, _> = snap_trees
+    let mut ids: HashMap<_, _> = snap_trees
         .iter()
         .map(|id| (BlobId::from(**id), 0))
         .collect();
     let p = repo.progress_counter("finding used blobs...");
 
-    let mut tree_streamer = TreeStreamerOnce::new(be, index, snap_trees, p)?;
+    let mut tree_streamer = TreeStreamer::<UsedBlobsTree>::new(be, index, snap_trees, p)?;
     while let Some(item) = tree_streamer.next().transpose()? {
-        let (_, tree) = item;
-        for node in tree.nodes {
-            match node.node_type {
-                NodeType::File => {
-                    ids.extend(
-                        node.content
-                            .iter()
-                            .flatten()
-                            .map(|id| (BlobId::from(**id), 0)),
-                    );
-                }
-                NodeType::Dir => {
-                    _ = ids.insert(BlobId::from(*node.subtree.unwrap()), 0);
-                }
-                _ => {} // nothing to do
-            }
-        }
+        let (_, used) = item;
+        ids.extend(used.file_blobs.into_iter().map(|id| (BlobId::from(id), 0)));
+        ids.extend(used.dir_trees.into_iter().map(|id| (BlobId::from(id), 0)));
     }
 
     Ok(ids)
