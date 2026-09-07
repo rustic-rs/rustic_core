@@ -1,3 +1,5 @@
+use std::cmp::Ordering;
+
 use rayon::prelude::*;
 
 use crate::{
@@ -20,6 +22,77 @@ pub(crate) struct SortedEntry {
     location: BlobLocation,
 }
 
+/// Max entries in one collector chunk.
+///
+/// Growing a single `Vec` of blob ids doubles it. On a large repo that request
+/// is hundreds of MiB while the old buffer is still live, and musl aborts:
+/// `memory allocation of N bytes failed`. Chunks cap each allocation.
+const ENTRY_CHUNK_LEN: usize = if cfg!(test) { 4 } else { 1 << 20 };
+
+/// Append-only vec of bounded chunks. Lookups binary-search every chunk.
+#[derive(Debug)]
+pub(crate) struct Chunked<T> {
+    chunks: Vec<Vec<T>>,
+}
+
+impl<T> Default for Chunked<T> {
+    fn default() -> Self {
+        Self { chunks: Vec::new() }
+    }
+}
+
+impl<T> Chunked<T> {
+    fn push(&mut self, item: T) {
+        if self
+            .chunks
+            .last()
+            .is_none_or(|chunk| chunk.len() >= ENTRY_CHUNK_LEN)
+        {
+            self.chunks.push(Vec::with_capacity(ENTRY_CHUNK_LEN));
+        }
+        self.chunks
+            .last_mut()
+            .expect("chunk is created above")
+            .push(item);
+    }
+
+    fn shrink_last(&mut self) {
+        if let Some(last) = self.chunks.last_mut() {
+            last.shrink_to_fit();
+        }
+    }
+
+    fn par_sort_unstable(&mut self)
+    where
+        T: Ord + Send,
+    {
+        self.chunks.par_iter_mut().for_each(|chunk| {
+            chunk.sort_unstable();
+        });
+    }
+
+    fn par_sort_unstable_by<F>(&mut self, compare: F)
+    where
+        T: Send,
+        F: Fn(&T, &T) -> Ordering + Sync,
+    {
+        self.chunks.par_iter_mut().for_each(|chunk| {
+            chunk.sort_unstable_by(&compare);
+        });
+    }
+
+    fn par_sort_unstable_by_key<K, F>(&mut self, f: F)
+    where
+        T: Send,
+        K: Ord,
+        F: Fn(&T) -> K + Sync,
+    {
+        self.chunks.par_iter_mut().for_each(|chunk| {
+            chunk.sort_unstable_by_key(&f);
+        });
+    }
+}
+
 /// `IndexType` determines which information is stored in the index.
 #[derive(Debug, Clone, Copy)]
 pub enum IndexType {
@@ -36,8 +109,8 @@ pub enum IndexType {
 pub(crate) enum EntriesVariants {
     #[default]
     None,
-    Ids(Vec<BlobId>),
-    FullEntries(Vec<SortedEntry>),
+    Ids(Chunked<BlobId>),
+    FullEntries(Chunked<SortedEntry>),
 }
 
 #[derive(Default, Debug)]
@@ -54,7 +127,8 @@ pub struct IndexCollector(BlobTypeMap<TypeIndexCollector>);
 pub struct PackIndexes {
     c: Index,
     tpe: BlobType,
-    idx: BlobTypeMap<(u32, usize)>,
+    pack_idx: BlobTypeMap<u32>,
+    cursors: BlobTypeMap<Vec<usize>>,
 }
 
 #[derive(Debug)]
@@ -89,11 +163,11 @@ impl IndexCollector {
     pub fn new(tpe: IndexType) -> Self {
         let mut collector = Self::default();
 
-        collector.0[BlobType::Tree].entries = EntriesVariants::FullEntries(Vec::new());
+        collector.0[BlobType::Tree].entries = EntriesVariants::FullEntries(Chunked::default());
         collector.0[BlobType::Data].entries = match tpe {
             IndexType::OnlyTrees => EntriesVariants::None,
-            IndexType::DataIds => EntriesVariants::Ids(Vec::new()),
-            IndexType::Full => EntriesVariants::FullEntries(Vec::new()),
+            IndexType::DataIds => EntriesVariants::Ids(Chunked::default()),
+            IndexType::Full => EntriesVariants::FullEntries(Chunked::default()),
         };
 
         collector
@@ -110,8 +184,14 @@ impl IndexCollector {
         Index(self.0.map(|_, mut tc| {
             match &mut tc.entries {
                 EntriesVariants::None => {}
-                EntriesVariants::Ids(ids) => ids.par_sort_unstable(),
-                EntriesVariants::FullEntries(entries) => entries.par_sort_unstable_by_key(|e| e.id),
+                EntriesVariants::Ids(ids) => {
+                    ids.shrink_last();
+                    ids.par_sort_unstable();
+                }
+                EntriesVariants::FullEntries(entries) => {
+                    entries.shrink_last();
+                    entries.par_sort_unstable_by_key(|e| e.id);
+                }
             }
 
             let packs = tc.packs.into_iter().map(|(id, _)| id).collect();
@@ -130,7 +210,6 @@ impl Extend<IndexPack> for IndexCollector {
         T: IntoIterator<Item = IndexPack>,
     {
         for p in iter {
-            let len = p.blobs.len();
             let blob_type = p.blob_type();
             let size = p.pack_size();
 
@@ -139,12 +218,6 @@ impl Extend<IndexPack> for IndexCollector {
             self.0[blob_type].packs.push((p.id, size));
 
             self.0[blob_type].total_size += u64::from(size);
-
-            match &mut self.0[blob_type].entries {
-                EntriesVariants::None => {}
-                EntriesVariants::Ids(idents) => idents.reserve(len),
-                EntriesVariants::FullEntries(entries) => entries.reserve(len),
-            }
 
             for blob in &p.blobs {
                 let be = SortedEntry {
@@ -166,39 +239,45 @@ impl Iterator for PackIndexes {
     type Item = IndexPack;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let (pack_idx, idx) = loop {
-            let (pack_idx, idx) = &mut self.idx[self.tpe];
-            let pack_count = u32::try_from(self.c.0[self.tpe].packs.len())
-                .expect("pack count should fit into u32");
-            if *pack_idx >= pack_count {
-                if self.tpe == BlobType::Data {
+        loop {
+            let tpe = self.tpe;
+            let pack_count =
+                u32::try_from(self.c.0[tpe].packs.len()).expect("pack count should fit into u32");
+            if self.pack_idx[tpe] >= pack_count {
+                if tpe == BlobType::Data {
                     return None;
                 }
                 self.tpe = BlobType::Data;
-            } else {
-                break (pack_idx, idx);
+                continue;
             }
-        };
 
-        let mut pack = IndexPack {
-            id: self.c.0[self.tpe].packs[*pack_idx as usize],
-            ..Default::default()
-        };
+            let pack_idx = self.pack_idx[tpe];
+            let mut pack = IndexPack {
+                id: self.c.0[tpe].packs[pack_idx as usize],
+                ..Default::default()
+            };
 
-        if let EntriesVariants::FullEntries(entries) = &self.c.0[self.tpe].entries {
-            while *idx < entries.len() && entries[*idx].pack_idx == *pack_idx {
-                let entry = &entries[*idx];
-                pack.blobs.push(IndexBlob {
-                    id: entry.id,
-                    tpe: self.tpe,
-                    location: entry.location,
-                });
-                *idx += 1;
+            if let EntriesVariants::FullEntries(entries) = &self.c.0[tpe].entries {
+                let cursors = &mut self.cursors[tpe];
+                if cursors.len() != entries.chunks.len() {
+                    cursors.resize(entries.chunks.len(), 0);
+                }
+                for (chunk, cursor) in entries.chunks.iter().zip(cursors.iter_mut()) {
+                    while *cursor < chunk.len() && chunk[*cursor].pack_idx == pack_idx {
+                        let entry = &chunk[*cursor];
+                        pack.blobs.push(IndexBlob {
+                            id: entry.id,
+                            tpe,
+                            location: entry.location,
+                        });
+                        *cursor += 1;
+                    }
+                }
             }
+
+            self.pack_idx[tpe] += 1;
+            return Some(pack);
         }
-        *pack_idx += 1;
-
-        Some(pack)
     }
 }
 
@@ -214,34 +293,32 @@ impl IntoIterator for Index {
             }
         }
         PackIndexes {
-            c: Self(self.0.map(|_, mut tc| {
-                if let EntriesVariants::FullEntries(entries) = &mut tc.entries {
-                    entries.par_sort_unstable_by(|e1, e2| e1.pack_idx.cmp(&e2.pack_idx));
-                }
-
-                tc
-            })),
+            c: self,
             tpe: BlobType::Tree,
-            idx: BlobTypeMap::default(),
+            pack_idx: BlobTypeMap::default(),
+            cursors: BlobTypeMap::default(),
         }
     }
 }
 
 impl ReadIndex for Index {
     fn get_id(&self, blob_type: BlobType, id: &BlobId) -> Option<IndexEntry> {
-        let EntriesVariants::FullEntries(vec) = &self.0[blob_type].entries else {
+        let EntriesVariants::FullEntries(entries) = &self.0[blob_type].entries else {
             // get_id() only gives results if index contains full entries
             return None;
         };
 
-        vec.binary_search_by_key(id, |e| e.id).ok().map(|index| {
-            let be = &vec[index];
-            IndexEntry::new(
-                blob_type,
-                self.0[blob_type].packs[be.pack_idx as usize],
-                be.location,
-            )
-        })
+        for chunk in &entries.chunks {
+            if let Ok(index) = chunk.binary_search_by_key(id, |e| e.id) {
+                let be = &chunk[index];
+                return Some(IndexEntry::new(
+                    blob_type,
+                    self.0[blob_type].packs[be.pack_idx as usize],
+                    be.location,
+                ));
+            }
+        }
+        None
     }
 
     fn total_size(&self, blob_type: BlobType) -> u64 {
@@ -250,10 +327,14 @@ impl ReadIndex for Index {
 
     fn has(&self, blob_type: BlobType, id: &BlobId) -> bool {
         match &self.0[blob_type].entries {
-            EntriesVariants::FullEntries(entries) => {
-                entries.binary_search_by_key(id, |e| e.id).is_ok()
-            }
-            EntriesVariants::Ids(ids) => ids.binary_search(id).is_ok(),
+            EntriesVariants::FullEntries(entries) => entries
+                .chunks
+                .iter()
+                .any(|chunk| chunk.binary_search_by_key(id, |e| e.id).is_ok()),
+            EntriesVariants::Ids(ids) => ids
+                .chunks
+                .iter()
+                .any(|chunk| chunk.binary_search(id).is_ok()),
             // has() only gives results if index contains full entries or ids
             EntriesVariants::None => false,
         }
@@ -439,6 +520,53 @@ mod tests {
         );
         assert!(!index.has(BlobType::Tree, &id));
         assert!(index.get_id(BlobType::Tree, &id).is_none());
+
+        // This id is in the second test-sized chunk (ENTRY_CHUNK_LEN is 4 under cfg(test)).
+        let id = "ee67585c7c53324e74537ab7aa44f889c0767c1b67e7e336fae6204aef2d4c73".parse()?;
+        assert!(index.has(BlobType::Data, &id));
+        assert_eq!(
+            index.get_id(BlobType::Data, &id),
+            Some(IndexEntry {
+                blob_type: BlobType::Data,
+                pack: "3b25ec6d16401c31099c259311562160b1b5efbcf70bd69d0463104d3b8148fc".parse()?,
+                location: BlobLocation {
+                    offset: 7737,
+                    length: 7686,
+                    uncompressed_length: Some(NonZeroU32::new(29928).unwrap()),
+                }
+            }),
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn into_iter_groups_blobs_by_pack() -> RusticResult<()> {
+        let packs: Vec<_> = index(IndexType::Full).into_iter().collect();
+        assert_eq!(packs.len(), 3);
+        assert_eq!(
+            packs[0].id,
+            "8431a27d38dd7d192dc37abd43a85d6dc4298de72fc8f583c5d7cdd09fa47274".parse()?
+        );
+        assert_eq!(packs[0].blobs.len(), 2);
+        assert_eq!(
+            packs[1].id,
+            "217f145b63fbc10267f5a686186689ea3389bed0d6a54b50ffc84d71f99eb7fa".parse()?
+        );
+        assert_eq!(packs[1].blobs.len(), 3);
+        assert_eq!(
+            packs[2].id,
+            "3b25ec6d16401c31099c259311562160b1b5efbcf70bd69d0463104d3b8148fc".parse()?
+        );
+        assert_eq!(packs[2].blobs.len(), 4);
+        Ok(())
+    }
+
+    #[test]
+    fn data_ids_has_across_chunks() -> RusticResult<()> {
+        let index = index(IndexType::DataIds);
+        let id = "f2ca1bb6c7e907d06dafe4687e579fce76b37e4e93b7605022da52e6ccc26fd2".parse()?;
+        assert!(index.has(BlobType::Data, &id));
+        assert!(index.get_id(BlobType::Data, &id).is_none());
         Ok(())
     }
 }
