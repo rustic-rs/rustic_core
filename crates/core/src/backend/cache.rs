@@ -46,8 +46,8 @@ fn open_file_capacity() -> usize {
     32
 }
 
-fn open_file_capacity_from_soft_limit(soft: u64) -> usize {
-    usize::try_from(soft.saturating_sub(constants::OPEN_FILE_RESERVE))
+fn open_file_capacity_from_soft_limit(soft: impl Into<u64>) -> usize {
+    usize::try_from(soft.into().saturating_sub(constants::OPEN_FILE_RESERVE))
         .unwrap_or(usize::MAX)
         .min(constants::OPEN_FILE_CAPACITY)
         .max(1)
