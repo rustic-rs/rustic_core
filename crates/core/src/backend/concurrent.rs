@@ -36,6 +36,15 @@ impl<BE: WriteBackend> ConcurrencyBackend<BE> {
         Self { be, concurrency }
     }
 
+    /// Simpler backend creation with a default concurrency manager for testing
+    #[cfg(test)]
+    pub fn new_with_default(be: BE) -> Self {
+        Self {
+            be,
+            concurrency: ConcurrencyManager::default(),
+        }
+    }
+
     pub fn concurrency(&self) -> &ConcurrencyManager {
         &self.concurrency
     }
