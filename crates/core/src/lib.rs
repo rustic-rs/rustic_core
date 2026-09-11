@@ -113,6 +113,7 @@ pub(crate) mod backend;
 pub(crate) mod blob;
 pub(crate) mod chunker;
 pub(crate) mod commands;
+pub(crate) mod concurrency;
 pub(crate) mod crypto;
 pub(crate) mod error;
 pub(crate) mod id;
@@ -164,6 +165,7 @@ pub use crate::{
         restore::{FileDirStats, RestoreOptions, RestorePlan, RestoreStats},
         rewrite::RewriteOptions,
     },
+    concurrency::ConcurrencyOptions,
     error::{ErrorKind, RusticError, RusticResult, Severity, Status},
     id::{HexId, Id},
     progress::{

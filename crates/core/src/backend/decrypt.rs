@@ -9,8 +9,12 @@ pub use zstd::compression_level_range;
 
 use crate::{
     BytesList, Progress,
-    backend::{FileType, ReadBackend, WriteBackend},
+    backend::{
+        FileType, ReadBackend, WriteBackend,
+        concurrent::{ConcurrentBackend, ConcurrentReadBackend, ConcurrentWriteBackend},
+    },
     blob::BlobLocation,
+    concurrency::ConcurrencyManager,
     crypto::{CryptoKey, hasher::hash},
     error::{ErrorKind, RusticError, RusticResult},
     id::Id,
@@ -33,7 +37,7 @@ impl<T: DecryptWriteBackend + DecryptReadBackend> DecryptFullBackend for T {}
 
 type StreamResult<Id, F> = RusticResult<Receiver<RusticResult<(Id, F)>>>;
 
-pub trait DecryptReadBackend: ReadBackend + Clone + 'static {
+pub trait DecryptReadBackend: ConcurrentReadBackend + Clone + 'static {
     /// Decrypts the given data.
     ///
     /// # Arguments
@@ -206,7 +210,7 @@ pub trait DecryptReadBackend: ReadBackend + Clone + 'static {
     }
 }
 
-pub trait DecryptWriteBackend: WriteBackend + Clone + 'static {
+pub trait DecryptWriteBackend: ConcurrentWriteBackend + Clone + 'static {
     /// The type of the key.
     type Key: CryptoKey;
 
@@ -383,7 +387,7 @@ pub trait DecryptWriteBackend: WriteBackend + Clone + 'static {
 #[derive(Debug, Clone)]
 pub struct DecryptBackend<C: CryptoKey> {
     /// The backend to decrypt.
-    be: Arc<dyn WriteBackend>,
+    be: Arc<dyn ConcurrentWriteBackend>,
     /// The key to decrypt the backend with.
     key: C,
     /// The compression level to use for zstd.
@@ -407,7 +411,7 @@ impl<C: CryptoKey> DecryptBackend<C> {
     /// # Returns
     ///
     /// The new decrypt backend.
-    pub fn new(be: Arc<dyn WriteBackend>, key: C) -> Self {
+    pub fn new(be: Arc<dyn ConcurrentWriteBackend>, key: C) -> Self {
         Self {
             be,
             key,
@@ -688,6 +692,13 @@ impl<C: CryptoKey> WriteBackend for DecryptBackend<C> {
         self.be.remove(tpe, id, cacheable)
     }
 }
+
+impl<C: CryptoKey> ConcurrentBackend for DecryptBackend<C> {
+    fn concurrency(&self) -> &ConcurrencyManager {
+        self.be.concurrency()
+    }
+}
+
 
 #[cfg(test)]
 mod tests {

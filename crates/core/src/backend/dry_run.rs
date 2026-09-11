@@ -4,8 +4,10 @@ use zstd::decode_all;
 use crate::{
     backend::{
         BytesList, FileType, ReadBackend, WriteBackend,
+        concurrent::ConcurrentBackend,
         decrypt::{DecryptFullBackend, DecryptReadBackend, DecryptWriteBackend},
     },
+    concurrency::ConcurrencyManager,
     error::{ErrorKind, RusticError, RusticResult},
     id::Id,
 };
@@ -179,5 +181,11 @@ impl<BE: DecryptFullBackend> WriteBackend for DryRunBackend<BE> {
         } else {
             self.be.remove(tpe, id, cacheable)
         }
+    }
+}
+
+impl<BE: DecryptFullBackend> ConcurrentBackend for DryRunBackend<BE> {
+    fn concurrency(&self) -> &ConcurrencyManager {
+        self.be.concurrency()
     }
 }
