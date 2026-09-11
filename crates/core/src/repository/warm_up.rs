@@ -1,4 +1,5 @@
 use std::io::{self, BufRead, BufReader};
+use std::num::NonZero;
 use std::process::{Command, Stdio};
 use std::thread::{self, sleep};
 
@@ -6,12 +7,12 @@ use backon::{BlockingRetryable, ExponentialBuilder};
 
 use itertools::Itertools;
 use log::{debug, error, info, warn};
-use rayon::ThreadPoolBuilder;
 use serde::Deserialize;
 
 use crate::{
     CommandInput, Id, Progress,
     backend::{FileType, ReadBackend},
+    concurrency::ConcurrencyClass,
     error::{ErrorKind, RusticError, RusticResult},
     repository::Repository,
 };
@@ -19,7 +20,7 @@ use crate::{
 pub(super) mod constants {
     use std::time::Duration;
 
-    /// The maximum number of reader threads to use for warm-up.
+    /// The maximum number of reader threads to use for warm-up if read concurrency is unlimited
     pub(super) const MAX_READER_THREADS_NUM: usize = 20;
 
     /// The maximum number of retries for spawning commands.
@@ -500,16 +501,14 @@ fn warm_up_repo<S>(
     let progress_bar = repo.progress_counter("warming up {tpe}(s)...");
     progress_bar.set_length(ids.len() as u64);
 
-    let pool = ThreadPoolBuilder::new()
-        .num_threads(constants::MAX_READER_THREADS_NUM)
-        .build()
-        .map_err(|err| {
-            RusticError::with_source(
-                ErrorKind::Internal,
-                "Failed to create thread pool for warm-up. Please try again.",
-                err,
-            )
-        })?;
+    // Read Concurrency: Fall back to older default if unlimited
+    let pool = repo.concurrency().pool(
+        "warm_up_repo",
+        repo.concurrency()
+            .limit(ConcurrencyClass::Read)
+            .or(NonZero::new(constants::MAX_READER_THREADS_NUM)),
+    );
+
     let progress_bar_ref = &progress_bar;
     let backend = &repo.be;
     pool.in_place_scope(|scope| {

@@ -14,6 +14,7 @@ use crate::{
         packer::{BlobCopier, CopyPackBlobs, PackSizer},
         tree::TreeStreamerOnce,
     },
+    concurrency::{ConcurrencyClass, ConcurrencyPool},
     error::RusticResult,
     index::{ReadIndex, indexer::Indexer},
     repofile::SnapshotFile,
@@ -55,6 +56,18 @@ pub(crate) fn copy<'a, R: IndexedFull, S: IndexedIds>(
 ) -> RusticResult<()> {
     let be_dest = repo_dest.dbe();
 
+    // Read/Write Concurrency: Size pool to be able to meet the larger of either
+    // the source read or dest write concurrency limits, if any, falling back
+    // to the global pool if neither is configured.  The BlobCopier will enforce
+    // any actual reading or writing limits during copy.
+    let pool = repo.concurrency().pool(
+        "copy",
+        std::cmp::max(
+            repo.concurrency().limit(ConcurrencyClass::Read),
+            repo_dest.concurrency().limit(ConcurrencyClass::Write),
+        ),
+    );
+
     let (snap_trees, snaps): (Vec<_>, Vec<_>) = snapshots
         .into_iter()
         .cloned()
@@ -74,6 +87,9 @@ pub(crate) fn copy<'a, R: IndexedFull, S: IndexedIds>(
 
     let mut tree_streamer = TreeStreamerOnce::new(be, index, snap_trees, p)?;
     while let Some(item) = tree_streamer.next().transpose()? {
+        // CPU Concurrency: Include our processing together with TreeStreamerOnce
+        let _guard = repo.concurrency().acquire(ConcurrencyClass::Cpu);
+
         let (_, tree) = item;
         for node in tree.nodes {
             match node.node_type {
@@ -112,7 +128,7 @@ pub(crate) fn copy<'a, R: IndexedFull, S: IndexedIds>(
         })
         .collect();
 
-    copy_blobs(data_blobs, data_repacker, p)?;
+    copy_blobs(&pool, data_blobs, data_repacker, p)?;
 
     let p = repo_dest.progress_bytes("copying tree blobs...");
     let pack_sizer = PackSizer::from_config(
@@ -137,7 +153,7 @@ pub(crate) fn copy<'a, R: IndexedFull, S: IndexedIds>(
         })
         .collect();
 
-    copy_blobs(trees, tree_repacker, p)?;
+    copy_blobs(&pool, trees, tree_repacker, p)?;
 
     indexer.write().unwrap().finalize()?;
 
@@ -148,6 +164,7 @@ pub(crate) fn copy<'a, R: IndexedFull, S: IndexedIds>(
 
 #[allow(clippy::needless_pass_by_value)]
 fn copy_blobs<BE: DecryptFullBackend>(
+    pool: &ConcurrencyPool,
     mut blobs: Vec<CopyPackBlobs>,
     copier: BlobCopier<BE>,
     p: Progress,
@@ -164,9 +181,11 @@ fn copy_blobs<BE: DecryptFullBackend>(
         .sum();
     p.set_length(length);
 
-    blobs
-        .into_par_iter()
-        .try_for_each(|blobs| -> RusticResult<_> { copier.copy(blobs, &p) })?;
+    pool.install(|| -> RusticResult<_> {
+        blobs
+            .into_par_iter()
+            .try_for_each(|blobs| -> RusticResult<_> { copier.copy(blobs, &p) })
+    })?;
     _ = copier.finalize()?;
     p.finish();
     Ok(())
