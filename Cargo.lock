@@ -4360,6 +4360,7 @@ dependencies = [
  "rayon",
  "rstest",
  "runtime-format",
+ "rustc-hash",
  "rustic_backend",
  "rustic_cdc",
  "rustic_testing",
