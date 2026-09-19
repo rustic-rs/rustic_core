@@ -65,6 +65,25 @@ impl IndexEntry {
         Ok(data)
     }
 
+    /// Decrypt and decompress this blob, then run `f` on the plaintext.
+    ///
+    /// Prune tree walking uses this so zstd output can stay in a thread-local
+    /// buffer instead of a new `Vec`/`Bytes` per tree.
+    pub fn with_decoded<B, R, F>(&self, be: &B, f: F) -> RusticResult<R>
+    where
+        B: DecryptReadBackend,
+        F: FnOnce(&[u8]) -> RusticResult<R>,
+    {
+        let cipher = be.read_partial(
+            FileType::Pack,
+            &self.pack,
+            self.blob_type.is_cacheable(),
+            self.location.offset,
+            self.location.length,
+        )?;
+        be.with_decoded_from_partial(&cipher, self.location.uncompressed_length, f)
+    }
+
     /// Get the length of the data described by the [`IndexEntry`]
     #[must_use]
     pub const fn data_length(&self) -> u32 {
