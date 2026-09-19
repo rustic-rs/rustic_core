@@ -34,6 +34,14 @@ use crate::reqwest::reqwest_client;
 mod constants {
     /// Default number of retries
     pub(super) const DEFAULT_RETRY: usize = 5;
+
+    /// B2 `b2_list_file_names` page size to request.
+    ///
+    /// `OpenDAL` only sends `maxFileCount` when `ListOptions.limit` is set. If we
+    /// omit it, B2 defaults to 100 names per page (max 10000). Prune (and
+    /// check) list every pack under `data/`, so the default turns a few dozen
+    /// round-trips into thousands and dominates runtime against B2.
+    pub(super) const B2_LIST_PAGE_SIZE: usize = 10_000;
 }
 
 /// `OpenDALBackend` contains a wrapper around an blocking operator of the `OpenDAL` library.
@@ -217,6 +225,30 @@ impl OpenDALBackend {
         Ok(Self { operator })
     }
 
+    /// Listing options used for repository (and source) listings.
+    ///
+    /// For B2 this raises the per-request page size from the API default of 100
+    /// to the documented maximum of 10000.
+    fn list_options(&self, recursive: bool) -> ListOptions {
+        ListOptions {
+            recursive,
+            limit: self.list_page_size(),
+            ..Default::default()
+        }
+    }
+
+    /// Backend-specific list page size, if we should override the service default.
+    fn list_page_size(&self) -> Option<usize> {
+        let info = self.operator.info();
+        if !info.capability().list_with_limit {
+            return None;
+        }
+        match info.scheme() {
+            "b2" => Some(constants::B2_LIST_PAGE_SIZE),
+            _ => None,
+        }
+    }
+
     /// Return a path for the given file type and id.
     ///
     /// # Arguments
@@ -249,10 +281,7 @@ impl OpenDALBackend {
     /// # Errors
     /// If listing fails or exclude patterns cannot be compiled
     pub fn as_source(self, excludes: &Excludes) -> RusticResult<OpenDALReadSource> {
-        let list_options = ListOptions {
-            recursive: true,
-            ..Default::default()
-        };
+        let list_options = self.list_options(true);
         // openDAL lister may entries in random order; hence we collect and sort them here.
         // This also allows to handle listing errors directly
         let mut entries: Vec<_> = self
@@ -348,14 +377,9 @@ impl ReadBackend for OpenDALBackend {
         }
 
         let path = tpe.dirname().to_string() + "/";
-        let list_options = ListOptions {
-            recursive: true,
-            ..Default::default()
-        };
-
         let lister = self
             .operator
-            .lister_options(&path, list_options)
+            .lister_options(&path, self.list_options(true))
             .map_err(|err| {
                 RusticError::with_source(ErrorKind::Backend, "Listing failed for `{type}`", err)
                     .attach_context("type", tpe.to_string())
@@ -405,13 +429,9 @@ impl ReadBackend for OpenDALBackend {
         }
 
         let path = tpe.dirname().to_string() + "/";
-        let list_options = ListOptions {
-            recursive: true,
-            ..Default::default()
-        };
         let lister = self
             .operator
-            .lister_options(&path, list_options)
+            .lister_options(&path, self.list_options(true))
             .map_err(|err| {
                 RusticError::with_source(ErrorKind::Backend, "Listing failed for `{type}`", err)
                     .attach_context("type", tpe.to_string())
@@ -630,6 +650,28 @@ mod tests {
     #[case("10kB;10MB")]
     fn invalid_throttle(#[case] input: &str) {
         assert!(Throttle::from_str(input).is_err());
+    }
+
+    #[rstest]
+    #[case("b2", Some(constants::B2_LIST_PAGE_SIZE))]
+    #[case("s3_aws", None)]
+    fn list_page_size_matches_scheme(
+        #[case] fixture: &str,
+        #[case] expected: Option<usize>,
+    ) -> Result<()> {
+        #[derive(Deserialize)]
+        struct TestCase {
+            path: String,
+            options: BTreeMap<String, String>,
+        }
+
+        let fixture_path = PathBuf::from(format!("tests/fixtures/opendal/{fixture}.toml"));
+        let test: TestCase = toml::from_str(&fs::read_to_string(fixture_path)?)?;
+        let backend = OpenDALBackend::new(test.path, test.options)?;
+
+        assert_eq!(backend.list_page_size(), expected);
+        assert_eq!(backend.list_options(true).limit, expected);
+        Ok(())
     }
 
     #[rstest]
