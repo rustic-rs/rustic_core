@@ -150,6 +150,8 @@ pub struct LocalDestination {
     path: PathBuf,
     /// Whether we expect a single file as destination.
     is_file: bool,
+    #[cfg(test)]
+    write_error: Option<std::io::ErrorKind>,
 }
 
 impl LocalDestination {
@@ -195,7 +197,17 @@ impl LocalDestination {
             }
         }
 
-        Ok(Self { path, is_file })
+        Ok(Self {
+            path,
+            is_file,
+            #[cfg(test)]
+            write_error: None,
+        })
+    }
+
+    #[cfg(test)]
+    pub(crate) fn set_write_error(&mut self, error: std::io::ErrorKind) {
+        self.write_error = Some(error);
     }
 
     /// Path to the given item (relative to the base path)
@@ -820,6 +832,13 @@ impl LocalDestination {
         offset: u64,
         data: &[u8],
     ) -> LocalDestinationResult<()> {
+        #[cfg(test)]
+        if let Some(error) = self.write_error {
+            return Err(LocalDestinationErrorKind::CouldNotWriteToBuffer(
+                std::io::Error::from(error),
+            ));
+        }
+
         let filename = self.path(item);
         let mut file = OpenOptions::new()
             .create(true)

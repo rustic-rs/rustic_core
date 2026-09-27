@@ -6,7 +6,12 @@ use log::{debug, error, info, trace, warn};
 use serde::{Deserialize, Serialize};
 use smallvec::SmallVec;
 
-use std::{cmp::Ordering, collections::BTreeMap, path::PathBuf, sync::Mutex};
+use std::{
+    cmp::Ordering,
+    collections::BTreeMap,
+    path::PathBuf,
+    sync::{Mutex, OnceLock},
+};
 
 use itertools::Itertools;
 use rayon::ThreadPoolBuilder;
@@ -596,6 +601,9 @@ fn restore_contents<S: Open>(
             .attach_context("num_threads", threads.to_string())
         })?;
 
+    let failed_pack_reads = Mutex::new(Vec::new());
+    let failed_destination_write = OnceLock::new();
+
     pool.in_place_scope(|s| {
         for PackInfo {
             pack_id,
@@ -609,25 +617,51 @@ fn restore_contents<S: Open>(
         } in packs
         {
             let p = &p;
+            let failed_pack_reads = &failed_pack_reads;
+            let failed_destination_write = &failed_destination_write;
 
             if !blobs.is_empty() {
-                // TODO: error handling!
                 s.spawn(move |s1| {
+                    if failed_destination_write.get().is_some() {
+                        return;
+                    }
+
                     let read_data = match &from_file {
                         Some((file_idx, offset_file, length_file)) => {
                             // read from existing file
                             dest.read_at(&filenames[*file_idx], *offset_file, (*length_file).into())
-                                .unwrap()
+                                .map_err(|err| {
+                                    RusticError::with_source(
+                                        ErrorKind::InputOutput,
+                                        "Failed to read existing file `{path}` while restoring. Please check the path and try again.",
+                                        err,
+                                    )
+                                    .attach_context(
+                                        "path",
+                                        filenames[*file_idx].display().to_string(),
+                                    )
+                                })
                         }
                         None => {
                             // read needed part of the pack
                             be.read_partial(FileType::Pack, &pack_id, false, offset, length)
-                                .unwrap()
+                        }
+                    };
+                    let read_data = match read_data {
+                        Ok(data) => data,
+                        Err(err) => {
+                            error!("failed to read pack {pack_id} while restoring: {err}");
+                            failed_pack_reads.lock().unwrap().push(err);
+                            return;
                         }
                     };
 
                     // save into needed files in parallel
                     for (bl, name_dests) in blobs {
+                        if failed_destination_write.get().is_some() {
+                            return;
+                        }
+
                         let size = bl.data_length().into();
                         let data = if from_file.is_some() {
                             read_data.clone()
@@ -651,16 +685,52 @@ fn restore_contents<S: Open>(
                             let data = data.clone();
                             s1.spawn(move |_| {
                                 let path = &filenames[file_idx];
+                                if failed_destination_write.get().is_some() {
+                                    return;
+                                }
+
                                 // Allocate file if it is not yet allocated
-                                let mut sizes_guard = sizes.lock().unwrap();
+                                let Ok(mut sizes_guard) = sizes.lock() else {
+                                    _ = failed_destination_write.set(RusticError::new(
+                                        ErrorKind::Internal,
+                                        "Failed to lock restore file sizes. Please report this error.",
+                                    ));
+                                    return;
+                                };
+                                if failed_destination_write.get().is_some() {
+                                    return;
+                                }
                                 let filesize = sizes_guard[file_idx];
                                 if filesize > 0 {
-                                    dest.set_length(path, filesize).unwrap();
+                                    if let Err(err) = dest.set_length(path, filesize) {
+                                        _ = failed_destination_write.set(
+                                            RusticError::with_source(
+                                                ErrorKind::InputOutput,
+                                                "Failed to set the length of the file `{path}` while restoring. Please check available disk space and permissions, then try again.",
+                                                err,
+                                            )
+                                            .attach_context("path", path.display().to_string()),
+                                        );
+                                        return;
+                                    }
                                     sizes_guard[file_idx] = 0;
                                 }
                                 drop(sizes_guard);
+                                if failed_destination_write.get().is_some() {
+                                    return;
+                                }
                                 if !is_sparse {
-                                    dest.write_at(path, start, &data).unwrap();
+                                    if let Err(err) = dest.write_at(path, start, &data) {
+                                        _ = failed_destination_write.set(
+                                            RusticError::with_source(
+                                                ErrorKind::InputOutput,
+                                                "Failed to write restored data to the file `{path}`. Please check available disk space and permissions, then try again.",
+                                                err,
+                                            )
+                                            .attach_context("path", path.display().to_string()),
+                                        );
+                                        return;
+                                    }
                                 }
                                 p.inc(size);
                             });
@@ -673,7 +743,172 @@ fn restore_contents<S: Open>(
 
     p.finish();
 
+    if let Some(err) = failed_destination_write.into_inner() {
+        return Err(err);
+    }
+
+    let mut failed_pack_reads = failed_pack_reads.into_inner().map_err(|_| {
+        RusticError::new(
+            ErrorKind::Internal,
+            "Failed to collect restore errors. Please report this error.",
+        )
+    })?;
+
+    if let Some(err) = failed_pack_reads.pop() {
+        let failed_reads = failed_pack_reads.len() + 1;
+        return Err(RusticError::with_source(
+            ErrorKind::Backend,
+            "Failed to restore {failed_reads} pack read(s). Remaining readable data was restored.",
+            err,
+        )
+        .attach_context("failed_reads", failed_reads.to_string()));
+    }
+
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use std::{
+        collections::BTreeMap,
+        error::Error,
+        fs,
+        sync::{Arc, RwLock},
+    };
+
+    use anyhow::Result;
+    use bytes::{Bytes, BytesMut};
+    use enum_map::EnumMap;
+    use tempfile::tempdir;
+
+    use super::{LocalDestination, RestoreOptions};
+    use crate::{
+        BackupOptions, BytesList, ConfigOptions, Credentials, ErrorKind, FileType, Id, KeyOptions,
+        LsOptions, PathList, ReadBackend, Repository, RepositoryBackends, RepositoryOptions,
+        RusticError, RusticResult, WriteBackend,
+        backend::local_destination::LocalDestinationErrorKind,
+        repofile::{MasterKey, SnapshotFile},
+    };
+
+    struct InMemoryBackend {
+        files: RwLock<EnumMap<FileType, BTreeMap<Id, Bytes>>>,
+    }
+
+    impl InMemoryBackend {
+        fn new() -> Self {
+            Self {
+                files: RwLock::new(EnumMap::from_fn(|_| BTreeMap::new())),
+            }
+        }
+    }
+
+    impl ReadBackend for InMemoryBackend {
+        fn location(&self) -> String {
+            "test".to_string()
+        }
+
+        fn list_with_size(&self, tpe: FileType) -> RusticResult<Vec<(Id, u32)>> {
+            Ok(self.files.read().unwrap()[tpe]
+                .iter()
+                .map(|(id, data)| (*id, u32::try_from(data.len()).unwrap()))
+                .collect())
+        }
+
+        fn read_full(&self, tpe: FileType, id: &Id) -> RusticResult<Bytes> {
+            self.files.read().unwrap()[tpe]
+                .get(id)
+                .cloned()
+                .ok_or_else(|| RusticError::new(ErrorKind::Backend, "Missing test backend file"))
+        }
+
+        fn read_partial(
+            &self,
+            tpe: FileType,
+            id: &Id,
+            _cacheable: bool,
+            offset: u32,
+            length: u32,
+        ) -> RusticResult<Bytes> {
+            let data = self.read_full(tpe, id)?;
+            Ok(data.slice(offset as usize..(offset + length) as usize))
+        }
+
+        fn warmup_path(&self, tpe: FileType, id: &Id) -> String {
+            format!("{tpe}/{id}")
+        }
+    }
+
+    impl WriteBackend for InMemoryBackend {
+        fn write_bytes(
+            &self,
+            tpe: FileType,
+            id: &Id,
+            _cacheable: bool,
+            content: BytesList,
+        ) -> RusticResult<()> {
+            let mut bytes = BytesMut::new();
+            for part in content.slice() {
+                bytes.extend_from_slice(part);
+            }
+            _ = self.files.write().unwrap()[tpe].insert(*id, bytes.freeze());
+            Ok(())
+        }
+
+        fn remove(&self, tpe: FileType, id: &Id, _cacheable: bool) -> RusticResult<()> {
+            _ = self.files.write().unwrap()[tpe].remove(id);
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn restore_reports_storage_full_without_panicking() -> Result<()> {
+        let source = tempdir()?;
+        fs::write(source.path().join("file"), vec![1; 1024])?;
+
+        let backends = RepositoryBackends::new(Arc::new(InMemoryBackend::new()), None);
+        let repo = Repository::new(&RepositoryOptions::default().no_cache(true), &backends)?
+            .init(
+                &Credentials::Masterkey(MasterKey::new()),
+                &KeyOptions::default(),
+                &ConfigOptions::default(),
+            )?
+            .to_indexed_ids()?;
+        _ = repo.backup(
+            &BackupOptions::default(),
+            &PathList::from_iter(Some(source.path().to_path_buf())),
+            SnapshotFile::default(),
+        )?;
+        let repo = repo.to_indexed()?;
+        let node = repo.node_from_snapshot_path("latest", |_| true)?;
+        let ls = repo.ls(&node, &LsOptions::default())?;
+
+        let restore_dir = tempdir()?;
+        let mut dest = LocalDestination::new(
+            restore_dir
+                .path()
+                .to_str()
+                .expect("restore path is valid utf-8"),
+            true,
+            !node.is_dir(),
+        )?;
+        dest.set_write_error(std::io::ErrorKind::StorageFull);
+        let restore_opts = RestoreOptions::default();
+        let plan = repo.prepare_restore(&restore_opts, ls.clone(), &dest, false)?;
+
+        let err = repo
+            .restore(plan, &restore_opts, ls, &dest)
+            .expect_err("restore must report a full destination");
+        let message = err.to_string();
+        assert!(message.contains("Failed to write restored data"));
+        assert!(matches!(
+            err.source()
+                .and_then(|cause| cause.downcast_ref::<LocalDestinationErrorKind>()),
+            Some(LocalDestinationErrorKind::CouldNotWriteToBuffer(io_error))
+                if io_error.kind() == std::io::ErrorKind::StorageFull
+        ));
+
+        Ok(())
+    }
 }
 
 /// Information about what will be restored.
