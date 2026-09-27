@@ -1,4 +1,5 @@
 use std::{
+    fs,
     path::{Path, PathBuf},
     str::FromStr,
 };
@@ -144,6 +145,31 @@ fn test_backup_with_tar_gz_passes(
     insta_snapshotfile_redaction.bind(|| {
         assert_with_win("backup-tar-matching-snaps", &snaps);
     });
+
+    Ok(())
+}
+
+#[rstest]
+fn test_backup_preserves_empty_source_directory(set_up_repo: Result<RepoOpen>) -> Result<()> {
+    let tmp = tempfile::tempdir()?;
+    let empty = tmp.path().join("empty");
+    let filled = tmp.path().join("filled");
+    fs::create_dir(&empty)?;
+    fs::create_dir(&filled)?;
+    fs::write(filled.join("file"), "contents")?;
+
+    let repo = set_up_repo?.to_indexed_ids()?;
+    let paths = PathList::from_iter([empty.clone(), filled.clone()]);
+    let snapshot = repo.backup(&BackupOptions::default(), &paths, SnapshotFile::default())?;
+
+    let repo = repo.to_indexed_ids()?;
+    let empty_node = repo.node_from_path(snapshot.tree, &empty)?;
+    assert!(empty_node.is_dir());
+    let empty_tree = repo.get_tree(&empty_node.subtree.expect("empty directory tree"))?;
+    assert!(empty_tree.nodes.is_empty());
+
+    let file_node = repo.node_from_path(snapshot.tree, &filled.join("file"))?;
+    assert!(!file_node.is_dir());
 
     Ok(())
 }
