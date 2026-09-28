@@ -1,5 +1,5 @@
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     fs::{self, File},
     io::{self, Read, Seek, SeekFrom},
     path::{Path, PathBuf},
@@ -448,6 +448,26 @@ impl Cache {
         Ok(())
     }
 
+    /// Removes cached files of `tpe` whose ids are not in `present`.
+    ///
+    /// File size is not compared. Restic's `cache.Clear` does the same after
+    /// loading the index: packs deleted from the repository are dropped, and
+    /// packs that are still present are kept.
+    ///
+    /// # Errors
+    ///
+    /// * If the cache directory could not be read.
+    /// * If a cache file could not be removed.
+    pub fn remove_ids_not_in(&self, tpe: FileType, present: &HashSet<Id>) -> RusticResult<()> {
+        let list_cache = self.list_with_size(tpe)?;
+        for id in list_cache.keys() {
+            if !present.contains(id) {
+                self.remove(tpe, id)?;
+            }
+        }
+        Ok(())
+    }
+
     /// Reads full data of the given file.
     ///
     /// # Arguments
@@ -656,5 +676,39 @@ impl Cache {
         })?;
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::HashSet;
+
+    use super::*;
+
+    fn new_cache() -> (tempfile::TempDir, Cache) {
+        let dir = tempfile::tempdir().unwrap();
+        let cache = Cache::new(RepositoryId::default(), Some(dir.path().to_path_buf())).unwrap();
+        (dir, cache)
+    }
+
+    #[test]
+    fn remove_ids_not_in_drops_only_absent_packs() {
+        let (_dir, cache) = new_cache();
+        let keep = Id::random();
+        let drop_a = Id::random();
+        let drop_b = Id::random();
+        for id in [&keep, &drop_a, &drop_b] {
+            cache
+                .write_bytes(FileType::Pack, id, &vec![1_u8; 8].into())
+                .unwrap();
+        }
+
+        let mut present = HashSet::new();
+        assert!(present.insert(keep));
+        cache.remove_ids_not_in(FileType::Pack, &present).unwrap();
+
+        assert!(cache.read_full(FileType::Pack, &keep).unwrap().is_some());
+        assert!(cache.read_full(FileType::Pack, &drop_a).unwrap().is_none());
+        assert!(cache.read_full(FileType::Pack, &drop_b).unwrap().is_none());
     }
 }

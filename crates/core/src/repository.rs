@@ -7,6 +7,7 @@ pub use status::*;
 
 use std::{
     cmp::Ordering,
+    collections::HashSet,
     io::Write,
     path::{Path, PathBuf},
     sync::Arc,
@@ -15,7 +16,7 @@ use std::{
 use bytes::Bytes;
 use derive_setters::Setters;
 use jiff::SignedDuration;
-use log::info;
+use log::{info, warn};
 use serde_with::{DisplayFromStr, serde_as};
 
 use crate::{
@@ -64,6 +65,7 @@ use crate::{
         ConfigFile, KeyId, PathList, RepoFile, RepoId, SnapshotFile, SnapshotSummary, Tree,
         configfile::ConfigId,
         keyfile::{MasterKey, find_key_in_backend},
+        packfile::PackId,
         snapshotfile::SnapshotId,
     },
     repository::{
@@ -1126,8 +1128,29 @@ impl<S: Open> Repository<S> {
         Ok(self.into_indexed_with_index(index))
     }
 
+    /// Drop cached packs whose ids are not in `index`.
+    ///
+    /// Runs on every index load, as restic's `prepareCache` does, so a backup
+    /// node drops packs another host has already pruned.
+    fn clear_cached_packs_not_in_index(&self, index: &GlobalIndex) {
+        let Some(cache) = self.cache() else {
+            return;
+        };
+        let present = index
+            .pack_ids()
+            .map(PackId::into_inner)
+            .collect::<HashSet<_>>();
+        if let Err(err) = cache.remove_ids_not_in(FileType::Pack, &present) {
+            warn!(
+                "failed to remove cached packs that are no longer in the index: {}",
+                err.display_log()
+            );
+        }
+    }
+
     // helper function to deduplicate code
     fn into_indexed_with_index(self, index: GlobalIndex) -> Repository<IndexedFullStatus> {
+        self.clear_cached_packs_not_in_index(&index);
         let status = IndexedFullStatus {
             open: self.status.into_open_status(),
             index,
@@ -1193,6 +1216,7 @@ impl<S: Open> Repository<S> {
 
     // helper function to deduplicate code
     fn into_indexed_ids_with_index(self, index: GlobalIndex) -> Repository<IndexedIdsStatus> {
+        self.clear_cached_packs_not_in_index(&index);
         let status = IndexedIdsStatus {
             open: self.status.into_open_status(),
             index,

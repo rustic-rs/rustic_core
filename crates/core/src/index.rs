@@ -251,6 +251,11 @@ impl GlobalIndex {
         }
     }
 
+    /// Pack ids of both blob types still recorded by this index.
+    pub(crate) fn pack_ids(&self) -> impl Iterator<Item = PackId> + '_ {
+        self.index.pack_ids()
+    }
+
     /// Create a new [`GlobalIndex`] from an [`IndexCollector`]
     ///
     /// # Arguments
