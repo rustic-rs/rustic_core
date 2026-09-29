@@ -205,10 +205,11 @@ pub struct BackupOptions {
 ///
 /// # Arguments
 ///
-/// * `repo` - The repository to use
-/// * `opts` - The backup options
-/// * `src` - The source to backup
-/// * `snap` - The snapshot with raw information
+/// * `repo`         - The repository to use
+/// * `opts`         - The backup options
+/// * `src`          - The source to backup
+/// * `snap`         - The snapshot with raw information
+/// * `backup_paths` - Additional paths to back up?
 ///
 /// # Errors
 ///
@@ -288,6 +289,7 @@ where
 
     archiver.archive(
         src,
+        // TODO: Why only the first one? What if `backup_paths` is empty?
         &backup_paths[0],
         as_path.as_ref(),
         opts.parent_opts.skip_if_unchanged,
@@ -344,14 +346,14 @@ pub(crate) fn backup<R: IndexedIds>(
             archive(repo, &opts, &src, snap, &backup_paths)?
         }
     } else {
-        let backup_path = source.paths();
+        let backup_paths = source.paths();
         let src = LocalSource::new(
             opts.ignore_save_opts,
             &opts.excludes,
             &opts.ignore_filter_opts,
-            &backup_path,
+            &backup_paths,
         )?;
-        archive(repo, opts, &src, snap, &backup_path)?
+        archive(repo, opts, &src, snap, &backup_paths)?
     };
 
     Ok(snap)
