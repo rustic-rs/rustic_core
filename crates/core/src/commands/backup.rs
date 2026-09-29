@@ -83,8 +83,7 @@ impl ParentOptions {
     ///
     /// # Type Parameters
     ///
-    /// * `P` - The type of the progress bars.
-    /// * `S` - The type of the indexed tree.
+    /// * `R` - The type of the indexed tree (repository).
     ///
     /// # Arguments
     ///
@@ -94,9 +93,9 @@ impl ParentOptions {
     /// # Returns
     ///
     /// The parent snapshot ids and the parent object.
-    pub(crate) fn get_parent<S: IndexedTree>(
+    pub(crate) fn get_parent<R: IndexedTree>(
         &self,
-        repo: &Repository<S>,
+        repo: &Repository<R>,
         snap: &SnapshotFile,
     ) -> (Vec<SnapshotId>, Parent) {
         let group = SnapshotGroup::from_snapshot(snap, self.group_by.unwrap_or_default());
@@ -197,19 +196,20 @@ pub struct BackupOptions {
     pub ignore_filter_opts: LocalSourceFilterOptions,
 }
 
-/// Backup data, create a snapshot.
+/// Archive data, create a snapshot.
 ///
 /// # Type Parameters
 ///
-/// * `P` - The type of the progress bars.
-/// * `S` - The type of the indexed tree.
+/// * `R` - The type of the indexed IDs (repository).
+/// * `S` - The type of the backup source.
 ///
 /// # Arguments
 ///
-/// * `repo` - The repository to use
-/// * `opts` - The backup options
-/// * `src` - The source to backup
-/// * `snap` - The snapshot with raw information
+/// * `repo`         - The repository to use
+/// * `opts`         - The backup options
+/// * `src`          - The source to backup
+/// * `snap`         - The snapshot with raw information
+/// * `backup_paths` - Additional paths to back up?
 ///
 /// # Errors
 ///
@@ -222,18 +222,18 @@ pub struct BackupOptions {
 /// # Returns
 ///
 /// The snapshot pointing to the backup'ed data.
-pub(crate) fn archive<R, S>(
-    repo: &Repository<S>,
+pub(crate) fn archive<S, R>(
+    repo: &Repository<R>,
     opts: &BackupOptions,
-    src: &R,
+    src: &S,
     mut snap: SnapshotFile,
     backup_paths: &[PathBuf],
 ) -> RusticResult<SnapshotFile>
 where
-    S: IndexedIds,
-    R: ReadSource + 'static,
-    <R as ReadSource>::Open: Send,
-    <R as ReadSource>::Iter: Send,
+    R: IndexedIds,
+    S: ReadSource + 'static,
+    <S as ReadSource>::Open: Send,
+    <S as ReadSource>::Iter: Send,
 {
     let index = repo.index();
 
@@ -289,6 +289,7 @@ where
 
     archiver.archive(
         src,
+        // TODO: Why only the first one? What if `backup_paths` is empty?
         &backup_paths[0],
         as_path.as_ref(),
         opts.parent_opts.skip_if_unchanged,
@@ -301,7 +302,7 @@ where
 ///
 /// # Type Parameters
 ///
-/// * `S` - The type of the indexed tree.
+/// * `R` - The type of the indexed IDs (repository).
 ///
 /// # Arguments
 ///
@@ -321,8 +322,8 @@ where
 /// # Returns
 ///
 /// The snapshot pointing to the backup'ed data.
-pub(crate) fn backup<S: IndexedIds>(
-    repo: &Repository<S>,
+pub(crate) fn backup<R: IndexedIds>(
+    repo: &Repository<R>,
     opts: &BackupOptions,
     source: &PathList,
     snap: SnapshotFile,
@@ -345,14 +346,14 @@ pub(crate) fn backup<S: IndexedIds>(
             archive(repo, &opts, &src, snap, &backup_paths)?
         }
     } else {
-        let backup_path = source.paths();
+        let backup_paths = source.paths();
         let src = LocalSource::new(
             opts.ignore_save_opts,
             &opts.excludes,
             &opts.ignore_filter_opts,
-            &backup_path,
+            &backup_paths,
         )?;
-        archive(repo, opts, &src, snap, &backup_path)?
+        archive(repo, opts, &src, snap, &backup_paths)?
     };
 
     Ok(snap)
