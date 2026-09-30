@@ -5,11 +5,12 @@ use std::{
     ffi::OsString,
     fs::File,
     path::{Path, PathBuf},
+    sync::mpsc::{Receiver, channel},
 };
 
 use bytesize::ByteSize;
 use derive_setters::Setters;
-use ignore::{Walk, WalkBuilder};
+use ignore::{WalkBuilder, WalkState};
 use log::warn;
 use serde_with::{DisplayFromStr, serde_as};
 
@@ -276,8 +277,18 @@ impl ReadSource for LocalSource {
     ///
     /// An iterator over the entries of the local source.
     fn entries(&self) -> Self::Iter {
+        let (tx, rx) = channel();
+
+        self.builder.build_parallel().run(|| {
+            let tx = tx.clone();
+            Box::new(move |entry| {
+                tx.send(entry).unwrap();
+                WalkState::Continue
+            })
+        });
+
         LocalSourceWalker {
-            walker: self.builder.build(),
+            paths: rx,
             save_opts: self.save_opts,
         }
     }
@@ -294,11 +305,10 @@ fn ignore_error_path(err: &ignore::Error) -> Option<String> {
     }
 }
 
-// Walk doesn't implement Debug
-#[allow(missing_debug_implementations)]
+#[derive(Debug)]
 pub struct LocalSourceWalker {
-    /// The walk iterator.
-    walker: Walk,
+    /// The underlying iterator.
+    paths: Receiver<Result<ignore::DirEntry, ignore::Error>>,
     /// The save options to use.
     save_opts: LocalSourceSaveOptions,
 }
@@ -307,12 +317,12 @@ impl Iterator for LocalSourceWalker {
     type Item = RusticResult<ReadSourceEntry<OpenFile>>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        match self.walker.next() {
+        match self.paths.recv() {
             // ignore root dir, i.e. an entry with depth 0 of type dir
-            Some(Ok(entry)) if entry.depth() == 0 && entry.file_type().unwrap().is_dir() => {
-                self.walker.next()
+            Ok(Ok(entry)) if entry.depth() == 0 && entry.file_type().unwrap().is_dir() => {
+                self.paths.recv().ok()
             }
-            item => item,
+            item => item.ok(),
         }
         .map(|e| {
             let entry = e.map_err(|err| {
