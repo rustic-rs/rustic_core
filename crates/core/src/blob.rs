@@ -143,9 +143,13 @@ impl Ord for BlobLocation {
 
 impl BlobLocation {
     /// Get the length of the data contained in this blob
+    ///
+    /// The `length` originates from repository metadata and may be corrupt. A blob that is
+    /// shorter than the encryption overhead of 32 bytes is reported as empty instead of
+    /// underflowing; reading such a blob fails later when decrypting.
     pub const fn data_length(&self) -> u32 {
         match self.uncompressed_length {
-            None => self.length - 32,
+            None => self.length.saturating_sub(32),
             Some(length) => NonZeroU32::get(length),
         }
     }
@@ -247,5 +251,35 @@ mod tests {
             .ok()
             .map(|bl| bl.length);
         assert_eq!(coalesced_length, expected);
+    }
+
+    #[rstest]
+    #[case(0, None, 0)] // corrupt: shorter than the encryption overhead
+    #[case(31, None, 0)] // corrupt: one byte short of the encryption overhead
+    #[case(32, None, 0)] // empty blob
+    #[case(33, None, 1)]
+    #[case(1000, None, 968)]
+    #[case(0, NonZeroU32::new(7), 7)] // compressed blobs report their uncompressed length
+    #[case(1000, NonZeroU32::new(7), 7)]
+    fn test_data_length(
+        #[case] length: u32,
+        #[case] uncompressed_length: Option<NonZeroU32>,
+        #[case] expected: u32,
+    ) {
+        let location = BlobLocation {
+            offset: 0,
+            length,
+            uncompressed_length,
+        };
+        assert_eq!(location.data_length(), expected);
+    }
+
+    #[test]
+    fn test_data_length_from_untrusted_index() {
+        // `length` comes straight from the (untrusted) index file
+        let location: BlobLocation =
+            serde_json::from_str(r#"{"offset":0,"length":5}"#).expect("valid json");
+        assert_eq!(location.uncompressed_length, None);
+        assert_eq!(location.data_length(), 0);
     }
 }
