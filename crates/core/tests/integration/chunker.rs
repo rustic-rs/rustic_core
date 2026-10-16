@@ -7,10 +7,19 @@ use rstest::rstest;
 
 use rustic_core::{
     BackupOptions, ConfigOptions,
-    repofile::{Chunker, SnapshotFile},
+    repofile::{Chunker, ChunkerPolynomial, SnapshotFile},
 };
 
 use super::{RepoOpen, TestSource, insta_snapshotfile_redaction, set_up_repo, tar_gz_testdata};
+
+#[rstest]
+fn test_chunker_polynomial(set_up_repo: Result<RepoOpen>) -> Result<()> {
+    let mut repo = set_up_repo?;
+    let poly: ChunkerPolynomial = "3da3358b4dc173".parse()?;
+    assert!(repo.apply_config(&ConfigOptions::default().set_chunker_polynomial(poly))?);
+    assert_eq!(repo.config().chunker_polynomial, "3da3358b4dc173");
+    Ok(())
+}
 
 #[rstest]
 fn test_chunker_params(

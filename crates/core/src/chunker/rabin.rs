@@ -223,6 +223,11 @@ pub fn random_poly() -> RusticResult<u64> {
     .ask_report())
 }
 
+/// Returns true IFF `poly` could have been returned by [`random_poly`], i.e. it is irreducible and of degree 53.
+pub(crate) fn valid_poly(poly: u64) -> bool {
+    poly.degree() == 53 && poly.irreducible()
+}
+
 /// A trait for extending polynomials.
 pub(crate) trait PolynomExtend {
     /// Returns true IFF x is irreducible over `F_2`.

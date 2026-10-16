@@ -158,7 +158,7 @@ pub use {
         },
         blob::{ALL_BLOB_TYPES, BlobType, tree::Tree},
     },
-    configfile::{Chunker, ConfigFile},
+    configfile::{Chunker, ChunkerPolynomial, ConfigFile},
     indexfile::{IndexBlob, IndexFile, IndexId, IndexPack},
     keyfile::{KeyFile, KeyId, MasterKey},
     packfile::{HeaderEntry, PackHeader, PackHeaderLength, PackHeaderRef, PackId},

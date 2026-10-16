@@ -1,4 +1,4 @@
-use std::str::FromStr;
+use std::{fmt, str::FromStr};
 
 use serde_derive::{Deserialize, Serialize};
 use serde_with::skip_serializing_none;
@@ -7,6 +7,7 @@ use strum::Display;
 use crate::{
     backend::FileType,
     blob::BlobType,
+    chunker::rabin::valid_poly,
     define_new_id_struct,
     error::{ErrorKind, RusticError, RusticResult},
     impl_repofile,
@@ -308,6 +309,51 @@ impl FromStr for Chunker {
                 ErrorKind::InvalidInput,
                 "only ``rabin`` and ``fixed_size`` are valid chunkers",
             )),
+        }
+    }
+}
+
+/// Polynomial used by the rabin chunker, written in hex.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ChunkerPolynomial(u64);
+
+impl FromStr for ChunkerPolynomial {
+    type Err = Box<RusticError>;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match u64::from_str_radix(s, 16) {
+            Ok(poly) if valid_poly(poly) => Ok(Self(poly)),
+            _ => Err(RusticError::new(
+                ErrorKind::InvalidInput,
+                "Chunker polynomial `{polynomial}` must be an irreducible polynomial of degree 53 in hex, e.g. the one of another repository.",
+            )
+            .attach_context("polynomial", s)),
+        }
+    }
+}
+
+impl fmt::Display for ChunkerPolynomial {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:x}", self.0)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use rstest::rstest;
+
+    use super::*;
+
+    #[rstest]
+    #[case("3da3358b4dc173", true)]
+    #[case("3DA3358B4DC173", true)]
+    #[case("3da3358b4dc172", false)] // divisible by x
+    #[case("3", false)] // irreducible, but of degree 1
+    #[case("xyz", false)]
+    fn chunker_polynomial_from_str(#[case] s: &str, #[case] valid: bool) {
+        let poly = s.parse::<ChunkerPolynomial>();
+        assert_eq!(poly.is_ok(), valid);
+        if let Ok(poly) = poly {
+            assert_eq!(poly.to_string(), s.to_lowercase());
         }
     }
 }

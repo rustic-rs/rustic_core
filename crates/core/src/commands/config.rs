@@ -9,7 +9,10 @@ use crate::{
     chunker::rabin::check_rabin_params,
     crypto::CryptoKey,
     error::{ErrorKind, RusticError, RusticResult},
-    repofile::{ConfigFile, configfile::Chunker},
+    repofile::{
+        ConfigFile,
+        configfile::{Chunker, ChunkerPolynomial},
+    },
     repository::{Open, Repository},
 };
 
@@ -160,6 +163,13 @@ pub struct ConfigOptions {
     #[cfg_attr(feature = "merge", merge(strategy = conflate::option::overwrite_none))]
     pub set_chunk_max_size: Option<ByteSize>,
 
+    /// Set the polynomial of the rabin chunker (hex), e.g. the one of another repository to copy snapshots from or to.
+    /// Defaults to a random polynomial when initializing.
+    #[cfg_attr(feature = "clap", clap(long, value_name = "POLYNOMIAL"))]
+    #[serde_as(as = "Option<DisplayFromStr>")]
+    #[cfg_attr(feature = "merge", merge(strategy = conflate::option::overwrite_none))]
+    pub set_chunker_polynomial: Option<ChunkerPolynomial>,
+
     /// Set compression level. Allowed levels are 1 to 22 and -1 to -7, see <https://facebook.github.io/zstd/>.
     /// Note that 0 equals to no compression
     #[cfg_attr(feature = "clap", clap(long, value_name = "LEVEL"))]
@@ -307,6 +317,10 @@ impl ConfigOptions {
                 .try_into()
                 .map_err(|err| construct_size_too_large_error(err, size))?;
             config.chunk_max_size = Some(chunk_max_size);
+        }
+
+        if let Some(poly) = self.set_chunker_polynomial {
+            config.chunker_polynomial = poly.to_string();
         }
 
         // validate chunker parameters
