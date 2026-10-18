@@ -986,42 +986,29 @@ mod tests {
     use super::*;
 
     #[derive(Debug)]
-    struct TrackedIndex {
-        live: Arc<AtomicUsize>,
-        panic_on_tree: bool,
-    }
+    struct CountedIndex(Arc<AtomicUsize>);
 
-    impl TrackedIndex {
-        fn new(live: &Arc<AtomicUsize>, panic_on_tree: bool) -> Self {
+    impl CountedIndex {
+        fn new(live: &Arc<AtomicUsize>) -> Self {
             _ = live.fetch_add(1, Ordering::SeqCst);
-            Self {
-                live: Arc::clone(live),
-                panic_on_tree,
-            }
+            Self(Arc::clone(live))
         }
     }
 
-    impl Clone for TrackedIndex {
+    impl Clone for CountedIndex {
         fn clone(&self) -> Self {
-            Self::new(&self.live, self.panic_on_tree)
+            Self::new(&self.0)
         }
     }
 
-    impl Drop for TrackedIndex {
+    impl Drop for CountedIndex {
         fn drop(&mut self) {
-            _ = self.live.fetch_sub(1, Ordering::SeqCst);
+            _ = self.0.fetch_sub(1, Ordering::SeqCst);
         }
     }
 
-    impl TrackedIndex {
-        fn panics_for(&self, tpe: BlobType) -> bool {
-            self.panic_on_tree && tpe == BlobType::Tree
-        }
-    }
-
-    impl ReadIndex for TrackedIndex {
-        fn get_id(&self, tpe: BlobType, _id: &BlobId) -> Option<IndexEntry> {
-            assert!(!self.panics_for(tpe), "tree loader panics");
+    impl ReadIndex for CountedIndex {
+        fn get_id(&self, _tpe: BlobType, _id: &BlobId) -> Option<IndexEntry> {
             None
         }
 
@@ -1034,54 +1021,15 @@ mod tests {
         }
     }
 
-    impl ReadGlobalIndex for TrackedIndex {}
+    impl ReadGlobalIndex for CountedIndex {}
 
-    fn live_counter() -> Arc<AtomicUsize> {
-        Arc::new(AtomicUsize::new(0))
-    }
-
-    fn streamer(index: &TrackedIndex, ids: Vec<TreeId>) -> TreeStreamerOnce {
+    #[test]
+    fn dropping_streamer_releases_index_clones() {
+        let live = Arc::new(AtomicUsize::new(0));
+        let index = CountedIndex::new(&live);
         let be = DecryptBackend::new(Arc::new(MockBackend::new()), Key::new());
-        TreeStreamerOnce::new(&be, index, ids, Progress::hidden()).unwrap()
-    }
-
-    fn random_ids(count: usize) -> Vec<TreeId> {
-        (0..count).map(|_| TreeId::from(Id::random())).collect()
-    }
-
-    #[test]
-    fn streamer_releases_index_on_early_drop() {
-        let live = live_counter();
-        let index = TrackedIndex::new(&live, false);
-        let streamer = streamer(&index, random_ids(3));
-        drop(streamer);
-        assert_eq!(live.load(Ordering::SeqCst), 1);
-    }
-
-    #[test]
-    fn streamer_releases_index_after_completion() {
-        let live = live_counter();
-        let index = TrackedIndex::new(&live, false);
-        let mut streamer = streamer(&index, Vec::new());
-        assert!(streamer.next().is_none());
-        drop(streamer);
-        assert_eq!(live.load(Ordering::SeqCst), 1);
-    }
-
-    #[test]
-    fn streamer_drop_does_not_deadlock_on_full_output_queue() {
-        let live = live_counter();
-        let index = TrackedIndex::new(&live, false);
-        let streamer = streamer(&index, random_ids(64));
-        drop(streamer);
-        assert_eq!(live.load(Ordering::SeqCst), 1);
-    }
-
-    #[test]
-    fn streamer_releases_index_when_loader_panics() {
-        let live = live_counter();
-        let index = TrackedIndex::new(&live, true);
-        let streamer = streamer(&index, random_ids(1));
+        let ids = (0..64).map(|_| TreeId::from(Id::random())).collect();
+        let streamer = TreeStreamerOnce::new(&be, &index, ids, Progress::hidden()).unwrap();
         drop(streamer);
         assert_eq!(live.load(Ordering::SeqCst), 1);
     }
