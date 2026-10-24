@@ -20,7 +20,7 @@ use crate::{
     error::{ErrorKind, RusticError, RusticResult},
     index::{ReadGlobalIndex, indexer::SharedIndexer},
     progress::Progress,
-    repofile::configfile::ConfigFile,
+    repofile::configfile::{Chunker, ConfigFile},
 };
 
 /// The `FileArchiver` is responsible for archiving files.
@@ -35,6 +35,8 @@ pub(crate) struct FileArchiver<'a, BE: DecryptWriteBackend, I: ReadGlobalIndex> 
     index: &'a I,
     data_packer: Packer<BE>,
     config: ConfigFile,
+    /// Length and id of the chunks the chunker cuts from a run of zeros.
+    zero_chunk: (usize, DataId),
 }
 
 impl<'a, BE: DecryptWriteBackend, I: ReadGlobalIndex> FileArchiver<'a, BE, I> {
@@ -66,10 +68,18 @@ impl<'a, BE: DecryptWriteBackend, I: ReadGlobalIndex> FileArchiver<'a, BE, I> {
             PackSizer::from_config(config, BlobType::Data, index.total_size(BlobType::Data));
         let data_packer = Packer::new(be, BlobType::Data, indexer, pack_sizer)?;
 
+        // The Rabin hash of a window of zeros is 0, so runs of zeros are cut at the minimum size.
+        let zero_len = match config.chunker() {
+            Chunker::Rabin => config.chunk_min_size(),
+            Chunker::FixedSize => config.chunk_size(),
+        };
+        let zero_chunk = (zero_len, DataId::from(hash(&vec![0; zero_len])));
+
         Ok(Self {
             index,
             data_packer,
             config: config.clone(),
+            zero_chunk,
         })
     }
 
@@ -148,14 +158,20 @@ impl<'a, BE: DecryptWriteBackend, I: ReadGlobalIndex> FileArchiver<'a, BE, I> {
         )?
         .map(|chunk| {
             let chunk = chunk?;
-            let id = hash(&chunk);
+            // Checking for zeros is much faster than hashing, which speeds up sparse files and
+            // disk images.
+            let id = if chunk.len() == self.zero_chunk.0 && is_zero(&chunk) {
+                self.zero_chunk.1
+            } else {
+                DataId::from(hash(&chunk))
+            };
             let size = chunk.len() as u64;
 
-            if !self.index.has_data(&DataId::from(id)) {
+            if !self.index.has_data(&id) {
                 self.data_packer.add(chunk.into(), BlobId::from(id))?;
             }
             p.inc(size);
-            Ok((DataId::from(id), size))
+            Ok((id, size))
         })
         .collect::<RusticResult<_>>()?;
 
@@ -178,5 +194,28 @@ impl<'a, BE: DecryptWriteBackend, I: ReadGlobalIndex> FileArchiver<'a, BE, I> {
     /// * If the channel could not be dropped
     pub(crate) fn finalize(self) -> RusticResult<PackerStats> {
         self.data_packer.finalize()
+    }
+}
+
+/// Checks if `data` contains only zeros. Unlike `iter().all()`, the inner loop is vectorized.
+fn is_zero(data: &[u8]) -> bool {
+    data.chunks(4096)
+        .all(|block| block.iter().fold(0, |acc, &b| acc | b) == 0)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn is_zero_finds_any_nonzero_byte() {
+        let mut data = vec![0; 3 * 4096 + 7];
+        assert!(is_zero(&data));
+        assert!(is_zero(&[]));
+        for i in [0, 4095, 4096, data.len() - 1] {
+            data[i] = 1;
+            assert!(!is_zero(&data), "byte {i}");
+            data[i] = 0;
+        }
     }
 }
