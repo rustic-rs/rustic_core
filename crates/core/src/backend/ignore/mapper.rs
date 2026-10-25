@@ -6,7 +6,6 @@ use std::{ffi::OsStr, path::Path};
 use derive_setters::Setters;
 use ignore::DirEntry;
 use jiff::Timestamp;
-use log::warn;
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 
@@ -105,12 +104,10 @@ impl LocalSourceSaveOptions {
             .set_devid
             .unwrap_or_default()
             .map_or_else(|| Self::device_id(&m), Self::hardlink(&m));
-        let xattr = || {
-            Self::xattrs(entry.path())
-                .inspect_err(|err| warn!("ignoring error obtaining xargs: {err}"))
-                .unwrap_or_default()
-        };
-        let extended_attributes = self.set_xattrs.unwrap_or_default().map_or_else(xattr);
+        let extended_attributes = Self::collect_xattrs(
+            self.set_xattrs.unwrap_or_default(),
+            || Self::xattrs(entry.path()),
+        )?;
         let (mode, inode, links) = Self::nix_infos(&m);
 
         let meta = Metadata {
@@ -133,6 +130,19 @@ impl LocalSourceSaveOptions {
         let path = entry.into_path();
         let open = Some(OpenFile(path.clone()));
         Ok(ReadSourceEntry { path, node, open })
+    }
+
+    // Distinguish deliberately excluded metadata from metadata we could not
+    // read. Treat failed xattr reads like other failed source metadata reads,
+    // rather than silently producing a snapshot with missing attributes.
+    fn collect_xattrs(
+        option: XattrOption,
+        read: impl FnOnce() -> IgnoreResult<Vec<ExtendedAttribute>>,
+    ) -> IgnoreResult<Vec<ExtendedAttribute>> {
+        match option {
+            XattrOption::Yes => read(),
+            XattrOption::No => Ok(Vec::new()),
+        }
     }
 
     fn to_node(
@@ -273,5 +283,37 @@ impl LocalSourceSaveOptions {
 
     fn to_node_other(self, name: &OsStr, _m: &std::fs::Metadata, meta: Metadata) -> Node {
         Node::new_node(name, NodeType::File, meta)
+    }
+}
+
+#[cfg(test)]
+mod xattr_error_tests {
+    use super::*;
+
+    #[test]
+    fn unreadable_xattrs_are_reported_instead_of_omitted() {
+        let result = LocalSourceSaveOptions::collect_xattrs(XattrOption::Yes, || {
+            Err(IgnoreErrorKind::ErrorXattr {
+                path: Path::new("unreadable-metadata").to_path_buf(),
+                source: std::io::Error::from(std::io::ErrorKind::PermissionDenied),
+            })
+        });
+        assert!(matches!(result, Err(IgnoreErrorKind::ErrorXattr { .. })));
+    }
+
+    #[test]
+    fn deliberate_xattr_exclusion_does_not_read_attributes() {
+        let result = LocalSourceSaveOptions::collect_xattrs(XattrOption::No, || {
+            panic!("attribute reader must not run when xattrs are disabled")
+        });
+        assert!(result.unwrap().is_empty());
+    }
+
+    #[test]
+    fn readable_empty_xattrs_remain_valid() {
+        let result = LocalSourceSaveOptions::collect_xattrs(XattrOption::Yes, || {
+            Ok(Vec::new())
+        });
+        assert!(result.unwrap().is_empty());
     }
 }
