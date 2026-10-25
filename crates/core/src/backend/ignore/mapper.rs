@@ -104,10 +104,10 @@ impl LocalSourceSaveOptions {
             .set_devid
             .unwrap_or_default()
             .map_or_else(|| Self::device_id(&m), Self::hardlink(&m));
-        let extended_attributes = Self::collect_xattrs(
-            self.set_xattrs.unwrap_or_default(),
-            || Self::xattrs(entry.path()),
-        )?;
+        let extended_attributes =
+            Self::collect_xattrs(self.set_xattrs.unwrap_or_default(), || {
+                Self::xattrs(entry.path())
+            })?;
         let (mode, inode, links) = Self::nix_infos(&m);
 
         let meta = Metadata {
@@ -311,9 +311,7 @@ mod xattr_error_tests {
 
     #[test]
     fn readable_empty_xattrs_remain_valid() {
-        let result = LocalSourceSaveOptions::collect_xattrs(XattrOption::Yes, || {
-            Ok(Vec::new())
-        });
+        let result = LocalSourceSaveOptions::collect_xattrs(XattrOption::Yes, || Ok(Vec::new()));
         assert!(result.unwrap().is_empty());
     }
 }
