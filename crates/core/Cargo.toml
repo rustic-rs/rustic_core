@@ -106,7 +106,7 @@ sha2 = "0.11.0"
 shell-words = "1.1.1"
 smallvec = { version = "1.15.1", features = ["union"] }
 strum = { version = "0.28.0", features = ["derive"] }
-zstd = "0.13.3"
+zstd = "0.14.3"
 
 [target.'cfg(not(any(windows, target_os="openbsd")))'.dependencies]
 # for local source/destination
