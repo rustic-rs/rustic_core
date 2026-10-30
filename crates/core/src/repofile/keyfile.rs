@@ -34,6 +34,16 @@ pub(super) mod constants {
         #![allow(unused_qualifications)]
         std::mem::size_of::<T>() * 8
     }
+
+    /// Maximum memory `scrypt` may allocate for a key file, i.e. `128 * r * (N + p)` bytes.
+    ///
+    /// Key files are read from the backend before the password is checked, so their parameters
+    /// can't be trusted. Keys created by rustic use 128 MiB, keys created by restic at most 60 MiB.
+    pub(super) const MAX_SCRYPT_MEMORY: u128 = 1 << 30;
+
+    /// Maximum work for `scrypt` for a key file, i.e. `128 * r * N * p`. The runtime grows linearly
+    /// with it; keys created by rustic or restic need about `2^27`, i.e. less than a second.
+    pub(super) const MAX_SCRYPT_WORK: u128 = 1 << 32;
 }
 
 impl_repoid!(KeyId, FileType::Key);
@@ -93,12 +103,28 @@ impl KeyFile {
     /// # Errors
     ///
     /// * If the parameters of the key derivation function are invalid
+    /// * If the parameters of the key derivation function exceed the memory or work limits
     /// * If the output length of the key derivation function is invalid
     ///
     /// # Returns
     ///
     /// The generated key
     pub fn kdf_key(&self, passwd: &impl AsRef<[u8]>) -> RusticResult<Key> {
+        // scrypt allocates `128 * r * (N + p)` bytes and its runtime grows with `128 * r * N * p`
+        let (n, r, p) = (u128::from(self.n), u128::from(self.r), u128::from(self.p));
+        if n == 0
+            || 128 * r * (n + p) > constants::MAX_SCRYPT_MEMORY
+            || 128 * r * n * p > constants::MAX_SCRYPT_WORK
+        {
+            return Err(RusticError::new(
+                ErrorKind::Key,
+                "The scrypt parameters N = `{n}`, r = `{r}`, p = `{p}` of the key file are invalid or exceed the supported limits. Please check the key file.",
+            )
+            .attach_context("n", self.n.to_string())
+            .attach_context("r", self.r.to_string())
+            .attach_context("p", self.p.to_string()));
+        }
+
         let params = Params::new(
             log_2(self.n).map_err(|err| {
                 RusticError::with_source(
