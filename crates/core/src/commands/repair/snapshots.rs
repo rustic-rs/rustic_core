@@ -179,6 +179,7 @@ pub(crate) fn repair_snapshots<S: IndexedFull>(
 
     let mut state = RepairState::new(opts, repo.index());
     let modifier = TreeModifier::new(be, repo.index(), config_file, dry_run)?;
+    let mut repaired_snapshots = Vec::new();
 
     for mut snap in snapshots {
         let snap_id = snap.id;
@@ -211,14 +212,18 @@ pub(crate) fn repair_snapshots<S: IndexedFull>(
                 if dry_run {
                     info!("would have modified snapshot {snap_id}.");
                 } else {
-                    let new_id = be.save_file(&snap)?;
-                    info!("saved modified snapshot as {new_id}.");
+                    repaired_snapshots.push(snap);
                 }
                 state.delete.push(snap_id);
             }
         }
     }
     modifier.finalize()?;
+
+    for snap in repaired_snapshots {
+        let new_id = be.save_file(&snap)?;
+        info!("saved modified snapshot as {new_id}.");
+    }
 
     if opts.delete {
         if dry_run {
@@ -237,11 +242,28 @@ pub(crate) fn repair_snapshots<S: IndexedFull>(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::index::{
-        GlobalIndex,
-        binarysorted::{IndexCollector, IndexType},
+    use std::{
+        collections::BTreeSet,
+        path::{Path, PathBuf},
+        sync::Arc,
     };
+
+    use rstest::rstest;
+
+    use crate::{
+        BackupOptions, CheckOptions, ConfigOptions, Credentials, FileType, IndexedFullStatus,
+        KeyOptions, ParentOptions, RepairIndexOptions, Repository, RepositoryBackends,
+        RepositoryOptions, WriteBackend,
+        commands::check::CheckError,
+        index::{
+            GlobalIndex,
+            binarysorted::{IndexCollector, IndexType},
+        },
+        repofile::{MasterKey, SnapshotFile, SnapshotId},
+        test_support::{MemoryBackend, MemorySource},
+    };
+
+    use super::*;
 
     #[test]
     fn test_process_node_file_without_content_does_not_panic() {
@@ -266,5 +288,95 @@ mod tests {
             }
             _ => panic!("expected NodeAction::Node"),
         }
+    }
+
+    fn repository_with_missing_data() -> anyhow::Result<(
+        Arc<MemoryBackend>,
+        Repository<IndexedFullStatus>,
+        SnapshotFile,
+    )> {
+        let backend = Arc::new(MemoryBackend::default());
+        let backends = RepositoryBackends::new(backend.clone(), None);
+        let repo = Repository::new(&RepositoryOptions::default().no_cache(true), &backends)?
+            .init(
+                &Credentials::Masterkey(MasterKey::new()),
+                &KeyOptions::default(),
+                &ConfigOptions::default(),
+            )?
+            .to_indexed_ids()?;
+        let source = MemorySource {
+            files: vec![("queue/00/message", b"message")],
+        };
+        let options = BackupOptions::default()
+            .as_path(PathBuf::from("backup"))
+            .parent_opts(ParentOptions::default().force(true));
+        let snapshot = repo.archive(
+            &options,
+            &source,
+            SnapshotFile::default(),
+            &[PathBuf::from("source")],
+        )?;
+        let repo = repo.to_indexed()?;
+        repo.check(CheckOptions::default().read_data(true))?
+            .is_ok()?;
+        let node = repo.node_from_path(snapshot.tree, Path::new("backup/queue/00/message"))?;
+        let data = node.content.unwrap()[0];
+        let pack = repo.get_index_entry(&data)?.pack;
+        backend.remove(FileType::Pack, &pack, false)?;
+        repo.repair_index(&RepairIndexOptions::default(), false)?;
+        let repo = repo.to_indexed()?;
+        let results = repo.check(CheckOptions::default())?;
+        assert!(results.0.iter().any(|(_, error)| {
+            matches!(error, CheckError::FileBlobNotInIndex { blob_id, .. } if *blob_id == data)
+        }));
+        Ok((backend, repo, snapshot))
+    }
+
+    #[rstest]
+    #[case::pack_write(FileType::Pack)]
+    #[case::index_write(FileType::Index)]
+    fn repair_publishes_no_snapshot_when_tree_flush_fails(
+        #[case] failure: FileType,
+    ) -> anyhow::Result<()> {
+        let (backend, repo, snapshot) = repository_with_missing_data()?;
+        let original_ids = repo.list::<SnapshotId>()?.collect::<BTreeSet<_>>();
+        assert_eq!(original_ids, BTreeSet::from([snapshot.id]));
+        backend.fail_writes(failure);
+
+        let error = repo
+            .repair_snapshots(&RepairSnapshotsOptions::default(), vec![snapshot], false)
+            .expect_err("the injected tree flush failure must propagate");
+        assert!(backend.failed_writes() > 0);
+        assert!(
+            error.display_log().contains("Injected test write failure"),
+            "unexpected repair failure: {}",
+            error.display_log(),
+        );
+        let remaining_ids = repo.list::<SnapshotId>()?.collect::<BTreeSet<_>>();
+        assert_eq!(
+            remaining_ids, original_ids,
+            "repair published a snapshot before its tree pack and index were successfully flushed",
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn repair_publishes_readable_snapshot_after_successful_flush() -> anyhow::Result<()> {
+        let (_, repo, snapshot) = repository_with_missing_data()?;
+        let original_id = snapshot.id;
+        repo.repair_snapshots(&RepairSnapshotsOptions::default(), vec![snapshot], false)?;
+        let snapshots = repo.get_all_snapshots()?;
+        assert_eq!(snapshots.len(), 1);
+        assert_ne!(snapshots[0].id, original_id);
+        let repo = repo.to_indexed()?;
+        repo.check(CheckOptions::default().read_data(true))?
+            .is_ok()?;
+        let node = repo.node_from_path(
+            snapshots[0].tree,
+            Path::new("backup/queue/00/message.repaired"),
+        )?;
+        assert_eq!(node.meta.size, 0);
+        assert_eq!(node.content, Some(Vec::new()));
+        Ok(())
     }
 }
