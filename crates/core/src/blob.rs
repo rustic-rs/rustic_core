@@ -187,10 +187,18 @@ impl<T> BlobLocations<T> {
         }
     }
     pub fn can_coalesce(&self, other: &Self) -> bool {
+        // offsets and lengths stem from the index and are not trusted: never coalesce if they overflow
+        let (Some(end), Some(other_end)) = (
+            self.offset.checked_add(self.length),
+            other.offset.checked_add(other.length),
+        ) else {
+            return false;
+        };
+
         // if the blobs are (almost) contiguous and we don't trespass the limit, blobs can be read in one partial read
-        other.offset <= self.offset + self.length + constants::MAX_HOLESIZE
-            && other.offset >= self.offset + self.length
-            && other.offset + other.length - self.offset <= constants::LIMIT_PACK_READ
+        other.offset >= end
+            && other.offset - end <= constants::MAX_HOLESIZE
+            && other_end - self.offset <= constants::LIMIT_PACK_READ
     }
 
     pub fn append(mut self, mut other: Self) -> Self {
@@ -227,6 +235,10 @@ mod tests {
     #[case(12, constants::LIMIT_PACK_READ - 15, constants::LIMIT_PACK_READ - 3, 16, None)] // exceeds limit to read
     #[case(12, constants::LIMIT_PACK_READ - 15, constants::LIMIT_PACK_READ, 12, Some(constants::LIMIT_PACK_READ))] // maximum length with hole
     #[case(12, constants::LIMIT_PACK_READ - 15, constants::LIMIT_PACK_READ + 1, 12, None)] // exceeds limit
+    #[case(u32::MAX - 10, 5, u32::MAX - 3, 2, Some(9))] // near the end of the u32 range => OK
+    #[case(u32::MAX - 10, 5, u32::MAX - 3, 4, None)] // end of second overflows u32
+    #[case(u32::MAX - 5, 10, u32::MAX, 1, None)] // end of first overflows u32
+    #[case(0, u32::MAX, u32::MAX, 1, None)] // end of second overflows u32
     fn test_coalesce(
         #[case] offset1: u32,
         #[case] length1: u32,
