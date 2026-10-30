@@ -820,7 +820,7 @@ mod tests {
         let now = Zoned::now();
         let options = KeepOptions::default().keep_last(10);
         let result = options.apply(vec![], &now)?;
-        assert!(result.is_empty());
+        assert_eq!(result, []);
         Ok(())
     }
 
