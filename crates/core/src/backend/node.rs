@@ -349,6 +349,11 @@ impl Node {
     pub fn name(&self) -> Cow<'_, OsStr> {
         unescape_filename(&self.name).unwrap_or_else(|_| Cow::Borrowed(OsStr::new(&self.name)))
     }
+
+    /// Set the node name, handling name escaping
+    pub(crate) fn set_name(&mut self, name: &OsStr) {
+        self.name = escape_filename(name);
+    }
 }
 
 /// An ordering function returning the latest node by mtime
