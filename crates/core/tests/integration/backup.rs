@@ -47,7 +47,7 @@ fn test_backup_with_tar_gz_passes(
         assert_with_win("backup-tar-summary-first", &first_snapshot);
     });
 
-    assert!(first_snapshot.get_parents().is_empty());
+    assert_eq!(first_snapshot.get_parents(), []);
 
     // tree of first backup
     // re-read index

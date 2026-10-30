@@ -373,16 +373,20 @@ impl Vfs {
             .ask_report()
         })? {
             VfsPath::RusticPath(tree_id, path) => Ok(repo.node_from_path(*tree_id, &path)?),
-            VfsPath::VirtualTree(_) => {
-                Ok(Node::new(String::new(), NodeType::Dir, meta, None, None))
-            }
-            VfsPath::Link(target) => Ok(Node::new(
-                String::new(),
-                NodeType::from_link(Path::new(target)),
+            VfsPath::VirtualTree(_) => Ok(Node {
+                name: String::new(),
+                node_type: NodeType::Dir,
                 meta,
-                None,
-                None,
-            )),
+                content: None,
+                subtree: None,
+            }),
+            VfsPath::Link(target) => Ok(Node {
+                name: String::new(),
+                node_type: NodeType::from_link(Path::new(target)),
+                meta,
+                content: None,
+                subtree: None,
+            }),
         }
     }
 

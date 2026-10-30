@@ -1,7 +1,6 @@
 use std::{sync::Arc, thread::sleep, time::Duration};
 
 use bytes::Bytes;
-use derive_more::Constructor;
 
 use crate::{
     backend::{FileType, decrypt::DecryptReadBackend},
@@ -19,10 +18,10 @@ pub(crate) mod binarysorted;
 pub(crate) mod indexer;
 
 /// An entry in the index
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Constructor)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct IndexEntry {
     /// The type of the blob
-    blob_type: BlobType,
+    pub blob_type: BlobType,
     /// The pack the blob is in
     pub pack: PackId,
     /// The location of the blob in the pack
