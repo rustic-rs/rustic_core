@@ -9,7 +9,6 @@ use std::num::ParseIntError;
 #[cfg(not(windows))]
 use std::os::unix::ffi::OsStrExt;
 
-use derive_more::Constructor;
 use jiff::Timestamp;
 use serde_aux::prelude::*;
 use serde_derive::{Deserialize, Serialize};
@@ -75,9 +74,7 @@ pub enum NodeErrorKind<'a> {
 #[cfg(not(windows))]
 pub(crate) type NodeResult<'a, T> = Result<T, NodeErrorKind<'a>>;
 
-#[derive(
-    Default, Serialize, Deserialize, Clone, Debug, PartialEq, Eq, Constructor, PartialOrd, Ord,
-)]
+#[derive(Default, Serialize, Deserialize, Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 /// A node within the tree hierarchy
 pub struct Node {
     /// Name of the node: filename or dirname.
