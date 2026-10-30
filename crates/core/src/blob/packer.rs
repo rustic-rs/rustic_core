@@ -18,7 +18,7 @@ use crate::{
         BytesList, FileType,
         decrypt::{DecryptFullBackend, DecryptWriteBackend},
     },
-    blob::{BlobId, BlobLocations, BlobType},
+    blob::{BlobId, BlobLocation, BlobLocations, BlobType},
     crypto::{CryptoKey, hasher::hash_reader},
     error::{ErrorKind, RusticError, RusticResult},
     index::{IndexEntry, indexer::SharedIndexer},
@@ -979,13 +979,10 @@ impl<BE: DecryptFullBackend> BlobCopier<BE> {
 
         // TODO: write in parallel
         for (blob, blob_id) in pack_blobs.locations.blobs {
-            let start = usize::try_from(blob.offset - offset)
-                .expect("convert from u32 to usize should not fail!");
-            let end = usize::try_from(blob.offset + blob.length - offset)
-                .expect("convert from u32 to usize should not fail!");
+            let slice = get_blob_slice(&data, offset, &blob, &blob_id, &pack_blobs.pack_id)?;
             self.packer
                 .add_raw(
-                    Bytes::copy_from_slice(&data[start..end]),
+                    Bytes::copy_from_slice(slice),
                     &blob_id,
                     u64::from(blob.length),
                     blob.uncompressed_length,
@@ -1026,13 +1023,10 @@ impl<BE: DecryptFullBackend> BlobCopier<BE> {
 
         // TODO: write in parallel
         for (blob, blob_id) in pack_blobs.locations.blobs {
-            let start = usize::try_from(blob.offset - offset)
-                .expect("convert from u32 to usize should not fail!");
-            let end = usize::try_from(blob.offset + blob.length - offset)
-                .expect("convert from u32 to usize should not fail!");
+            let slice = get_blob_slice(&read_data, offset, &blob, &blob_id, &pack_blobs.pack_id)?;
             let data = self
                 .be_src
-                .read_encrypted_from_partial(&read_data[start..end], blob.uncompressed_length)?;
+                .read_encrypted_from_partial(slice, blob.uncompressed_length)?;
 
             self.packer.add(data, blob_id).map_err(|err| {
                 RusticError::with_source(
@@ -1051,6 +1045,44 @@ impl<BE: DecryptFullBackend> BlobCopier<BE> {
     pub fn finalize(self) -> RusticResult<PackerStats> {
         self.packer.finalize()
     }
+}
+
+pub(crate) fn get_blob_slice<'a>(
+    data: &'a [u8],
+    offset: u32,
+    blob: &BlobLocation,
+    blob_id: &BlobId,
+    pack_id: &PackId,
+) -> RusticResult<&'a [u8]> {
+    let rel_start = blob
+        .offset
+        .checked_sub(offset)
+        .and_then(|s| usize::try_from(s).ok());
+    let rel_end = blob
+        .offset
+        .checked_add(blob.length)
+        .and_then(|e| e.checked_sub(offset))
+        .and_then(|e| usize::try_from(e).ok());
+
+    match (rel_start, rel_end) {
+        (Some(start), Some(end)) if start <= end => {
+            if let Some(slice) = data.get(start..end) {
+                return Ok(slice);
+            }
+        }
+        _ => {}
+    }
+
+    Err(RusticError::new(
+        ErrorKind::Repository,
+        "Malformed blob location or truncated pack data for `{blob_id}` in pack `{pack_id}`.",
+    )
+    .attach_context("blob_id", blob_id.to_string())
+    .attach_context("pack_id", pack_id.to_string())
+    .attach_context("blob_offset", blob.offset.to_string())
+    .attach_context("blob_length", blob.length.to_string())
+    .attach_context("read_offset", offset.to_string())
+    .attach_context("read_length", data.len().to_string()))
 }
 
 #[cfg(test)]
@@ -1095,5 +1127,54 @@ mod tests {
         .collect();
 
         assert_ron_snapshot!(output);
+    }
+
+    #[test]
+    fn test_get_blob_slice() {
+        let dummy_data = vec![0u8; 100];
+        let blob_id = BlobId::default();
+        let pack_id = PackId::default();
+
+        // Valid inside range
+        let blob = BlobLocation {
+            offset: 10,
+            length: 20,
+            uncompressed_length: None,
+        };
+        let slice = get_blob_slice(&dummy_data, 10, &blob, &blob_id, &pack_id).unwrap();
+        assert_eq!(slice.len(), 20);
+
+        // Valid with non-zero base offset
+        let blob = BlobLocation {
+            offset: 25,
+            length: 15,
+            uncompressed_length: None,
+        };
+        let slice = get_blob_slice(&dummy_data, 10, &blob, &blob_id, &pack_id).unwrap();
+        assert_eq!(slice.len(), 15);
+
+        // Underflow: blob.offset < offset
+        let blob = BlobLocation {
+            offset: 5,
+            length: 20,
+            uncompressed_length: None,
+        };
+        assert!(get_blob_slice(&dummy_data, 10, &blob, &blob_id, &pack_id).is_err());
+
+        // Out of bounds: blob ends past data length
+        let blob = BlobLocation {
+            offset: 10,
+            length: 105,
+            uncompressed_length: None,
+        };
+        assert!(get_blob_slice(&dummy_data, 10, &blob, &blob_id, &pack_id).is_err());
+
+        // Overflow: blob.offset + length overflows u32
+        let blob = BlobLocation {
+            offset: u32::MAX - 5,
+            length: 10,
+            uncompressed_length: None,
+        };
+        assert!(get_blob_slice(&dummy_data, 0, &blob, &blob_id, &pack_id).is_err());
     }
 }
