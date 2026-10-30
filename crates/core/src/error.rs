@@ -369,6 +369,14 @@ impl RusticError {
         Self::with_source(kind, error.to_string(), error)
     }
 
+    /// Get a context value by key, if present.
+    #[must_use]
+    pub fn context_value(&self, key: &str) -> Option<&str> {
+        self.context
+            .iter()
+            .find_map(|(k, v)| (k == key).then_some(v.as_str()))
+    }
+
     /// Returns a String representation for logging purposes.
     ///
     /// This is a more concise version of the error message.

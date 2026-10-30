@@ -13,7 +13,9 @@ use log::{error, trace, warn};
 use opendal::{
     Entry, HttpTransporter, Metadata, OperationContext,
     blocking::{Operator, StdReader},
-    layers::{ConcurrentLimitLayer, LoggingLayer, RetryLayer, ThrottleLayer},
+    layers::{
+        ConcurrentLimitLayer, LoggingLayer, RetryEvent, RetryInterceptor, RetryLayer, ThrottleLayer,
+    },
     options::{ListOptions, ReadOptions},
 };
 use opendal_http_transport_reqwest::ReqwestTransport;
@@ -48,6 +50,26 @@ fn runtime() -> &'static Runtime {
             .build()
             .unwrap()
     })
+}
+
+/// Log `OpenDAL` retries as a single line using `Display`, not `Debug`.
+///
+/// `OpenDAL`'s default interceptor formats the error with `{:?}`, which dumps
+/// the full context/source tree across many lines and fights progress/TUI
+/// output.
+#[derive(Clone, Copy, Debug)]
+struct CompactRetryInterceptor;
+
+impl RetryInterceptor for CompactRetryInterceptor {
+    fn intercept(&self, event: RetryEvent<'_>) {
+        warn!(
+            "Error {err} at {duration:?}, retrying {op:?} (attempt {attempt})",
+            err = event.err,
+            duration = event.retry_after,
+            op = event.op,
+            attempt = event.attempt,
+        );
+    }
 }
 
 /// Throttling parameters
@@ -167,7 +189,12 @@ impl OpenDALBackend {
                 .attach_context("path", path.as_ref().to_string())
                 .attach_context("schema", scheme.to_string())
             })?.with_context(operation_context)
-            .layer(RetryLayer::new().with_max_times(max_retries).with_jitter());
+            .layer(
+                RetryLayer::new()
+                    .with_max_times(max_retries)
+                    .with_jitter()
+                    .with_notify(CompactRetryInterceptor),
+            );
 
         if let Some(Throttle { bandwidth, burst }) = throttle {
             operator = operator.layer(ThrottleLayer::new(bandwidth, burst));
@@ -653,6 +680,27 @@ mod tests {
         );
 
         Ok(())
+    }
+
+    #[test]
+    fn opendal_error_display_is_single_line() {
+        let err = opendal::Error::new(opendal::ErrorKind::Unexpected, "send http request")
+            .with_operation("read")
+            .with_context("url", "https://example.com/index/abc")
+            .set_source(std::io::Error::other(
+                "connection closed before message completed",
+            ));
+
+        let display = err.to_string();
+        let debug = format!("{err:?}");
+        assert!(
+            !display.contains('\n'),
+            "Display should be one line, got: {display:?}"
+        );
+        assert!(
+            debug.contains("Context:"),
+            "Debug should dump context, got: {debug}"
+        );
     }
 }
 

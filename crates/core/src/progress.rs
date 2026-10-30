@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use log::info;
+use log::{info, warn};
 
 /// A progress used to indicate/update the status of something which is being processed
 #[derive(Debug, Clone)]
@@ -55,6 +55,17 @@ impl Progress {
     pub fn finish(&self) {
         self.0.finish();
     }
+
+    /// Report an error encountered while processing an item.
+    ///
+    /// # Arguments
+    ///
+    /// * `item` - Usually the path of the problematic file or directory
+    /// * `during` - What was being attempted, e.g. `"scan"` or `"archival"`
+    /// * `message` - Error message
+    pub fn error(&self, item: Option<&str>, during: &str, message: &str) {
+        self.0.error(item, during, message);
+    }
 }
 
 /// Trait to report progress information for any rustic action which supports that.
@@ -87,6 +98,23 @@ pub trait RusticProgress: Send + Sync + 'static + std::fmt::Debug {
 
     /// Finish the progress
     fn finish(&self);
+
+    /// Report an error encountered while processing an item.
+    ///
+    /// The default implementation logs a warning. JSON progress implementations
+    /// emit a restic-compatible error message instead.
+    ///
+    /// # Arguments
+    ///
+    /// * `item` - Usually the path of the problematic file or directory
+    /// * `during` - What was being attempted, e.g. `"scan"` or `"archival"`
+    /// * `message` - Error message
+    fn error(&self, item: Option<&str>, during: &str, message: &str) {
+        match item {
+            Some(item) => warn!("error: {during} {item}: {message}"),
+            None => warn!("{during}: {message}"),
+        }
+    }
 }
 
 /// Type of progress

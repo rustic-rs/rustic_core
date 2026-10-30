@@ -2,6 +2,7 @@ use std::str::FromStr;
 
 use serde_derive::{Deserialize, Serialize};
 use serde_with::skip_serializing_none;
+use strum::Display;
 
 use crate::{
     backend::FileType,
@@ -285,13 +286,15 @@ impl ConfigFile {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, Default, Clone, Copy, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Debug, Display, Default, Clone, Copy, PartialEq, Eq)]
 /// Supported chunkers used to cut large files into Blobs.
 pub enum Chunker {
     #[default]
     /// Rabin chunker - a content defined chunker (CDC) based on Rabin fingerprints
+    #[strum(to_string = "rabin")]
     Rabin,
     /// Fixed size chunker - makes chunks of a given fixed size
+    #[strum(to_string = "fixed_size")]
     FixedSize,
 }
 

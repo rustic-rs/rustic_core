@@ -1,6 +1,8 @@
 //! `config` subcommand
 use bytesize::ByteSize;
 use derive_setters::Setters;
+use serde::{Deserialize, Serialize};
+use serde_with::{DisplayFromStr, serde_as};
 
 use crate::{
     backend::decrypt::{DecryptBackend, DecryptWriteBackend},
@@ -116,56 +118,74 @@ pub(crate) fn save_config_hot<S>(
     Ok(())
 }
 
+#[serde_as]
 #[cfg_attr(feature = "clap", derive(clap::Parser))]
-#[derive(Debug, Clone, Copy, Default, Setters)]
+#[cfg_attr(feature = "merge", derive(conflate::Merge))]
+#[derive(Debug, Clone, Copy, Default, Deserialize, Serialize, Setters)]
+#[serde(default, rename_all = "kebab-case", deny_unknown_fields)]
 #[setters(into)]
 #[non_exhaustive]
 /// Options for the `config` command, used to set repository-wide options
 pub struct ConfigOptions {
     /// Set repository version. Allowed versions: 1,2
     #[cfg_attr(feature = "clap", clap(long, value_name = "VERSION"))]
+    #[cfg_attr(feature = "merge", merge(strategy = conflate::option::overwrite_none))]
     pub set_version: Option<u32>,
 
     /// Set chunker to use. Allowed chunkers: ``rabin``, ``fixed_size``.
     /// Defaults to ``rabin`` if not set.
     #[cfg_attr(feature = "clap", clap(long, value_name = "CHUNKER"))]
+    #[serde_as(as = "Option<DisplayFromStr>")]
+    #[cfg_attr(feature = "merge", merge(strategy = conflate::option::overwrite_none))]
     pub set_chunker: Option<Chunker>,
 
     /// Set the chunk size. For the rabin chunker this is the average chunk size.
     /// Defaults to `1 MiB` if not set.
     #[cfg_attr(feature = "clap", clap(long, value_name = "SIZE"))]
+    #[serde_as(as = "Option<DisplayFromStr>")]
+    #[cfg_attr(feature = "merge", merge(strategy = conflate::option::overwrite_none))]
     pub set_chunk_size: Option<ByteSize>,
 
     /// Set the minimum chunk size. Only used for the rabin chunker.
     /// Defaults to `512 kiB` if not set.
     #[cfg_attr(feature = "clap", clap(long, value_name = "SIZE"))]
+    #[serde_as(as = "Option<DisplayFromStr>")]
+    #[cfg_attr(feature = "merge", merge(strategy = conflate::option::overwrite_none))]
     pub set_chunk_min_size: Option<ByteSize>,
 
     /// Set the maximum chunk size. Only used for the rabin chunker.
     /// Defaults to `8 MiB` if not set.
     #[cfg_attr(feature = "clap", clap(long, value_name = "SIZE"))]
+    #[serde_as(as = "Option<DisplayFromStr>")]
+    #[cfg_attr(feature = "merge", merge(strategy = conflate::option::overwrite_none))]
     pub set_chunk_max_size: Option<ByteSize>,
 
     /// Set compression level. Allowed levels are 1 to 22 and -1 to -7, see <https://facebook.github.io/zstd/>.
     /// Note that 0 equals to no compression
     #[cfg_attr(feature = "clap", clap(long, value_name = "LEVEL"))]
+    #[cfg_attr(feature = "merge", merge(strategy = conflate::option::overwrite_none))]
     pub set_compression: Option<i32>,
 
     /// Set append-only mode.
     /// Note that only append-only commands work once this is set. `forget`, `prune` or `config` won't work any longer.
     #[cfg_attr(feature = "clap", clap(long))]
+    #[cfg_attr(feature = "merge", merge(strategy = conflate::option::overwrite_none))]
     pub set_append_only: Option<bool>,
 
     /// Set default packsize for tree packs. rustic tries to always produce packs greater than this value.
     /// Note that for large repos, this value is grown by the grown factor.
     /// Defaults to `4 MiB` if not set.
     #[cfg_attr(feature = "clap", clap(long, value_name = "SIZE"))]
+    #[serde_as(as = "Option<DisplayFromStr>")]
+    #[cfg_attr(feature = "merge", merge(strategy = conflate::option::overwrite_none))]
     pub set_treepack_size: Option<ByteSize>,
 
     /// Set upper limit for default packsize for tree packs.
     /// Note that packs actually can get a bit larger.
     /// If not set, pack sizes can grow up to approximately `4 GiB`.
     #[cfg_attr(feature = "clap", clap(long, value_name = "SIZE"))]
+    #[serde_as(as = "Option<DisplayFromStr>")]
+    #[cfg_attr(feature = "merge", merge(strategy = conflate::option::overwrite_none))]
     pub set_treepack_size_limit: Option<ByteSize>,
 
     /// Set grow factor for tree packs. The default packsize grows by the square root of the total size of all
@@ -173,12 +193,15 @@ pub struct ConfigOptions {
     /// treesize in GiB.
     /// Defaults to `32` (= 1MB per square root of total treesize in GiB) if not set.
     #[cfg_attr(feature = "clap", clap(long, value_name = "FACTOR"))]
+    #[cfg_attr(feature = "merge", merge(strategy = conflate::option::overwrite_none))]
     pub set_treepack_growfactor: Option<u32>,
 
     /// Set default packsize for data packs. rustic tries to always produce packs greater than this value.
     /// Note that for large repos, this value is grown by the grown factor.
     /// Defaults to `32 MiB` if not set.
     #[cfg_attr(feature = "clap", clap(long, value_name = "SIZE"))]
+    #[serde_as(as = "Option<DisplayFromStr>")]
+    #[cfg_attr(feature = "merge", merge(strategy = conflate::option::overwrite_none))]
     pub set_datapack_size: Option<ByteSize>,
 
     /// Set grow factor for data packs. The default packsize grows by the square root of the total size of all
@@ -186,28 +209,34 @@ pub struct ConfigOptions {
     /// datasize in GiB.
     /// Defaults to `32` (= 1MB per square root of total datasize in GiB) if not set.
     #[cfg_attr(feature = "clap", clap(long, value_name = "FACTOR"))]
+    #[cfg_attr(feature = "merge", merge(strategy = conflate::option::overwrite_none))]
     pub set_datapack_growfactor: Option<u32>,
 
     /// Set upper limit for default packsize for tree packs.
     /// Note that packs actually can get a bit larger.
     /// If not set, pack sizes can grow up to approximately `4 GiB`.
     #[cfg_attr(feature = "clap", clap(long, value_name = "SIZE"))]
+    #[serde_as(as = "Option<DisplayFromStr>")]
+    #[cfg_attr(feature = "merge", merge(strategy = conflate::option::overwrite_none))]
     pub set_datapack_size_limit: Option<ByteSize>,
 
     /// Set minimum tolerated packsize in percent of the targeted packsize.
     /// Defaults to `30` if not set.
     #[cfg_attr(feature = "clap", clap(long, value_name = "PERCENT"))]
+    #[cfg_attr(feature = "merge", merge(strategy = conflate::option::overwrite_none))]
     pub set_min_packsize_tolerate_percent: Option<u32>,
 
     /// Set maximum tolerated packsize in percent of the targeted packsize
     /// A value of `0` means packs larger than the targeted packsize are always
     /// tolerated. Default if not set: larger packfiles are always tolerated.
     #[cfg_attr(feature = "clap", clap(long, value_name = "PERCENT"))]
+    #[cfg_attr(feature = "merge", merge(strategy = conflate::option::overwrite_none))]
     pub set_max_packsize_tolerate_percent: Option<u32>,
 
     /// Do an extra verification by decompressing/decrypting all data before uploading to the repository.
     /// Default: true
     #[cfg_attr(feature = "clap", clap(long))]
+    #[cfg_attr(feature = "merge", merge(strategy = conflate::option::overwrite_none))]
     pub set_extra_verify: Option<bool>,
 }
 

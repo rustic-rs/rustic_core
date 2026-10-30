@@ -47,7 +47,7 @@ fn test_backup_with_tar_gz_passes(
         assert_with_win("backup-tar-summary-first", &first_snapshot);
     });
 
-    assert!(first_snapshot.get_parents().is_empty());
+    assert_eq!(first_snapshot.get_parents(), []);
 
     // tree of first backup
     // re-read index
@@ -304,6 +304,48 @@ fn test_backup_excludes_xattr_entries(set_up_repo: Result<RepoOpen>) -> Result<(
     paths.sort();
 
     assert_with_win("backup-exclude-xattr", &paths);
+
+    Ok(())
+}
+
+#[cfg(unix)]
+#[rstest]
+fn test_backup_unreadable_file_sets_error_count(set_up_repo: Result<RepoOpen>) -> Result<()> {
+    use std::fs::{self, File, Permissions};
+    use std::os::unix::fs::PermissionsExt;
+
+    let tmp = tempfile::tempdir()?;
+    let base = tmp.path();
+    fs::write(base.join("ok.txt"), "ok")?;
+    let secret = base.join("secret.txt");
+    fs::write(&secret, "secret")?;
+    fs::set_permissions(&secret, Permissions::from_mode(0o000))?;
+
+    if File::open(&secret).is_ok() {
+        // e.g. running as root; mode bits are not enforced
+        return Ok(());
+    }
+
+    let repo = set_up_repo?.to_indexed_ids()?;
+    let paths = PathList::from_iter(Some(base.to_path_buf()));
+    let opts = BackupOptions::default().as_path(PathBuf::from("test"));
+    let snapshot = repo.backup(&opts, &paths, SnapshotFile::default())?;
+
+    let summary = snapshot.summary.as_ref().expect("backup sets a summary");
+    assert!(
+        summary.error_count >= 1,
+        "expected at least one source-file error, got {}",
+        summary.error_count
+    );
+    assert_ne!(snapshot.id, SnapshotFile::default().id);
+    assert!(summary.total_files_processed >= 1);
+
+    let loaded = repo.get_snapshot_from_str(&snapshot.id.to_string(), |_| true)?;
+    assert_eq!(
+        loaded.summary.as_ref().map(|s| s.error_count),
+        Some(summary.error_count),
+        "error_count should be persisted in the snapshot file when non-zero"
+    );
 
     Ok(())
 }
