@@ -236,11 +236,11 @@ impl ReadIndex for Index {
 
         vec.binary_search_by_key(id, |e| e.id).ok().map(|index| {
             let be = &vec[index];
-            IndexEntry::new(
+            IndexEntry {
                 blob_type,
-                self.0[blob_type].packs[be.pack_idx as usize],
-                be.location,
-            )
+                pack: self.0[blob_type].packs[be.pack_idx as usize],
+                location: be.location,
+            }
         })
     }
 
