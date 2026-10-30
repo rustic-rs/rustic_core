@@ -90,9 +90,9 @@ pub fn reqwest_client(options: &BTreeMap<String, String>) -> RusticResult<Client
                 // ignore conversation errors, but print out warning
                 .inspect_err(|err| warn!("cannot use timeout: {err}"))
                 .unwrap_or_default();
-        } else if option == "cacert" {
+        } else if option == "http-cacert" {
             client_builder = client_builder.add_root_certificate(get_cacert(value)?);
-        } else if option == "tls-client-cert" {
+        } else if option == "http-tls-client-cert" {
             client_builder = client_builder.identity(get_tls_client_cert(value)?);
         } else if option == "http-insecure-tls" {
             match value.parse() {
