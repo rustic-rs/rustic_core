@@ -181,3 +181,6 @@ pub use crate::{
         credentials::{CredentialOptions, Credentials},
     },
 };
+
+#[cfg(test)]
+mod test_support;

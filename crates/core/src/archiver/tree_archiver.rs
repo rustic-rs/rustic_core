@@ -179,7 +179,6 @@ impl<'a, BE: DecryptWriteBackend, I: ReadGlobalIndex> TreeArchiver<'a, BE, I> {
             ParentResult::Matched(p_id) if id == *p_id => {
                 debug!("unchanged tree: {}", path.display());
                 self.summary.dirs_unmodified += 1;
-                return Ok(id);
             }
             ParentResult::NotFound => {
                 debug!("new       tree: {} {dirsize_bytes}", path.display());
@@ -225,5 +224,64 @@ impl<'a, BE: DecryptWriteBackend, I: ReadGlobalIndex> TreeArchiver<'a, BE, I> {
         stats.apply(&mut self.summary, BlobType::Tree);
 
         Ok((id, self.summary))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+
+    use rstest::rstest;
+
+    use crate::{
+        ConfigOptions, Credentials, KeyOptions, Repository, RepositoryBackends, RepositoryOptions,
+        index::{GlobalIndex, ReadIndex, indexer::Indexer},
+        repofile::{MasterKey, Node, SnapshotSummary},
+        test_support::MemoryBackend,
+    };
+
+    use super::TreeArchiver;
+
+    #[rstest]
+    #[case::unchanged_parent(true)]
+    #[case::without_parent(false)]
+    fn backup_writes_reconstructed_tree_missing_from_index(
+        #[case] unchanged_parent: bool,
+    ) -> anyhow::Result<()> {
+        let backends = RepositoryBackends::new(Arc::new(MemoryBackend::default()), None);
+        let repository = Repository::new(&RepositoryOptions::default().no_cache(true), &backends)?
+            .init(
+                &Credentials::Masterkey(MasterKey::new()),
+                &KeyOptions::default(),
+                &ConfigOptions::default(),
+            )?;
+        let index = GlobalIndex::new(repository.dbe(), &repository.progress_hidden())?;
+        let indexer = Indexer::new(repository.dbe().clone()).into_shared();
+        let mut archiver = TreeArchiver::new(
+            repository.dbe().clone(),
+            &index,
+            indexer.clone(),
+            repository.config(),
+            SnapshotSummary::default(),
+        )?;
+        archiver.tree.add(Node {
+            name: "message".to_string(),
+            content: Some(Vec::new()),
+            ..Default::default()
+        });
+        let (expected_bytes, expected_id) = archiver.tree.serialize()?;
+        assert!(!index.has_tree(&expected_id));
+
+        let (id, _) = archiver.finalize(unchanged_parent.then_some(expected_id))?;
+        indexer.write().unwrap().finalize()?;
+        assert_eq!(id, expected_id);
+
+        let repository = repository.to_indexed()?;
+        assert!(
+            repository.index().has_tree(&id),
+            "a reconstructed tree must be saved even when its ID matches the parent",
+        );
+        assert_eq!(repository.get_tree(&id)?.serialize()?.0, expected_bytes);
+        Ok(())
     }
 }
