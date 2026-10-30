@@ -10,9 +10,10 @@ use std::{
     mem,
     path::{Component, Path, PathBuf, Prefix},
     str::{self, Utf8Error},
+    thread::JoinHandle,
 };
 
-use crossbeam_channel::{Receiver, Sender, bounded, unbounded};
+use crossbeam_channel::{Receiver, Sender, bounded, never, unbounded};
 use derive_setters::Setters;
 use ignore::Match;
 use ignore::overrides::Override;
@@ -630,6 +631,8 @@ pub struct TreeStreamerOnce {
     queue_in: Option<Sender<(PathBuf, TreeId, usize)>>,
     /// The queue to receive trees from
     queue_out: Receiver<RusticResult<(PathBuf, Tree, usize)>>,
+    /// The handles of the loader threads
+    loaders: Vec<JoinHandle<()>>,
     /// The progress indicator
     p: Progress,
     /// The number of trees that are not yet finished
@@ -666,12 +669,13 @@ impl TreeStreamerOnce {
         let (out_tx, out_rx) = bounded(constants::MAX_TREE_LOADER);
         let (in_tx, in_rx) = unbounded();
 
+        let mut loaders = Vec::with_capacity(constants::MAX_TREE_LOADER);
         for _ in 0..constants::MAX_TREE_LOADER {
             let be = be.clone();
             let index = index.clone();
             let in_rx = in_rx.clone();
             let out_tx = out_tx.clone();
-            let _join_handle = std::thread::spawn(move || {
+            loaders.push(std::thread::spawn(move || {
                 for (path, id, count) in in_rx {
                     if out_tx
                         .send(Tree::from_backend(&be, &index, id).map(|tree| (path, tree, count)))
@@ -680,7 +684,7 @@ impl TreeStreamerOnce {
                         break;
                     }
                 }
-            });
+            }));
         }
 
         let counter = vec![0; ids.len()];
@@ -688,6 +692,7 @@ impl TreeStreamerOnce {
             visited: BTreeSet::new(),
             queue_in: Some(in_tx),
             queue_out: out_rx,
+            loaders,
             p,
             counter,
             finished_ids: 0,
@@ -745,6 +750,16 @@ impl TreeStreamerOnce {
             Ok(true)
         } else {
             Ok(false)
+        }
+    }
+}
+
+impl Drop for TreeStreamerOnce {
+    fn drop(&mut self) {
+        drop(self.queue_in.take());
+        self.queue_out = never();
+        for loader in self.loaders.drain(..) {
+            _ = loader.join();
         }
     }
 }
@@ -953,4 +968,71 @@ pub(crate) fn merge_nodes(
         summary.total_bytes_processed += node.meta.size;
     }
     Ok(node)
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::{
+        Arc,
+        atomic::{AtomicUsize, Ordering},
+    };
+
+    use crate::{
+        BlobId, Id,
+        backend::{MockBackend, decrypt::DecryptBackend},
+        blob::BlobType,
+        crypto::aespoly1305::Key,
+        index::{IndexEntry, ReadGlobalIndex, ReadIndex},
+    };
+
+    use super::*;
+
+    #[derive(Debug)]
+    struct CountedIndex(Arc<AtomicUsize>);
+
+    impl CountedIndex {
+        fn new(live: &Arc<AtomicUsize>) -> Self {
+            _ = live.fetch_add(1, Ordering::SeqCst);
+            Self(Arc::clone(live))
+        }
+    }
+
+    impl Clone for CountedIndex {
+        fn clone(&self) -> Self {
+            Self::new(&self.0)
+        }
+    }
+
+    impl Drop for CountedIndex {
+        fn drop(&mut self) {
+            _ = self.0.fetch_sub(1, Ordering::SeqCst);
+        }
+    }
+
+    impl ReadIndex for CountedIndex {
+        fn get_id(&self, _tpe: BlobType, _id: &BlobId) -> Option<IndexEntry> {
+            None
+        }
+
+        fn total_size(&self, _tpe: BlobType) -> u64 {
+            0
+        }
+
+        fn has(&self, _tpe: BlobType, _id: &BlobId) -> bool {
+            false
+        }
+    }
+
+    impl ReadGlobalIndex for CountedIndex {}
+
+    #[test]
+    fn dropping_streamer_releases_index_clones() {
+        let live = Arc::new(AtomicUsize::new(0));
+        let index = CountedIndex::new(&live);
+        let be = DecryptBackend::new(Arc::new(MockBackend::new()), Key::new());
+        let ids = (0..64).map(|_| TreeId::from(Id::random())).collect();
+        let streamer = TreeStreamerOnce::new(&be, &index, ids, Progress::hidden()).unwrap();
+        drop(streamer);
+        assert_eq!(live.load(Ordering::SeqCst), 1);
+    }
 }
