@@ -4,6 +4,7 @@ pub(crate) mod tree;
 pub(crate) mod tree_archiver;
 
 use std::path::{Path, PathBuf};
+use std::sync::Mutex;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::thread::scope;
 
@@ -31,6 +32,23 @@ use crate::{
 fn report_source_error(p: &Progress, errors: &AtomicU64, during: &'static str, err: &RusticError) {
     _ = errors.fetch_add(1, Ordering::Relaxed);
     p.error(err.context_value("path"), during, &err.display_log());
+}
+
+/// Log a source error. EMFILE after retries is fatal: do not save a snapshot that omitted trees.
+fn record_source_error(
+    p: &Progress,
+    errors: &AtomicU64,
+    fatal: &Mutex<Option<Box<RusticError>>>,
+    during: &'static str,
+    err: Box<RusticError>,
+) {
+    report_source_error(p, errors, during, &err);
+    if err.is_too_many_open_files() {
+        let mut slot = fatal.lock().unwrap();
+        if slot.is_none() {
+            *slot = Some(err);
+        }
+    }
 }
 
 #[derive(thiserror::Error, Debug, displaydoc::Display)]
@@ -146,6 +164,7 @@ impl<'a, BE: DecryptFullBackend, I: ReadGlobalIndex> Archiver<'a, BE, I> {
         <R as ReadSource>::Iter: Send,
     {
         let error_count = AtomicU64::new(0);
+        let fatal = Mutex::new(None);
 
         scope(|s| -> RusticResult<_> {
             // determine backup size in parallel to running backup
@@ -162,7 +181,7 @@ impl<'a, BE: DecryptFullBackend, I: ReadGlobalIndex> Archiver<'a, BE, I> {
             // filter out errors and handle as_path
             let iter = src.entries().filter_map(|item| match item {
                 Err(err) => {
-                    report_source_error(p, &error_count, "scan", &err);
+                    record_source_error(p, &error_count, &fatal, "scan", err);
                     None
                 }
                 Ok(ReadSourceEntry { path, node, open }) => {
@@ -206,7 +225,7 @@ impl<'a, BE: DecryptFullBackend, I: ReadGlobalIndex> Archiver<'a, BE, I> {
             .filter_map(|item| match item {
                 Ok(item) => Some(item),
                 Err(err) => {
-                    report_source_error(p, &error_count, "archival", &err);
+                    record_source_error(p, &error_count, &fatal, "archival", err);
                     None
                 }
             })
@@ -215,6 +234,13 @@ impl<'a, BE: DecryptFullBackend, I: ReadGlobalIndex> Archiver<'a, BE, I> {
             src_size_handle
                 .join()
                 .expect("Scoped Size Handler thread should not panic!");
+
+            let fatal_err = fatal.lock().unwrap().take();
+            if let Some(err) = fatal_err {
+                return Err(err.prepend_guidance_line(
+                    "Aborting backup: too many open files while reading the source. The snapshot was not saved.",
+                ));
+            }
 
             Ok(())
         })?;

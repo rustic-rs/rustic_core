@@ -14,10 +14,33 @@ use walkdir::WalkDir;
 
 use crate::{
     backend::{BytesList, FileType, ReadBackend, WriteBackend},
-    error::{ErrorKind, RusticError, RusticResult},
+    error::{ErrorKind, RusticError, RusticResult, io_error_is_too_many_open_files},
     id::Id,
     repofile::configfile::RepositoryId,
 };
+
+/// Drop cached pack file descriptors so source `opendir`/`open` can proceed.
+///
+/// `main` currently opens cache files per blob, so this is a no-op. Callers
+/// still retry after it so a pack-handle cache can hook in later.
+pub(crate) fn release_cached_open_files() {}
+
+/// Retry `op` after [`release_cached_open_files`] when it fails with EMFILE/ENFILE.
+pub(crate) fn retry_on_too_many_open_files<T>(
+    mut op: impl FnMut() -> io::Result<T>,
+) -> io::Result<T> {
+    const RETRIES: u8 = 2;
+    let mut tries = 0;
+    loop {
+        match op() {
+            Err(err) if io_error_is_too_many_open_files(&err) && tries < RETRIES => {
+                release_cached_open_files();
+                tries += 1;
+            }
+            other => return other,
+        }
+    }
+}
 
 /// Backend that caches data.
 ///
@@ -503,7 +526,7 @@ impl Cache {
 
         let path = self.path(tpe, id);
 
-        let mut file = match File::open(&path) {
+        let mut file = match retry_on_too_many_open_files(|| File::open(&path)) {
             Ok(file) => file,
             Err(err) if err.kind() == io::ErrorKind::NotFound => return Ok(None),
             Err(err) => {
@@ -656,5 +679,47 @@ impl Cache {
         })?;
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn too_many_open_files_error() -> io::Error {
+        #[cfg(windows)]
+        {
+            io::Error::from_raw_os_error(4)
+        }
+        #[cfg(not(windows))]
+        {
+            io::Error::from_raw_os_error(24)
+        }
+    }
+
+    #[test]
+    fn retry_on_too_many_open_files_retries() {
+        let mut n = 0;
+        let result = retry_on_too_many_open_files(|| {
+            n += 1;
+            if n == 1 {
+                Err(too_many_open_files_error())
+            } else {
+                Ok(7)
+            }
+        });
+        assert_eq!(result.unwrap(), 7);
+        assert_eq!(n, 2);
+    }
+
+    #[test]
+    fn retry_on_too_many_open_files_gives_up() {
+        let mut n = 0;
+        let result = retry_on_too_many_open_files(|| {
+            n += 1;
+            Err::<(), _>(too_many_open_files_error())
+        });
+        assert!(io_error_is_too_many_open_files(&result.unwrap_err()));
+        assert_eq!(n, 3);
     }
 }

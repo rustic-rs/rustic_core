@@ -9,8 +9,9 @@ use pretty_assertions::assert_eq;
 use rstest::rstest;
 
 use rustic_core::{
-    BackupOptions, CommandInput, Grouped, ParentOptions, PathList, SnapshotGroupCriterion,
-    SnapshotOptions, StringList,
+    BackupOptions, CommandInput, ErrorKind, Grouped, ParentOptions, PathList, ReadSource,
+    ReadSourceEntry, RusticError, RusticResult, SnapshotGroupCriterion, SnapshotOptions,
+    StringList,
     repofile::{PackId, SnapshotFile},
 };
 
@@ -347,5 +348,88 @@ fn test_backup_unreadable_file_sets_error_count(set_up_repo: Result<RepoOpen>) -
         "error_count should be persisted in the snapshot file when non-zero"
     );
 
+    Ok(())
+}
+
+struct ScanErrorSource {
+    os_error: i32,
+}
+
+impl ReadSource for ScanErrorSource {
+    type Open = std::io::Cursor<Vec<u8>>;
+    type Iter = std::vec::IntoIter<RusticResult<ReadSourceEntry<Self::Open>>>;
+
+    fn size(&self) -> RusticResult<Option<u64>> {
+        Ok(Some(0))
+    }
+
+    fn entries(&self) -> Self::Iter {
+        let err = RusticError::with_source(
+            ErrorKind::InputOutput,
+            "Failed to read source path `{path}`.",
+            std::io::Error::from_raw_os_error(self.os_error),
+        )
+        .attach_context("path", "/photos/2021-07-01");
+        vec![Err(err)].into_iter()
+    }
+}
+
+#[rstest]
+fn test_backup_aborts_on_emfile_without_saving_snapshot(
+    set_up_repo: Result<RepoOpen>,
+) -> Result<()> {
+    let repo = set_up_repo?.to_indexed_ids()?;
+    let os_error = {
+        #[cfg(windows)]
+        {
+            4
+        }
+        #[cfg(not(windows))]
+        {
+            24
+        }
+    };
+    let src = ScanErrorSource { os_error };
+    let err = repo
+        .archive(
+            &BackupOptions::default().no_scan(true),
+            &src,
+            SnapshotFile::default(),
+            &[PathBuf::from("/photos")],
+        )
+        .expect_err("EMFILE must abort the backup");
+    assert!(
+        err.is_too_many_open_files(),
+        "expected EMFILE, got {}",
+        err.display_log()
+    );
+    assert!(
+        err.display_log()
+            .contains("Aborting backup: too many open files"),
+        "{}",
+        err.display_log()
+    );
+    assert!(
+        repo.get_all_snapshots()?.is_empty(),
+        "EMFILE backup must not save a snapshot"
+    );
+    Ok(())
+}
+
+#[rstest]
+fn test_backup_saves_snapshot_after_vanished_source_path(
+    set_up_repo: Result<RepoOpen>,
+) -> Result<()> {
+    let repo = set_up_repo?.to_indexed_ids()?;
+    let src = ScanErrorSource { os_error: 2 };
+    let snapshot = repo.archive(
+        &BackupOptions::default().no_scan(true),
+        &src,
+        SnapshotFile::default(),
+        &[PathBuf::from("/photos")],
+    )?;
+    assert_ne!(snapshot.id, SnapshotFile::default().id);
+    let snaps = repo.get_all_snapshots()?;
+    assert_eq!(snaps.len(), 1);
     Ok(())
 }

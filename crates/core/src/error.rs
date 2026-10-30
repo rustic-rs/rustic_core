@@ -53,7 +53,9 @@ use ecow::{EcoString, EcoVec};
 use std::{
     backtrace::{Backtrace, BacktraceStatus},
     convert::Into,
+    error::Error as StdError,
     fmt::{self, Display},
+    io,
 };
 
 pub(crate) mod constants {
@@ -320,6 +322,49 @@ impl Display for RusticError {
     }
 }
 
+fn os_code_is_too_many_open_files(code: Option<i32>) -> bool {
+    #[cfg(unix)]
+    {
+        // POSIX EMFILE / ENFILE. Do not treat 4 as a match: that is EINTR.
+        matches!(code, Some(24 | 23))
+    }
+    #[cfg(windows)]
+    {
+        code == Some(4)
+    }
+    #[cfg(not(any(unix, windows)))]
+    {
+        let _ = code;
+        false
+    }
+}
+
+/// Walkdir wraps the kernel error (`IO error for operation on {path}: {inner}`),
+/// so `raw_os_error()` on the outer `io::Error` is often `None`.
+pub(crate) fn io_error_emfile_os_code(err: &io::Error) -> Option<i32> {
+    if let Some(code) = err.raw_os_error() {
+        return Some(code);
+    }
+    let mut src = StdError::source(err);
+    while let Some(e) = src {
+        if let Some(ioe) = e.downcast_ref::<io::Error>()
+            && let Some(code) = ioe.raw_os_error()
+        {
+            return Some(code);
+        }
+        src = StdError::source(e);
+    }
+    None
+}
+
+/// POSIX EMFILE/ENFILE, or Windows `ERROR_TOO_MANY_OPEN_FILES`.
+///
+/// Walkdir/ignore wrap the kernel error, so this inspects the source chain.
+#[must_use]
+pub(crate) fn io_error_is_too_many_open_files(err: &io::Error) -> bool {
+    os_code_is_too_many_open_files(io_error_emfile_os_code(err))
+}
+
 // Accessors for anything we do want to expose publicly.
 impl RusticError {
     /// Creates a new error with the given kind and guidance.
@@ -359,6 +404,24 @@ impl RusticError {
     /// Checks if the error is due to an incorrect password
     pub fn is_incorrect_password(&self) -> bool {
         self.is_code("C002")
+    }
+
+    /// True when the error chain contains POSIX EMFILE/ENFILE (or the Windows equivalent).
+    #[must_use]
+    pub fn is_too_many_open_files(&self) -> bool {
+        let mut err: Option<&(dyn StdError + 'static)> = self.source.as_ref().map(|s| {
+            let err: &(dyn StdError + 'static) = &**s;
+            err
+        });
+        while let Some(e) = err {
+            if let Some(ioe) = e.downcast_ref::<io::Error>()
+                && io_error_is_too_many_open_files(ioe)
+            {
+                return true;
+            }
+            err = StdError::source(e);
+        }
+        false
     }
 
     /// Creates a new error from a given error.
