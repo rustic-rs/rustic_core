@@ -70,7 +70,7 @@ pub(crate) fn repair_index<S: Open>(
     p.finish();
 
     let pack_read_header = checker.into_pack_to_read();
-    repo.warm_up_wait(pack_read_header.iter().map(|(id, _, _)| *id))?;
+    repo.warm_up_wait(pack_read_header.iter().map(|(id, _, _, _)| *id))?;
 
     let indexer = Indexer::new(be.clone()).into_shared();
     let p = repo.progress_counter("reading pack headers");
@@ -83,7 +83,7 @@ pub(crate) fn repair_index<S: Open>(
         )
         .attach_context("length", pack_read_header.len().to_string())
     })?);
-    for (id, size_hint, packsize) in pack_read_header {
+    for (id, size_hint, packsize, _) in pack_read_header {
         debug!("reading pack {id}...");
         match PackHeader::from_file(be, id, size_hint, packsize) {
             Err(err) => {
@@ -114,7 +114,7 @@ pub(crate) fn repair_index<S: Open>(
 
 struct PackChecker {
     packs: HashMap<PackId, (u32, bool)>,
-    packs_to_read: Vec<(PackId, Option<u32>, u32)>,
+    packs_to_read: Vec<(PackId, Option<u32>, u32, bool)>,
     index_ids: Vec<IndexId>,
 }
 
@@ -181,6 +181,7 @@ impl PackChecker {
                             id,
                             Some(PackHeaderRef::from_index_pack(&p).size()),
                             size,
+                            to_delete,
                         ));
                         changed = true;
                     } else {
@@ -192,10 +193,13 @@ impl PackChecker {
         (new_index, changed)
     }
 
-    fn into_pack_to_read(mut self) -> Vec<(PackId, Option<u32>, u32)> {
+    fn into_pack_to_read(mut self) -> Vec<(PackId, Option<u32>, u32, bool)> {
         // add packs which are listed but not contained in the index
-        self.packs_to_read
-            .extend(self.packs.into_iter().map(|(id, (size, _))| (id, None, size)));
+        self.packs_to_read.extend(
+            self.packs
+                .into_iter()
+                .map(|(id, (size, _))| (id, None, size, false)),
+        );
         self.packs_to_read
     }
 }
@@ -203,18 +207,21 @@ impl PackChecker {
 pub(crate) fn index_checked_from_collector<S: Open>(
     repo: &Repository<S>,
     mut collector: IndexCollector,
+    mut fallback: IndexCollector,
 ) -> RusticResult<GlobalIndex> {
     let mut checker = PackChecker::new(repo)?;
     let be = repo.dbe();
 
     let p = repo.progress_counter("reading index...");
     for index in be.stream_list::<IndexFile>(std::mem::take(&mut checker.index_ids), &p)? {
-        collector.extend(checker.check_pack(index?.1, false).0.packs);
+        let index = checker.check_pack(index?.1, false).0;
+        collector.extend(index.packs);
+        fallback.extend(index.packs_to_delete);
     }
     p.finish();
 
     let pack_read_header = checker.into_pack_to_read();
-    repo.warm_up_wait(pack_read_header.iter().map(|(id, _, _)| *id))?;
+    repo.warm_up_wait(pack_read_header.iter().map(|(id, _, _, _)| *id))?;
 
     let p = repo.progress_counter("reading pack headers");
 
@@ -227,23 +234,26 @@ pub(crate) fn index_checked_from_collector<S: Open>(
         .attach_context("length", pack_read_header.len().to_string())
     })?);
 
-    let index_packs: Vec<_> = pack_read_header
-        .into_iter()
-        .map(|(id, size_hint, packsize)| {
-            debug!("reading pack {id}...");
-            let pack = IndexPack {
-                id,
-                blobs: PackHeader::from_file(be, id, size_hint, packsize)?.into_blobs(),
-                ..Default::default()
-            };
-            p.inc(1);
-            Ok(pack)
-        })
-        .collect::<RusticResult<_>>()?;
+    for (id, size_hint, packsize, to_delete) in pack_read_header {
+        debug!("reading pack {id}...");
+        let pack = IndexPack {
+            id,
+            blobs: PackHeader::from_file(be, id, size_hint, packsize)?.into_blobs(),
+            ..Default::default()
+        };
+        if to_delete {
+            fallback.extend([pack]);
+        } else {
+            collector.extend([pack]);
+        }
+        p.inc(1);
+    }
     p.finish();
 
-    collector.extend(index_packs);
-    Ok(GlobalIndex::new_from_index(collector.into_index()))
+    Ok(GlobalIndex::new_with_fallback(
+        collector.into_index(),
+        fallback.into_index(),
+    ))
 }
 
 #[cfg(test)]
@@ -272,7 +282,7 @@ mod tests {
         test_support::{MemoryBackend, MemorySource},
     };
 
-    use super::PackChecker;
+    use super::{PackChecker, index_checked_from_collector};
 
     #[test]
     fn repair_preserves_index_published_after_pack_listing() -> anyhow::Result<()> {
@@ -349,6 +359,29 @@ mod tests {
         Ok((repo, snapshot))
     }
 
+    fn repository_with_marked_packs(
+        size_mismatch: bool,
+    ) -> anyhow::Result<(Repository<IndexedIdsStatus>, SnapshotFile)> {
+        let (repo, snapshot) = repository_with_snapshot()?;
+        let indexes = repo
+            .stream_files::<IndexFile>()?
+            .collect::<crate::RusticResult<Vec<_>>>()?;
+        for (id, index) in indexes {
+            let mut marked = IndexFile {
+                packs_to_delete: index.packs,
+                ..Default::default()
+            };
+            if size_mismatch {
+                for pack in &mut marked.packs_to_delete {
+                    pack.size = Some(pack.pack_size() + 1);
+                }
+            }
+            _ = repo.dbe().save_file(&marked)?;
+            repo.dbe().remove(FileType::Index, &id, true)?;
+        }
+        Ok((repo, snapshot))
+    }
+
     #[rstest]
     #[case::marked_before_active(true)]
     #[case::active_before_marked(false)]
@@ -422,6 +455,46 @@ mod tests {
                 .iter()
                 .all(|p| p.id != pack_id)
         }));
+        Ok(())
+    }
+
+    #[rstest]
+    #[case::preserve_mark(false)]
+    #[case::read_all_reactivates(true)]
+    fn repair_handles_marked_only_packs(#[case] read_all: bool) -> anyhow::Result<()> {
+        let (repo, snapshot) = repository_with_marked_packs(false)?;
+        repo.repair_index(&RepairIndexOptions::default().read_all(read_all), false)?;
+        let repo = repo.to_indexed()?;
+        assert_eq!(repo.index().has_tree(&snapshot.tree), read_all);
+        assert!(!repo.get_tree(&snapshot.tree)?.nodes.is_empty());
+        Ok(())
+    }
+
+    #[rstest]
+    #[case::full(IndexType::Full, false)]
+    #[case::ids(IndexType::DataIds, false)]
+    #[case::full_reread(IndexType::Full, true)]
+    #[case::ids_reread(IndexType::DataIds, true)]
+    fn checked_index_keeps_marked_packs_out_of_deduplication(
+        #[case] index_type: IndexType,
+        #[case] size_mismatch: bool,
+    ) -> anyhow::Result<()> {
+        let (repo, snapshot) = repository_with_marked_packs(size_mismatch)?;
+        let fallback_type = match index_type {
+            IndexType::Full => IndexType::Full,
+            _ => IndexType::OnlyTrees,
+        };
+        let index = index_checked_from_collector(
+            &repo,
+            IndexCollector::new(index_type),
+            IndexCollector::new(fallback_type),
+        )?;
+        assert!(!index.has_tree(&snapshot.tree));
+        assert!(
+            !Tree::from_backend(repo.dbe(), &index, snapshot.tree)?
+                .nodes
+                .is_empty()
+        );
         Ok(())
     }
 }

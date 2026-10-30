@@ -1630,3 +1630,126 @@ fn find_used_blobs<S>(
 
     Ok(ids)
 }
+
+#[cfg(test)]
+mod tests {
+    use std::{
+        path::{Path, PathBuf},
+        sync::Arc,
+    };
+
+    use rstest::rstest;
+
+    use crate::{
+        BackupOptions, CheckOptions, ConfigOptions, Credentials, FileType, KeyOptions,
+        ParentOptions, ReadBackend, Repository, RepositoryBackends, RepositoryOptions,
+        WriteBackend,
+        commands::check::CheckError,
+        index::ReadIndex,
+        repofile::{IndexFile, MasterKey, PackId, SnapshotFile},
+        test_support::{MemoryBackend, MemorySource},
+    };
+
+    use super::PruneOptions;
+
+    #[rstest]
+    #[case::stale_index(true, false)]
+    #[case::refreshed_index(false, false)]
+    #[case::stale_index_corrupted_data(true, true)]
+    fn backup_and_prune_preserve_referenced_trees(
+        #[case] stale_index: bool,
+        #[case] corrupt_data: bool,
+    ) -> anyhow::Result<()> {
+        let backends = RepositoryBackends::new(Arc::new(MemoryBackend::default()), None);
+        let options = RepositoryOptions::default().no_cache(true);
+        let credentials = Credentials::Masterkey(MasterKey::new());
+        let new_repo = || Repository::new(&options, &backends);
+        let maintenance = new_repo()?.init(
+            &credentials,
+            &KeyOptions::default(),
+            &ConfigOptions::default(),
+        )?;
+        let backup_options = BackupOptions::default()
+            .as_path(PathBuf::from("backup"))
+            .parent_opts(ParentOptions::default().force(true));
+        let backup_paths = [PathBuf::from("source")];
+        let mut source = MemorySource {
+            files: vec![("queue/00/message", b"message")],
+        };
+        let seed = new_repo()?.open(&credentials)?.to_indexed_ids()?.archive(
+            &backup_options,
+            &source,
+            SnapshotFile::default(),
+            &backup_paths,
+        )?;
+        let check_options = CheckOptions::default().read_data(true);
+        maintenance.check(check_options)?.is_ok()?;
+
+        let backup = new_repo()?.open(&credentials)?.to_indexed_ids()?;
+        let shard = backup
+            .node_from_path(seed.tree, Path::new("backup/queue/00"))?
+            .subtree
+            .unwrap();
+        let pack = backup.index().get_tree(&shard).unwrap().pack;
+        let original_file =
+            backup.node_from_path(seed.tree, Path::new("backup/queue/00/message"))?;
+        let data_pack = new_repo()?
+            .open(&credentials)?
+            .to_indexed()?
+            .get_index_entry(&original_file.content.unwrap()[0])?
+            .pack;
+
+        maintenance.delete_snapshots(&[seed.id])?;
+        let prune_options = PruneOptions::default();
+        let plan = maintenance.prune_plan(&prune_options)?;
+        maintenance.prune(&prune_options, plan)?;
+        assert!(maintenance.list::<PackId>()?.any(|id| id == pack));
+        assert!(
+            maintenance.stream_files::<IndexFile>()?.any(|item| item
+                .unwrap()
+                .1
+                .packs_to_delete
+                .iter()
+                .any(|p| p.id == pack))
+        );
+        maintenance.check(check_options)?.is_ok()?;
+
+        source.files.push(("queue/d4/message", b"another message"));
+        let backup = if stale_index {
+            backup
+        } else {
+            new_repo()?.open(&credentials)?.to_indexed_ids()?
+        };
+        let snapshot = backup.archive(
+            &backup_options,
+            &source,
+            SnapshotFile::default(),
+            &backup_paths,
+        )?;
+        assert_ne!(snapshot.tree, seed.tree);
+        let results = maintenance.check(check_options)?;
+        assert!(
+            results.is_ok().is_ok(),
+            "backup published references that check cannot read: {results:?}",
+        );
+        let restored = new_repo()?.open(&credentials)?.to_indexed()?;
+        assert_eq!(
+            restored
+                .node_from_path(snapshot.tree, Path::new("backup/queue/00"))?
+                .subtree,
+            Some(shard),
+        );
+        assert_eq!(restored.get_tree(&shard)?.nodes.len(), 1);
+        if corrupt_data {
+            let backend = backends.repository();
+            let mut bytes = backend.read_full(FileType::Pack, &data_pack)?.to_vec();
+            bytes[0] ^= 0x80;
+            backend.write_bytes(FileType::Pack, &data_pack, false, bytes.into())?;
+            let results = maintenance.check(check_options)?;
+            assert!(results.0.iter().any(|(_, error)| {
+                matches!(error, CheckError::ErrorCheckingPack { id, .. } if *id == data_pack)
+            }));
+        }
+        Ok(())
+    }
+}

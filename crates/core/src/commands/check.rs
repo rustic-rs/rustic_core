@@ -255,13 +255,15 @@ pub(crate) fn check_repository<S: Open>(
         }
     }
 
-    let (index_collector, missing_packs) = check_packs(repo, be, hot_be.as_ref(), &collector)?;
+    let (index_collector, fallback, missing_packs) =
+        check_packs(repo, be, hot_be.as_ref(), &collector)?;
 
     if let Some(cache) = &cache {
         let p = repo.progress_spinner("cleaning up packs from cache...");
         let ids: Vec<_> = index_collector
             .tree_packs()
             .iter()
+            .chain(fallback.tree_packs())
             .map(|(id, size)| (**id, *size))
             .collect();
         if let Err(err) = cache.remove_not_in_list(FileType::Pack, &ids) {
@@ -279,7 +281,8 @@ pub(crate) fn check_repository<S: Open>(
         }
     }
 
-    let index_be = GlobalIndex::new_from_index(index_collector.into_index());
+    let index_be =
+        GlobalIndex::new_with_fallback(index_collector.into_index(), fallback.into_index());
 
     let packs = check_trees(repo, be, &index_be, trees, &collector)
         .map_err(|err| collector.add_error(CheckError::ErrorCheckingTrees { source: err }))
@@ -287,8 +290,7 @@ pub(crate) fn check_repository<S: Open>(
 
     if opts.read_data {
         let packs = index_be
-            .into_index()
-            .into_iter()
+            .into_packs()
             .filter(|p| !missing_packs.contains_key(&p.id))
             .filter(|p| packs.contains(&p.id));
 
@@ -451,15 +453,17 @@ fn check_packs<S: Open>(
     be: &impl DecryptReadBackend,
     hot_be: Option<&impl ReadBackend>,
     collector: &CheckResultsCollector,
-) -> RusticResult<(IndexCollector, IndexPacks)> {
+) -> RusticResult<(IndexCollector, IndexCollector, IndexPacks)> {
     let mut packs = BTreeMap::new();
     let mut tree_packs = BTreeMap::new();
     let mut index_collector = IndexCollector::new(IndexType::Full);
+    let mut fallback = IndexCollector::new(IndexType::Full);
 
     let p = repo.progress_counter("reading index...");
     for index in be.stream_all::<IndexFile>(&p)? {
         let index = index?.1;
         index_collector.extend(index.packs.clone());
+        fallback.extend(index.packs_to_delete.clone());
         for (p, to_delete) in index.all_packs() {
             let check_time = to_delete; // Check if time is set for packs marked to delete
             let blob_type = p.blob_type();
@@ -513,7 +517,7 @@ fn check_packs<S: Open>(
     check_packs_list(be, &mut packs, collector)?;
     p.finish();
 
-    Ok((index_collector, packs))
+    Ok((index_collector, fallback, packs))
 }
 
 // TODO: Add documentation
@@ -624,7 +628,11 @@ fn check_trees<S: Open>(
     snap_trees: Vec<TreeId>,
     collector: &CheckResultsCollector,
 ) -> RusticResult<BTreeSet<PackId>> {
-    let mut packs = BTreeSet::new();
+    let mut packs = snap_trees
+        .iter()
+        .filter_map(|id| index.get_tree(id))
+        .map(|entry| entry.pack)
+        .collect::<BTreeSet<_>>();
     let p = repo.progress_counter("checking trees...");
     let mut tree_streamer = TreeStreamerOnce::new(be, index, snap_trees, p)?;
     while let Some(item) = tree_streamer.next().transpose()? {

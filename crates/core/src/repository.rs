@@ -1122,7 +1122,8 @@ impl<S: Open> Repository<S> {
     /// This saves the full index in memory which can be quite memory-consuming!
     pub fn to_indexed_checked(self) -> RusticResult<Repository<IndexedFullStatus>> {
         let collector = IndexCollector::new(IndexType::Full);
-        let index = index_checked_from_collector(&self, collector)?;
+        let fallback = IndexCollector::new(IndexType::Full);
+        let index = index_checked_from_collector(&self, collector, fallback)?;
         Ok(self.into_indexed_with_index(index))
     }
 
@@ -1187,7 +1188,8 @@ impl<S: Open> Repository<S> {
     /// However, operations which add data are fully functional.
     pub fn to_indexed_ids_checked(self) -> RusticResult<Repository<IndexedIdsStatus>> {
         let collector = IndexCollector::new(IndexType::DataIds);
-        let index = index_checked_from_collector(&self, collector)?;
+        let fallback = IndexCollector::new(IndexType::OnlyTrees);
+        let index = index_checked_from_collector(&self, collector, fallback)?;
         Ok(self.into_indexed_ids_with_index(index))
     }
 
