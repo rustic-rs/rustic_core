@@ -1,15 +1,37 @@
-use std::{collections::BTreeMap, sync::RwLock};
+use std::{
+    collections::BTreeMap,
+    io::Cursor,
+    path::Path,
+    sync::{
+        RwLock,
+        atomic::{AtomicUsize, Ordering},
+    },
+};
 
 use bytes::{Bytes, BytesMut};
 use enum_map::EnumMap;
 
 use crate::{
-    BytesList, ErrorKind, FileType, Id, ReadBackend, RusticError, RusticResult, WriteBackend,
+    BytesList, ErrorKind, FileType, Id, ReadBackend, ReadSource, ReadSourceEntry, RusticError,
+    RusticResult, WriteBackend,
+    backend::node::{Metadata, Node, NodeType},
 };
 
 #[derive(Debug, Default)]
 pub(crate) struct MemoryBackend {
     files: RwLock<EnumMap<FileType, BTreeMap<Id, Bytes>>>,
+    write_failure: RwLock<Option<FileType>>,
+    failed_writes: AtomicUsize,
+}
+
+impl MemoryBackend {
+    pub(crate) fn fail_writes(&self, tpe: FileType) {
+        *self.write_failure.write().unwrap() = Some(tpe);
+    }
+
+    pub(crate) fn failed_writes(&self) -> usize {
+        self.failed_writes.load(Ordering::SeqCst)
+    }
 }
 
 impl ReadBackend for MemoryBackend {
@@ -60,6 +82,13 @@ impl WriteBackend for MemoryBackend {
         _cacheable: bool,
         content: BytesList,
     ) -> RusticResult<()> {
+        if *self.write_failure.read().unwrap() == Some(tpe) {
+            _ = self.failed_writes.fetch_add(1, Ordering::SeqCst);
+            return Err(RusticError::new(
+                ErrorKind::Backend,
+                "Injected test write failure",
+            ));
+        }
         let mut bytes = BytesMut::new();
         for part in content.slice() {
             bytes.extend_from_slice(part);
@@ -71,5 +100,46 @@ impl WriteBackend for MemoryBackend {
     fn remove(&self, tpe: FileType, id: &Id, _cacheable: bool) -> RusticResult<()> {
         assert!(self.files.write().unwrap()[tpe].remove(id).is_some());
         Ok(())
+    }
+}
+
+pub(crate) struct MemorySource {
+    pub(crate) files: Vec<(&'static str, &'static [u8])>,
+}
+
+impl ReadSource for MemorySource {
+    type Open = Cursor<&'static [u8]>;
+    type Iter = std::vec::IntoIter<RusticResult<ReadSourceEntry<Self::Open>>>;
+
+    fn size(&self) -> RusticResult<Option<u64>> {
+        Ok(Some(
+            self.files
+                .iter()
+                .map(|(_, bytes)| bytes.len() as u64)
+                .sum(),
+        ))
+    }
+
+    fn entries(&self) -> Self::Iter {
+        self.files
+            .iter()
+            .map(|(name, bytes)| {
+                let path = Path::new("source").join(name);
+                let node = Node::new_node(
+                    path.file_name().unwrap(),
+                    NodeType::File,
+                    Metadata {
+                        size: bytes.len() as u64,
+                        ..Default::default()
+                    },
+                );
+                Ok(ReadSourceEntry {
+                    path,
+                    node,
+                    open: Some(Cursor::new(*bytes)),
+                })
+            })
+            .collect::<Vec<_>>()
+            .into_iter()
     }
 }
