@@ -11,7 +11,7 @@ use crate::{
     },
     error::{ErrorKind, RusticError, RusticResult},
     index::{GlobalIndex, binarysorted::IndexCollector, indexer::Indexer},
-    repofile::{IndexFile, IndexPack, PackHeader, PackHeaderRef, packfile::PackId},
+    repofile::{IndexFile, IndexId, IndexPack, PackHeader, PackHeaderRef, packfile::PackId},
     repository::{Open, Repository},
 };
 
@@ -53,7 +53,7 @@ pub(crate) fn repair_index<S: Open>(
     let mut checker = PackChecker::new(repo)?;
 
     let p = repo.progress_counter("reading index...");
-    for index in be.stream_all::<IndexFile>(&p)? {
+    for index in be.stream_list::<IndexFile>(std::mem::take(&mut checker.index_ids), &p)? {
         let (index_id, index) = index?;
         let (new_index, changed) = checker.check_pack(index, opts.read_all);
         match (changed, dry_run) {
@@ -115,11 +115,17 @@ pub(crate) fn repair_index<S: Open>(
 struct PackChecker {
     packs: HashMap<PackId, u32>,
     packs_to_read: Vec<(PackId, Option<u32>, u32)>,
+    index_ids: Vec<IndexId>,
 }
 
 impl PackChecker {
     fn new<S: Open>(repo: &Repository<S>) -> RusticResult<Self> {
         let be = repo.dbe();
+        let index_ids: Vec<_> = be
+            .list(FileType::Index)?
+            .into_iter()
+            .map(IndexId::from)
+            .collect();
         let p = repo.progress_spinner("listing packs...");
         let packs: HashMap<_, _> = be
             .list_with_size(FileType::Pack)?
@@ -131,6 +137,7 @@ impl PackChecker {
         Ok(Self {
             packs,
             packs_to_read: Vec::new(),
+            index_ids,
         })
     }
 
@@ -186,7 +193,7 @@ pub(crate) fn index_checked_from_collector<S: Open>(
     let be = repo.dbe();
 
     let p = repo.progress_counter("reading index...");
-    for index in be.stream_all::<IndexFile>(&p)? {
+    for index in be.stream_list::<IndexFile>(std::mem::take(&mut checker.index_ids), &p)? {
         collector.extend(checker.check_pack(index?.1, false).0.packs);
     }
     p.finish();
@@ -222,4 +229,100 @@ pub(crate) fn index_checked_from_collector<S: Open>(
 
     collector.extend(index_packs);
     Ok(GlobalIndex::new_from_index(collector.into_index()))
+}
+
+#[cfg(test)]
+mod tests {
+    use std::{
+        path::PathBuf,
+        sync::{
+            Arc,
+            atomic::{AtomicBool, Ordering},
+        },
+    };
+
+    use crate::{
+        BackupOptions, ConfigOptions, Credentials, FileType, IndexedIdsStatus, KeyOptions,
+        ParentOptions, ReadBackend, RepairIndexOptions, Repository, RepositoryBackends,
+        RepositoryOptions, WriteBackend,
+        backend::MockBackend,
+        index::ReadIndex,
+        repofile::{MasterKey, SnapshotFile},
+        test_support::{MemoryBackend, MemorySource},
+    };
+
+    #[test]
+    fn repair_preserves_index_published_after_pack_listing() -> anyhow::Result<()> {
+        let (seed, snapshot) = repository_with_snapshot()?;
+        let inner = seed.be.clone();
+        let published = Arc::new(AtomicBool::new(false));
+        let mut backend = MockBackend::new();
+        _ = backend.expect_location().return_const("memory".to_string());
+        let be = inner.clone();
+        let publication = published.clone();
+        _ = backend.expect_list_with_size().returning(move |tpe| {
+            if tpe == FileType::Index && !publication.load(Ordering::SeqCst) {
+                return Ok(Vec::new());
+            }
+            if tpe == FileType::Pack && !publication.swap(true, Ordering::SeqCst) {
+                return Ok(Vec::new());
+            }
+            be.list_with_size(tpe)
+        });
+        let be = inner.clone();
+        _ = backend
+            .expect_read_full()
+            .returning(move |tpe, id| be.read_full(tpe, id));
+        let be = inner.clone();
+        _ = backend
+            .expect_read_partial()
+            .returning(move |tpe, id, cacheable, offset, length| {
+                be.read_partial(tpe, id, cacheable, offset, length)
+            });
+        let be = inner.clone();
+        _ = backend
+            .expect_write_bytes()
+            .returning(move |tpe, id, cacheable, content| {
+                be.write_bytes(tpe, id, cacheable, content)
+            });
+        _ = backend
+            .expect_remove()
+            .returning(move |tpe, id, cacheable| inner.remove(tpe, id, cacheable));
+
+        let backends = RepositoryBackends::new(Arc::new(backend), None);
+        let repo = Repository::new(&RepositoryOptions::default().no_cache(true), &backends)?
+            .open(&Credentials::Masterkey(seed.key()))?;
+        repo.repair_index(&RepairIndexOptions::default(), false)?;
+        assert!(published.load(Ordering::SeqCst));
+        let repo = repo.to_indexed()?;
+        assert!(
+            repo.index().has_tree(&snapshot.tree),
+            "repair must leave a newly published index intact",
+        );
+        assert!(!repo.get_tree(&snapshot.tree)?.nodes.is_empty());
+        Ok(())
+    }
+
+    fn repository_with_snapshot() -> anyhow::Result<(Repository<IndexedIdsStatus>, SnapshotFile)> {
+        let backends = RepositoryBackends::new(Arc::new(MemoryBackend::default()), None);
+        let options = RepositoryOptions::default().no_cache(true);
+        let credentials = Credentials::Masterkey(MasterKey::new());
+        let repo = Repository::new(&options, &backends)?
+            .init(
+                &credentials,
+                &KeyOptions::default(),
+                &ConfigOptions::default(),
+            )?
+            .to_indexed_ids()?;
+        let source = MemorySource {
+            files: vec![("queue/00/message", b"message")],
+        };
+        let snapshot = repo.archive(
+            &BackupOptions::default().parent_opts(ParentOptions::default().force(true)),
+            &source,
+            SnapshotFile::default(),
+            &[PathBuf::from("source")],
+        )?;
+        Ok((repo, snapshot))
+    }
 }
