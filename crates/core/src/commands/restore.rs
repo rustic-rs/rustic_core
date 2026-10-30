@@ -175,7 +175,13 @@ pub(crate) fn collect_and_prepare<S: IndexedFull>(
     dry_run: bool,
 ) -> RusticResult<RestorePlan> {
     let p = repo.progress_spinner("collecting file information...");
-    let dest_path = dest.path("");
+    let dest_path = dest.path("").map_err(|err| {
+        RusticError::with_source(
+            ErrorKind::InputOutput,
+            "Failed to resolve destination base path.",
+            err,
+        )
+    })?;
 
     let mut stats = RestoreStats::default();
     let mut restore_infos = RestorePlan::default();
@@ -321,7 +327,15 @@ pub(crate) fn collect_and_prepare<S: IndexedFull>(
                 next_dst = process_existing(&mut walker, destination)?;
             }
             (Some(destination), Some((path, node))) => {
-                match destination.path().cmp(&dest.path(path)) {
+                let target_path = dest.path(path).map_err(|err| {
+                    RusticError::with_source(
+                        ErrorKind::InputOutput,
+                        "Invalid path in snapshot for restore destination: `{path}`.",
+                        err,
+                    )
+                    .attach_context("path", path.display().to_string())
+                })?;
+                match destination.path().cmp(&target_path) {
                     Ordering::Less => {
                         next_dst = process_existing(&mut walker, destination)?;
                     }
