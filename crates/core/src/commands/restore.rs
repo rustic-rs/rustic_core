@@ -6,7 +6,12 @@ use log::{debug, error, info, trace, warn};
 use serde::{Deserialize, Serialize};
 use smallvec::SmallVec;
 
-use std::{cmp::Ordering, collections::BTreeMap, path::PathBuf, sync::Mutex};
+use std::{
+    cmp::Ordering,
+    collections::BTreeMap,
+    path::{Path, PathBuf},
+    sync::Mutex,
+};
 
 use itertools::Itertools;
 use rayon::ThreadPoolBuilder;
@@ -16,7 +21,7 @@ use crate::{
     backend::{
         FileType, ReadBackend,
         decrypt::DecryptReadBackend,
-        local_destination::LocalDestination,
+        local_destination::{LocalDestination, LocalDestinationErrorKind},
         node::{Node, NodeType},
     },
     blob::{BlobLocation, BlobLocations},
@@ -596,6 +601,13 @@ fn restore_contents<S: Open>(
             .attach_context("num_threads", threads.to_string())
         })?;
 
+    // the first error of the restore tasks; once it is set, the remaining tasks are skipped
+    let first_error = Mutex::new(None);
+    let failed = || first_error.lock().unwrap().is_some();
+    let fail = |err: Box<RusticError>| {
+        _ = first_error.lock().unwrap().get_or_insert(err);
+    };
+
     pool.in_place_scope(|s| {
         for PackInfo {
             pack_id,
@@ -611,18 +623,29 @@ fn restore_contents<S: Open>(
             let p = &p;
 
             if !blobs.is_empty() {
-                // TODO: error handling!
                 s.spawn(move |s1| {
+                    if failed() {
+                        return;
+                    }
                     let read_data = match &from_file {
                         Some((file_idx, offset_file, length_file)) => {
                             // read from existing file
-                            dest.read_at(&filenames[*file_idx], *offset_file, (*length_file).into())
-                                .unwrap()
+                            let path = &filenames[*file_idx];
+                            dest.read_at(path, *offset_file, (*length_file).into())
+                                .map_err(|err| {
+                                    dest_error("Failed to read from the file `{path}`.", path, err)
+                                })
                         }
                         None => {
                             // read needed part of the pack
                             be.read_partial(FileType::Pack, &pack_id, false, offset, length)
-                                .unwrap()
+                        }
+                    };
+                    let read_data = match read_data {
+                        Ok(read_data) => read_data,
+                        Err(err) => {
+                            fail(err);
+                            return;
                         }
                     };
 
@@ -636,11 +659,16 @@ fn restore_contents<S: Open>(
                                 .expect("convert from u32 to usize should not fail!");
                             let end = usize::try_from(bl.offset + bl.length - offset)
                                 .expect("convert from u32 to usize should not fail!");
-                            be.read_encrypted_from_partial(
+                            match be.read_encrypted_from_partial(
                                 &read_data[start..end],
                                 bl.uncompressed_length,
-                            )
-                            .unwrap()
+                            ) {
+                                Ok(data) => data,
+                                Err(err) => {
+                                    fail(err);
+                                    return;
+                                }
+                            }
                         };
                         let is_sparse = match sparse {
                             SparseRestore::ByContent => data.iter().all(|&b| b == 0),
@@ -650,17 +678,34 @@ fn restore_contents<S: Open>(
                         for (file_idx, start) in name_dests {
                             let data = data.clone();
                             s1.spawn(move |_| {
+                                if failed() {
+                                    return;
+                                }
                                 let path = &filenames[file_idx];
                                 // Allocate file if it is not yet allocated
                                 let mut sizes_guard = sizes.lock().unwrap();
                                 let filesize = sizes_guard[file_idx];
                                 if filesize > 0 {
-                                    dest.set_length(path, filesize).unwrap();
+                                    if let Err(err) = dest.set_length(path, filesize) {
+                                        fail(dest_error(
+                                            "Failed to set the length of the file `{path}`.",
+                                            path,
+                                            err,
+                                        ));
+                                        return;
+                                    }
                                     sizes_guard[file_idx] = 0;
                                 }
                                 drop(sizes_guard);
-                                if !is_sparse {
-                                    dest.write_at(path, start, &data).unwrap();
+                                if !is_sparse
+                                    && let Err(err) = dest.write_at(path, start, &data)
+                                {
+                                    fail(dest_error(
+                                        "Failed to write to the file `{path}`.",
+                                        path,
+                                        err,
+                                    ));
+                                    return;
                                 }
                                 p.inc(size);
                             });
@@ -673,7 +718,20 @@ fn restore_contents<S: Open>(
 
     p.finish();
 
-    Ok(())
+    match first_error.into_inner().unwrap() {
+        Some(err) => Err(err),
+        None => Ok(()),
+    }
+}
+
+/// Error for a failed operation on `path` in the restore destination
+fn dest_error(
+    guidance: &'static str,
+    path: &Path,
+    err: LocalDestinationErrorKind,
+) -> Box<RusticError> {
+    RusticError::with_source(ErrorKind::InputOutput, guidance, err)
+        .attach_context("path", path.display().to_string())
 }
 
 /// Information about what will be restored.
