@@ -113,7 +113,7 @@ pub(crate) fn repair_index<S: Open>(
 }
 
 struct PackChecker {
-    packs: HashMap<PackId, u32>,
+    packs: HashMap<PackId, (u32, bool)>,
     packs_to_read: Vec<(PackId, Option<u32>, u32)>,
     index_ids: Vec<IndexId>,
 }
@@ -127,11 +127,22 @@ impl PackChecker {
             .map(IndexId::from)
             .collect();
         let p = repo.progress_spinner("listing packs...");
-        let packs: HashMap<_, _> = be
+        let mut packs: HashMap<_, _> = be
             .list_with_size(FileType::Pack)?
             .into_iter()
-            .map(|(id, size)| (PackId::from(id), size))
+            .map(|(id, size)| (PackId::from(id), (size, false)))
             .collect();
+        p.finish();
+
+        let p = repo.progress_counter("reading active packs...");
+        for index in be.stream_list::<IndexFile>(index_ids.clone(), &p)? {
+            let (_, index) = index?;
+            for pack in index.packs {
+                if let Some((_, active)) = packs.get_mut(&pack.id) {
+                    *active = true;
+                }
+            }
+        }
         p.finish();
 
         Ok(Self {
@@ -147,13 +158,17 @@ impl PackChecker {
         for (p, to_delete) in indexfile.all_packs() {
             let index_size = p.pack_size();
             let id = p.id;
+            if to_delete && self.packs.get(&id).is_some_and(|(_, active)| *active) {
+                changed = true;
+                continue;
+            }
             match self.packs.remove(&id) {
                 None => {
                     // this pack either does not exist or was already indexed in another index file => remove from index!
                     debug!("removing non-existing pack {id} from index");
                     changed = true;
                 }
-                Some(size) => {
+                Some((size, _)) => {
                     if index_size != size {
                         info!(
                             "pack {id}: size computed by index: {index_size}, actual size: {size}, will re-read header"
@@ -180,7 +195,7 @@ impl PackChecker {
     fn into_pack_to_read(mut self) -> Vec<(PackId, Option<u32>, u32)> {
         // add packs which are listed but not contained in the index
         self.packs_to_read
-            .extend(self.packs.into_iter().map(|(id, size)| (id, None, size)));
+            .extend(self.packs.into_iter().map(|(id, (size, _))| (id, None, size)));
         self.packs_to_read
     }
 }
@@ -241,15 +256,23 @@ mod tests {
         },
     };
 
+    use rstest::rstest;
+
     use crate::{
         BackupOptions, ConfigOptions, Credentials, FileType, IndexedIdsStatus, KeyOptions,
         ParentOptions, ReadBackend, RepairIndexOptions, Repository, RepositoryBackends,
         RepositoryOptions, WriteBackend,
-        backend::MockBackend,
-        index::ReadIndex,
-        repofile::{MasterKey, SnapshotFile},
+        backend::{MockBackend, decrypt::DecryptWriteBackend},
+        blob::{BlobId, tree::Tree},
+        index::{
+            GlobalIndex, ReadIndex,
+            binarysorted::{IndexCollector, IndexType},
+        },
+        repofile::{IndexFile, MasterKey, SnapshotFile},
         test_support::{MemoryBackend, MemorySource},
     };
+
+    use super::PackChecker;
 
     #[test]
     fn repair_preserves_index_published_after_pack_listing() -> anyhow::Result<()> {
@@ -324,5 +347,81 @@ mod tests {
             &[PathBuf::from("source")],
         )?;
         Ok((repo, snapshot))
+    }
+
+    #[rstest]
+    #[case::marked_before_active(true)]
+    #[case::active_before_marked(false)]
+    fn repair_preserves_active_pack_regardless_of_index_order(
+        #[case] marked_first: bool,
+    ) -> anyhow::Result<()> {
+        let (repo, snapshot) = repository_with_snapshot()?;
+        let mut indexes = repo
+            .stream_files::<IndexFile>()?
+            .collect::<crate::RusticResult<Vec<_>>>()?
+            .into_iter()
+            .map(|(_, index)| index)
+            .collect::<Vec<_>>();
+        let root = BlobId::from(snapshot.tree);
+        let pack = indexes
+            .iter()
+            .flat_map(|index| &index.packs)
+            .find(|pack| pack.blobs.iter().any(|blob| blob.id == root))
+            .unwrap()
+            .clone();
+        let pack_id = pack.id;
+        let marked = IndexFile {
+            packs_to_delete: vec![pack],
+            ..Default::default()
+        };
+        _ = repo.dbe().save_file(&marked)?;
+        if marked_first {
+            indexes.insert(0, marked);
+        } else {
+            indexes.push(marked);
+        }
+
+        let mut checker = PackChecker::new(&repo)?;
+        let repaired = indexes
+            .into_iter()
+            .map(|index| checker.check_pack(index, false).0)
+            .collect::<Vec<_>>();
+        assert!(checker.into_pack_to_read().is_empty());
+        assert_eq!(
+            repaired
+                .iter()
+                .flat_map(|index| &index.packs)
+                .filter(|pack| pack.id == pack_id)
+                .count(),
+            1,
+            "repair must preserve the active entry even when its deletion mark is processed first",
+        );
+        assert!(
+            repaired
+                .iter()
+                .flat_map(|index| &index.packs_to_delete)
+                .all(|pack| pack.id != pack_id),
+            "a stale deletion mark must not shadow an active pack",
+        );
+
+        let mut collector = IndexCollector::new(IndexType::Full);
+        collector.extend(repaired.into_iter().flat_map(|index| index.packs));
+        let index = GlobalIndex::new_from_index(collector.into_index());
+        assert!(
+            !Tree::from_backend(repo.dbe(), &index, snapshot.tree)?
+                .nodes
+                .is_empty()
+        );
+        repo.repair_index(&RepairIndexOptions::default(), false)?;
+        let repo = repo.to_indexed()?;
+        assert!(repo.index().has_tree(&snapshot.tree));
+        assert!(repo.stream_files::<IndexFile>()?.all(|item| {
+            item.unwrap()
+                .1
+                .packs_to_delete
+                .iter()
+                .all(|p| p.id != pack_id)
+        }));
+        Ok(())
     }
 }
