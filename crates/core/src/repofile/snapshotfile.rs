@@ -1317,6 +1317,7 @@ mod tests {
     use crate::{
         backend::{
             MockBackend,
+            concurrent::ConcurrencyBackend,
             decrypt::{DecryptBackend, DecryptWriteBackend},
         },
         crypto::{CryptoKey, aespoly1305::Key},
@@ -1457,7 +1458,10 @@ mod tests {
             .expect_read_full()
             .returning(move |_tpe, id| Ok(snapshot_files.get(id).unwrap().clone()));
 
-        let mut be = DecryptBackend::new(Arc::new(back), key);
+        let mut be = DecryptBackend::new(
+            Arc::new(ConcurrencyBackend::new_with_default(back)),
+            key
+        );
         be.set_zstd(None);
 
         (be, [id1, id2, id3])

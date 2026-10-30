@@ -29,6 +29,7 @@ use crate::{
         packer::{BlobCopier, CopyPackBlobs, PackSizer},
         tree::TreeStreamerOnce,
     },
+    concurrency::ConcurrencyClass,
     error::{ErrorKind, RusticError, RusticResult},
     index::{
         GlobalIndex, ReadGlobalIndex, ReadIndex,
@@ -1398,33 +1399,43 @@ pub(crate) fn prune_repository<S: Open>(
         )?;
 
         // write new pack files and index files
-        repack_packs
-            .into_par_iter()
-            .try_for_each(|pack| -> RusticResult<_> {
-                let repacker = match pack.blob_type {
-                    BlobType::Data => &data_repacker,
-                    BlobType::Tree => &tree_repacker,
-                };
-                let blob_chunks: Vec<_> = pack
-                    .blobs
-                    .into_iter()
-                    .map(|blob| BlobLocations::from_blob_location(blob.location, blob.id))
-                    .coalesce(BlobLocations::coalesce)
-                    .map(|locations| CopyPackBlobs {
-                        pack_id: pack.id,
-                        locations,
-                    })
-                    .collect();
 
-                // TODO: repack in parallel
-                for blobs in blob_chunks {
-                    if opts.fast_repack {
-                        repacker.copy_fast(blobs, &p)?;
-                    } else {
-                        repacker.copy(blobs, &p)?;
-                    }
-                }
-                Ok(())
+        // Read Concurrency: The work done here is processing the read pack
+        // data for repacking.  The repacker will handle the write side.
+        repo.concurrency()
+            .pool(
+                "prune_repository",
+                repo.concurrency().limit(ConcurrencyClass::Read),
+            )
+            .install(|| {
+                repack_packs
+                    .into_par_iter()
+                    .try_for_each(|pack| -> RusticResult<_> {
+                        let repacker = match pack.blob_type {
+                            BlobType::Data => &data_repacker,
+                            BlobType::Tree => &tree_repacker,
+                        };
+                        let blob_chunks: Vec<_> = pack
+                            .blobs
+                            .into_iter()
+                            .map(|blob| BlobLocations::from_blob_location(blob.location, blob.id))
+                            .coalesce(BlobLocations::coalesce)
+                            .map(|locations| CopyPackBlobs {
+                                pack_id: pack.id,
+                                locations,
+                            })
+                            .collect();
+
+                        // TODO: repack in parallel
+                        for blobs in blob_chunks {
+                            if opts.fast_repack {
+                                repacker.copy_fast(blobs, &p)?;
+                            } else {
+                                repacker.copy(blobs, &p)?;
+                            }
+                        }
+                        Ok(())
+                    })
             })?;
         _ = tree_repacker.finalize()?;
         _ = data_repacker.finalize()?;
@@ -1609,6 +1620,9 @@ fn find_used_blobs<S>(
 
     let mut tree_streamer = TreeStreamerOnce::new(be, index, snap_trees, p)?;
     while let Some(item) = tree_streamer.next().transpose()? {
+        // CPU Concurrency: Include our processing together with TreeStreamerOnce
+        let _guard = repo.concurrency().acquire(ConcurrencyClass::Cpu);
+
         let (_, tree) = item;
         for node in tree.nodes {
             match node.node_type {

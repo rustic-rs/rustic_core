@@ -1,5 +1,5 @@
 use std::{
-    num::NonZeroU32,
+    num::{NonZero, NonZeroU32},
     sync::{Arc, RwLock},
     thread::scope,
     time::{Duration, SystemTime},
@@ -18,7 +18,8 @@ use crate::{
         BytesList, FileType,
         decrypt::{DecryptFullBackend, DecryptWriteBackend},
     },
-    blob::{BlobId, BlobLocations, BlobType},
+    blob::{BlobId, BlobLocation, BlobLocations, BlobType},
+    concurrency::{ConcurrencyClass, ConcurrentIteratorExt},
     crypto::{CryptoKey, hasher::hash_reader},
     error::{ErrorKind, RusticError, RusticResult},
     index::{IndexEntry, indexer::SharedIndexer},
@@ -265,10 +266,21 @@ impl<BE: DecryptWriteBackend> Packer<BE> {
                     .filter(|(_, id)| !indexer.read().unwrap().has(id))
                     .filter(|(_, id)| !raw_packer.read().unwrap().has(id))
                     .readahead_scoped(scope)
-                    .parallel_map_scoped(scope, |(data, id): (Bytes, BlobId)| {
-                        let (data, data_len, uncompressed_length) = be.process_data(&data)?;
-                        Ok((data, id, u64::from(data_len), uncompressed_length))
-                    })
+                    // Concurrency: We should be CPU bound, but also need to
+                    // meet the raw_packer write limit.  So use whichever is
+                    // larger, with a fallback to available parallelism for
+                    // CPU to match pre-concurrency behavior
+                    .concurrent_map_scoped(
+                        std::cmp::max(
+                            Some(be.concurrency().limit_or_available(ConcurrencyClass::Cpu)),
+                            be.concurrency().limit(ConcurrencyClass::Write),
+                        ),
+                        scope,
+                        |(data, id): (Bytes, BlobId)| {
+                            let (data, data_len, uncompressed_length) = be.process_data(&data)?;
+                            Ok((data, id, u64::from(data_len), uncompressed_length))
+                        },
+                    )
                     .readahead_scoped(scope)
                     // check again if id is already contained
                     // TODO: We may still save duplicate blobs - the indexer is only updated when the packfile write has completed
@@ -431,6 +443,16 @@ impl<BE: DecryptWriteBackend> RawPacker<BE> {
     /// * `config` - The config file.
     /// * `total_size` - The total size of the pack file.
     fn new(be: BE, blob_type: BlobType, indexer: SharedIndexer<BE>, pack_sizer: PackSizer) -> Self {
+        // Write Concurrency: Actor threads (with a fallback to single thread
+        // pre-concurrency behavior).
+        //
+        // Note: Multiple actors may exceed this value together, but the
+        // concurrency limiter will meet the overall limit.
+        let par = be
+            .concurrency()
+            .limit_or(ConcurrencyClass::Write, NonZero::new(1).unwrap())
+            .get();
+
         let file_writer = Some(Actor::new(
             FileWriterHandle {
                 be: be.clone(),
@@ -438,7 +460,7 @@ impl<BE: DecryptWriteBackend> RawPacker<BE> {
                 cacheable: blob_type.is_cacheable(),
             },
             1,
-            1,
+            par,
         ));
 
         Self {
@@ -782,6 +804,8 @@ pub(crate) struct FileWriterHandle<BE: DecryptWriteBackend> {
 impl<BE: DecryptWriteBackend> FileWriterHandle<BE> {
     // TODO: add documentation
     fn process(&self, load: (BytesList, PackId, IndexPack)) -> RusticResult<IndexPack> {
+        // Write Concurrency: Processing data heading for backend
+        let _guard = self.be.concurrency().acquire(ConcurrencyClass::Write);
         let (file, id, mut index) = load;
         index.id = id;
         self.be
@@ -819,7 +843,7 @@ impl Actor {
     fn new<BE: DecryptWriteBackend>(
         fwh: FileWriterHandle<BE>,
         queue_len: usize,
-        _par: usize,
+        par: usize,
     ) -> Self {
         let (tx, rx) = bounded(queue_len);
         let (finish_tx, finish_rx) = bounded::<RusticResult<()>>(0);
@@ -830,14 +854,17 @@ impl Actor {
                     .into_iter()
                     .readahead_scoped(scope)
                     .map(|(file, index): (BytesList, IndexPack)| {
+                        // CPU Concurrency: hashing
+                        let _guard = fwh.be.concurrency().acquire(ConcurrencyClass::Cpu);
                         let id = hash_reader(file.clone().reader())
                             .expect("reading from memory cannot fail");
                         (file, PackId::from(id), index)
                     })
                     .readahead_scoped(scope)
-                    .map(|load| fwh.process(load))
+                    .concurrent_map_scoped(NonZero::new(par), scope, |load| fwh.process(load))
                     .readahead_scoped(scope)
                     .try_for_each(|index| fwh.index(index?));
+
                 _ = finish_tx.send(status);
             });
         });
@@ -917,6 +944,8 @@ where
 {
     /// The backend to read from.
     be_src: BE,
+    /// The backend to write to.
+    be_dst: BE,
     /// The packer to write to.
     packer: Packer<BE>,
     /// the blob type
@@ -948,12 +977,55 @@ impl<BE: DecryptFullBackend> BlobCopier<BE> {
         indexer: SharedIndexer<BE>,
         pack_sizer: PackSizer,
     ) -> RusticResult<Self> {
-        let packer = Packer::new(be_dst, blob_type, indexer, pack_sizer)?;
+        let packer = Packer::new(be_dst.clone(), blob_type, indexer, pack_sizer)?;
         Ok(Self {
             be_src,
+            be_dst,
             packer,
             blob_type,
         })
+    }
+
+    /// Copies blobs to the destination backend in parallel
+    ///
+    /// # Arguments
+    ///
+    /// * `pack_blobs` - The blobs to copy
+    /// * `copy_fn` - The function to use to copy each blob (executes in parallel)
+    ///
+    /// # Errors
+    ///
+    /// * Any error from copy_fn().
+    fn copy_dest_parallel<F>(&self, pack_blobs: CopyPackBlobs, copy_fn: F) -> RusticResult<()>
+    where
+        F: Fn(BlobLocation, BlobId) -> RusticResult<()> + Sync,
+    {
+        // Write Concurrency: Use write limit to ensure we can feed the packer
+        // fast enough.  Fallback is no concurrency to match prior behavior.
+        //
+        // TODO Concurrency: If be_src and be_dst are different, their CPU
+        // limiters are independent, so depending on read/write limits it's
+        // possible to exceed either CPU limit.  Given the deduplication hit
+        // its probably unlikely for someone to want a write limit above
+        // either CPU limit though.
+        let threads = self
+            .be_dst
+            .concurrency()
+            .limit_or(ConcurrencyClass::Write, NonZero::new(1).unwrap());
+
+        let _ = scope(|s| {
+            pack_blobs
+                .locations
+                .blobs
+                .into_iter()
+                .concurrent_map_scoped(Some(threads), s, |(blob, blob_id)| {
+                    // Concurrency: raw packer will enforce the write concurrency
+                    copy_fn(blob, blob_id)
+                })
+                .collect::<RusticResult<Vec<_>>>()
+        })?;
+
+        Ok(())
     }
 
     /// Adds the blob to the packfile without any check
@@ -969,16 +1041,18 @@ impl<BE: DecryptFullBackend> BlobCopier<BE> {
     /// * If reading the blob from the backend fails
     pub fn copy_fast(&self, pack_blobs: CopyPackBlobs, p: &Progress) -> RusticResult<()> {
         let offset = pack_blobs.locations.offset;
-        let data = self.be_src.read_partial(
-            FileType::Pack,
-            &pack_blobs.pack_id,
-            self.blob_type.is_cacheable(),
-            offset,
-            pack_blobs.locations.length,
-        )?;
+        let data = {
+            let _guard = self.be_src.concurrency().acquire(ConcurrencyClass::Read);
+            self.be_src.read_partial(
+                FileType::Pack,
+                &pack_blobs.pack_id,
+                self.blob_type.is_cacheable(),
+                offset,
+                pack_blobs.locations.length,
+            )
+        }?;
 
-        // TODO: write in parallel
-        for (blob, blob_id) in pack_blobs.locations.blobs {
+        self.copy_dest_parallel(pack_blobs, |blob, blob_id| {
             let start = usize::try_from(blob.offset - offset)
                 .expect("convert from u32 to usize should not fail!");
             let end = usize::try_from(blob.offset + blob.length - offset)
@@ -998,9 +1072,8 @@ impl<BE: DecryptFullBackend> BlobCopier<BE> {
                         .attach_context("blob_id", blob_id.to_string())
                 })?;
             p.inc(blob.length.into());
-        }
-
-        Ok(())
+            Ok(())
+        })
     }
 
     /// Adds the blob to the packfile
@@ -1016,16 +1089,18 @@ impl<BE: DecryptFullBackend> BlobCopier<BE> {
     /// * If reading the blob from the backend fails
     pub fn copy(&self, pack_blobs: CopyPackBlobs, p: &Progress) -> RusticResult<()> {
         let offset = pack_blobs.locations.offset;
-        let read_data = self.be_src.read_partial(
-            FileType::Pack,
-            &pack_blobs.pack_id,
-            self.blob_type.is_cacheable(),
-            offset,
-            pack_blobs.locations.length,
-        )?;
+        let read_data = {
+            let _guard = self.be_src.concurrency().acquire(ConcurrencyClass::Read);
+            self.be_src.read_partial(
+                FileType::Pack,
+                &pack_blobs.pack_id,
+                self.blob_type.is_cacheable(),
+                offset,
+                pack_blobs.locations.length,
+            )
+        }?;
 
-        // TODO: write in parallel
-        for (blob, blob_id) in pack_blobs.locations.blobs {
+        self.copy_dest_parallel(pack_blobs, |blob, blob_id| {
             let start = usize::try_from(blob.offset - offset)
                 .expect("convert from u32 to usize should not fail!");
             let end = usize::try_from(blob.offset + blob.length - offset)
@@ -1042,9 +1117,8 @@ impl<BE: DecryptFullBackend> BlobCopier<BE> {
                 )
             })?;
             p.inc(blob.length.into());
-        }
-
-        Ok(())
+            Ok(())
+        })
     }
 
     /// Finalizes the repacker and returns the stats

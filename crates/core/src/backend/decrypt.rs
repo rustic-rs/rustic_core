@@ -9,8 +9,12 @@ pub use zstd::compression_level_range;
 
 use crate::{
     BytesList, Progress,
-    backend::{FileType, ReadBackend, WriteBackend},
+    backend::{
+        FileType, ReadBackend, WriteBackend,
+        concurrent::{ConcurrentBackend, ConcurrentReadBackend, ConcurrentWriteBackend},
+    },
     blob::BlobLocation,
+    concurrency::{ConcurrencyClass, ConcurrencyManager},
     crypto::{CryptoKey, hasher::hash},
     error::{ErrorKind, RusticError, RusticResult},
     id::Id,
@@ -33,7 +37,7 @@ impl<T: DecryptWriteBackend + DecryptReadBackend> DecryptFullBackend for T {}
 
 type StreamResult<Id, F> = RusticResult<Receiver<RusticResult<(Id, F)>>>;
 
-pub trait DecryptReadBackend: ReadBackend + Clone + 'static {
+pub trait DecryptReadBackend: ConcurrentReadBackend + Clone + 'static {
     /// Decrypts the given data.
     ///
     /// # Arguments
@@ -73,6 +77,7 @@ pub trait DecryptReadBackend: ReadBackend + Clone + 'static {
         data: &[u8],
         uncompressed_length: Option<NonZeroU32>,
     ) -> RusticResult<Bytes> {
+        let _guard = self.concurrency().acquire(ConcurrencyClass::Cpu);
         let mut data = self.decrypt(data)?;
         if let Some(length) = uncompressed_length {
             data = decode_all(&*data).map_err(|err| {
@@ -148,13 +153,17 @@ pub trait DecryptReadBackend: ReadBackend + Clone + 'static {
         } else {
             self.read_full(F::TYPE, id)?
         };
-        let deserialized = serde_json::from_slice(&data).map_err(|err| {
-            RusticError::with_source(
-                ErrorKind::Internal,
-                "Failed to deserialize file from JSON.",
-                err,
-            )
-        })?;
+
+        let deserialized = {
+            let _guard = self.concurrency().acquire(ConcurrencyClass::Cpu);
+            serde_json::from_slice(&data).map_err(|err| {
+                RusticError::with_source(
+                    ErrorKind::Internal,
+                    "Failed to deserialize file from JSON.",
+                    err,
+                )
+            })
+        }?;
 
         Ok(deserialized)
     }
@@ -195,18 +204,29 @@ pub trait DecryptReadBackend: ReadBackend + Clone + 'static {
         let be = self.clone();
         let p = p.clone();
 
-        spawn(move || {
-            _ = list.into_par_iter().try_for_each(|id| {
-                let file = be.get_file::<F>(&id).map(|file| (id, file));
-                p.inc(1);
-                tx.send(file).ok() // abort as soon as possible if sending fails, i.e. if the receiver is dropped
+        // Backend Concurrency; This reads but this loop is backend iteration.
+        // So use those limits, or if unlimited (typical) fall back to global
+        // pool, which was also the pre-concurrency behavior.  Any CPU limits
+        // will be handled during get_file().
+        self.concurrency()
+            .pool(
+                "stream_list",
+                self.concurrency().limit(ConcurrencyClass::Backend),
+            )
+            .install(|| {
+                spawn(move || {
+                    _ = list.into_par_iter().try_for_each(|id| {
+                        let file = be.get_file::<F>(&id).map(|file| (id, file));
+                        p.inc(1);
+                        tx.send(file).ok() // abort as soon as possible if sending fails, i.e. if the receiver is dropped
+                    });
+                });
             });
-        });
         Ok(rx)
     }
 }
 
-pub trait DecryptWriteBackend: WriteBackend + Clone + 'static {
+pub trait DecryptWriteBackend: ConcurrentWriteBackend + Clone + 'static {
     /// The type of the key.
     type Key: CryptoKey;
 
@@ -252,8 +272,11 @@ pub trait DecryptWriteBackend: WriteBackend + Clone + 'static {
     ///
     /// The hash of the written data.
     fn hash_write_full_uncompressed(&self, tpe: FileType, data: &[u8]) -> RusticResult<Id> {
+        let _guard = self.concurrency().acquire(ConcurrencyClass::Cpu);
         let data = self.key().encrypt_data(data)?;
         let id = hash(&data);
+
+        drop(_guard); // Don't tie up CPU class during write
         self.write_bytes(tpe, &id, false, data.into())?;
         Ok(id)
     }
@@ -271,19 +294,25 @@ pub trait DecryptWriteBackend: WriteBackend + Clone + 'static {
     ///
     /// The id of the file.
     fn save_file<F: RepoFile>(&self, file: &F) -> RusticResult<Id> {
-        let data = serde_json::to_vec(file).map_err(|err| {
-            RusticError::with_source(
-                ErrorKind::Internal,
-                "Failed to serialize file to JSON.",
-                err,
-            )
-            .ask_report()
-        })?;
+        let data = {
+            let _guard = self.concurrency().acquire(ConcurrencyClass::Cpu);
+            serde_json::to_vec(file).map_err(|err| {
+                RusticError::with_source(
+                    ErrorKind::Internal,
+                    "Failed to serialize file to JSON.",
+                    err,
+                )
+                .ask_report()
+            })
+        }?;
 
         if F::ENCRYPTED {
             self.hash_write_full(F::TYPE, &data)
         } else {
-            let id = hash(&data);
+            let id = {
+                let _guard = self.concurrency().acquire(ConcurrencyClass::Cpu);
+                hash(&data)
+            };
 
             self.write_bytes(F::TYPE, &id, false, data.into())?;
             Ok(id)
@@ -304,14 +333,17 @@ pub trait DecryptWriteBackend: WriteBackend + Clone + 'static {
     ///
     /// The id of the file.
     fn save_file_uncompressed<F: RepoFile>(&self, file: &F) -> RusticResult<Id> {
-        let data = serde_json::to_vec(file).map_err(|err| {
-            RusticError::with_source(
-                ErrorKind::Internal,
-                "Failed to serialize file to JSON.",
-                err,
-            )
-            .ask_report()
-        })?;
+        let data = {
+            let _guard = self.concurrency().acquire(ConcurrencyClass::Cpu);
+            serde_json::to_vec(file).map_err(|err| {
+                RusticError::with_source(
+                    ErrorKind::Internal,
+                    "Failed to serialize file to JSON.",
+                    err,
+                )
+                .ask_report()
+            })
+        }?;
 
         self.hash_write_full_uncompressed(F::TYPE, &data)
     }
@@ -332,11 +364,23 @@ pub trait DecryptWriteBackend: WriteBackend + Clone + 'static {
         p: Progress,
     ) -> RusticResult<()> {
         p.set_length(list.len() as u64);
-        list.par_bridge().try_for_each(|file| -> RusticResult<_> {
-            _ = self.save_file(file)?;
-            p.inc(1);
-            Ok(())
-        })?;
+
+        // Backend Concurrency; This writes but this loop is backend iteration.
+        // So use those limits, or if unlimited (typical) fall back to global
+        // pool, which was also the pre-concurrency behavior.  Any CPU limits
+        // will be handled during save_file().
+        self.concurrency()
+            .pool(
+                "save_list",
+                self.concurrency().limit(ConcurrencyClass::Backend),
+            )
+            .install(|| {
+                list.par_bridge().try_for_each(|file| -> RusticResult<_> {
+                    _ = self.save_file(file)?;
+                    p.inc(1);
+                    Ok(())
+                })
+            })?;
         p.finish();
         Ok(())
     }
@@ -356,11 +400,22 @@ pub trait DecryptWriteBackend: WriteBackend + Clone + 'static {
         p: Progress,
     ) -> RusticResult<()> {
         p.set_length(list.len() as u64);
-        list.par_bridge().try_for_each(|id| -> RusticResult<_> {
-            self.remove(ID::TYPE, id, cacheable)?;
-            p.inc(1);
-            Ok(())
-        })?;
+
+        // Backend Concurrency; This writes but is solely backend iteration.
+        // So use those limits, or if unlimited (typical) fall back to global
+        // pool, which was also the pre-concurrency behavior.
+        self.concurrency()
+            .pool(
+                "delete_list",
+                self.concurrency().limit(ConcurrencyClass::Backend),
+            )
+            .install(|| {
+                list.par_bridge().try_for_each(|id| -> RusticResult<_> {
+                    self.remove(ID::TYPE, id, cacheable)?;
+                    p.inc(1);
+                    Ok(())
+                })
+            })?;
 
         p.finish();
         Ok(())
@@ -383,7 +438,7 @@ pub trait DecryptWriteBackend: WriteBackend + Clone + 'static {
 #[derive(Debug, Clone)]
 pub struct DecryptBackend<C: CryptoKey> {
     /// The backend to decrypt.
-    be: Arc<dyn WriteBackend>,
+    be: Arc<dyn ConcurrentWriteBackend>,
     /// The key to decrypt the backend with.
     key: C,
     /// The compression level to use for zstd.
@@ -407,7 +462,7 @@ impl<C: CryptoKey> DecryptBackend<C> {
     /// # Returns
     ///
     /// The new decrypt backend.
-    pub fn new(be: Arc<dyn WriteBackend>, key: C) -> Self {
+    pub fn new(be: Arc<dyn ConcurrentWriteBackend>, key: C) -> Self {
         Self {
             be,
             key,
@@ -419,6 +474,7 @@ impl<C: CryptoKey> DecryptBackend<C> {
 
     /// Decrypt and potentially decompress an already read repository file
     fn decrypt_file(&self, data: &[u8]) -> RusticResult<Vec<u8>> {
+        let _guard = self.concurrency().acquire(ConcurrencyClass::Cpu);
         let decrypted = self.decrypt(data)?;
         Ok(match decrypted.first() {
             Some(b'{' | b'[') => decrypted, // not compressed
@@ -440,6 +496,7 @@ impl<C: CryptoKey> DecryptBackend<C> {
 
     /// encrypt and potentially compress a repository file
     fn encrypt_file(&self, data: &[u8]) -> RusticResult<Vec<u8>> {
+        let _guard = self.concurrency().acquire(ConcurrencyClass::Cpu);
         let data_encrypted = match self.zstd {
             Some(level) => {
                 let mut out = vec![2_u8];
@@ -486,6 +543,7 @@ impl<C: CryptoKey> DecryptBackend<C> {
             .ask_report()
         })?;
 
+        let _guard = self.concurrency().acquire(ConcurrencyClass::Cpu);
         let (data_encrypted, uncompressed_length) = match self.zstd {
             None => (self.key.encrypt_data(data)?, None),
             // compress if requested
@@ -553,17 +611,21 @@ impl<C: CryptoKey> DecryptWriteBackend for DecryptBackend<C> {
     ///
     /// The id of the data.
     fn hash_write_full(&self, tpe: FileType, data: &[u8]) -> RusticResult<Id> {
+        let _guard = self.concurrency().acquire(ConcurrencyClass::Cpu);
+
         let data_encrypted = self.encrypt_file(data)?;
 
         self.very_file(&data_encrypted, data)?;
 
         let id = hash(&data_encrypted);
 
+        drop(_guard); // Don't tie up CPU class during write
         self.write_bytes(tpe, &id, false, data_encrypted.into())?;
         Ok(id)
     }
 
     fn process_data(&self, data: &[u8]) -> RusticResult<(Vec<u8>, u32, Option<NonZeroU32>)> {
+        let _guard = self.concurrency().acquire(ConcurrencyClass::Cpu);
         let (data_encrypted, data_len, uncompressed_length) = self.encrypt_data(data)?;
 
         self.very_data(&data_encrypted, uncompressed_length, data)?;
@@ -601,6 +663,7 @@ impl<C: CryptoKey> DecryptReadBackend for DecryptBackend<C> {
     ///
     /// A vector containing the decrypted data.
     fn decrypt(&self, data: &[u8]) -> RusticResult<Vec<u8>> {
+        let _guard = self.concurrency().acquire(ConcurrencyClass::Cpu);
         self.key.decrypt_data(data)
     }
 
@@ -616,6 +679,7 @@ impl<C: CryptoKey> DecryptReadBackend for DecryptBackend<C> {
     /// * If the backend does not support decryption.
     /// * If the data could not be decoded.
     fn read_encrypted_full(&self, tpe: FileType, id: &Id) -> RusticResult<Bytes> {
+        let _guard = self.concurrency().acquire(ConcurrencyClass::Cpu);
         self.decrypt_file(&self.read_full(tpe, id)?)
             .map_err(|err| {
                 RusticError::with_source(
@@ -689,15 +753,25 @@ impl<C: CryptoKey> WriteBackend for DecryptBackend<C> {
     }
 }
 
+impl<C: CryptoKey> ConcurrentBackend for DecryptBackend<C> {
+    fn concurrency(&self) -> &ConcurrencyManager {
+        self.be.concurrency()
+    }
+}
+
+
 #[cfg(test)]
 mod tests {
-    use crate::{backend::MockBackend, crypto::aespoly1305::Key};
+    use crate::{
+        backend::{concurrent::ConcurrencyBackend, MockBackend},
+        crypto::aespoly1305::Key,
+    };
     use anyhow::Result;
 
     use super::*;
 
     fn init() -> (DecryptBackend<Key>, &'static [u8]) {
-        let be = Arc::new(MockBackend::new());
+        let be = Arc::new(ConcurrencyBackend::new_with_default(MockBackend::new()));
         let key = Key::new();
         let mut be = DecryptBackend::new(be, key);
         be.set_zstd(Some(0));

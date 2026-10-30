@@ -13,7 +13,9 @@ use log::{trace, warn};
 use walkdir::WalkDir;
 
 use crate::{
-    backend::{BytesList, FileType, ReadBackend, WriteBackend},
+    backend::{BytesList, FileType, ReadBackend, WriteBackend,
+              concurrent::{ConcurrentBackend, ConcurrentWriteBackend}},
+    concurrency::ConcurrencyManager,
     error::{ErrorKind, RusticError, RusticResult},
     id::Id,
     repofile::configfile::RepositoryId,
@@ -30,7 +32,7 @@ use crate::{
 #[derive(Clone, derive_more::Debug)]
 pub struct CachedBackend {
     /// The backend to cache.
-    be: Arc<dyn WriteBackend>,
+    be: Arc<dyn ConcurrentWriteBackend>,
     /// The cache.
     cache: Cache,
     /// we need some locking to prevent parallel write access on cache files
@@ -44,7 +46,7 @@ impl CachedBackend {
     /// # Type Parameters
     ///
     /// * `BE` - The backend to cache.
-    pub fn new_cache(be: Arc<dyn WriteBackend>, cache: Cache) -> Arc<dyn WriteBackend> {
+    pub fn new_cache(be: Arc<dyn ConcurrentWriteBackend>, cache: Cache) -> Arc<dyn ConcurrentWriteBackend> {
         let lock_pool = Arc::new(LockPool::new());
         Arc::new(Self {
             be,
@@ -259,6 +261,12 @@ impl WriteBackend for CachedBackend {
             }
         }
         self.be.remove(tpe, id, cacheable)
+    }
+}
+
+impl ConcurrentBackend for CachedBackend {
+    fn concurrency(&self) -> &ConcurrencyManager {
+        self.be.concurrency()
     }
 }
 

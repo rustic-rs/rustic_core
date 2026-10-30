@@ -1,10 +1,9 @@
 use std::{io::Write, thread::scope};
 
-use pariter::IteratorExt;
-
 use crate::{
     backend::node::{Node, NodeType},
     blob::{BlobId, BlobType, DataId},
+    concurrency::{ConcurrencyClass, ConcurrentIteratorExt},
     error::{ErrorKind, RusticError, RusticResult},
     index::ReadIndex,
     repository::{IndexedFull, Repository},
@@ -60,10 +59,14 @@ pub(crate) fn dump<S: IndexedFull>(
         .collect::<RusticResult<_>>()?;
 
     let be = repo.dbe();
+
+    // Read Concurrency: retrieving data
     scope(|s| -> RusticResult<()> {
         index_entries
             .iter()
-            .parallel_map_scoped(s, |ie| ie.read_data(be))
+            .concurrent_map_scoped(repo.concurrency().limit(ConcurrencyClass::Read), s, |ie| {
+                ie.read_data(be)
+            })
             .try_for_each(|res| write_blob(w, &res?))
     })
 }

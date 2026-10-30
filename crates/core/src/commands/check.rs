@@ -21,8 +21,15 @@ use zstd::stream::decode_all;
 
 use crate::{
     DataId, ErrorKind, RusticError, TreeId,
-    backend::{FileType, ReadBackend, cache::Cache, decrypt::DecryptReadBackend, node::NodeType},
+    backend::{
+        FileType, ReadBackend,
+        cache::Cache,
+        concurrent::ConcurrentReadBackend,
+        decrypt::DecryptReadBackend,
+        node::NodeType,
+    },
     blob::{BlobId, BlobLocations, BlobType, tree::TreeStreamerOnce},
+    concurrency::{ConcurrencyClass, ConcurrencyPool},
     crypto::hasher::{Hasher, hash},
     error::RusticResult,
     id::Id,
@@ -226,12 +233,20 @@ pub(crate) fn check_repository<S: Open>(
     repo: &Repository<S>,
     opts: CheckOptions,
     trees: Vec<TreeId>,
-) -> RusticResult<CheckResults> {
+) -> RusticResult<CheckResults> { 
     let be = repo.dbe();
     let cache = repo.cache();
     let hot_be = &repo.be_hot;
     let raw_be = repo.dbe();
     let collector = CheckResultsCollector::default().log(true);
+
+    // Read Concurrency: Size the Rayon pool for read concurrency, or a fallback
+    // to the global pool for pre-concurrency behavior.
+    let pool = repo.concurrency().pool(
+        "check_repository",
+        repo.concurrency().limit(ConcurrencyClass::Read)
+    );
+
     if !opts.trust_cache
         && let Some(cache) = &cache
     {
@@ -243,8 +258,7 @@ pub(crate) fn check_repository<S: Open>(
             _ = be.list_with_size(file_type)?;
 
             let p = repo.progress_bytes(&format!("checking {file_type:?} in cache..."));
-            // TODO: Make concurrency (20) customizable
-            check_cache_files(20, cache, raw_be, file_type, &p, &collector)?;
+            check_cache_files(&pool, cache, raw_be, file_type, &p, &collector)?;
         }
     }
 
@@ -274,8 +288,7 @@ pub(crate) fn check_repository<S: Open>(
 
         if !opts.trust_cache {
             let p = repo.progress_bytes("checking packs in cache...");
-            // TODO: Make concurrency (5) customizable
-            check_cache_files(5, cache, raw_be, FileType::Pack, &p, &collector)?;
+            check_cache_files(&pool, cache, raw_be, FileType::Pack, &p, &collector)?;
         }
     }
 
@@ -301,11 +314,13 @@ pub(crate) fn check_repository<S: Open>(
         let p = repo.progress_bytes("reading pack data...");
         p.set_length(total_pack_size);
 
-        packs.into_par_iter().for_each(|pack| {
-            let id = pack.id;
-            if let Err(err) = check_pack(be, pack, &p, &collector) {
-                collector.add_error(CheckError::ErrorCheckingPack { id, source: err });
-            }
+        pool.install(|| {
+            packs.into_par_iter().for_each(|pack| {
+                let id = pack.id;
+                if let Err(err) = check_pack(be, pack, &p, &collector) {
+                    collector.add_error(CheckError::ErrorCheckingPack { id, source: err });
+                }
+            })
         });
         p.finish();
     }
@@ -366,7 +381,7 @@ fn check_hot_files(
 ///
 /// # Arguments
 ///
-/// * `concurrency` - The number of threads to use
+/// * `pool` - The thread pool to use
 /// * `cache` - The cache to check
 /// * `be` - The backend to check
 /// * `file_type` - The type of the files to check
@@ -376,9 +391,9 @@ fn check_hot_files(
 ///
 /// * If a file is missing or has a different size
 fn check_cache_files(
-    _concurrency: usize,
+    pool: &ConcurrencyPool,
     cache: &Cache,
-    be: &impl ReadBackend,
+    be: &impl ConcurrentReadBackend,
     file_type: FileType,
     p: &Progress,
     collector: &CheckResultsCollector,
@@ -391,37 +406,44 @@ fn check_cache_files(
 
     let total_size = files.values().map(|size| u64::from(*size)).sum();
     p.set_length(total_size);
+    
+    pool.install(|| {
+        files
+            .into_par_iter()
+            .for_each_with((cache, be, p), |(cache, be, p), (id, size)| {
+                // CPU Concurrency: This pool is sized for any read limit, but
+                // if the repository is local (or just fast) it mostly just ends
+                // up processing raw data and needs to follow any CPU limit too.
+                let _guard = be.concurrency().acquire(ConcurrencyClass::Cpu);
 
-    files
-        .into_par_iter()
-        .for_each_with((cache, be, p), |(cache, be, p), (id, size)| {
-            // Read file from cache and from backend and compare
-            match (
-                cache.read_full(file_type, &id),
-                be.read_full(file_type, &id),
-            ) {
-                (Err(err), _) => {
-                    collector.add_error(CheckError::ErrorReadingCache {
-                        id,
-                        file_type,
-                        source: err,
-                    });
+                // Read file from cache and from backend and compare
+                match (
+                    cache.read_full(file_type, &id),
+                    be.read_full(file_type, &id),
+                ) {
+                    (Err(err), _) => {
+                        collector.add_error(CheckError::ErrorReadingCache {
+                            id,
+                            file_type,
+                            source: err,
+                        });
+                    }
+                    (_, Err(err)) => {
+                        collector.add_error(CheckError::ErrorReadingFile {
+                            id,
+                            file_type,
+                            source: err,
+                        });
+                    }
+                    (Ok(Some(data_cached)), Ok(data)) if data_cached != data => {
+                        collector.add_error(CheckError::CacheMismatch { id, file_type });
+                    }
+                    (Ok(_), Ok(_)) => {} // everything ok
                 }
-                (_, Err(err)) => {
-                    collector.add_error(CheckError::ErrorReadingFile {
-                        id,
-                        file_type,
-                        source: err,
-                    });
-                }
-                (Ok(Some(data_cached)), Ok(data)) if data_cached != data => {
-                    collector.add_error(CheckError::CacheMismatch { id, file_type });
-                }
-                (Ok(_), Ok(_)) => {} // everything ok
-            }
 
-            p.inc(u64::from(size));
-        });
+                p.inc(u64::from(size));
+            });
+    });
 
     p.finish();
     Ok(())
@@ -627,7 +649,11 @@ fn check_trees<S: Open>(
     let mut packs = BTreeSet::new();
     let p = repo.progress_counter("checking trees...");
     let mut tree_streamer = TreeStreamerOnce::new(be, index, snap_trees, p)?;
+
     while let Some(item) = tree_streamer.next().transpose()? {
+        // CPU Concurrency: Include our processing together with TreeStreamerOnce
+        let _guard = repo.concurrency().acquire(ConcurrencyClass::Cpu);
+
         let (path, tree) = item;
         for node in tree.nodes {
             match node.node_type {

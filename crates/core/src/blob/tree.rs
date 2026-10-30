@@ -8,6 +8,7 @@ use std::{
     collections::{BTreeMap, BTreeSet, BinaryHeap},
     ffi::OsStr,
     mem,
+    num::NonZero,
     path::{Component, Path, PathBuf, Prefix},
     str::{self, Utf8Error},
 };
@@ -25,6 +26,7 @@ use crate::{
         node::{Metadata, Node, NodeType},
     },
     blob::{BlobType, tree::excludes::Excludes},
+    concurrency::ConcurrencyClass,
     crypto::hasher::hash,
     error::{ErrorKind, RusticError, RusticResult},
     impl_blobid,
@@ -53,7 +55,7 @@ pub enum TreeErrorKind {
 pub(crate) type TreeResult<T> = Result<T, TreeErrorKind>;
 
 pub(super) mod constants {
-    /// The maximum number of trees that are loaded in parallel
+    /// The maximum number of trees that are loaded in parallel if CPU concurrency is unlimited
     pub(super) const MAX_TREE_LOADER: usize = 4;
 }
 
@@ -108,6 +110,7 @@ impl Tree {
     ///
     /// * If the tree could not be serialized. This should never happen.
     pub fn serialize(&self) -> TreeResult<(Vec<u8>, TreeId)> {
+        // TODO Concurrency: Not currently covered.
         let mut chunk = serde_json::to_vec(&self).map_err(TreeErrorKind::SerializingTreeFailed)?;
         // # COMPATIBILITY
         //
@@ -139,6 +142,7 @@ impl Tree {
         index: &impl ReadGlobalIndex,
         id: TreeId,
     ) -> RusticResult<Self> {
+
         let data = index
             .get_tree(&id)
             .ok_or_else(|| {
@@ -150,14 +154,18 @@ impl Tree {
             })?
             .read_data(be)?;
 
-        let tree = serde_json::from_slice(&data).map_err(|err| {
-            RusticError::with_source(
-                ErrorKind::Internal,
-                "Failed to deserialize tree from JSON.",
-                err,
-            )
-            .ask_report()
-        })?;
+        let tree = {
+            // CPU Concurrency: Deserialization
+            let _guard = be.concurrency().acquire(ConcurrencyClass::Cpu);
+            serde_json::from_slice(&data).map_err(|err| {
+                RusticError::with_source(
+                    ErrorKind::Internal,
+                    "Failed to deserialize tree from JSON.",
+                    err,
+                )
+               .ask_report()
+            })
+        }?;
 
         Ok(tree)
     }
@@ -661,10 +669,16 @@ impl TreeStreamerOnce {
     ) -> RusticResult<Self> {
         p.set_length(ids.len() as u64);
 
-        let (out_tx, out_rx) = bounded(constants::MAX_TREE_LOADER);
+        // CPU Concurrency: Fall back to older default if unlimited
+        let num_threads = be.concurrency().limit_or(
+            ConcurrencyClass::Cpu,
+            NonZero::new(constants::MAX_TREE_LOADER).unwrap()
+        ).into();
+
+        let (out_tx, out_rx) = bounded(num_threads);
         let (in_tx, in_rx) = unbounded();
 
-        for _ in 0..constants::MAX_TREE_LOADER {
+        for _ in 0..num_threads {
             let be = be.clone();
             let index = index.clone();
             let in_rx = in_rx.clone();

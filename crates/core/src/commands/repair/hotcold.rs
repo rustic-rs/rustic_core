@@ -4,9 +4,12 @@ use log::{debug, info, warn};
 use rayon::prelude::{IntoParallelIterator, ParallelIterator};
 
 use crate::{
-    ALL_FILE_TYPES, ErrorKind, FileType, Id, Progress, ReadBackend, Repository, RusticError,
-    RusticResult, WriteBackend,
-    backend::decrypt::DecryptReadBackend,
+    ALL_FILE_TYPES, ErrorKind, FileType, Id, Progress, Repository, RusticError, RusticResult,
+    backend::{
+        concurrent::{ConcurrentReadBackend, ConcurrentWriteBackend},
+        decrypt::DecryptReadBackend,
+    },
+    concurrency::ConcurrencyClass,
     repofile::{BlobType, IndexFile, PackId},
     repository::{Open, warm_up::warm_up_wait},
 };
@@ -39,7 +42,7 @@ pub(crate) fn repair_hotcold_packs<S: Open>(
 pub(crate) fn correct_missing_files<S>(
     repo: &Repository<S>,
     file_type: FileType,
-    is_relevant: impl Fn(&Id) -> bool,
+    is_relevant: impl Fn(&Id) -> bool + Send,
     dry_run: bool,
 ) -> RusticResult<()> {
     let Some(repo_hot) = &repo.be_hot else {
@@ -92,17 +95,37 @@ pub(crate) fn correct_missing_files<S>(
 fn copy(
     files: Vec<Id>,
     file_type: FileType,
-    from: &impl ReadBackend,
-    to: &impl WriteBackend,
+    from: &impl ConcurrentReadBackend,
+    to: &impl ConcurrentWriteBackend,
     p: &Progress,
 ) -> RusticResult<()> {
-    files.into_par_iter().try_for_each(|id| {
-        let file = from.read_full(file_type, &id)?;
-        let length = u64::try_from(file.len()).expect("file len should fit into u64");
-        to.write_bytes(file_type, &id, false, file.into())?;
-        p.inc(length);
-        Ok(())
-    })
+    // Backend Concurrency: Complicated as both reading and writing though
+    // just mutiplexing backend calls, so use the backend limit.  To handle
+    // both source and destination limits, use the larger of the two, and
+    // then acquire the appropriate guards around each activity.
+    from.concurrency()
+        .pool(
+            "hotcold.copy",
+            std::cmp::max(
+                from.concurrency().limit(ConcurrencyClass::Backend),
+                to.concurrency().limit(ConcurrencyClass::Backend),
+            ),
+        )
+        .install(|| {
+            files.into_par_iter().try_for_each(|id| {
+                let file = {
+                    let _guard = from.concurrency().acquire(ConcurrencyClass::Read);
+                    from.read_full(file_type, &id)
+                }?;
+                let length = u64::try_from(file.len()).expect("file len should fit into u64");
+                {
+                    let _guard = to.concurrency().acquire(ConcurrencyClass::Write);
+                    to.write_bytes(file_type, &id, false, file.into())?;
+                }
+                p.inc(length);
+                Ok(())
+            })
+        })
 }
 
 /// Get all tree packs from within the repository

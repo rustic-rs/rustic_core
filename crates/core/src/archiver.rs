@@ -19,6 +19,7 @@ use crate::{
     },
     backend::{ReadSource, ReadSourceEntry, decrypt::DecryptFullBackend},
     blob::BlobType,
+    concurrency::{ConcurrencyClass, ConcurrentIteratorExt},
     error::{RusticError, RusticResult},
     index::{
         ReadGlobalIndex,
@@ -200,8 +201,12 @@ impl<'a, BE: DecryptFullBackend, I: ReadGlobalIndex> Archiver<'a, BE, I> {
                     }
                 },
             )
-            // archive files in parallel
-            .parallel_map_scoped(s, |item| self.file_archiver.process(item, p))
+            // CPU Concurrency: file archiving is primarily CPU bound
+            .concurrent_map_scoped(
+                self.be.concurrency().limit(ConcurrencyClass::Cpu),
+                s,
+                |item| self.file_archiver.process(item, p),
+            )
             .readahead_scoped(s)
             .filter_map(|item| match item {
                 Ok(item) => Some(item),

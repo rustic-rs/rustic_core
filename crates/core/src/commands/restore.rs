@@ -6,10 +6,9 @@ use log::{debug, error, info, trace, warn};
 use serde::{Deserialize, Serialize};
 use smallvec::SmallVec;
 
-use std::{cmp::Ordering, collections::BTreeMap, path::PathBuf, sync::Mutex};
+use std::{cmp::Ordering, collections::BTreeMap, num::NonZero, path::PathBuf, sync::Mutex};
 
 use itertools::Itertools;
-use rayon::ThreadPoolBuilder;
 use walkdir::{DirEntry, WalkDir};
 
 use crate::{
@@ -20,13 +19,14 @@ use crate::{
         node::{Node, NodeType},
     },
     blob::{BlobLocation, BlobLocations},
+    concurrency::ConcurrencyClass,
     error::{ErrorKind, RusticError, RusticResult},
     repofile::packfile::PackId,
     repository::{IndexedFull, IndexedTree, Open, Repository},
 };
 
 pub(crate) mod constants {
-    /// The maximum number of reader threads to use for restoring.
+    /// The maximum number of reader threads to use for restoring if read concurrency is unlimited
     pub(crate) const MAX_READER_THREADS_NUM: usize = 20;
 }
 
@@ -582,21 +582,15 @@ fn restore_contents<S: Open>(
         .coalesce(PackInfo::coalesce)
         .collect();
 
-    let threads = constants::MAX_READER_THREADS_NUM;
-
-    let pool = ThreadPoolBuilder::new()
-        .num_threads(threads)
-        .build()
-        .map_err(|err| {
-            RusticError::with_source(
-                ErrorKind::Internal,
-                "Failed to create the thread pool with `{num_threads}` threads. Please try again.",
-                err,
-            )
-            .attach_context("num_threads", threads.to_string())
-        })?;
-
-    pool.in_place_scope(|s| {
+    // Read Concurrency: Fall back to older default if unlimited
+    repo.concurrency().pool(
+        "restore_contents",
+        repo.concurrency().limit(
+            ConcurrencyClass::Read
+        ).or(
+            NonZero::new(constants::MAX_READER_THREADS_NUM)
+        )
+    ).in_place_scope(|s| {
         for PackInfo {
             pack_id,
             from_file,

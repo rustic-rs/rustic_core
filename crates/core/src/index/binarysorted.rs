@@ -108,6 +108,7 @@ impl IndexCollector {
     #[must_use]
     pub fn into_index(self) -> Index {
         Index(self.0.map(|_, mut tc| {
+            // TODO Concurrency: Not covered locally.  Depends on caller or global pool.
             match &mut tc.entries {
                 EntriesVariants::None => {}
                 EntriesVariants::Ids(ids) => ids.par_sort_unstable(),
@@ -208,6 +209,7 @@ impl IntoIterator for Index {
 
     // Turns Collector into an iterator yielding PackIndex by sorting the entries by pack.
     fn into_iter(mut self) -> Self::IntoIter {
+        // TODO Concurrency: Not covered locally.  Depends on caller or global pool.
         for tc in self.0.values_mut() {
             if let EntriesVariants::FullEntries(entries) = &mut tc.entries {
                 entries.par_sort_unstable_by(|e1, e2| e1.pack_idx.cmp(&e2.pack_idx));
