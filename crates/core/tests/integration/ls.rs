@@ -50,3 +50,21 @@ fn test_ls(
 
     Ok(())
 }
+
+#[rstest]
+fn test_ls_dir_without_subtree_does_not_panic(set_up_repo: Result<RepoOpen>) -> Result<()> {
+    let repo = set_up_repo?.to_indexed_ids()?;
+    let node = Node::new_node(
+        OsStr::new("corrupted_dir"),
+        rustic_core::repofile::NodeType::Dir,
+        Metadata::default(),
+    );
+    assert!(node.subtree.is_none());
+
+    let entries: Vec<_> = repo
+        .ls(&node, &LsOptions::default())?
+        .collect::<RusticResult<_>>()?;
+
+    assert_eq!(entries, []);
+    Ok(())
+}

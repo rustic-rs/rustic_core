@@ -535,9 +535,11 @@ where
         recursive: bool,
     ) -> RusticResult<Self> {
         let inner = if node.is_dir() {
-            Tree::from_backend(&be, index, node.subtree.unwrap())?
-                .nodes
-                .into_iter()
+            if let Some(subtree) = node.subtree {
+                Tree::from_backend(&be, index, subtree)?.nodes.into_iter()
+            } else {
+                Vec::new().into_iter()
+            }
         } else {
             vec![node.clone()].into_iter()
         };
@@ -937,7 +939,7 @@ pub(crate) fn merge_nodes(
     let trees: Vec<_> = nodes
         .iter()
         .filter(|node| node.is_dir())
-        .map(|node| node.subtree.unwrap())
+        .filter_map(|node| node.subtree)
         .collect();
 
     let mut node = nodes.into_iter().max_by(|n1, n2| cmp(n1, n2)).unwrap();
