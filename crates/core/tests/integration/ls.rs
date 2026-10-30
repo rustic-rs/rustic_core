@@ -65,6 +65,6 @@ fn test_ls_dir_without_subtree_does_not_panic(set_up_repo: Result<RepoOpen>) -> 
         .ls(&node, &LsOptions::default())?
         .collect::<RusticResult<_>>()?;
 
-    assert!(entries.is_empty());
+    assert_eq!(entries, []);
     Ok(())
 }
