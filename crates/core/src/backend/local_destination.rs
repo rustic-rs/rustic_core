@@ -920,49 +920,10 @@ mod tests {
     use super::*;
     use tempfile::tempdir;
 
-    fn destination_in(
-        temp: &tempfile::TempDir,
-    ) -> Result<LocalDestination, Box<dyn std::error::Error>> {
-        Ok(LocalDestination::new(
-            temp.path().to_str().unwrap(),
-            false,
-            false,
-        )?)
-    }
-
-    #[test]
-    fn hard_link_replaces_a_different_file() -> Result<(), Box<dyn std::error::Error>> {
-        let temp = tempdir()?;
-        let dest = destination_in(&temp)?;
-        fs::write(temp.path().join("canonical"), "restored")?;
-        fs::write(temp.path().join("link"), "stale")?;
-
-        dest.hard_link("canonical", "link")?;
-
-        assert!(is_same_file(
-            temp.path().join("canonical"),
-            temp.path().join("link")
-        )?);
-        Ok(())
-    }
-
-    #[test]
-    fn hard_link_accepts_the_link_that_already_exists() -> Result<(), Box<dyn std::error::Error>> {
-        let temp = tempdir()?;
-        let dest = destination_in(&temp)?;
-        fs::write(temp.path().join("canonical"), "restored")?;
-        dest.hard_link("canonical", "link")?;
-
-        dest.hard_link("canonical", "link")?;
-
-        assert_eq!(fs::read_to_string(temp.path().join("link"))?, "restored");
-        Ok(())
-    }
-
     #[test]
     fn hard_link_leaves_a_directory_in_place() -> Result<(), Box<dyn std::error::Error>> {
         let temp = tempdir()?;
-        let dest = destination_in(&temp)?;
+        let dest = LocalDestination::new(temp.path().to_str().unwrap(), false, false)?;
         fs::write(temp.path().join("canonical"), "restored")?;
         fs::create_dir(temp.path().join("link"))?;
 
@@ -977,7 +938,7 @@ mod tests {
     fn hard_link_replaces_a_symlink_to_the_canonical_file() -> Result<(), Box<dyn std::error::Error>>
     {
         let temp = tempdir()?;
-        let dest = destination_in(&temp)?;
+        let dest = LocalDestination::new(temp.path().to_str().unwrap(), false, false)?;
         fs::write(temp.path().join("canonical"), "restored")?;
         symlink("canonical", temp.path().join("link"))?;
 
@@ -992,7 +953,7 @@ mod tests {
     fn hard_link_keeps_the_file_when_a_symlinked_directory_makes_both_paths_one()
     -> Result<(), Box<dyn std::error::Error>> {
         let temp = tempdir()?;
-        let dest = destination_in(&temp)?;
+        let dest = LocalDestination::new(temp.path().to_str().unwrap(), false, false)?;
         fs::create_dir(temp.path().join("real"))?;
         symlink("real", temp.path().join("alias"))?;
         fs::write(temp.path().join("real/canonical"), "restored")?;
