@@ -2,6 +2,24 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.0](https://github.com/rustic-rs/rustic_core/compare/rustic_backend-v0.7.0...rustic_backend-v0.8.0) - 2026-10-31
+
+### Added
+
+- add a read-timeout option for http-based backends ([#598](https://github.com/rustic-rs/rustic_core/pull/598))
+- log OpenDAL retries as a single line ([#562](https://github.com/rustic-rs/rustic_core/pull/562))
+- [**breaking**] Add more reqwest options for rest+opendal backends ([#556](https://github.com/rustic-rs/rustic_core/pull/556))
+
+### Fixed
+
+- [**breaking**] Fix clippy lints and security issues ([#629](https://github.com/rustic-rs/rustic_core/pull/629))
+- run delete hook when replacing a file ([#547](https://github.com/rustic-rs/rustic_core/pull/547))
+
+### Other
+
+- [**breaking**] Prefix all http transport options with http- ([#558](https://github.com/rustic-rs/rustic_core/pull/558))
+- add OpenDAL attribution ([#552](https://github.com/rustic-rs/rustic_core/pull/552))
+
 ## [0.7.0](https://github.com/rustic-rs/rustic_core/compare/rustic_backend-v0.6.2...rustic_backend-v0.7.0) - 2026-08-16
 
 ### Added
