@@ -2,6 +2,41 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.14.0](https://github.com/rustic-rs/rustic_core/compare/rustic_core-v0.13.0...rustic_core-v0.14.0) - 2026-10-31
+
+### Added
+
+- count unreadable source files during backup ([#561](https://github.com/rustic-rs/rustic_core/pull/561))
+- impl Serialize/Deserialize and Merge for ConfigOptions ([#559](https://github.com/rustic-rs/rustic_core/pull/559))
+
+### Fixed
+
+- set is_hot from the repository in init_with_config ([#602](https://github.com/rustic-rs/rustic_core/pull/602))
+- *(restore)* replace an entry that sits where a hardlink belongs ([#634](https://github.com/rustic-rs/rustic_core/pull/634))
+- *(backup)* compare inodes unless ignore_inode is set ([#632](https://github.com/rustic-rs/rustic_core/pull/632))
+- *(forget)* count minutes within the same hour for keep-minutely ([#633](https://github.com/rustic-rs/rustic_core/pull/633))
+- *(prune)* safely handle directory nodes without subtree in find_used_blobs ([#587](https://github.com/rustic-rs/rustic_core/pull/587))
+- *(restore)* prevent path traversal in LocalDestination ([#590](https://github.com/rustic-rs/rustic_core/pull/590))
+- join tree loader threads before releasing the index ([#607](https://github.com/rustic-rs/rustic_core/pull/607))
+- reject key files with invalid or excessive scrypt parameters ([#592](https://github.com/rustic-rs/rustic_core/pull/592))
+- *(packer)* validate blob offsets and bounds in BlobCopier ([#591](https://github.com/rustic-rs/rustic_core/pull/591))
+- don't overflow in BlobLocations::can_coalesce ([#589](https://github.com/rustic-rs/rustic_core/pull/589))
+- *(tree)* safely handle directory nodes without subtree in NodeStreamer and merge_nodes ([#588](https://github.com/rustic-rs/rustic_core/pull/588))
+- *(repair)* safely handle file nodes with missing content in repair snapshots ([#586](https://github.com/rustic-rs/rustic_core/pull/586))
+- don't underflow in BlobLocation::data_length ([#585](https://github.com/rustic-rs/rustic_core/pull/585))
+- [**breaking**] Fix clippy lints and security issues ([#629](https://github.com/rustic-rs/rustic_core/pull/629))
+- [**breaking**] Don't merge subpaths ([#563](https://github.com/rustic-rs/rustic_core/pull/563))
+- stop tree workers after receiver closes ([#546](https://github.com/rustic-rs/rustic_core/pull/546))
+- include path in canonicalization errors ([#548](https://github.com/rustic-rs/rustic_core/pull/548))
+- iOS build ([#553](https://github.com/rustic-rs/rustic_core/pull/553))
+- protect cache backend with locks ([#544](https://github.com/rustic-rs/rustic_core/pull/544))
+
+### Other
+
+- compare the Debug form of the path in the sanitize error ([#630](https://github.com/rustic-rs/rustic_core/pull/630))
+- tidy up type parameters ([#580](https://github.com/rustic-rs/rustic_core/pull/580))
+- update core README credential API ([#549](https://github.com/rustic-rs/rustic_core/pull/549))
+
 ## [0.13.0](https://github.com/rustic-rs/rustic_core/compare/rustic_core-v0.12.0...rustic_core-v0.13.0) - 2026-08-16
 
 ### Added
