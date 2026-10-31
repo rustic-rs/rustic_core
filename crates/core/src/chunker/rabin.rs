@@ -10,6 +10,8 @@ pub(super) mod constants {
     pub(super) const KB: usize = 1024;
     /// Buffer size used for reading - TODO: Find out optimal size for best performance!
     pub(super) const BUF_SIZE: usize = 4 * KB;
+    /// Size of the rolling hash window, which the data of a chunk has to fill.
+    pub(super) const WINDOW_SIZE: usize = 64;
     /// Random polynomial maximum tries.
     pub(super) const RAND_POLY_MAX_TRIES: i32 = 1_000_000;
 }
@@ -25,6 +27,13 @@ pub(crate) fn check_rabin_params(
             "Chunk size must be a power of 2 for the rabin chunker. chunk size = {chunk_size}.",
         )
         .attach_context("chunk_size", chunk_size.to_string()));
+    }
+    if chunk_min_size < constants::WINDOW_SIZE {
+        return Err(RusticError::new(
+            ErrorKind::Unsupported,
+            "Chunk min size must be at least the rolling hash window. window size = {window_size}.",
+        )
+        .attach_context("window_size", constants::WINDOW_SIZE.to_string()));
     }
     if chunk_min_size > chunk_size {
         return Err(RusticError::new(
@@ -116,13 +125,10 @@ impl<R: Read + Send> Iterator for ChunkIter<R> {
         let mut vec = Vec::with_capacity(self.size_hint.min(min_size));
 
         // check if some bytes exist in the buffer and if yes, use them
-        let open_buf_len = self.buf.len() - self.pos;
-        if open_buf_len > 0 {
-            vec.resize(open_buf_len, 0);
-            vec.copy_from_slice(&self.buf[self.pos..]);
-            self.pos = self.buf.len();
-            min_size -= open_buf_len;
-        }
+        let from_buf_len = (self.buf.len() - self.pos).min(min_size);
+        vec.extend_from_slice(&self.buf[self.pos..self.pos + from_buf_len]);
+        self.pos += from_buf_len;
+        min_size -= from_buf_len;
 
         let size = match (&mut self.reader)
             .take(min_size as u64)
@@ -139,16 +145,16 @@ impl<R: Read + Send> Iterator for ChunkIter<R> {
         };
 
         // If self.min_size is not reached, we are done.
-        // Note that the read data is of size size + open_buf_len and self.min_size = minsize + open_buf_len
+        // Note that the read data is of size size + from_buf_len and self.min_size = minsize + from_buf_len
         if size < min_size {
             self.finished = true;
-            vec.truncate(size + open_buf_len);
+            vec.truncate(size + from_buf_len);
             return if vec.is_empty() { None } else { Some(Ok(vec)) };
         }
 
-        _ = self
-            .rabin
-            .reset_and_prefill_window(&mut vec[vec.len() - 64..vec.len()].iter().copied());
+        _ = self.rabin.reset_and_prefill_window(
+            &mut vec[vec.len() - constants::WINDOW_SIZE..].iter().copied(),
+        );
 
         loop {
             if vec.len() >= self.max_size {
@@ -355,6 +361,39 @@ mod tests {
             .collect();
 
         assert_ron_snapshot!(chunks);
+    }
+
+    #[test]
+    fn min_size_below_the_read_buffer_keeps_chunks_within_max_size() {
+        const SMALL_SIZE: usize = 8 * constants::KB;
+        const SMALL_MIN_SIZE: usize = 2 * constants::KB;
+        const SMALL_MAX_SIZE: usize = 32 * constants::KB;
+        let mut data = vec![0u8; MB];
+        StdRng::seed_from_u64(23).fill_bytes(&mut data);
+        let rabin = Rabin64::new_with_polynom(6, &0x003D_A335_8B4D_C173);
+
+        let chunks = ChunkIter::new(
+            rabin,
+            SMALL_SIZE,
+            SMALL_MIN_SIZE,
+            SMALL_MAX_SIZE,
+            Cursor::new(&data),
+            0,
+        )
+        .unwrap()
+        .collect::<RusticResult<Vec<_>>>()
+        .unwrap();
+
+        assert!(chunks.iter().all(|chunk| chunk.len() <= SMALL_MAX_SIZE));
+        assert_eq!(chunks.concat(), data);
+    }
+
+    #[test]
+    fn min_size_has_to_fill_the_rolling_hash_window() {
+        let window = constants::WINDOW_SIZE;
+
+        assert!(check_rabin_params(SIZE, window - 1, MAX_SIZE).is_err());
+        assert!(check_rabin_params(SIZE, window, MAX_SIZE).is_ok());
     }
 
     #[test]
