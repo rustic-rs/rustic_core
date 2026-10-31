@@ -40,8 +40,12 @@ fn test_restore_preserves_hardlinks(
         !node.is_dir(),
     )?;
     let restore_opts = RestoreOptions::default();
-    let plan = repo.prepare_restore(&restore_opts, ls.clone(), &dest, false)?;
-    repo.restore(plan, &restore_opts, ls, &dest)?;
+    let restore = || -> Result<()> {
+        let plan = repo.prepare_restore(&restore_opts, ls.clone(), &dest, false)?;
+        repo.restore(plan, &restore_opts, ls.clone(), &dest)?;
+        Ok(())
+    };
+    restore()?;
 
     let hardlink = restore_dir.path().join("test/0/tests/testfile-hardlink");
     let linked = restore_dir.path().join("test/0/tests/testfile");
@@ -55,6 +59,14 @@ fn test_restore_preserves_hardlinks(
     assert_eq!(linked_meta.nlink(), 2);
     assert_eq!(fs::read_to_string(&hardlink)?, fs::read_to_string(&linked)?);
     assert_eq!(fs::read_link(&symlink)?, PathBuf::from("testfile"));
+
+    restore()?;
+    assert_eq!(fs::metadata(&hardlink)?.ino(), linked_meta.ino());
+
+    fs::remove_file(&hardlink)?;
+    fs::write(&hardlink, "stale")?;
+    restore()?;
+    assert_eq!(fs::metadata(&hardlink)?.ino(), linked_meta.ino());
 
     Ok(())
 }

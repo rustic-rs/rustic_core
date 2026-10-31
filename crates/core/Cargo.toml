@@ -77,6 +77,7 @@ filetime = "0.2.27"
 ignore = "0.4.25"
 nix = { version = "0.31.1", default-features = false, features = ["user", "fs"] }
 path-dedot = "4.0.1"
+same-file = "1.0.6"
 walkdir = "2.5.0"
 
 # cache
