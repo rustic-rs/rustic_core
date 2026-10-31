@@ -176,7 +176,7 @@ impl Parent {
 
                 let match_ctime =
                     ignore_ctime || p_meta.ctime.zip(meta.ctime).is_none_or(|(x, y)| x == y);
-                let match_inode = !ignore_inode
+                let match_inode = ignore_inode
                     || p_meta.inode == 0
                     || meta.inode == 0
                     || p_meta.inode == meta.inode;
@@ -308,5 +308,53 @@ impl Parent {
             }
         };
         Ok(result)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use rstest::rstest;
+
+    use super::*;
+    use crate::backend::node::{Metadata, NodeType};
+
+    fn file_with_inode(inode: u64) -> Node {
+        Node::new_node(
+            OsStr::new("file"),
+            NodeType::File,
+            Metadata {
+                inode,
+                ..Metadata::default()
+            },
+        )
+    }
+
+    fn parent_holding(node: Node, ignore_inode: bool) -> Parent {
+        Parent {
+            tree_ids: Vec::new(),
+            trees: vec![(Tree { nodes: vec![node] }, 0)],
+            stack: Vec::new(),
+            ignore_ctime: false,
+            ignore_inode,
+        }
+    }
+
+    #[rstest]
+    #[case::same_inode(1, 1, false, true)]
+    #[case::changed_inode(1, 2, false, false)]
+    #[case::changed_inode_ignored(1, 2, true, true)]
+    #[case::parent_without_inode(0, 2, false, true)]
+    #[case::node_without_inode(1, 0, false, true)]
+    fn is_parent_compares_inodes_unless_ignored(
+        #[case] parent_inode: u64,
+        #[case] node_inode: u64,
+        #[case] ignore_inode: bool,
+        #[case] expected_match: bool,
+    ) {
+        let mut parent = parent_holding(file_with_inode(parent_inode), ignore_inode);
+
+        let result = parent.is_parent(&file_with_inode(node_inode), OsStr::new("file"));
+
+        assert_eq!(matches!(result, ParentResult::Matched(_)), expected_match);
     }
 }
