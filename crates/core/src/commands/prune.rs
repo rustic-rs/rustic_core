@@ -22,7 +22,7 @@ use crate::{
     backend::{
         FileType, ReadBackend,
         decrypt::{DecryptReadBackend, DecryptWriteBackend},
-        node::NodeType,
+        node::{Node, NodeType},
     },
     blob::{
         BlobId, BlobLocations, BlobType, BlobTypeMap, Initialize,
@@ -1616,10 +1616,7 @@ fn find_used_blobs<S>(
     Ok(ids)
 }
 
-fn collect_used_node_blobs(
-    nodes: impl IntoIterator<Item = crate::backend::node::Node>,
-    ids: &mut BTreeMap<BlobId, u8>,
-) {
+fn collect_used_node_blobs(nodes: impl IntoIterator<Item = Node>, ids: &mut BTreeMap<BlobId, u8>) {
     for node in nodes {
         match node.node_type {
             NodeType::File => {
