@@ -149,6 +149,7 @@ impl<R: Read + Send> Iterator for ChunkIter<R> {
         _ = self
             .rabin
             .reset_and_prefill_window(&mut vec[vec.len() - 64..vec.len()].iter().copied());
+        self.rabin.slide(vec[vec.len() - 1]);
 
         loop {
             if vec.len() >= self.max_size {
@@ -355,6 +356,21 @@ mod tests {
             .collect();
 
         assert_ron_snapshot!(chunks);
+    }
+
+    #[test]
+    fn zeros_filling_the_window_right_after_min_size_cut_there() {
+        const ZEROS_START: usize = MIN_SIZE - 50;
+        let mut data = vec![0u8; MIN_SIZE + 1000];
+        StdRng::seed_from_u64(23).fill_bytes(&mut data);
+        data.iter_mut()
+            .filter(|byte| **byte == 0)
+            .for_each(|byte| *byte = 1);
+        data[ZEROS_START..ZEROS_START + 400].fill(0);
+
+        let first_chunk = chunker(Cursor::new(data), 0).next().unwrap().unwrap();
+
+        assert_eq!(first_chunk.len(), ZEROS_START + 64);
     }
 
     #[test]
