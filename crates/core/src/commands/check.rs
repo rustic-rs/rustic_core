@@ -1049,6 +1049,7 @@ mod tests {
                 id: PackId::from(Id::random_from_rng(rng)),
                 blobs: Vec::new(),
                 time: None,
+                recovered: false,
                 size: Some(rng.random_range(0..PACK_SIZE)),
             })
             .collect()

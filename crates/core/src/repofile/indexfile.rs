@@ -72,6 +72,9 @@ pub struct IndexPack {
     #[serde_as(as = "Option<RusticTime>")]
     /// The pack creation time or time when the pack was marked for deletion
     pub time: Option<Timestamp>,
+    /// Flag set for recovered packs
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub recovered: bool,
     /// The pack size
     pub size: Option<u32>,
 }
