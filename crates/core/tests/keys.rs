@@ -51,9 +51,44 @@ fn test_keys_failing_passes() -> Result<()> {
     Ok(())
 }
 
+#[rstest]
+#[case::zero_n(0, 8, 6)]
+#[case::excessive_memory(1 << 31, 8, 1)]
+#[case::excessive_work(1 << 15, 8, 1 << 20)]
+// using a keyfile with invalid or excessive scrypt parameters: The key must be rejected
+// before running scrypt instead of panicking, aborting on allocation failure or running for hours
+fn test_keys_with_excessive_scrypt_params_fail(
+    #[case] n: u32,
+    #[case] r: u32,
+    #[case] p: u32,
+) -> Result<()> {
+    let mut key: serde_json::Value =
+        serde_json::from_slice(&std::fs::read("tests/fixtures/key1")?)?;
+    key["N"] = n.into();
+    key["r"] = r.into();
+    key["p"] = p.into();
+
+    let be = InMemoryBackend::new();
+    add_to_be(&be, FileType::Config, "tests/fixtures/config")?;
+    add_bytes_to_be(&be, FileType::Key, serde_json::to_vec(&key)?)?;
+
+    let be = RepositoryBackends::new(Arc::new(be), None);
+    let options = RepositoryOptions::default();
+    let repo = Repository::new(&options, &be)?;
+    assert!(
+        repo.open(&Credentials::password("test"))
+            .is_err_and(|err| !err.is_incorrect_password())
+    );
+    Ok(())
+}
+
 fn add_to_be(be: &impl WriteBackend, tpe: FileType, file: &str) -> Result<()> {
     let mut bytes = Vec::new();
     _ = File::open(file)?.read_to_end(&mut bytes)?;
+    add_bytes_to_be(be, tpe, bytes)
+}
+
+fn add_bytes_to_be(be: &impl WriteBackend, tpe: FileType, bytes: Vec<u8>) -> Result<()> {
     let id = Id::new(Sha256::digest(&bytes).into());
     be.write_bytes(tpe, &id, true, bytes.into())?;
     Ok(())

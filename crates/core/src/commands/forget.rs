@@ -393,7 +393,7 @@ fn equal_hour(sn1: &SnapshotFile, sn2: &SnapshotFile) -> bool {
 ///
 /// Whether the minutes of the snapshots are equal
 fn equal_minute(sn1: &SnapshotFile, sn2: &SnapshotFile) -> bool {
-    equal_half_year(sn1, sn2) && sn1.time.minute() == sn2.time.minute()
+    equal_hour(sn1, sn2) && sn1.time.minute() == sn2.time.minute()
 }
 
 impl KeepOptions {
@@ -808,6 +808,48 @@ mod tests {
         snaps
     }
 
+    fn snapshot_at(time: &str) -> Result<SnapshotFile> {
+        let opts = &crate::SnapshotOptions::default().time(parse_time(time)?);
+        Ok(SnapshotFile::from_options(opts)?)
+    }
+
+    #[rstest]
+    #[case::same_minute("2026-05-07 10:20:30", "2026-05-07 10:20:10", true)]
+    #[case::other_minute("2026-05-07 10:20:30", "2026-05-07 10:21:30", false)]
+    #[case::other_hour("2026-05-07 10:20:30", "2026-05-07 11:20:30", false)]
+    #[case::other_day("2026-05-07 10:20:30", "2026-05-08 10:20:30", false)]
+    fn equal_minute_needs_the_same_hour(
+        #[case] first: &str,
+        #[case] second: &str,
+        #[case] expected: bool,
+    ) -> Result<()> {
+        let (first, second) = (snapshot_at(first)?, snapshot_at(second)?);
+
+        assert_eq!(equal_minute(&first, &second), expected);
+        Ok(())
+    }
+
+    #[test]
+    fn keep_minutely_keeps_the_newest_snapshots_of_hourly_runs() -> Result<()> {
+        let newest_first = [
+            "2026-09-25 17:00:00",
+            "2026-09-25 16:00:00",
+            "2026-09-25 15:00:00",
+            "2026-09-25 14:00:00",
+        ];
+        let snapshots = newest_first
+            .into_iter()
+            .map(snapshot_at)
+            .collect::<Result<Vec<_>>>()?;
+        let options = KeepOptions::default().keep_minutely(3);
+
+        let result = options.apply(snapshots, &parse_time("2026-09-25 18:00:00")?)?;
+
+        let kept: Vec<_> = result.iter().map(|snapshot| snapshot.keep).collect();
+        assert_eq!(kept, [true, true, true, false]);
+        Ok(())
+    }
+
     #[fixture]
     fn insta_forget_snapshots_redaction() -> Settings {
         let mut settings = Settings::clone_current();
@@ -820,7 +862,7 @@ mod tests {
         let now = Zoned::now();
         let options = KeepOptions::default().keep_last(10);
         let result = options.apply(vec![], &now)?;
-        assert!(result.is_empty());
+        assert_eq!(result, []);
         Ok(())
     }
 

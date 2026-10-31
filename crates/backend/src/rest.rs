@@ -482,3 +482,37 @@ impl WriteBackend for RestBackend {
         .map_err(construct_backoff_error)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use std::net::TcpListener;
+    use std::thread;
+    use std::time::Instant;
+
+    use super::*;
+
+    #[test]
+    fn read_timeout_ends_a_request_the_server_never_answers() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        // accept connections and hold them open without ever answering
+        let _server = thread::spawn(move || {
+            for stream in listener.incoming() {
+                std::mem::forget(stream);
+            }
+        });
+
+        let options = BTreeMap::from([
+            ("http-read-timeout".to_string(), "200ms".to_string()),
+            ("retry".to_string(), "off".to_string()),
+        ]);
+        let backend = RestBackend::new(format!("http://{addr}/"), options).unwrap();
+
+        let start = Instant::now();
+        let result = backend.list_with_size(FileType::Snapshot);
+
+        assert!(result.is_err());
+        // without `read-timeout`, this waits for the 10 minute `timeout`
+        assert!(start.elapsed() < Duration::from_secs(5));
+    }
+}

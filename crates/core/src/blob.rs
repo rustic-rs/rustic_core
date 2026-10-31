@@ -143,9 +143,13 @@ impl Ord for BlobLocation {
 
 impl BlobLocation {
     /// Get the length of the data contained in this blob
+    ///
+    /// The `length` originates from repository metadata and may be corrupt. A blob that is
+    /// shorter than the encryption overhead of 32 bytes is reported as empty instead of
+    /// underflowing; reading such a blob fails later when decrypting.
     pub const fn data_length(&self) -> u32 {
         match self.uncompressed_length {
-            None => self.length - 32,
+            None => self.length.saturating_sub(32),
             Some(length) => NonZeroU32::get(length),
         }
     }
@@ -183,10 +187,18 @@ impl<T> BlobLocations<T> {
         }
     }
     pub fn can_coalesce(&self, other: &Self) -> bool {
+        // offsets and lengths stem from the index and are not trusted: never coalesce if they overflow
+        let (Some(end), Some(other_end)) = (
+            self.offset.checked_add(self.length),
+            other.offset.checked_add(other.length),
+        ) else {
+            return false;
+        };
+
         // if the blobs are (almost) contiguous and we don't trespass the limit, blobs can be read in one partial read
-        other.offset <= self.offset + self.length + constants::MAX_HOLESIZE
-            && other.offset >= self.offset + self.length
-            && other.offset + other.length - self.offset <= constants::LIMIT_PACK_READ
+        other.offset >= end
+            && other.offset - end <= constants::MAX_HOLESIZE
+            && other_end - self.offset <= constants::LIMIT_PACK_READ
     }
 
     pub fn append(mut self, mut other: Self) -> Self {
@@ -223,6 +235,10 @@ mod tests {
     #[case(12, constants::LIMIT_PACK_READ - 15, constants::LIMIT_PACK_READ - 3, 16, None)] // exceeds limit to read
     #[case(12, constants::LIMIT_PACK_READ - 15, constants::LIMIT_PACK_READ, 12, Some(constants::LIMIT_PACK_READ))] // maximum length with hole
     #[case(12, constants::LIMIT_PACK_READ - 15, constants::LIMIT_PACK_READ + 1, 12, None)] // exceeds limit
+    #[case(u32::MAX - 10, 5, u32::MAX - 3, 2, Some(9))] // near the end of the u32 range => OK
+    #[case(u32::MAX - 10, 5, u32::MAX - 3, 4, None)] // end of second overflows u32
+    #[case(u32::MAX - 5, 10, u32::MAX, 1, None)] // end of first overflows u32
+    #[case(0, u32::MAX, u32::MAX, 1, None)] // end of second overflows u32
     fn test_coalesce(
         #[case] offset1: u32,
         #[case] length1: u32,
@@ -247,5 +263,35 @@ mod tests {
             .ok()
             .map(|bl| bl.length);
         assert_eq!(coalesced_length, expected);
+    }
+
+    #[rstest]
+    #[case(0, None, 0)] // corrupt: shorter than the encryption overhead
+    #[case(31, None, 0)] // corrupt: one byte short of the encryption overhead
+    #[case(32, None, 0)] // empty blob
+    #[case(33, None, 1)]
+    #[case(1000, None, 968)]
+    #[case(0, NonZeroU32::new(7), 7)] // compressed blobs report their uncompressed length
+    #[case(1000, NonZeroU32::new(7), 7)]
+    fn test_data_length(
+        #[case] length: u32,
+        #[case] uncompressed_length: Option<NonZeroU32>,
+        #[case] expected: u32,
+    ) {
+        let location = BlobLocation {
+            offset: 0,
+            length,
+            uncompressed_length,
+        };
+        assert_eq!(location.data_length(), expected);
+    }
+
+    #[test]
+    fn test_data_length_from_untrusted_index() {
+        // `length` comes straight from the (untrusted) index file
+        let location: BlobLocation =
+            serde_json::from_str(r#"{"offset":0,"length":5}"#).expect("valid json");
+        assert_eq!(location.uncompressed_length, None);
+        assert_eq!(location.data_length(), 0);
     }
 }

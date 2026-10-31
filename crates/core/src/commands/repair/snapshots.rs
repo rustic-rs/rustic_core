@@ -104,16 +104,20 @@ impl<I: ReadGlobalIndex> Visitor for RepairState<'_, I> {
                 let mut file_changed = false;
                 let mut new_content = Vec::new();
                 let mut new_size = 0;
-                for blob in node.content.take().unwrap() {
-                    self.index.get_data(&blob).map_or_else(
-                        || {
-                            file_changed = true;
-                        },
-                        |ie| {
-                            new_content.push(blob);
-                            new_size += u64::from(ie.data_length());
-                        },
-                    );
+                if let Some(content) = node.content.take() {
+                    for blob in content {
+                        self.index.get_data(&blob).map_or_else(
+                            || {
+                                file_changed = true;
+                            },
+                            |ie| {
+                                new_content.push(blob);
+                                new_size += u64::from(ie.data_length());
+                            },
+                        );
+                    }
+                } else {
+                    file_changed = true;
                 }
                 if file_changed {
                     warn!("file {}: contents are missing", node.name);
@@ -229,4 +233,38 @@ pub(crate) fn repair_snapshots<S: IndexedFull>(
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::index::{
+        GlobalIndex,
+        binarysorted::{IndexCollector, IndexType},
+    };
+
+    #[test]
+    fn test_process_node_file_without_content_does_not_panic() {
+        let opts = RepairSnapshotsOptions::default();
+        let index = GlobalIndex::new_from_index(IndexCollector::new(IndexType::Full).into_index());
+        let mut state = RepairState::new(&opts, &index);
+
+        let node = Node {
+            name: "corrupt_file".to_string(),
+            node_type: NodeType::File,
+            content: None,
+            ..Default::default()
+        };
+
+        let action = state.process_node(&PathBuf::new(), node, TreeId::default());
+        match action {
+            NodeAction::Node(repaired_node, changed) => {
+                assert!(changed);
+                assert_eq!(repaired_node.name, "corrupt_file.repaired");
+                assert_eq!(repaired_node.content, Some(Vec::new()));
+                assert_eq!(repaired_node.meta.size, 0);
+            }
+            _ => panic!("expected NodeAction::Node"),
+        }
+    }
 }
