@@ -22,7 +22,7 @@ use crate::{
     backend::{
         FileType, ReadBackend,
         decrypt::{DecryptReadBackend, DecryptWriteBackend},
-        node::NodeType,
+        node::{Node, NodeType},
     },
     blob::{
         BlobId, BlobLocations, BlobType, BlobTypeMap, Initialize,
@@ -1610,23 +1610,65 @@ fn find_used_blobs<S>(
     let mut tree_streamer = TreeStreamerOnce::new(be, index, snap_trees, p)?;
     while let Some(item) = tree_streamer.next().transpose()? {
         let (_, tree) = item;
-        for node in tree.nodes {
-            match node.node_type {
-                NodeType::File => {
-                    ids.extend(
-                        node.content
-                            .iter()
-                            .flatten()
-                            .map(|id| (BlobId::from(**id), 0)),
-                    );
-                }
-                NodeType::Dir => {
-                    _ = ids.insert(BlobId::from(*node.subtree.unwrap()), 0);
-                }
-                _ => {} // nothing to do
-            }
-        }
+        collect_used_node_blobs(tree.nodes, &mut ids);
     }
 
     Ok(ids)
+}
+
+fn collect_used_node_blobs(nodes: impl IntoIterator<Item = Node>, ids: &mut BTreeMap<BlobId, u8>) {
+    for node in nodes {
+        match node.node_type {
+            NodeType::File => {
+                ids.extend(
+                    node.content
+                        .iter()
+                        .flatten()
+                        .map(|id| (BlobId::from(**id), 0)),
+                );
+            }
+            NodeType::Dir => {
+                if let Some(subtree) = node.subtree {
+                    _ = ids.insert(BlobId::from(*subtree), 0);
+                }
+            }
+            _ => {} // nothing to do
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::backend::node::Node;
+    use crate::blob::tree::TreeId;
+
+    #[test]
+    fn test_collect_used_node_blobs_dir_without_subtree_does_not_panic() {
+        let mut ids = BTreeMap::new();
+        let node = Node {
+            name: "corrupted_dir".to_string(),
+            node_type: NodeType::Dir,
+            subtree: None,
+            ..Default::default()
+        };
+
+        collect_used_node_blobs([node], &mut ids);
+        assert!(ids.is_empty());
+    }
+
+    #[test]
+    fn test_collect_used_node_blobs_dir_with_subtree() {
+        let mut ids = BTreeMap::new();
+        let tree_id = TreeId::default();
+        let node = Node {
+            name: "valid_dir".to_string(),
+            node_type: NodeType::Dir,
+            subtree: Some(tree_id),
+            ..Default::default()
+        };
+
+        collect_used_node_blobs([node], &mut ids);
+        assert!(ids.contains_key(&BlobId::from(*tree_id)));
+    }
 }
