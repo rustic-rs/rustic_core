@@ -784,7 +784,7 @@ impl PrunePlan {
         let mut index_packs = std::mem::take(&mut self.index_packs);
 
         // sort packs such that marked packs come first
-        index_packs.sort_unstable_by_key(|pack| pack.delete_mark);
+        index_packs.sort_unstable_by_key(|pack| !pack.delete_mark);
 
         // We first process all marked packs then the unmarked ones:
         // - first processed packs are more likely to have all blobs seen as unused
@@ -1055,6 +1055,20 @@ impl PrunePlan {
     ///
     /// * `instant_delete` - Whether to instantly delete unreferenced packs
     fn filter_index_files(&mut self) {
+        self.stats.index_files = self.index_files.len() as u64;
+
+        // set modify flag for index_files
+        for pack in &self.index_packs {
+            if pack.to_do != PackToDo::Keep
+                && (self.opts.instant_delete || pack.to_do != PackToDo::KeepMarked)
+            {
+                // index must be processed if it has been modified
+                // or if any pack is not kept
+                self.index_files[pack.index_num].modified = true;
+            }
+        }
+
+        // also process index files which are too small (i.e. rebuild them) - but don't do this if we have only a single too-small index file
         let mut any_must_modify = false;
         self.stats.index_files = self.index_files.len() as u64;
         // filter out only the index files which need processing
@@ -1068,17 +1082,22 @@ impl PrunePlan {
             }
         }
 
-        self.index_files.retain(|index| {
+        for index in &mut self.index_files {
             any_must_modify |= index.modified;
-            // also process index files which are too small (i.e. rebuild them)
-            index.modified || index.len < constants::MIN_INDEX_LEN
-        });
-
+            index.modified |= index.len < constants::MIN_INDEX_LEN;
+        }
         if !any_must_modify && self.index_files.len() == 1 {
-            // only one index file to process but only because it is too small
+            // only one index file to process but only because it is too small => we do nothing here
             self.index_files.clear();
+            self.index_packs.clear();
         }
 
+        // only keep packs for index_files which are modified
+        self.index_packs
+            .retain(|p| self.index_files[p.index_num].modified);
+
+        // only keep index files which are modified
+        self.index_files.retain(|index| index.modified);
         self.stats.index_files_rebuild = self.index_files.len() as u64;
 
         // TODO: Sort index files such that files with deletes come first and files with
