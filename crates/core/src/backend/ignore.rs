@@ -279,6 +279,7 @@ impl ReadSource for LocalSource {
         LocalSourceWalker {
             walker: self.builder.build(),
             save_opts: self.save_opts,
+            next_entry: None,
         }
     }
 }
@@ -301,20 +302,34 @@ pub struct LocalSourceWalker {
     walker: Walk,
     /// The save options to use.
     save_opts: LocalSourceSaveOptions,
+    /// The next entry to process after retaining an empty source root.
+    next_entry: Option<Result<ignore::DirEntry, ignore::Error>>,
 }
 
 impl Iterator for LocalSourceWalker {
     type Item = RusticResult<ReadSourceEntry<OpenFile>>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        match self.walker.next() {
-            // ignore root dir, i.e. an entry with depth 0 of type dir
-            Some(Ok(entry)) if entry.depth() == 0 && entry.file_type().unwrap().is_dir() => {
-                self.walker.next()
+        let entry = self.next_entry.take().or_else(|| self.walker.next())?;
+        let entry = match entry {
+            Ok(entry)
+                if entry.depth() == 0 && entry.file_type().is_some_and(|type_| type_.is_dir()) =>
+            {
+                let root = entry.path().to_path_buf();
+                match self.walker.next() {
+                    // Nonempty roots are reconstructed by `TreeIterator` from their descendants.
+                    Some(Ok(next)) if next.path().starts_with(&root) => Ok(next),
+                    Some(next) => {
+                        self.next_entry = Some(next);
+                        Ok(entry)
+                    }
+                    None => Ok(entry),
+                }
             }
-            item => item,
-        }
-        .map(|e| {
+            entry => entry,
+        };
+
+        Some(entry).map(|e| {
             let entry = e.map_err(|err| {
                 let path = ignore_error_path(&err);
                 let rustic_err = if path.is_some() {
