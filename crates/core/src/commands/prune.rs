@@ -396,15 +396,8 @@ struct PruneIndex {
     id: IndexId,
     /// Whether the index file was modified
     modified: bool,
-    /// The packs in the index file
-    packs: Vec<PrunePack>,
-}
-
-impl PruneIndex {
-    // TODO: add documentation!
-    fn len(&self) -> usize {
-        self.packs.iter().map(|p| p.blobs.len()).sum()
-    }
+    // The number of packs in the index file
+    len: usize,
 }
 
 /// Task to be executed by a `PrunePlan` on Packs
@@ -450,6 +443,8 @@ struct PrunePack {
     time: Option<Timestamp>,
     /// The blobs in the pack
     blobs: Vec<IndexBlob>,
+    /// the number of the index
+    index_num: usize,
 }
 
 impl PrunePack {
@@ -459,7 +454,7 @@ impl PrunePack {
     ///
     /// * `p` - The `IndexPack` to create the `PrunePack` from
     /// * `delete_mark` - Whether the pack is marked for deletion
-    fn from_index_pack(p: IndexPack, delete_mark: bool) -> Self {
+    fn from_index_pack(p: IndexPack, index_num: usize, delete_mark: bool) -> Self {
         Self {
             id: p.id,
             blob_type: p.blob_type(),
@@ -469,25 +464,8 @@ impl PrunePack {
             to_do: PackToDo::Undecided,
             time: p.time,
             blobs: p.blobs,
+            index_num,
         }
-    }
-
-    /// Create a new `PrunePack` from an `IndexPack` which is not marked for deletion
-    ///
-    /// # Arguments
-    ///
-    /// * `p` - The `IndexPack` to create the `PrunePack` from
-    fn from_index_pack_unmarked(p: IndexPack) -> Self {
-        Self::from_index_pack(p, false)
-    }
-
-    /// Create a new `PrunePack` from an `IndexPack` which is marked for deletion
-    ///
-    /// # Arguments
-    ///
-    /// * `p` - The `IndexPack` to create the `PrunePack` from
-    fn from_index_pack_marked(p: IndexPack) -> Self {
-        Self::from_index_pack(p, true)
     }
 
     /// Convert the `PrunePack` into an `IndexPack`. Set time of not already set.
@@ -595,9 +573,11 @@ pub struct PrunePlan {
     /// The ids of the existing packs
     existing_packs: BTreeMap<PackId, u32>,
     /// The packs which should be repacked
-    repack_candidates: Vec<(PackInfo, EnumSet<PackStatus>, RepackReason, usize, usize)>,
+    repack_candidates: Vec<(PackInfo, EnumSet<PackStatus>, RepackReason, usize)>,
     /// The index files
     index_files: Vec<PruneIndex>,
+    /// The packs from the index
+    index_packs: Vec<PrunePack>,
     /// `prune` statistics
     pub stats: PruneStats,
     /// some options used to decide about the ``pack_to_do``s for packs
@@ -620,57 +600,46 @@ impl PrunePlan {
         opts: PruneOptions,
         pack_sizer: BlobTypeMap<PackSizer>,
     ) -> Self {
-        let mut processed_packs = BTreeSet::new();
-        let mut processed_packs_delete = BTreeSet::new();
+        let mut index_packs = Vec::new();
         let mut index_files: Vec<_> = index_files
             .into_iter()
-            .map(|(id, index)| {
-                let mut modified = false;
-                let mut packs: Vec<_> = index
-                    .packs
-                    .into_iter()
-                    // filter out duplicate packs
-                    .filter(|p| {
-                        let no_duplicate = processed_packs.insert(p.id);
-                        modified |= !no_duplicate;
-                        no_duplicate
-                    })
-                    .map(PrunePack::from_index_pack_unmarked)
-                    .collect();
-                packs.extend(
+            .enumerate()
+            .map(|(index_num, (id, index))| {
+                let len = index.packs.len() + index.packs_to_delete.len();
+                index_packs.extend(
+                    index
+                        .packs
+                        .into_iter()
+                        .map(|p| PrunePack::from_index_pack(p, index_num, false)),
+                );
+                index_packs.extend(
                     index
                         .packs_to_delete
                         .into_iter()
-                        // filter out duplicate packs
-                        .filter(|p| {
-                            let no_duplicate = processed_packs_delete.insert(p.id);
-                            modified |= !no_duplicate;
-                            no_duplicate
-                        })
-                        .map(PrunePack::from_index_pack_marked),
+                        .map(|p| PrunePack::from_index_pack(p, index_num, true)),
                 );
 
                 PruneIndex {
                     id,
-                    modified,
-                    packs,
+                    len,
+                    modified: false,
                 }
             })
             .collect();
 
-        // filter out "normally" indexed packs from packs_to_delete
-        for index in &mut index_files {
-            let mut modified = false;
-            index.packs.retain(|p| {
-                !p.delete_mark || {
-                    let duplicate = processed_packs.contains(&p.id);
-                    modified |= duplicate;
-                    !duplicate
-                }
-            });
+        // sort packs first by id and second by earliest timestamp - so we are cautious not to take a "state" which may not have gotten fully processed.
+        index_packs.sort_unstable_by(|a, b| a.id.cmp(&b.id).then(a.time.cmp(&b.time)));
 
-            index.modified |= modified;
-        }
+        // Deduplicate by pack id (keeping only the earliest timestamp for duplicates); potentially correcting len and modified flag of the corresponding index_file
+        index_packs.dedup_by(|x, p| {
+            if x.id == p.id {
+                index_files[x.index_num].modified = true;
+                index_files[x.index_num].len -= 1;
+                true
+            } else {
+                false
+            }
+        });
 
         Self {
             time: Zoned::now(),
@@ -678,6 +647,7 @@ impl PrunePlan {
             existing_packs,
             repack_candidates: Vec::new(),
             index_files,
+            index_packs,
             stats: PruneStats::default(),
             pack_sizer,
             opts,
@@ -769,12 +739,7 @@ impl PrunePlan {
 
     /// This function counts the number of times a blob is used in the index files.
     fn count_used_blobs(&mut self) {
-        for blob in self
-            .index_files
-            .iter()
-            .flat_map(|index| &index.packs)
-            .flat_map(|pack| &pack.blobs)
-        {
+        for blob in self.index_packs.iter().flat_map(|pack| &pack.blobs) {
             if let Some(count) = self.used_ids.get_mut(&blob.id) {
                 // note that duplicates are only counted up to 255. If there are more
                 // duplicates, the number is set to 255. This may imply that later on
@@ -816,49 +781,42 @@ impl PrunePlan {
     /// * `pack_sizer` - The `PackSizer` for the packs
     fn decide_packs(&mut self) {
         // take out index files as we will process it - will be re-inserted at the end
-        let mut index_files = std::mem::take(&mut self.index_files);
+        let mut index_packs = std::mem::take(&mut self.index_packs);
 
-        // first process all marked packs then the unmarked ones:
+        // sort packs such that marked packs come first
+        index_packs.sort_unstable_by_key(|pack| pack.delete_mark);
+
+        // We first process all marked packs then the unmarked ones:
         // - first processed packs are more likely to have all blobs seen as unused
         // - if marked packs have used blob but these blobs are all present in
         //   unmarked packs, we want to perform the deletion!
-        for mark_case in [true, false] {
-            for (index_num, index) in index_files.iter_mut().enumerate() {
-                for (pack_num, pack) in index
-                    .packs
-                    .iter_mut()
-                    .enumerate()
-                    .filter(|(_, p)| p.delete_mark == mark_case)
-                {
-                    let pi = PackInfo::from_pack(pack, &mut self.used_ids);
-                    //update used/unused stats
-                    self.stats.blobs[pi.blob_type].used += u64::from(pi.used_blobs);
-                    self.stats.blobs[pi.blob_type].unused += u64::from(pi.unused_blobs);
-                    self.stats.size[pi.blob_type].used += u64::from(pi.used_size);
-                    self.stats.size[pi.blob_type].unused += u64::from(pi.unused_size);
-                    let mut status = EnumSet::empty();
-                    if pi.used_blobs > 0 {
-                        _ = status.insert(PackStatus::HasUsedBlobs);
-                    }
-                    if pi.unused_blobs > 0 {
-                        _ = status.insert(PackStatus::HasUnusedBlobs);
-                    }
+        for (pack_num, pack) in index_packs.iter_mut().enumerate() {
+            let pi = PackInfo::from_pack(pack, &mut self.used_ids);
+            //update used/unused stats
+            self.stats.blobs[pi.blob_type].used += u64::from(pi.used_blobs);
+            self.stats.blobs[pi.blob_type].unused += u64::from(pi.unused_blobs);
+            self.stats.size[pi.blob_type].used += u64::from(pi.used_size);
+            self.stats.size[pi.blob_type].unused += u64::from(pi.unused_size);
+            let mut status = EnumSet::empty();
+            if pi.used_blobs > 0 {
+                _ = status.insert(PackStatus::HasUsedBlobs);
+            }
+            if pi.unused_blobs > 0 {
+                _ = status.insert(PackStatus::HasUnusedBlobs);
+            }
 
-                    if pack.delete_mark {
-                        self.decide_marked_pack(pack, pi, status);
-                    } else {
-                        self.decide_unmarked_pack(index_num, pack_num, pack, pi, status);
-                    }
-                }
+            if pack.delete_mark {
+                self.decide_marked_pack(pack, pi, status);
+            } else {
+                self.decide_unmarked_pack(pack_num, pack, pi, status);
             }
         }
         // re-insert index_files
-        self.index_files = index_files;
+        self.index_packs = index_packs;
     }
 
     fn decide_unmarked_pack(
         &mut self,
-        index_num: usize,
         pack_num: usize,
         pack: &mut PrunePack,
         pi: PackInfo,
@@ -904,21 +862,11 @@ impl PrunePlan {
                 if too_young || keep_uncacheable {
                     pack.set_todo(PackToDo::Keep, &pi, status, &mut self.stats);
                 } else if to_compress || self.opts.repack_all {
-                    self.repack_candidates.push((
-                        pi,
-                        status,
-                        RepackReason::ToCompress,
-                        index_num,
-                        pack_num,
-                    ));
+                    self.repack_candidates
+                        .push((pi, status, RepackReason::ToCompress, pack_num));
                 } else if size_mismatch {
-                    self.repack_candidates.push((
-                        pi,
-                        status,
-                        RepackReason::SizeMismatch,
-                        index_num,
-                        pack_num,
-                    ));
+                    self.repack_candidates
+                        .push((pi, status, RepackReason::SizeMismatch, pack_num));
                 } else {
                     pack.set_todo(PackToDo::Keep, &pi, status, &mut self.stats);
                 }
@@ -934,13 +882,8 @@ impl PrunePlan {
                     pack.set_todo(PackToDo::Keep, &pi, status, &mut self.stats);
                 } else {
                     // other partly used pack => candidate for repacking
-                    self.repack_candidates.push((
-                        pi,
-                        status,
-                        RepackReason::PartlyUsed,
-                        index_num,
-                        pack_num,
-                    ));
+                    self.repack_candidates
+                        .push((pi, status, RepackReason::PartlyUsed, pack_num));
                 }
             }
         }
@@ -1004,10 +947,8 @@ impl PrunePlan {
         let mut do_repack = BlobTypeMap::default();
         let mut repack_size = BlobTypeMap::<u64>::default();
 
-        for (pi, status, repack_reason, index_num, pack_num) in
-            std::mem::take(&mut self.repack_candidates)
-        {
-            let pack = &mut self.index_files[index_num].packs[pack_num];
+        for (pi, status, repack_reason, pack_num) in std::mem::take(&mut self.repack_candidates) {
+            let pack = &mut self.index_packs[pack_num];
             let blob_type = pi.blob_type;
 
             let total_repack_size: u64 = repack_size.into_values().sum();
@@ -1019,7 +960,7 @@ impl PrunePlan {
             {
                 pack.set_todo(PackToDo::Keep, &pi, status, &mut self.stats);
             } else if repack_reason == RepackReason::SizeMismatch {
-                resize_packs[blob_type].push((pi, status, index_num, pack_num));
+                resize_packs[blob_type].push((pi, status, pack_num));
                 repack_size[blob_type] += u64::from(pi.used_size);
             } else {
                 pack.set_todo(PackToDo::Repack, &pi, status, &mut self.stats);
@@ -1037,8 +978,8 @@ impl PrunePlan {
             } else {
                 PackToDo::Keep
             };
-            for (pi, status, index_num, pack_num) in resize_packs {
-                let pack = &mut self.index_files[index_num].packs[pack_num];
+            for (pi, status, pack_num) in resize_packs {
+                let pack = &mut self.index_packs[pack_num];
                 pack.set_todo(todo, &pi, status, &mut self.stats);
             }
         }
@@ -1052,7 +993,7 @@ impl PrunePlan {
     /// * If the size of a pack does not match
     /// * If a pack does not exist
     fn check_existing_packs(&mut self) -> RusticResult<()> {
-        for pack in self.index_files.iter().flat_map(|index| &index.packs) {
+        for pack in &self.index_packs {
             let existing_size = self.existing_packs.remove(&pack.id);
 
             // TODO: Unused Packs which don't exist (i.e. only existing in index)
@@ -1117,19 +1058,20 @@ impl PrunePlan {
         let mut any_must_modify = false;
         self.stats.index_files = self.index_files.len() as u64;
         // filter out only the index files which need processing
+        for pack in &self.index_packs {
+            if pack.to_do != PackToDo::Keep
+                && (self.opts.instant_delete || pack.to_do != PackToDo::KeepMarked)
+            {
+                // index must be processed if it has been modified
+                // or if any pack is not kept
+                self.index_files[pack.index_num].modified = true;
+            }
+        }
+
         self.index_files.retain(|index| {
-            // index must be processed if it has been modified
-            // or if any pack is not kept
-            let must_modify = index.modified
-                || index.packs.iter().any(|p| {
-                    p.to_do != PackToDo::Keep
-                        && (self.opts.instant_delete || p.to_do != PackToDo::KeepMarked)
-                });
-
-            any_must_modify |= must_modify;
-
+            any_must_modify |= index.modified;
             // also process index files which are too small (i.e. rebuild them)
-            must_modify || index.len() < constants::MIN_INDEX_LEN
+            index.modified || index.len < constants::MIN_INDEX_LEN
         });
 
         if !any_must_modify && self.index_files.len() == 1 {
@@ -1146,9 +1088,8 @@ impl PrunePlan {
     /// Get the list of packs-to-repack from the [`PrunePlan`].
     #[must_use]
     pub fn repack_packs(&self) -> Vec<PackId> {
-        self.index_files
+        self.index_packs
             .iter()
-            .flat_map(|index| &index.packs)
             .filter(|pack| pack.to_do == PackToDo::Repack)
             .map(|pack| pack.id)
             .collect()
@@ -1289,78 +1230,74 @@ pub(crate) fn prune_repository<S: Open>(
     // process packs by index_file
     let p = repo.progress_counter("rebuilding index...");
     p.set_length(u64::try_from(prune_plan.index_files.len()).unwrap_or_default());
-    for index in prune_plan.index_files {
-        for mut pack in index.packs {
-            // for instant_delete we choose according ToDos
-            let pack_to_do = match (pack.to_do, opts.instant_delete) {
-                (PackToDo::MarkDelete, true) => PackToDo::Delete,
-                (PackToDo::MarkRecover, true) => PackToDo::Recover,
-                (PackToDo::KeepMarked | PackToDo::KeepMarkedAndCorrect, true) if pack.recovered => {
-                    PackToDo::Recover
-                }
-                (PackToDo::KeepMarked | PackToDo::KeepMarkedAndCorrect, true)
-                    if !pack.recovered =>
-                {
-                    PackToDo::Delete
-                }
-                // in all other cases, we keep the original ToDo
-                (todo, _) => todo,
-            };
-
-            match pack_to_do {
-                PackToDo::Undecided => {
-                    return Err(RusticError::new(
-                        ErrorKind::Internal,
-                        "Pack `{pack_id}` got no decision what to do with it!",
-                    )
-                    .attach_context("pack_id", pack.id.to_string())
-                    .ask_report());
-                }
-                PackToDo::Keep => {
-                    // keep pack: add to new index; correct time if not set
-                    let pack = pack.into_index_pack(prune_time);
-                    indexer.add(pack)?;
-                }
-                PackToDo::Repack => {
-                    if opts.instant_delete {
-                        delete_pack(&pack);
-                    } else {
-                        // mark pack for removal
-                        let pack = pack.clone().into_index_pack_with_time(prune_time);
-                        indexer.add_remove(pack)?;
-                    }
-                    pack.blobs
-                        .retain(|blob| used_ids.remove(&blob.id).is_some()); // don't save duplicate blobs
-                    // sort blobs to later allow coalescing
-                    pack.blobs.sort_unstable();
-                    repack_packs.push(pack);
-                }
-                PackToDo::MarkDelete => {
-                    // mark pack
-                    pack.recovered = false;
-                    let pack = pack.into_index_pack_with_time(prune_time);
-                    indexer.add_remove(pack)?;
-                }
-                PackToDo::MarkRecover => {
-                    // mark pack
-                    pack.recovered = true;
-                    let pack = pack.into_index_pack_with_time(prune_time);
-                    indexer.add_remove(pack)?;
-                }
-                PackToDo::KeepMarked | PackToDo::KeepMarkedAndCorrect => {
-                    // keep pack: add to new index; keep the timestamp.
-                    // Note the timestamp shouldn't be None here, however if it is not not set, use the current time to heal the entry!
-                    let pack = pack.into_index_pack(prune_time);
-                    indexer.add_remove(pack)?;
-                }
-                PackToDo::Recover => {
-                    pack.recovered = false;
-                    // recover pack: add to new index in section packs
-                    let pack = pack.into_index_pack_with_time(prune_time);
-                    indexer.add(pack)?;
-                }
-                PackToDo::Delete => delete_pack(&pack),
+    for mut pack in prune_plan.index_packs {
+        // for instant_delete we choose according ToDos
+        let pack_to_do = match (pack.to_do, opts.instant_delete) {
+            (PackToDo::MarkDelete, true) => PackToDo::Delete,
+            (PackToDo::MarkRecover, true) => PackToDo::Recover,
+            (PackToDo::KeepMarked | PackToDo::KeepMarkedAndCorrect, true) if pack.recovered => {
+                PackToDo::Recover
             }
+            (PackToDo::KeepMarked | PackToDo::KeepMarkedAndCorrect, true) if !pack.recovered => {
+                PackToDo::Delete
+            }
+            // in all other cases, we keep the original ToDo
+            (todo, _) => todo,
+        };
+
+        match pack_to_do {
+            PackToDo::Undecided => {
+                return Err(RusticError::new(
+                    ErrorKind::Internal,
+                    "Pack `{pack_id}` got no decision what to do with it!",
+                )
+                .attach_context("pack_id", pack.id.to_string())
+                .ask_report());
+            }
+            PackToDo::Keep => {
+                // keep pack: add to new index; correct time if not set
+                let pack = pack.into_index_pack(prune_time);
+                indexer.add(pack)?;
+            }
+            PackToDo::Repack => {
+                if opts.instant_delete {
+                    delete_pack(&pack);
+                } else {
+                    // mark pack for removal
+                    let pack = pack.clone().into_index_pack_with_time(prune_time);
+                    indexer.add_remove(pack)?;
+                }
+                pack.blobs
+                    .retain(|blob| used_ids.remove(&blob.id).is_some()); // don't save duplicate blobs
+                // sort blobs to later allow coalescing
+                pack.blobs.sort_unstable();
+                repack_packs.push(pack);
+            }
+            PackToDo::MarkDelete => {
+                // mark pack
+                pack.recovered = false;
+                let pack = pack.into_index_pack_with_time(prune_time);
+                indexer.add_remove(pack)?;
+            }
+            PackToDo::MarkRecover => {
+                // mark pack
+                pack.recovered = true;
+                let pack = pack.into_index_pack_with_time(prune_time);
+                indexer.add_remove(pack)?;
+            }
+            PackToDo::KeepMarked | PackToDo::KeepMarkedAndCorrect => {
+                // keep pack: add to new index; keep the timestamp.
+                // Note the timestamp shouldn't be None here, however if it is not not set, use the current time to heal the entry!
+                let pack = pack.into_index_pack(prune_time);
+                indexer.add_remove(pack)?;
+            }
+            PackToDo::Recover => {
+                pack.recovered = false;
+                // recover pack: add to new index in section packs
+                let pack = pack.into_index_pack_with_time(prune_time);
+                indexer.add(pack)?;
+            }
+            PackToDo::Delete => delete_pack(&pack),
         }
     }
     p.finish();
