@@ -152,34 +152,6 @@ impl Default for PruneOptions {
     }
 }
 
-impl PruneOptions {
-    /// Get a `PrunePlan` from the given `PruneOptions`.
-    ///
-    /// # Type Parameters
-    ///
-    /// * `P` - The progress bar type.
-    /// * `S` - The state the repository is in.
-    ///
-    /// # Arguments
-    ///
-    /// * `repo` - The repository to get the `PrunePlan` for.
-    ///
-    /// # Errors
-    ///
-    /// * If `repack_uncompressed` is set and the repository is a version 1 repository
-    /// * If `keep_pack` or `keep_delete` is out of range
-    #[deprecated(
-        since = "0.5.2",
-        note = "Use `PrunePlan::from_prune_options()` instead"
-    )]
-    pub fn get_plan<P: ProgressBars, S: Open>(
-        &self,
-        repo: &Repository<S>,
-    ) -> RusticResult<PrunePlan> {
-        PrunePlan::from_prune_options(repo, self)
-    }
-}
-
 /// Enum to specify a size limit
 #[derive(Clone, Copy, Debug)]
 #[non_exhaustive]
@@ -1112,36 +1084,6 @@ impl PrunePlan {
             .filter(|pack| pack.to_do == PackToDo::Repack)
             .map(|pack| pack.id)
             .collect()
-    }
-
-    /// Perform the pruning on the given repository.
-    ///
-    /// # Arguments
-    ///
-    /// * `repo` - The repository to prune
-    /// * `opts` - The options for the pruning
-    ///
-    /// # Errors
-    ///
-    /// * If the repository is in append-only mode
-    /// * If a pack has no decision
-    ///
-    /// # Returns
-    ///
-    /// * `Ok(())` - If the pruning was successful
-    ///
-    /// # Panics
-    ///
-    /// TODO! In weird circumstances, should be fixed.
-    #[allow(clippy::significant_drop_tightening)]
-    #[allow(clippy::too_many_lines)]
-    #[deprecated(since = "0.5.2", note = "Use `Repository::prune()` instead.")]
-    pub fn do_prune<P: ProgressBars, S: Open>(
-        self,
-        repo: &Repository<S>,
-        opts: &PruneOptions,
-    ) -> RusticResult<()> {
-        repo.prune(opts, self)
     }
 }
 
