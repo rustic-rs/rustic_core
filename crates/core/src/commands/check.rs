@@ -32,7 +32,8 @@ use crate::{
     },
     progress::Progress,
     repofile::{
-        IndexFile, IndexPack, PackHeader, PackHeaderLength, PackHeaderRef, packfile::PackId,
+        IndexFile, IndexPack, PackHeader, PackHeaderLength, PackHeaderRef,
+        indexfile::IndexMarkType, packfile::PackId,
     },
     repository::{Open, Repository},
 };
@@ -428,7 +429,7 @@ fn check_cache_files(
 }
 
 // IndexPacks is a Map of all packs from the index with information about size (u32) and whether they are marked-to-delete (bool)
-type IndexPacks = BTreeMap<PackId, (u32, bool)>;
+type IndexPacks = BTreeMap<PackId, (u32, IndexMarkType)>;
 
 /// Check if packs correspond to index and are present in the backend
 ///
@@ -460,13 +461,13 @@ fn check_packs<S: Open>(
     for index in be.stream_all::<IndexFile>(&p)? {
         let index = index?.1;
         index_collector.extend(index.packs.clone());
-        for (p, to_delete) in index.all_packs() {
-            let check_time = to_delete; // Check if time is set for packs marked to delete
+        for p in index.all_packs() {
+            let check_time = p.has_mark(); // Check if time is set for packs marked to delete
             let blob_type = p.blob_type();
             let pack_size = p.pack_size();
-            _ = packs.insert(p.id, (pack_size, to_delete));
+            _ = packs.insert(p.id, (pack_size, p.mark));
             if hot_be.is_some() && blob_type == BlobType::Tree {
-                _ = tree_packs.insert(p.id, (pack_size, to_delete));
+                _ = tree_packs.insert(p.id, (pack_size, p.mark));
             }
 
             // Check if time is set _
@@ -540,7 +541,7 @@ fn check_packs_list(
             Some((index_size, to_delete)) if index_size != size => {
                 collector.add_error(CheckError::PackSizeMismatchIndex {
                     id,
-                    to_delete,
+                    mark: to_delete,
                     index_size,
                     size,
                 });
@@ -549,10 +550,10 @@ fn check_packs_list(
         }
     }
 
-    for (id, (size, to_delete)) in packs {
+    for (id, (size, mark)) in packs {
         collector.add_error(CheckError::NoPack {
             id: *id,
-            to_delete: *to_delete,
+            mark: *mark,
             size: *size,
         });
     }
@@ -588,7 +589,7 @@ fn check_packs_list_hot(
             Some((index_size, to_delete)) if index_size != size => {
                 collector.add_error(CheckError::HotPackSizeMismatchIndex {
                     id,
-                    to_delete,
+                    mark: to_delete,
                     index_size,
                     size,
                 });
@@ -597,12 +598,8 @@ fn check_packs_list_hot(
         }
     }
 
-    for (id, (size, to_delete)) in treepacks {
-        collector.add_error(CheckError::NoHotPack {
-            id,
-            to_delete,
-            size,
-        });
+    for (id, (size, mark)) in treepacks {
+        collector.add_error(CheckError::NoHotPack { id, mark, size });
     }
     Ok(())
 }
@@ -888,32 +885,32 @@ pub enum CheckError {
     PackNotReferenced { id: Id },
     /// hot pack {id} not referenced in index. Can be a parallel backup job. To repair: 'rustic repair index'.
     HotPackNotReferenced { id: PackId },
-    /// pack {id} marked to delete: {to_delete}: size computed by index: {index_size}, actual size: {size}. To repair: 'rustic repair index'.
+    /// pack {id} mark: {mark}: size computed by index: {index_size}, actual size: {size}. To repair: 'rustic repair index'.
     PackSizeMismatchIndex {
         id: Id,
-        to_delete: bool,
+        mark: IndexMarkType,
         index_size: u32,
         size: u32,
     },
-    /// hot pack {id} marked to-delete: {to_delete}: size computed by index: {index_size}, actual size: {size}. To repair: 'rustic repair index'.
+    /// hot pack {id} mark: {mark}: size computed by index: {index_size}, actual size: {size}. To repair: 'rustic repair index'.
     HotPackSizeMismatchIndex {
         id: Id,
-        to_delete: bool,
+        mark: IndexMarkType,
         index_size: u32,
         size: u32,
     },
     /// hot pack {id} is a data pack. This should not happen.
     HotDataPack { id: PackId },
-    /// hot pack {id} marked to-delete: {to_delete} is referenced by the index with size {size} but not present! To repair: 'rustic repair index'.
+    /// hot pack {id} mark: {mark} is referenced by the index with size {size} but not present! To repair: 'rustic repair index'.
     NoHotPack {
         id: PackId,
-        to_delete: bool,
+        mark: IndexMarkType,
         size: u32,
     },
-    /// pack {id} marked to-delete: {to_delete} is referenced by the index with size {size} but not present! To repair: 'rustic repair index'.
+    /// pack {id} mark: {mark} is referenced by the index with size {size} but not present! To repair: 'rustic repair index'.
     NoPack {
         id: PackId,
-        to_delete: bool,
+        mark: IndexMarkType,
         size: u32,
     },
     /// file {file:?} doesn't have a content
@@ -1048,9 +1045,8 @@ mod tests {
             .map(|_| IndexPack {
                 id: PackId::from(Id::random_from_rng(rng)),
                 blobs: Vec::new(),
-                time: None,
-                recovered: false,
                 size: Some(rng.random_range(0..PACK_SIZE)),
+                ..Default::default()
             })
             .collect()
     }
