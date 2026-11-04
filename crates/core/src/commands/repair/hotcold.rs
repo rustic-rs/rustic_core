@@ -111,7 +111,7 @@ pub(crate) fn get_tree_packs<S: Open>(repo: &Repository<S>) -> RusticResult<BTre
     let mut tree_packs = BTreeSet::new();
     for index in repo.dbe().stream_all::<IndexFile>(&p)? {
         let index = index?.1;
-        for (pack, _) in index.all_packs() {
+        for pack in index.all_packs() {
             let blob_type = pack.blob_type();
             if blob_type == BlobType::Tree {
                 _ = tree_packs.insert(pack.id);
