@@ -107,6 +107,25 @@ pub fn reqwest_client(options: &BTreeMap<String, String>) -> RusticResult<Client
                 Err(err) => warn!("cannot use read-timeout: {err}"),
                 Ok(read_timeout) => client_builder = client_builder.read_timeout(read_timeout),
             }
+        } else if option == "http-connect-timeout" {
+            // `timeout` must allow for large packfiles, so a host that never answers the
+            // connect would otherwise wait for the system's connect timeout
+            let connect_timeout: Result<std::time::Duration, _> = SignedDuration::from_str(value).map_err(|err| {
+                    RusticError::with_source(
+                        ErrorKind::InvalidInput,
+                        "Could not parse value `{value}` as duration. Invalid value for option `{option}`.",
+                        err,
+                    )
+                    .attach_context("value", value)
+                    .attach_context("option", "connect-timeout")
+                })?.try_into();
+            match connect_timeout {
+                // ignore conversion errors, but print out warning
+                Err(err) => warn!("cannot use connect-timeout: {err}"),
+                Ok(connect_timeout) => {
+                    client_builder = client_builder.connect_timeout(connect_timeout)
+                }
+            }
         } else if option == "http-cacert" {
             client_builder = client_builder.add_root_certificate(get_cacert(value)?);
         } else if option == "http-tls-client-cert" {
