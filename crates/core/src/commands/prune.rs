@@ -473,7 +473,7 @@ impl PrunePack {
         let tpe = self.blob_type;
         stats.debug.add(pi, todo, status);
         match todo {
-            PackToDo::Undecided => panic!("not possible"),
+            PackToDo::Undecided => unreachable!(),
             PackToDo::Keep => {
                 stats.packs.keep += 1;
             }
@@ -978,14 +978,7 @@ impl PrunePlan {
             };
 
             match pack.to_do {
-                PackToDo::Undecided => {
-                    return Err(RusticError::new(
-                        ErrorKind::Internal,
-                        "Pack `{pack_id}` got no decision what to do with it!",
-                    )
-                    .attach_context("pack_id", pack.id.to_string())
-                    .ask_report());
-                }
+                PackToDo::Undecided => unreachable!(),
                 PackToDo::Keep | PackToDo::Recover => {
                     for blob in &pack.blobs {
                         _ = self.used_ids.remove(&blob.id);
@@ -1173,14 +1166,7 @@ pub(crate) fn prune_repository<S: Open>(
         // for instant_delete we choose according ToDos
         let pack_to_do = pack.todo_with_instant_delete(opts.instant_delete);
         match pack_to_do {
-            PackToDo::Undecided => {
-                return Err(RusticError::new(
-                    ErrorKind::Internal,
-                    "Pack `{pack_id}` got no decision what to do with it!",
-                )
-                .attach_context("pack_id", pack.id.to_string())
-                .ask_report());
-            }
+            PackToDo::Undecided => unreachable!(),
             PackToDo::Keep => {
                 // keep pack: add to new index; correct time if not set
                 let mut pack = pack.into_index_pack();
