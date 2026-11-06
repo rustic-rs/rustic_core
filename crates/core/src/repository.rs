@@ -915,6 +915,7 @@ impl<S: Open> Repository<S> {
     /// # Note
     ///
     /// The result is not sorted and may come in random order!
+    /// Snapshot files which cannot be read are skipped with a warning.
     pub fn get_matching_snapshots(
         &self,
         filter: impl FnMut(&SnapshotFile) -> bool,
@@ -936,6 +937,7 @@ impl<S: Open> Repository<S> {
     /// # Note
     ///
     /// The result is not sorted and may come in random order!
+    /// Snapshot files which cannot be read are skipped with a warning.
     pub fn update_matching_snapshots(
         &self,
         current: Vec<SnapshotFile>,
@@ -1028,13 +1030,11 @@ impl<S: Open> Repository<S> {
     ///
     // TODO: Document panics
     pub fn check(&self, opts: CheckOptions) -> RusticResult<CheckResults> {
-        let trees = self
-            .get_all_snapshots()?
-            .into_iter()
-            .map(|snap| snap.tree)
-            .collect();
+        let snapshots = self.get_all_snapshots()?;
+        let unreadable_snapshots = SnapshotFile::unreadable_from_backend(self.dbe(), &snapshots)?;
+        let trees = snapshots.into_iter().map(|snap| snap.tree).collect();
 
-        check_repository(self, opts, trees)
+        check_repository(self, opts, trees, unreadable_snapshots)
     }
 
     /// Check the repository and given trees for errors or inconsistencies
@@ -1054,7 +1054,7 @@ impl<S: Open> Repository<S> {
         opts: CheckOptions,
         trees: Vec<TreeId>,
     ) -> RusticResult<CheckResults> {
-        check_repository(self, opts, trees)
+        check_repository(self, opts, trees, Vec::new())
     }
 
     /// Get the plan about what should be pruned and/or repacked.

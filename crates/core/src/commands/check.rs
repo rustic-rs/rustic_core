@@ -32,7 +32,8 @@ use crate::{
     },
     progress::Progress,
     repofile::{
-        IndexFile, IndexPack, PackHeader, PackHeaderLength, PackHeaderRef, packfile::PackId,
+        IndexFile, IndexPack, PackHeader, PackHeaderLength, PackHeaderRef, SnapshotId,
+        packfile::PackId,
     },
     repository::{Open, Repository},
 };
@@ -226,12 +227,20 @@ pub(crate) fn check_repository<S: Open>(
     repo: &Repository<S>,
     opts: CheckOptions,
     trees: Vec<TreeId>,
+    unreadable_snapshots: Vec<(SnapshotId, Box<RusticError>)>,
 ) -> RusticResult<CheckResults> {
     let be = repo.dbe();
     let cache = repo.cache();
     let hot_be = &repo.be_hot;
     let raw_be = repo.dbe();
     let collector = CheckResultsCollector::default().log(true);
+    for (id, source) in unreadable_snapshots {
+        collector.add_error(CheckError::ErrorReadingFile {
+            id: *id,
+            file_type: FileType::Snapshot,
+            source,
+        });
+    }
     if !opts.trust_cache
         && let Some(cache) = &cache
     {

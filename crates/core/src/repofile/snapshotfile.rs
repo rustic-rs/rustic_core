@@ -36,6 +36,12 @@ use crate::{
     repofile::{RepoFile, RusticTime},
 };
 
+#[derive(Clone, Copy)]
+enum UnreadableSnapshot {
+    Fail,
+    Skip,
+}
+
 /// [`SnapshotFileErrorKind`] describes the errors that can be returned for `SnapshotFile`s
 #[derive(thiserror::Error, Debug, displaydoc::Display)]
 #[non_exhaustive]
@@ -710,7 +716,14 @@ impl SnapshotFile {
                 let ids: Vec<Id> = requests.ids.iter().map(|sn| **sn).collect();
                 let all_ids = requests.map_results(&[], ids_starts_with, ids);
 
-                Self::fill_missing(be, Vec::new(), all_ids.as_slice(), |_| true, p)
+                Self::fill_missing(
+                    be,
+                    Vec::new(),
+                    all_ids.as_slice(),
+                    |_| true,
+                    UnreadableSnapshot::Fail,
+                    p,
+                )
             }
             Some(max_n) => {
                 let ids: BTreeMap<_, _> = requests
@@ -852,7 +865,7 @@ impl SnapshotFile {
         p: &Progress,
     ) -> RusticResult<Vec<Self>> {
         let ids = be.find_ids(FileType::Snapshot, ids)?;
-        Self::fill_missing(be, current, &ids, |_| true, p)
+        Self::fill_missing(be, current, &ids, |_| true, UnreadableSnapshot::Fail, p)
     }
 
     // helper func
@@ -861,6 +874,7 @@ impl SnapshotFile {
         current: Vec<Self>,
         ids: &[Id],
         mut filter: F,
+        unreadable: UnreadableSnapshot,
         p: &Progress,
     ) -> RusticResult<Vec<Self>>
     where
@@ -874,9 +888,14 @@ impl SnapshotFile {
             .filter(|id| !snaps.contains_key(id))
             .collect();
         for res in be.stream_list::<Self>(missing_ids, p)? {
-            let (id, snap) = res?;
-            if filter(&snap) {
-                let _ = snaps.insert(id, snap);
+            match (res, unreadable) {
+                (Ok((id, snap)), _) => {
+                    if filter(&snap) {
+                        let _ = snaps.insert(id, snap);
+                    }
+                }
+                (Err(err), UnreadableSnapshot::Fail) => return Err(err),
+                (Err(err), UnreadableSnapshot::Skip) => warn!("Error reading snapshot: {err}"),
             }
         }
         // sort back to original order + handle duplicates
@@ -920,7 +939,35 @@ impl SnapshotFile {
         F: FnMut(&Self) -> bool,
     {
         let ids = be.list(FileType::Snapshot)?;
-        Self::fill_missing(be, current, &ids, filter, p)
+        Self::fill_missing(be, current, &ids, filter, UnreadableSnapshot::Skip, p)
+    }
+
+    /// Get the snapshot files of the backend which are missing in `readable` and cannot be read
+    ///
+    /// # Arguments
+    ///
+    /// * `be` - The backend to use
+    /// * `readable` - The snapshots which have already been read
+    ///
+    /// # Errors
+    ///
+    /// * If the snapshot files could not be listed
+    ///
+    /// # Returns
+    ///
+    /// The id of each unreadable snapshot file together with the error reading it
+    pub(crate) fn unreadable_from_backend<B: DecryptReadBackend>(
+        be: &B,
+        readable: &[Self],
+    ) -> RusticResult<Vec<(SnapshotId, Box<RusticError>)>> {
+        let readable: BTreeSet<_> = readable.iter().map(|snap| snap.id).collect();
+        Ok(be
+            .list(FileType::Snapshot)?
+            .into_iter()
+            .map(SnapshotId::from)
+            .filter(|id| !readable.contains(id))
+            .filter_map(|id| be.get_file::<Self>(&id).err().map(|err| (id, err)))
+            .collect())
     }
 
     /// Add tag lists to snapshot.
