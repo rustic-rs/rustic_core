@@ -83,6 +83,7 @@ walkdir = "2.5.0"
 # cache
 cachedir = "0.3.1"
 dirs = "6.0.0"
+tempfile = { workspace = true }
 
 # cli support
 clap = { version = "4.5.57", optional = true, features = ["derive", "env", "wrap_help"] }
@@ -126,7 +127,6 @@ rstest = { workspace = true }
 rustic_backend = { workspace = true }
 rustic_testing = { workspace = true }
 tar = "0.4.44"
-tempfile = { workspace = true }
 toml = "1.0.3"
 
 [lints]
