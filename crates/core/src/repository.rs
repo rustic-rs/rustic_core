@@ -915,6 +915,7 @@ impl<S: Open> Repository<S> {
     /// # Note
     ///
     /// The result is not sorted and may come in random order!
+    /// Snapshot files which cannot be read are skipped with a warning.
     pub fn get_matching_snapshots(
         &self,
         filter: impl FnMut(&SnapshotFile) -> bool,
@@ -936,6 +937,7 @@ impl<S: Open> Repository<S> {
     /// # Note
     ///
     /// The result is not sorted and may come in random order!
+    /// Snapshot files which cannot be read are skipped with a warning.
     pub fn update_matching_snapshots(
         &self,
         current: Vec<SnapshotFile>,
