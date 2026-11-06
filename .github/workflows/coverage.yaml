@@ -20,7 +20,7 @@ jobs:
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
 
       - name: Install cargo-tarpaulin
-        uses: taiki-e/install-action@2dbeb927f58939d3aa13bf06ba0c0a34b76b9bfb # v2
+        uses: taiki-e/install-action@c509219cf42fba86913069efd0ade2458c59337b # v2
         with:
           tool: cargo-tarpaulin
 
