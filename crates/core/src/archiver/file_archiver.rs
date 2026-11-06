@@ -16,6 +16,7 @@ use crate::{
         packer::{PackSizer, Packer, PackerStats},
     },
     chunker::ChunkIter,
+    concurrency::{ConcurrencyClass, ConcurrentIteratorExt},
     crypto::hasher::hash,
     error::{ErrorKind, RusticError, RusticResult},
     index::{ReadGlobalIndex, indexer::SharedIndexer},
@@ -35,6 +36,7 @@ pub(crate) struct FileArchiver<'a, BE: DecryptWriteBackend, I: ReadGlobalIndex> 
     index: &'a I,
     data_packer: Packer<BE>,
     config: ConfigFile,
+    be: BE,
 }
 
 impl<'a, BE: DecryptWriteBackend, I: ReadGlobalIndex> FileArchiver<'a, BE, I> {
@@ -64,12 +66,13 @@ impl<'a, BE: DecryptWriteBackend, I: ReadGlobalIndex> FileArchiver<'a, BE, I> {
     ) -> RusticResult<Self> {
         let pack_sizer =
             PackSizer::from_config(config, BlobType::Data, index.total_size(BlobType::Data));
-        let data_packer = Packer::new(be, BlobType::Data, indexer, pack_sizer)?;
+        let data_packer = Packer::new(be.clone(), BlobType::Data, indexer, pack_sizer)?;
 
         Ok(Self {
             index,
             data_packer,
             config: config.clone(),
+            be: be,
         })
     }
 
@@ -141,14 +144,27 @@ impl<'a, BE: DecryptWriteBackend, I: ReadGlobalIndex> FileArchiver<'a, BE, I> {
         node: Node,
         p: &Progress,
     ) -> RusticResult<(Node, u64)> {
-        let chunks: Vec<_> = ChunkIter::from_config(
-            &self.config,
-            r,
-            usize::try_from(node.meta.size).unwrap_or(usize::MAX),
-        )?
+        let chunks: Vec<_> = {
+            // CPU Concurrency: Rabin64 creation within Chunker
+            let _guard = self.be.concurrency().acquire(ConcurrencyClass::Cpu);
+            ChunkIter::from_config(
+                &self.config,
+                r,
+                usize::try_from(node.meta.size).unwrap_or(usize::MAX),
+            )
+        }?
+        .concurrent_iter(
+            // CPU Concurrency: chunk generation/iteration
+            self.be.concurrency(),
+            ConcurrencyClass::Cpu,
+        )
         .map(|chunk| {
             let chunk = chunk?;
-            let id = hash(&chunk);
+            let id = {
+                // CPU Concurrency: hashing
+                let _guard = self.be.concurrency().acquire(ConcurrencyClass::Cpu);
+                hash(&chunk)
+            };
             let size = chunk.len() as u64;
 
             if !self.index.has_data(&DataId::from(id)) {

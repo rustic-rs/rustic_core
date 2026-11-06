@@ -9,6 +9,7 @@ pub(crate) mod local_destination;
 pub(crate) mod node;
 pub(crate) mod stdin;
 pub(crate) mod warm_up;
+pub(crate) mod concurrent;
 
 use std::{io::Read, ops::Deref, path::PathBuf, sync::Arc};
 
@@ -17,7 +18,7 @@ use enum_map::Enum;
 use log::trace;
 
 #[cfg(test)]
-use mockall::mock;
+use {mockall::mock, crate::{concurrency::ConcurrencyManager, backend::concurrent::ConcurrentBackend}};
 
 use serde_derive::{Deserialize, Serialize};
 
@@ -421,6 +422,10 @@ mock! {
         fn write_bytes(&self, tpe: FileType, id: &Id, cacheable: bool, content: BytesList) -> RusticResult<()>;
         fn remove(&self, tpe: FileType, id: &Id, cacheable: bool) -> RusticResult<()>;
     }
+
+    impl ConcurrentBackend for Backend {
+        fn concurrency(&self) -> &ConcurrencyManager;
+    }
 }
 
 impl WriteBackend for Arc<dyn WriteBackend> {
@@ -482,6 +487,7 @@ impl std::fmt::Debug for dyn WriteBackend {
         write!(f, "WriteBackend{{{}}}", self.location())
     }
 }
+
 
 /// Information about an entry to be able to open it.
 ///

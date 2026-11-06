@@ -15,13 +15,14 @@ use std::{
 use bytes::Bytes;
 use derive_setters::Setters;
 use jiff::SignedDuration;
-use log::info;
+use log::{debug, info};
 use serde_with::{DisplayFromStr, serde_as};
 
 use crate::{
     ReadSource, RepositoryBackends, RusticError,
     backend::{
         FileType, FindInBackend, ReadBackend, WriteBackend,
+        concurrent::{ConcurrencyBackend, ConcurrentWriteBackend},
         cache::{Cache, CachedBackend},
         decrypt::{DecryptBackend, DecryptReadBackend, DecryptWriteBackend},
         hotcold::HotColdBackend,
@@ -53,6 +54,7 @@ use crate::{
         restore::{RestoreOptions, RestorePlan, collect_and_prepare, restore_repository},
         rewrite::{RewriteOptions, rewrite_snapshots, rewrite_snapshots_and_trees},
     },
+    concurrency::{ConcurrencyManager, ConcurrencyOptions},
     crypto::aespoly1305::Key,
     error::{ErrorKind, RusticResult},
     index::{
@@ -144,6 +146,10 @@ pub struct RepositoryOptions {
     #[cfg_attr(feature = "clap", clap(long, global = true))]
     #[cfg_attr(feature = "merge", merge(strategy = conflate::option::overwrite_none))]
     pub warm_up_batch: Option<usize>,
+
+    /// Concurrency
+    #[cfg_attr(feature = "clap", clap(flatten))]
+    pub concurrency: ConcurrencyOptions,
 }
 
 #[derive(Debug, Clone)]
@@ -162,13 +168,13 @@ pub struct Repository<S> {
     pub name: String,
 
     /// The `HotColdBackend` to use for this repository
-    pub(crate) be: Arc<dyn WriteBackend>,
+    pub(crate) be: Arc<dyn ConcurrentWriteBackend>,
 
     /// The Backend to use for hot files
-    pub(crate) be_hot: Option<Arc<dyn WriteBackend>>,
+    pub(crate) be_hot: Option<Arc<dyn ConcurrentWriteBackend>>,
 
     /// The Backend to use for cold files
-    pub(crate) be_cold: Arc<dyn WriteBackend>,
+    pub(crate) be_cold: Arc<dyn ConcurrentWriteBackend>,
 
     /// The options used for this repository
     opts: RepositoryOptions,
@@ -244,11 +250,20 @@ impl Repository<()> {
             name.push_str(&be_hot.location());
         }
 
+        let concurrency = ConcurrencyManager::new(opts.concurrency);
+        debug!("repository {}: {:?}", be.location(), opts.concurrency);
+        debug!("repository {}: Concurrency Limits {:?}, system: {}",
+               be.location(), concurrency.limits(), concurrency.available());
+                                 
         Ok(Self {
             name,
-            be,
-            be_hot,
-            be_cold,
+            be: Arc::new(ConcurrencyBackend::new(be, concurrency.clone())),
+            be_hot: be_hot.and_then(|be| {
+                #[allow(trivial_casts)]
+                Some(Arc::new(ConcurrencyBackend::new(be, concurrency.clone()))
+                     as Arc<dyn ConcurrentWriteBackend>)
+            }),
+            be_cold: Arc::new(ConcurrencyBackend::new(be_cold, concurrency.clone())),
             opts: opts.clone(),
             pb: Arc::new(pb),
             status: (),
@@ -257,6 +272,11 @@ impl Repository<()> {
 }
 
 impl<S> Repository<S> {
+    /// Return the [`ConcurrencyManager`] for the repository backend
+    pub fn concurrency(&self) -> &ConcurrencyManager {
+        &self.be.concurrency()
+    }
+
     /// Start a new progress, which is hidden
     pub fn progress_hidden(&self) -> Progress {
         Progress::new(HiddenProgress)
