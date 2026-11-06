@@ -1030,11 +1030,13 @@ impl<S: Open> Repository<S> {
     ///
     // TODO: Document panics
     pub fn check(&self, opts: CheckOptions) -> RusticResult<CheckResults> {
-        let snapshots = self.get_all_snapshots()?;
-        let unreadable_snapshots = SnapshotFile::unreadable_from_backend(self.dbe(), &snapshots)?;
-        let trees = snapshots.into_iter().map(|snap| snap.tree).collect();
+        let trees = self
+            .get_all_snapshots()?
+            .into_iter()
+            .map(|snap| snap.tree)
+            .collect();
 
-        check_repository(self, opts, trees, unreadable_snapshots)
+        check_repository(self, opts, trees)
     }
 
     /// Check the repository and given trees for errors or inconsistencies
@@ -1054,7 +1056,7 @@ impl<S: Open> Repository<S> {
         opts: CheckOptions,
         trees: Vec<TreeId>,
     ) -> RusticResult<CheckResults> {
-        check_repository(self, opts, trees, Vec::new())
+        check_repository(self, opts, trees)
     }
 
     /// Get the plan about what should be pruned and/or repacked.

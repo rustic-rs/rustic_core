@@ -32,7 +32,7 @@ use crate::{
     },
     progress::Progress,
     repofile::{
-        IndexFile, IndexPack, PackHeader, PackHeaderLength, PackHeaderRef, SnapshotId,
+        IndexFile, IndexPack, PackHeader, PackHeaderLength, PackHeaderRef, SnapshotFile,
         packfile::PackId,
     },
     repository::{Open, Repository},
@@ -227,20 +227,12 @@ pub(crate) fn check_repository<S: Open>(
     repo: &Repository<S>,
     opts: CheckOptions,
     trees: Vec<TreeId>,
-    unreadable_snapshots: Vec<(SnapshotId, Box<RusticError>)>,
 ) -> RusticResult<CheckResults> {
     let be = repo.dbe();
     let cache = repo.cache();
     let hot_be = &repo.be_hot;
     let raw_be = repo.dbe();
     let collector = CheckResultsCollector::default().log(true);
-    for (id, source) in unreadable_snapshots {
-        collector.add_error(CheckError::ErrorReadingFile {
-            id: *id,
-            file_type: FileType::Snapshot,
-            source,
-        });
-    }
     if !opts.trust_cache
         && let Some(cache) = &cache
     {
@@ -263,6 +255,16 @@ pub(crate) fn check_repository<S: Open>(
             check_hot_files(raw_be, hot_be, file_type, &p, &collector)?;
         }
     }
+
+    let p = repo.progress_counter("reading snapshots...");
+    for (id, source) in SnapshotFile::unreadable_from_backend(be, &p)? {
+        collector.add_error(CheckError::ErrorReadingFile {
+            id: *id,
+            file_type: FileType::Snapshot,
+            source,
+        });
+    }
+    p.finish();
 
     let (index_collector, missing_packs) = check_packs(repo, be, hot_be.as_ref(), &collector)?;
 

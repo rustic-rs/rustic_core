@@ -19,6 +19,7 @@ use itertools::Itertools;
 use jiff::{Span, Unit, Zoned};
 use log::{info, warn};
 use path_dedot::ParseDot;
+use rayon::prelude::{IntoParallelIterator, ParallelIterator};
 use serde::{Deserialize, Serialize};
 use serde_with::{DisplayFromStr, serde_as, skip_serializing_none};
 
@@ -942,12 +943,12 @@ impl SnapshotFile {
         Self::fill_missing(be, current, &ids, filter, UnreadableSnapshot::Skip, p)
     }
 
-    /// Get the snapshot files of the backend which are missing in `readable` and cannot be read
+    /// Read every snapshot file of the backend and return those which cannot be read
     ///
     /// # Arguments
     ///
     /// * `be` - The backend to use
-    /// * `readable` - The snapshots which have already been read
+    /// * `p` - A progress bar to use
     ///
     /// # Errors
     ///
@@ -958,15 +959,18 @@ impl SnapshotFile {
     /// The id of each unreadable snapshot file together with the error reading it
     pub(crate) fn unreadable_from_backend<B: DecryptReadBackend>(
         be: &B,
-        readable: &[Self],
+        p: &Progress,
     ) -> RusticResult<Vec<(SnapshotId, Box<RusticError>)>> {
-        let readable: BTreeSet<_> = readable.iter().map(|snap| snap.id).collect();
-        Ok(be
-            .list(FileType::Snapshot)?
-            .into_iter()
+        let ids = be.list(FileType::Snapshot)?;
+        p.set_length(ids.len() as u64);
+        Ok(ids
+            .into_par_iter()
             .map(SnapshotId::from)
-            .filter(|id| !readable.contains(id))
-            .filter_map(|id| be.get_file::<Self>(&id).err().map(|err| (id, err)))
+            .filter_map(|id| {
+                let unreadable = be.get_file::<Self>(&id).err().map(|err| (id, err));
+                p.inc(1);
+                unreadable
+            })
             .collect())
     }
 

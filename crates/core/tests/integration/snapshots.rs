@@ -221,3 +221,23 @@ fn check_reports_an_unreadable_snapshot_file() -> Result<()> {
     assert!(results.is_ok().is_err());
     Ok(())
 }
+
+#[test]
+fn check_with_trees_reports_an_unreadable_snapshot_file() -> Result<()> {
+    let (repo, _, unreadable) = repo_with_one_unreadable_snapshot()?;
+    let trees = repo
+        .get_all_snapshots()?
+        .into_iter()
+        .map(|snap| snap.tree)
+        .collect();
+
+    let results = repo.check_with_trees(CheckOptions::default(), trees)?;
+
+    let findings = format!("{:?}", results.0);
+    assert!(
+        findings.contains("ErrorReadingFile") && findings.contains(&unreadable),
+        "{findings}"
+    );
+    assert!(results.is_ok().is_err());
+    Ok(())
+}
