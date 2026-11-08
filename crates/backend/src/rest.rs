@@ -8,7 +8,7 @@ use bytes::Bytes;
 use futures_util::stream;
 use log::{trace, warn};
 use reqwest::{
-    Body, Client, Url,
+    Body, Client, StatusCode, Url,
     header::{HeaderMap, HeaderValue},
 };
 use serde::Deserialize;
@@ -232,20 +232,12 @@ impl ReadBackend for RestBackend {
         self.retry_notify(|| {
             runtime().block_on(async {
                 if tpe == FileType::Config {
-                    return Ok(
-                        if self
-                            .client
-                            .head(url.clone())
-                            .send()
-                            .await?
-                            .status()
-                            .is_success()
-                        {
-                            vec![(Id::default(), 0)]
-                        } else {
-                            Vec::new()
-                        },
-                    );
+                    let response = self.client.head(url.clone()).send().await?;
+                    if response.status() == StatusCode::NOT_FOUND {
+                        return Ok(Vec::new());
+                    }
+                    _ = response.error_for_status()?;
+                    return Ok(vec![(Id::default(), 0)]);
                 }
 
                 let list = self
@@ -485,11 +477,45 @@ impl WriteBackend for RestBackend {
 
 #[cfg(test)]
 mod tests {
-    use std::net::TcpListener;
+    use std::io::{Read, Write};
+    use std::net::{SocketAddr, TcpListener};
     use std::thread;
     use std::time::Instant;
 
+    use rstest::rstest;
+
     use super::*;
+
+    fn server_answering_once_with(status: u16) -> SocketAddr {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        let _server = thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut request = [0; 1024];
+            _ = stream.read(&mut request).unwrap();
+            let response =
+                format!("HTTP/1.1 {status} \r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
+            stream.write_all(response.as_bytes()).unwrap();
+        });
+        addr
+    }
+
+    #[rstest]
+    #[case::present(200, Some(1))]
+    #[case::absent(404, Some(0))]
+    #[case::refused(401, None)]
+    fn listing_the_config_reads_the_status_of_the_server(
+        #[case] status: u16,
+        #[case] expected_len: Option<usize>,
+    ) {
+        let addr = server_answering_once_with(status);
+        let options = BTreeMap::from([("retry".to_string(), "off".to_string())]);
+        let backend = RestBackend::new(format!("http://{addr}/"), options).unwrap();
+
+        let listed = backend.list_with_size(FileType::Config);
+
+        assert_eq!(listed.ok().map(|files| files.len()), expected_len);
+    }
 
     #[test]
     fn read_timeout_ends_a_request_the_server_never_answers() {
