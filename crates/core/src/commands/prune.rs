@@ -85,7 +85,7 @@ pub struct PruneOptions {
     )]
     pub keep_marked: Span,
 
-    /// Delete files immediately instead of marking them and immeadietely recover instead of marking for recovrey. Also appires for already marked pack files.
+    /// Delete files immediately instead of marking them and immediately recover instead of marking for recovery. Also applies for already marked pack files.
     ///
     /// # Warning
     ///
@@ -375,9 +375,7 @@ struct PruneIndex {
 /// Task to be executed by a `PrunePlan` on Packs
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Default)]
 pub enum PackToDo {
-    // Not yet decided what to do - should be never set after processing a prune plan
     #[default]
-    Undecided,
     /// The pack should be kept
     Keep,
     /// The pack should be repacked
@@ -399,7 +397,10 @@ pub enum PackToDo {
 impl PackToDo {
     /// ``PackToDo``s which need an index modification
     fn index_modify(self) -> bool {
-        !matches!(self, Self::Keep | Self::KeepMarkedDelete)
+        !matches!(
+            self,
+            Self::Keep | Self::KeepMarkedDelete | Self::KeepMarkedRecover
+        )
     }
 }
 
@@ -439,7 +440,7 @@ impl PrunePack {
             mark: p.mark,
             time: p.time,
             blobs: p.blobs,
-            to_do: PackToDo::Undecided,
+            to_do: PackToDo::Keep,
             index_num,
         }
     }
@@ -473,7 +474,6 @@ impl PrunePack {
         let tpe = self.blob_type;
         stats.debug.add(pi, todo, status);
         match todo {
-            PackToDo::Undecided => unreachable!(),
             PackToDo::Keep => {
                 stats.packs.keep += 1;
             }
@@ -978,7 +978,6 @@ impl PrunePlan {
             };
 
             match pack.to_do {
-                PackToDo::Undecided => unreachable!(),
                 PackToDo::Keep | PackToDo::Recover => {
                     for blob in &pack.blobs {
                         _ = self.used_ids.remove(&blob.id);
@@ -1166,7 +1165,6 @@ pub(crate) fn prune_repository<S: Open>(
         // for instant_delete we choose according ToDos
         let pack_to_do = pack.todo_with_instant_delete(opts.instant_delete);
         match pack_to_do {
-            PackToDo::Undecided => unreachable!(),
             PackToDo::Keep => {
                 // keep pack: add to new index; correct time if not set
                 let mut pack = pack.into_index_pack();
