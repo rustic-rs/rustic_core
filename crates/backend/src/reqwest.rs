@@ -123,7 +123,7 @@ pub fn reqwest_client(options: &BTreeMap<String, String>) -> RusticResult<Client
                 // ignore conversion errors, but print out warning
                 Err(err) => warn!("cannot use connect-timeout: {err}"),
                 Ok(connect_timeout) => {
-                    client_builder = client_builder.connect_timeout(connect_timeout)
+                    client_builder = client_builder.connect_timeout(connect_timeout);
                 }
             }
         } else if option == "http-cacert" {
