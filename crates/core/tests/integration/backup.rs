@@ -249,6 +249,53 @@ fn test_backup_stdin_command(
     Ok(())
 }
 
+#[rstest]
+fn test_backup_file_with_as_path(set_up_repo: Result<RepoOpen>) -> Result<()> {
+    let tmp = tempfile::tempdir()?;
+    let file = tmp.path().join("file.txt");
+    std::fs::write(&file, "hello")?;
+
+    let repo = set_up_repo?.to_indexed_ids()?;
+    let paths = PathList::from_iter(Some(file));
+    let opts = BackupOptions::default().as_path(PathBuf::from("virtual/name"));
+    let snapshot = repo.backup(&opts, &paths, SnapshotFile::default())?;
+
+    // re-read index
+    let repo = repo.to_indexed()?;
+
+    // the file is saved at the path recorded in the snapshot
+    let path = snapshot.paths.iter().next().unwrap();
+    let node = repo.node_from_snapshot_path(&format!("latest:{path}"), |_| true)?;
+    let mut content = Vec::new();
+    repo.dump(&node, &mut content)?;
+    assert_eq!(content, b"hello");
+    Ok(())
+}
+
+#[rstest]
+fn test_backup_stdin_with_as_path(set_up_repo: Result<RepoOpen>) -> Result<()> {
+    let repo = set_up_repo?.to_indexed_ids()?;
+    let paths = PathList::from_string("-")?;
+
+    let cmd: CommandInput = "echo test".parse()?;
+    let opts = BackupOptions::default()
+        .stdin_filename("test")
+        .stdin_command(cmd)
+        .as_path(PathBuf::from("virtual/name"));
+    let snapshot = repo.backup(&opts, &paths, SnapshotFile::default())?;
+
+    // re-read index
+    let repo = repo.to_indexed()?;
+
+    // stdin is saved at the path recorded in the snapshot
+    let path = snapshot.paths.iter().next().unwrap();
+    let node = repo.node_from_snapshot_path(&format!("latest:{path}"), |_| true)?;
+    let mut content = Vec::new();
+    repo.dump(&node, &mut content)?;
+    assert_eq!(content, b"test\n");
+    Ok(())
+}
+
 #[cfg(not(any(windows, target_os = "openbsd")))]
 #[rstest]
 fn test_backup_excludes_xattr_entries(set_up_repo: Result<RepoOpen>) -> Result<()> {

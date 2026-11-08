@@ -165,11 +165,21 @@ impl<'a, BE: DecryptFullBackend, I: ReadGlobalIndex> Archiver<'a, BE, I> {
                     report_source_error(p, &error_count, "scan", &err);
                     None
                 }
-                Ok(ReadSourceEntry { path, node, open }) => {
+                Ok(ReadSourceEntry {
+                    path,
+                    mut node,
+                    open,
+                }) => {
                     let snapshot_path = if let Some(as_path) = as_path {
-                        as_path
-                            .clone()
-                            .join(path.strip_prefix(backup_path).unwrap())
+                        let rel_path = path.strip_prefix(backup_path).unwrap();
+                        // the source is a single file: save it under the name given by as_path
+                        if rel_path.as_os_str().is_empty()
+                            && !node.is_dir()
+                            && let Some(name) = as_path.file_name()
+                        {
+                            node.set_name(name);
+                        }
+                        as_path.join(rel_path)
                     } else {
                         path
                     };
