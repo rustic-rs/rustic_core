@@ -15,12 +15,12 @@ use crate::{
         BlobId, BlobType, DataId,
         packer::{PackSizer, Packer, PackerStats},
     },
-    chunker::ChunkIter,
+    chunker::{ChunkIter, chunk_len_zeroes},
     crypto::hasher::hash,
     error::{ErrorKind, RusticError, RusticResult},
     index::{ReadGlobalIndex, indexer::SharedIndexer},
     progress::Progress,
-    repofile::configfile::{Chunker, ConfigFile},
+    repofile::configfile::ConfigFile,
 };
 
 /// The `FileArchiver` is responsible for archiving files.
@@ -68,12 +68,11 @@ impl<'a, BE: DecryptWriteBackend, I: ReadGlobalIndex> FileArchiver<'a, BE, I> {
             PackSizer::from_config(config, BlobType::Data, index.total_size(BlobType::Data));
         let data_packer = Packer::new(be, BlobType::Data, indexer, pack_sizer)?;
 
-        // The Rabin hash of a window of zeros is 0, so runs of zeros are cut at the minimum size.
-        let zero_len = match config.chunker() {
-            Chunker::Rabin => config.chunk_min_size(),
-            Chunker::FixedSize => config.chunk_size(),
-        };
-        let zero_chunk = (zero_len, DataId::from(hash(&vec![0; zero_len])));
+        let chunk_len_zeroes = chunk_len_zeroes(config);
+        let zero_chunk = (
+            chunk_len_zeroes,
+            DataId::from(hash(&vec![0; chunk_len_zeroes])),
+        );
 
         Ok(Self {
             index,
