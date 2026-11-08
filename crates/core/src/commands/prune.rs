@@ -77,15 +77,15 @@ pub struct PruneOptions {
     )]
     pub keep_pack: Span,
 
-    /// Minimum duration (e.g. 10m) to keep packs marked for deletion. More recently marked packs won't be
-    /// deleted within this prune run.
+    /// Minimum duration (e.g. 10m) to keep packs marked. More recently marked packs won't be
+    /// deleted or recovered within this prune run.
     #[cfg_attr(
         feature = "clap",
         clap(long, value_name = "DURATION", default_value = "23h")
     )]
-    pub keep_delete: Span,
+    pub keep_marked: Span,
 
-    /// Delete files immediately instead of marking them. This also removes all files already marked for deletion.
+    /// Delete files immediately instead of marking them and immeadietely recover instead of marking for recovrey. Also appires for already marked pack files.
     ///
     /// # Warning
     ///
@@ -139,7 +139,7 @@ impl Default for PruneOptions {
             max_repack: LimitOption::Percentage(10),
             max_unused: LimitOption::Percentage(5),
             keep_pack: Span::new(),
-            keep_delete: Span::new().hours(23),
+            keep_marked: Span::new().hours(23),
             instant_delete: false,
             early_delete_index: false,
             fast_repack: false,
@@ -859,7 +859,7 @@ impl PrunePlan {
         _ = status.insert(PackStatus::Marked);
         // too_young is set if the mark is not old enough. If the pack time is unset, it is set to true
         let too_young = pack.time.is_none_or(|pack_time| {
-            pack_time > self.time.saturating_sub(self.opts.keep_delete).into()
+            pack_time > self.time.saturating_sub(self.opts.keep_marked).into()
         });
         if too_young {
             _ = status.insert(PackStatus::TooYoung);

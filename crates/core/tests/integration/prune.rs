@@ -77,7 +77,7 @@ fn test_prune(
         repo.prune(&prune_opts, plan)?;
         repo.check(check_opts)?.is_ok()?;
         // re-run again with keep-delete = 0. Now all marked packs should be removed
-        let prune_opts = prune_opts.keep_delete(Span::default());
+        let prune_opts = prune_opts.keep_marked(Span::default());
         let plan = repo.prune_plan(&prune_opts)?;
         repo.prune(&prune_opts, plan)?;
         repo.check(check_opts)?.is_ok()?;
@@ -138,7 +138,7 @@ fn test_prune_parallel_to_backup(
     // repo.check(check_opts)?.is_ok()?;
 
     // re-run again with keep-delete = 0. Now packs should be recovered.
-    let prune_opts = prune_opts.keep_delete(Span::default());
+    let prune_opts = prune_opts.keep_marked(Span::default());
     let plan = repo.prune_plan(&prune_opts)?;
     repo.prune(&prune_opts, plan)?;
     repo.check(check_opts)?.is_ok()?;
@@ -194,7 +194,7 @@ fn test_prune_parallel_and_backup(
 
     let opts = BackupOptions::default();
     let check_opts = CheckOptions::default().read_data(true);
-    let prune_opts = PruneOptions::default().keep_delete(Span::default());
+    let prune_opts = PruneOptions::default().keep_marked(Span::default());
 
     // first backup
     let paths = PathList::from_iter(Some(source.0.path().join("0/0/9/2")));
