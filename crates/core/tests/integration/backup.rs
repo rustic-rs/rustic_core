@@ -9,8 +9,8 @@ use pretty_assertions::assert_eq;
 use rstest::rstest;
 
 use rustic_core::{
-    BackupOptions, CommandInput, Grouped, ParentOptions, PathList, SnapshotGroupCriterion,
-    SnapshotOptions, StringList,
+    BackupOptions, CommandInput, Grouped, ParentOptions, PathList, ReadSource, ReadSourceEntry,
+    ReadSourceOpen, RusticResult, SnapshotGroupCriterion, SnapshotOptions, StringList,
     repofile::{PackId, SnapshotFile},
 };
 
@@ -347,5 +347,70 @@ fn test_backup_unreadable_file_sets_error_count(set_up_repo: Result<RepoOpen>) -
         "error_count should be persisted in the snapshot file when non-zero"
     );
 
+    Ok(())
+}
+
+/// Opens nothing: every entry of [`GivenEntries`] is stored as given.
+#[derive(Clone, Copy)]
+struct NothingToRead;
+
+impl ReadSourceOpen for NothingToRead {
+    type Reader = std::io::Empty;
+
+    fn open(self) -> RusticResult<Self::Reader> {
+        Ok(std::io::empty())
+    }
+}
+
+/// A source of ready-made entries.
+struct GivenEntries(Vec<ReadSourceEntry<NothingToRead>>);
+
+impl ReadSource for GivenEntries {
+    type Open = NothingToRead;
+    type Iter = std::iter::Map<
+        std::vec::IntoIter<ReadSourceEntry<NothingToRead>>,
+        fn(ReadSourceEntry<NothingToRead>) -> RusticResult<ReadSourceEntry<NothingToRead>>,
+    >;
+
+    fn size(&self) -> RusticResult<Option<u64>> {
+        Ok(None)
+    }
+
+    fn entries(&self) -> Self::Iter {
+        self.0.clone().into_iter().map(Ok)
+    }
+}
+
+#[rstest]
+fn test_archive_keeps_a_directory_given_with_its_subtree(
+    tar_gz_testdata: Result<TestSource>,
+    set_up_repo: Result<RepoOpen>,
+) -> Result<()> {
+    let (source, repo) = (tar_gz_testdata?, set_up_repo?.to_indexed_ids()?);
+    let opts = BackupOptions::default().as_path(PathBuf::from_str("test")?);
+    let first = repo.backup(&opts, &source.path_list(), SnapshotFile::default())?;
+    let repo = repo.to_indexed_ids()?;
+    let stored = repo.node_from_path(first.tree, Path::new("test/0/tests"))?;
+    let subtree = stored.subtree.expect("a directory has a subtree");
+
+    // A source giving that directory, subtree and all, and nothing below it.
+    let mut kept = stored;
+    kept.name = "kept".to_string();
+    let given = GivenEntries(vec![ReadSourceEntry {
+        path: PathBuf::from("kept"),
+        node: kept,
+        open: None,
+    }]);
+    let second = repo.archive(
+        &BackupOptions::default(),
+        &given,
+        SnapshotFile::default(),
+        &[PathBuf::from("kept")],
+    )?;
+
+    let repo = repo.to_indexed_ids()?;
+    let archived = repo.node_from_path(second.tree, Path::new("kept"))?;
+    assert_eq!(archived.subtree, Some(subtree));
+    assert_eq!(second.summary.expect("a summary").dirs_unmodified, 1);
     Ok(())
 }
