@@ -234,6 +234,13 @@ where
     <S as ReadSource>::Open: Send,
     <S as ReadSource>::Iter: Send,
 {
+    if opts.as_path.is_some() && backup_paths.len() > 1 {
+        return Err(RusticError::new(
+            ErrorKind::InvalidInput,
+            "as-path only works with a single source!",
+        ));
+    }
+
     let index = repo.index();
 
     let as_path = opts
