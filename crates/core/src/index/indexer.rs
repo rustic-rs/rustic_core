@@ -106,13 +106,13 @@ impl<BE: DecryptWriteBackend> Indexer<BE> {
         self.save()
     }
 
-    /// Save file if length of packs and `packs_to_delete` is greater than `0`.
+    /// Save file if it contains packs.
     ///
     /// # Errors
     ///
     /// * If the index file could not be serialized.
     pub fn save(&self) -> RusticResult<()> {
-        if (self.file.packs.len() + self.file.packs_to_delete.len()) > 0 {
+        if !self.file.is_empty() {
             _ = self.be.save_file(&self.file)?;
         }
         Ok(())
@@ -128,33 +128,6 @@ impl<BE: DecryptWriteBackend> Indexer<BE> {
     ///
     /// * If the index file could not be serialized.
     pub fn add(&mut self, pack: IndexPack) -> RusticResult<()> {
-        self.add_with(pack, false)
-    }
-
-    /// Adds a pack to the `Indexer` and removes it from the backend.
-    ///
-    /// # Arguments
-    ///
-    /// * `pack` - The pack to add.
-    ///
-    /// # Errors
-    ///
-    /// * If the index file could not be serialized.
-    pub fn add_remove(&mut self, pack: IndexPack) -> RusticResult<()> {
-        self.add_with(pack, true)
-    }
-
-    /// Adds a pack to the `Indexer`.
-    ///
-    /// # Arguments
-    ///
-    /// * `pack` - The pack to add.
-    /// * `delete` - Whether to delete the pack from the backend.
-    ///
-    /// # Errors
-    ///
-    /// * If the index file could not be serialized.
-    pub fn add_with(&mut self, pack: IndexPack, delete: bool) -> RusticResult<()> {
         self.count += pack.blobs.len();
 
         if let Some(indexed) = &mut self.indexed {
@@ -163,7 +136,7 @@ impl<BE: DecryptWriteBackend> Indexer<BE> {
             }
         }
 
-        self.file.add(pack, delete);
+        self.file.add(pack);
 
         // check if IndexFile needs to be saved
         let elapsed = self.created.elapsed().unwrap_or_else(|err| {

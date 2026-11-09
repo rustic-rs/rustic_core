@@ -492,7 +492,7 @@ impl<S> Repository<S> {
     ///
     /// * `password` - The password to use
     /// * `key_opts` - The options to use for the key
-    /// * `config` - The config file to use
+    /// * `config` - The config file to use. Its `is_hot` value is ignored and set according to this repository.
     ///
     /// # Errors
     ///
@@ -501,8 +501,11 @@ impl<S> Repository<S> {
         self,
         credentials: &Credentials,
         key_opts: &KeyOptions,
-        config: ConfigFile,
+        mut config: ConfigFile,
     ) -> RusticResult<Repository<OpenStatus>> {
+        // `config` may come from another repository (e.g. `copy --init`), which can differ in being hot/cold.
+        // It must be identical to the config file which is read by the backend, i.e. the one saved in the hot repo.
+        config.is_hot = self.be_hot.is_some().then_some(true);
         let (key, key_id) =
             commands::init::init_with_config(&self, credentials, key_opts, &config)?;
         info!("repository {} successfully created.", config.id);

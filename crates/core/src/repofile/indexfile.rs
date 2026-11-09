@@ -1,6 +1,7 @@
 use crate::{blob::BlobLocation, repofile::RusticTime};
 use std::{cmp::Ordering, num::NonZeroU32};
 
+use displaydoc::Display;
 use jiff::Timestamp;
 use serde_derive::{Deserialize, Serialize};
 use serde_with::{serde_as, skip_serializing_none};
@@ -20,7 +21,7 @@ impl_repoid!(IndexId, FileType::Index);
 ///
 /// They are usually stored in the repository under `/index/<ID>`
 #[skip_serializing_none]
-#[derive(Serialize, Deserialize, Debug, Default)]
+#[derive(Serialize, Deserialize, Debug, Default, Clone)]
 pub struct IndexFile {
     /// which other index files are superseded by this (not actively used)
     pub supersedes: Option<Vec<IndexId>>,
@@ -29,6 +30,9 @@ pub struct IndexFile {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     /// Index information about unused packs which are already marked for deletion
     pub packs_to_delete: Vec<IndexPack>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    /// Index information about packs which are marked for recovery
+    pub packs_to_recover: Vec<IndexPack>,
 }
 
 impl RepoFile for IndexFile {
@@ -38,25 +42,65 @@ impl RepoFile for IndexFile {
 }
 
 impl IndexFile {
+    #[must_use]
+    /// the total count of all packs (marked or unmarked)
+    pub fn len(&self) -> usize {
+        self.packs.len() + self.packs_to_delete.len() + self.packs_to_recover.len()
+    }
+
+    #[must_use]
+    /// returns whether the index contains no packs (marked or unmarked) at all
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
     /// Add a new pack to the index file
     ///
     /// # Arguments
     ///
     /// * `p` - The pack to add
     /// * `delete` - If the pack should be marked for deletion
-    pub(crate) fn add(&mut self, p: IndexPack, delete: bool) {
-        if delete {
-            self.packs_to_delete.push(p);
-        } else {
-            self.packs.push(p);
+    pub(crate) fn add(&mut self, p: IndexPack) {
+        match p.mark {
+            IndexMarkType::None => self.packs.push(p),
+            IndexMarkType::Delete => self.packs_to_delete.push(p),
+            IndexMarkType::Recover => self.packs_to_recover.push(p),
         }
     }
 
-    pub(crate) fn all_packs(self) -> impl Iterator<Item = (IndexPack, bool)> {
+    pub(crate) fn all_packs(self) -> impl Iterator<Item = IndexPack> {
         self.packs
             .into_iter()
-            .map(|pack| (pack, false))
-            .chain(self.packs_to_delete.into_iter().map(|pack| (pack, true)))
+            .map(|mut pack| {
+                pack.mark = IndexMarkType::None;
+                pack
+            })
+            .chain(self.packs_to_delete.into_iter().map(|mut pack| {
+                pack.mark = IndexMarkType::Delete;
+                pack
+            }))
+            .chain(self.packs_to_recover.into_iter().map(|mut pack| {
+                pack.mark = IndexMarkType::Recover;
+                pack
+            }))
+    }
+}
+
+#[derive(Clone, Copy, Debug, Display, Default, PartialEq, Eq, PartialOrd, Ord)]
+/// The possible marks set on a pack file in the index
+pub enum IndexMarkType {
+    /// no mark
+    #[default]
+    None,
+    /// marked to-recover
+    Recover,
+    /// marked to-delete
+    Delete,
+}
+
+impl IndexMarkType {
+    pub(crate) fn has_mark(self) -> bool {
+        !matches!(self, Self::None)
     }
 }
 
@@ -74,6 +118,9 @@ pub struct IndexPack {
     pub time: Option<Timestamp>,
     /// The pack size
     pub size: Option<u32>,
+    /// the mark of the pack file - is not serialized as repofile, instead separate lists packs-to-delete and packs-to-recover are used
+    #[serde(skip)]
+    pub(crate) mark: IndexMarkType,
 }
 
 impl IndexPack {
@@ -125,6 +172,15 @@ impl IndexPack {
         } else {
             self.blobs[0].tpe
         }
+    }
+
+    pub(crate) fn has_mark(&self) -> bool {
+        self.mark.has_mark()
+    }
+
+    /// sets the time, but only if it is not already set
+    pub fn set_time_if_unset(&mut self, time: Timestamp) {
+        self.time = self.time.or(Some(time));
     }
 }
 

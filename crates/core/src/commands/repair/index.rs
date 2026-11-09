@@ -59,7 +59,7 @@ pub(crate) fn repair_index<S: Open>(
         match (changed, dry_run) {
             (true, true) => info!("would have modified index file {index_id}"),
             (true, false) => {
-                if !new_index.packs.is_empty() || !new_index.packs_to_delete.is_empty() {
+                if !new_index.is_empty() {
                     _ = be.save_file(&new_index)?;
                 }
                 be.remove(FileType::Index, &index_id, true)?;
@@ -100,7 +100,7 @@ pub(crate) fn repair_index<S: Open>(
                 };
                 if !dry_run {
                     // write pack file to index - without the delete mark
-                    indexer.write().unwrap().add_with(pack, false)?;
+                    indexer.write().unwrap().add(pack)?;
                 }
             }
         }
@@ -137,7 +137,7 @@ impl PackChecker {
     fn check_pack(&mut self, indexfile: IndexFile, read_all: bool) -> (IndexFile, bool) {
         let mut new_index = IndexFile::default();
         let mut changed = false;
-        for (p, to_delete) in indexfile.all_packs() {
+        for p in indexfile.all_packs() {
             let index_size = p.pack_size();
             let id = p.id;
             match self.packs.remove(&id) {
@@ -162,7 +162,7 @@ impl PackChecker {
                         ));
                         changed = true;
                     } else {
-                        new_index.add(p, to_delete);
+                        new_index.add(p);
                     }
                 }
             }

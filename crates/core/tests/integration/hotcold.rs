@@ -5,7 +5,7 @@ use pretty_assertions::assert_eq;
 use rstest::rstest;
 
 use rustic_core::{
-    BackupOptions, CheckOptions, ConfigOptions, Credentials, FileType, KeyOptions, ReadBackend,
+    BackupOptions, CheckOptions, ConfigOptions, Credentials, FileType, Id, KeyOptions, ReadBackend,
     Repository, RepositoryBackends, RepositoryOptions, WriteBackend, repofile::SnapshotFile,
 };
 use rustic_testing::backend::in_memory_backend::InMemoryBackend;
@@ -96,5 +96,43 @@ fn hot_cold(tar_gz_testdata: Result<TestSource>) -> Result<()> {
     // repair
     repo.repair_hotcold_packs(false)?;
     repo.check(CheckOptions::default())?.is_ok()?;
+    Ok(())
+}
+
+fn backends(hot_cold: bool) -> RepositoryBackends {
+    if hot_cold {
+        RepositoryBackends::new(
+            Arc::new(InMemoryBackend::new_cold()),
+            Some(Arc::new(InMemoryBackend::new())),
+        )
+    } else {
+        RepositoryBackends::new(Arc::new(InMemoryBackend::new()), None)
+    }
+}
+
+#[rstest]
+fn init_with_config_from_other_repo(
+    #[values(false, true)] source_hot_cold: bool,
+    #[values(false, true)] target_hot_cold: bool,
+) -> Result<()> {
+    let options = RepositoryOptions::default();
+    let key_opts = KeyOptions::default();
+    let creds = Credentials::password("test");
+    let source = Repository::new(&options, &backends(source_hot_cold))?.init(
+        &creds,
+        &key_opts,
+        &ConfigOptions::default(),
+    )?;
+
+    // initialize the target with the config of the source, like `copy --init` does
+    let mut config = source.config().clone();
+    config.id = Id::random().into();
+    let be = backends(target_hot_cold);
+    let target = Repository::new(&options, &be)?.init_with_config(&creds, &key_opts, config)?;
+    target.check(CheckOptions::default())?.is_ok()?;
+
+    // the target can be opened again
+    let target = Repository::new(&options, &be)?.open(&creds)?;
+    target.check(CheckOptions::default())?.is_ok()?;
     Ok(())
 }
