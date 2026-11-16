@@ -515,4 +515,21 @@ mod tests {
         // without `read-timeout`, this waits for the 10 minute `timeout`
         assert!(start.elapsed() < Duration::from_secs(5));
     }
+
+    #[test]
+    fn connect_timeout_ends_a_request_to_a_host_that_never_answers() {
+        // TEST-NET-1 (RFC 5737) is routed nowhere, so a connect to it is never answered
+        let options = BTreeMap::from([
+            ("http-connect-timeout".to_string(), "200ms".to_string()),
+            ("retry".to_string(), "off".to_string()),
+        ]);
+        let backend = RestBackend::new("http://192.0.2.1:8000/", options).unwrap();
+
+        let start = Instant::now();
+        let result = backend.list_with_size(FileType::Snapshot);
+
+        assert!(result.is_err());
+        // without `connect-timeout`, this waits for the system's connect timeout
+        assert!(start.elapsed() < Duration::from_secs(5));
+    }
 }
