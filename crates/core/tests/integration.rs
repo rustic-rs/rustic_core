@@ -109,7 +109,7 @@ fn repo_from_fixture(dir: &TempDir, repo_file: &str) -> Result<RepoOpen> {
 
     let be = LocalBackend::new(dir.path().join("repo").to_str().unwrap(), None)?;
     let be = RepositoryBackends::new(Arc::new(be), None);
-    let options = RepositoryOptions::default();
+    let options = RepositoryOptions::default().cache_dir(dir.path().join("cache"));
     let repo = Repository::new(&options, &be)?.open(&Credentials::password("geheim"))?;
     Ok(repo)
 }
