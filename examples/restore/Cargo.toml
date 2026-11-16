@@ -14,3 +14,6 @@ simplelog = { workspace = true }
 
 [[example]]
 name = "restore"
+
+[lints]
+workspace = true

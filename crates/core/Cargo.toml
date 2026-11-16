@@ -75,14 +75,14 @@ cached = { version = "2.0.2", default-features = false, features = ["proc_macro"
 dunce = "1.0.5"
 filetime = "0.2.27"
 ignore = "0.4.25"
-nix = { version = "0.31.1", default-features = false, features = ["user", "fs"] }
+nix = { version = "0.32.0", default-features = false, features = ["user", "fs"] }
 path-dedot = "4.0.1"
 same-file = "1.0.6"
 walkdir = "2.5.0"
 
 # cache
 cachedir = "0.3.1"
-dirs = "6.0.0"
+dirs = "7.0.0"
 
 # cli support
 clap = { version = "4.5.57", optional = true, features = ["derive", "env", "wrap_help"] }
@@ -100,7 +100,7 @@ enum-map = "2.7.3"
 enumset = { version = "1.1.10", features = ["serde"] }
 gethostname = "1.1.0"
 itertools = "0.15.0"
-jiff = { version = "0.2.19", features = ["logging", "serde"] }
+jiff = { version = "0.2.46", features = ["logging", "serde"] }
 lockable = { version = "0.2.0", default-features = false }
 quick_cache = "0.7.0"
 sha2 = "0.11.0"

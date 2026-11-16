@@ -19,6 +19,6 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     // Add a new key with the given password
     let key_opts = KeyOptions::default();
-    repo.add_key("new_password", &key_opts)?;
+    let _ = repo.add_key("new_password", &key_opts)?;
     Ok(())
 }

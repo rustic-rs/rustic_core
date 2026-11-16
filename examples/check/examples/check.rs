@@ -20,6 +20,6 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     // Check repository with standard options but omitting cache checks
     let opts = CheckOptions::default().trust_cache(true);
-    repo.check(opts)?;
+    repo.check(opts)?.is_ok()?;
     Ok(())
 }
