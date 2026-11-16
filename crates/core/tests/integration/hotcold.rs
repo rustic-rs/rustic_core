@@ -5,9 +5,8 @@ use pretty_assertions::assert_eq;
 use rstest::rstest;
 
 use rustic_core::{
-    BackupOptions, CheckOptions, ConfigOptions, Credentials, FileType, Id, KeyOptions,
-    ReadBackend, Repository, RepositoryBackends, RepositoryOptions, WriteBackend,
-    repofile::SnapshotFile,
+    BackupOptions, CheckOptions, ConfigOptions, Credentials, FileType, Id, KeyOptions, ReadBackend,
+    Repository, RepositoryBackends, RepositoryOptions, WriteBackend, repofile::SnapshotFile,
 };
 use rustic_testing::backend::in_memory_backend::InMemoryBackend;
 

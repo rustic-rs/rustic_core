@@ -1,12 +1,13 @@
-use std::{path::PathBuf, str::FromStr};
+use std::{collections::HashSet, fs, path::PathBuf, str::FromStr};
 
 use anyhow::Result;
 use bytesize::ByteSize;
 use insta::{Settings, assert_ron_snapshot};
 use rstest::rstest;
+use tempfile::tempdir;
 
 use rustic_core::{
-    BackupOptions, ConfigOptions,
+    BackupOptions, CheckOptions, ConfigOptions, PathList,
     repofile::{Chunker, SnapshotFile},
 };
 
@@ -44,5 +45,46 @@ fn test_chunker_params(
         assert_ron_snapshot!("chunker-fixedsize", &snapshot);
     });
 
+    Ok(())
+}
+
+#[rstest]
+#[case(Chunker::Rabin)]
+#[case(Chunker::FixedSize)]
+fn test_backup_zeros(set_up_repo: Result<RepoOpen>, #[case] chunker: Chunker) -> Result<()> {
+    let mut repo = set_up_repo?.to_indexed_ids()?;
+    let config_opts = ConfigOptions::default().set_chunker(chunker);
+    _ = repo.apply_config(&config_opts)?;
+
+    // Runs of zeros between data, so that zero chunks follow and precede other chunks.
+    let mut data = vec![0; 8 << 20];
+    let mut x: u32 = 1;
+    for range in [0..100_000, 3_000_123..3_100_000, (8 << 20) - 5..8 << 20] {
+        for b in &mut data[range] {
+            x = x.wrapping_mul(1_103_515_245).wrapping_add(12345);
+            *b = (x >> 24) as u8 | 1;
+        }
+    }
+    let dir = tempdir()?;
+    let file = dir.path().join("zeros");
+    fs::write(&file, &data)?;
+
+    let opts = BackupOptions::default().as_path(PathBuf::from_str("test")?);
+    _ = repo.backup(
+        &opts,
+        &PathList::from_iter(Some(dir.path().to_path_buf())),
+        SnapshotFile::default(),
+    )?;
+
+    // The zero chunks are stored once, under the hash of their content.
+    let repo = repo.to_indexed()?;
+    repo.check(CheckOptions::default().read_data(true))?
+        .is_ok()?;
+    let node = repo.node_from_snapshot_path("latest:test/zeros", |_| true)?;
+    let content = node.content.as_ref().unwrap();
+    assert!(content.iter().collect::<HashSet<_>>().len() < content.len());
+    let mut restored = Vec::new();
+    repo.dump(&node, &mut restored)?;
+    assert_eq!(restored, data);
     Ok(())
 }
