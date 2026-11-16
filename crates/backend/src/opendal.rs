@@ -331,20 +331,11 @@ impl ReadBackend for OpenDALBackend {
     fn list(&self, tpe: FileType) -> RusticResult<Vec<Id>> {
         trace!("listing tpe: {tpe:?}");
         if tpe == FileType::Config {
-            return Ok(
-                if self.operator.exists("config").map_err(|err| {
-                    RusticError::with_source(
-                        ErrorKind::Backend,
-                        "Path `config` does not exist.",
-                        err,
-                    )
-                    .ask_report()
-                })? {
-                    vec![Id::default()]
-                } else {
-                    Vec::new()
-                },
-            );
+            return Ok(if config_exists(self.operator.exists("config"))? {
+                vec![Id::default()]
+            } else {
+                Vec::new()
+            });
         }
 
         let path = tpe.dirname().to_string() + "/";
@@ -605,13 +596,33 @@ impl WriteBackend for OpenDALBackend {
     }
 }
 
+/// Maps the result of checking for the repository config file.
+///
+/// Only a missing config file means that no repository exists yet. Other
+/// backend errors (authentication, transport, permission, ...) must be
+/// propagated instead of being reported as an absent config file.
+fn config_exists(result: opendal::Result<bool>) -> RusticResult<bool> {
+    match result {
+        Ok(exists) => Ok(exists),
+        // Some backends report a missing object as an error instead of
+        // returning `Ok(false)`.
+        Err(err) if err.kind() == opendal::ErrorKind::NotFound => Ok(false),
+        Err(err) => Err(RusticError::with_source(
+            ErrorKind::Backend,
+            "Checking for the presence of `config` in the backend failed.",
+            err,
+        )
+        .ask_report()),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use anyhow::Result;
     use rstest::rstest;
     use serde::Deserialize;
-    use std::{fs, path::PathBuf};
+    use std::{error::Error, fs, path::PathBuf};
 
     #[rstest]
     #[case("10kB,10MB", Throttle{bandwidth:10_000, burst:10_000_000})]
@@ -630,6 +641,38 @@ mod tests {
     #[case("10kB;10MB")]
     fn invalid_throttle(#[case] input: &str) {
         assert!(Throttle::from_str(input).is_err());
+    }
+
+    #[rstest]
+    #[case(Ok(true), true)]
+    #[case(Ok(false), false)]
+    #[case(
+        Err(opendal::Error::new(opendal::ErrorKind::NotFound, "not found")),
+        false
+    )]
+    fn config_exists_only_treats_not_found_as_absent(
+        #[case] result: opendal::Result<bool>,
+        #[case] expected: bool,
+    ) {
+        assert_eq!(config_exists(result).unwrap(), expected);
+    }
+
+    #[test]
+    fn config_exists_propagates_backend_errors() {
+        let err = config_exists(Err(opendal::Error::new(
+            opendal::ErrorKind::Unexpected,
+            "b2_authorize_account failed",
+        )))
+        .unwrap_err();
+
+        assert!(
+            err.to_string()
+                .contains("Checking for the presence of `config` in the backend failed.")
+        );
+        assert!(
+            err.source()
+                .is_some_and(|source| source.to_string().contains("b2_authorize_account failed"))
+        );
     }
 
     #[rstest]

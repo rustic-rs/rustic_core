@@ -57,3 +57,12 @@ impl<R: Read + Send> Iterator for ChunkIter<R> {
         }
     }
 }
+
+/// The chunk size for a sequence of zero bytes
+pub(crate) fn chunk_len_zeroes(config: &ConfigFile) -> usize {
+    match config.chunker() {
+        // The Rabin hash of a window of zeros is 0, so runs of zeros are cut at the minimum size.
+        Chunker::Rabin => config.chunk_min_size(),
+        Chunker::FixedSize => config.chunk_size(),
+    }
+}
