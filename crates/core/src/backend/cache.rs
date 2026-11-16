@@ -2,7 +2,7 @@ use std::{
     collections::HashMap,
     fs::{self, File},
     io::{self, Read, Seek, SeekFrom},
-    path::{Path, PathBuf},
+    path::PathBuf,
     sync::Arc,
 };
 
@@ -564,32 +564,6 @@ impl Cache {
     ///
     /// * If the file could not be written.
     pub fn write_bytes(&self, tpe: FileType, id: &Id, content: &BytesList) -> RusticResult<()> {
-        fn write_local_file(filename: &Path, mut reader: impl Read) -> RusticResult<()> {
-            let mut file = fs::OpenOptions::new()
-                .create(true)
-                .truncate(true)
-                .write(true)
-                .open(filename)
-                .map_err(|err| {
-                    RusticError::with_source(
-                        ErrorKind::InputOutput,
-                        "Failed to open the file `{path}`.",
-                        err,
-                    )
-                    .attach_context("path", filename.to_string_lossy())
-                })?;
-
-            _ = io::copy(&mut reader, &mut file).map_err(|err| {
-                RusticError::with_source(
-                    ErrorKind::InputOutput,
-                    "Failed to write to the buffer: `{path}`.",
-                    err,
-                )
-                .attach_context("path", filename.to_string_lossy())
-            })?;
-            Ok(())
-        }
-
         trace!("cache writing tpe: {tpe:?}, id: {id}");
 
         let dir = self.dir(tpe, id);
@@ -606,24 +580,36 @@ impl Cache {
             .attach_context("id", id.to_string())
         })?;
 
-        let filename = self.path(tpe, id);
-        let filename_tmp = dir.join(id.to_hex().to_string() + "-tmp-");
-        match write_local_file(&filename_tmp, content.clone().reader()) {
-            Ok(file) => file,
-            Err(err) => {
-                // Clean-up in case of error
-                _ = fs::remove_file(&filename_tmp);
-                return Err(err);
-            }
-        }
+        let mut file = tempfile::Builder::new()
+            .prefix(&format!("{}-tmp-", id.to_hex().as_str()))
+            .tempfile_in(&dir)
+            .map_err(|err| {
+                RusticError::with_source(
+                    ErrorKind::InputOutput,
+                    "Failed to create a temporary file in `{path}`.",
+                    err,
+                )
+                .attach_context("path", dir.display().to_string())
+            })?;
+
+        _ = io::copy(&mut content.clone().reader(), &mut file).map_err(|err| {
+            RusticError::with_source(
+                ErrorKind::InputOutput,
+                "Failed to write to the buffer: `{path}`.",
+                err,
+            )
+            .attach_context("path", file.path().display().to_string())
+        })?;
+
         // rename temporary file to real file
-        fs::rename(&filename_tmp, &filename).map_err(|err| {
+        let filename = self.path(tpe, id);
+        _ = file.persist(&filename).map_err(|err| {
             RusticError::with_source(
                 ErrorKind::InputOutput,
                 "Failed to move `{path_tmp}` to `{path}`",
-                err,
+                err.error,
             )
-            .attach_context("path_tmp", filename_tmp.display().to_string())
+            .attach_context("path_tmp", err.file.path().display().to_string())
             .attach_context("path", filename.display().to_string())
             .ask_report()
         })?;
@@ -655,6 +641,43 @@ impl Cache {
             .attach_context("id", id.to_string())
         })?;
 
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::tempdir;
+
+    #[test]
+    fn concurrent_writes_of_one_file_all_succeed_and_leave_the_content()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let temp = tempdir()?;
+        let cache = Cache::new(
+            RepositoryId::from(Id::random()),
+            Some(temp.path().to_path_buf()),
+        )?;
+        let id = Id::random();
+        let content: Vec<u8> = (0..1024 * 1024u32).map(|n| (n % 251) as u8).collect();
+
+        for _ in 0..10 {
+            let succeeded = std::thread::scope(|scope| {
+                let writers = [(); 8].map(|()| {
+                    scope.spawn(|| {
+                        cache.write_bytes(FileType::Pack, &id, &BytesList::from(content.clone()))
+                    })
+                });
+                writers.map(|writer| writer.join().is_ok_and(|written| written.is_ok()))
+            });
+            assert_eq!(succeeded, [true; 8]);
+            assert_eq!(fs::read(cache.path(FileType::Pack, &id))?, content);
+        }
+
+        let leftovers: Vec<_> = fs::read_dir(cache.dir(FileType::Pack, &id))?
+            .map(|entry| entry.map(|entry| entry.file_name()))
+            .collect::<Result<_, _>>()?;
+        assert_eq!(leftovers, [id.to_hex().as_str()]);
         Ok(())
     }
 }
