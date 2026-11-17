@@ -21,6 +21,6 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     // Set Config, e.g. Compression level
     let config_opts = ConfigOptions::default().set_compression(max_compression_level());
-    repo.apply_config(&config_opts)?;
+    let _ = repo.apply_config(&config_opts)?;
     Ok(())
 }

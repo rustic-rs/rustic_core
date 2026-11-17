@@ -15,3 +15,6 @@ simplelog = { workspace = true }
 
 [[example]]
 name = "find"
+
+[lints]
+workspace = true

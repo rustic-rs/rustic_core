@@ -67,7 +67,7 @@ log = { workspace = true }
 # other dependencies
 bytes = { workspace = true }
 derive_setters = "0.1.9"
-jiff = "0.2.19"
+jiff = { version = "0.2.46", features = ["std"] }
 strum = { version = "0.28.0", features = ["derive"] }
 
 # general / backend choosing
@@ -75,7 +75,7 @@ hex = { version = "0.4.3", features = ["serde"] }
 rayon = { version = "1.11.0", optional = true }
 serde = { version = "1.0.228" }
 tokio = { version = "1.49.0", optional = true, default-features = false }
-typed-path = { version = "0.12.2", optional = true }
+typed-path = { version = "0.13.0", optional = true }
 url = "2.5.8"
 
 # cli support
