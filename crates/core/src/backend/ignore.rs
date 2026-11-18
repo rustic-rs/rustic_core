@@ -124,6 +124,7 @@ impl LocalSource {
     ///
     /// # Errors
     ///
+    /// * If `backup_paths` is empty.
     /// * If the a glob pattern could not be added to the override builder.
     /// * If a glob file could not be read.
     #[allow(clippy::too_many_lines)]
@@ -133,9 +134,16 @@ impl LocalSource {
         filter_opts: &LocalSourceFilterOptions,
         backup_paths: &[impl AsRef<Path>],
     ) -> RusticResult<Self> {
-        let mut walk_builder = WalkBuilder::new(&backup_paths[0]);
+        let (first, rest) = backup_paths.split_first().ok_or_else(|| {
+            RusticError::new(
+                ErrorKind::InvalidInput,
+                "Cannot create local source: backup_paths cannot be empty.",
+            )
+        })?;
 
-        for path in &backup_paths[1..] {
+        let mut walk_builder = WalkBuilder::new(first);
+
+        for path in rest {
             _ = walk_builder.add(path);
         }
 
@@ -345,5 +353,27 @@ impl Iterator for LocalSourceWalker {
                 .attach_context("path", path)
             })
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_local_source_new_empty_backup_paths() {
+        let save_opts = LocalSourceSaveOptions::default();
+        let excludes = Excludes::default();
+        let filter_opts = LocalSourceFilterOptions::default();
+        let empty_paths: &[&Path] = &[];
+
+        let result = LocalSource::new(save_opts, &excludes, &filter_opts, empty_paths);
+        assert!(result.is_err());
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("backup_paths cannot be empty")
+        );
     }
 }
