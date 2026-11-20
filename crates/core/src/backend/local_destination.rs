@@ -129,6 +129,9 @@ pub enum LocalDestinationErrorKind {
     /// setting file permissions failed: `{0:?}`
     #[cfg(not(windows))]
     SettingFilePermissionsFailed(std::io::Error),
+    /// refusing to set permissions through `{0:?}`: it is a symlink, but the node is not
+    #[cfg(not(windows))]
+    SymlinkInPlaceOfNode(PathBuf),
     /// failed to symlink target `{linktarget:?}` from `{filename:?}` with `{source:?}`
     #[cfg(not(windows))]
     SymlinkingFailed {
@@ -476,6 +479,12 @@ impl LocalDestination {
         let filename = self.path(item)?;
 
         if let Some(mode) = node.meta.mode {
+            if fs::symlink_metadata(&filename)
+                .map_err(LocalDestinationErrorKind::SettingFilePermissionsFailed)?
+                .is_symlink()
+            {
+                return Err(LocalDestinationErrorKind::SymlinkInPlaceOfNode(filename));
+            }
             let mode = map_mode_from_go(mode);
             fs::set_permissions(filename, fs::Permissions::from_mode(mode))
                 .map_err(LocalDestinationErrorKind::SettingFilePermissionsFailed)?;
@@ -918,6 +927,7 @@ fn link_over_existing(source: &Path, filename: &Path) -> std::io::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::ffi::OsStr;
     use tempfile::tempdir;
 
     #[test]
@@ -964,6 +974,32 @@ mod tests {
             fs::read_to_string(temp.path().join("real/canonical"))?,
             "restored"
         );
+        Ok(())
+    }
+
+    #[test]
+    #[cfg(not(windows))]
+    fn set_permission_leaves_the_target_of_a_symlink_where_the_node_is_not_one()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let temp = tempdir()?;
+        let outside = tempdir()?;
+        let dest = LocalDestination::new(temp.path().to_str().unwrap(), false, false)?;
+        let target = outside.path().join("target");
+        fs::write(&target, "outside")?;
+        fs::set_permissions(&target, fs::Permissions::from_mode(0o600))?;
+        symlink(&target, temp.path().join("docs"))?;
+        let fifo = Node::new_node(
+            OsStr::new("docs"),
+            NodeType::Fifo,
+            Metadata {
+                mode: Some(0o777),
+                ..Metadata::default()
+            },
+        );
+
+        assert!(dest.set_permission("docs", &fifo).is_err());
+
+        assert_eq!(fs::metadata(&target)?.permissions().mode() & 0o777, 0o600);
         Ok(())
     }
 
