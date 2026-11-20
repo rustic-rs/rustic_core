@@ -48,7 +48,7 @@ pub fn location_to_type_and_path(
 ) -> RusticResult<(SupportedBackend, BackendLocation)> {
     match raw_location.split_once(':') {
         #[cfg(windows)]
-        Some((drive_letter, _)) if drive_letter.len() == 1 && !raw_location.contains('/') => Ok((
+        Some((drive_letter, _)) if drive_letter.len() == 1 => Ok((
             SupportedBackend::Local,
             BackendLocation(raw_location.to_string()),
         )),
@@ -113,7 +113,6 @@ mod tests {
         (SupportedBackend::Local,
         BackendLocation::try_from(r#"C:\tmp\repo"#).unwrap())
     )]
-    #[should_panic]
     #[cfg(windows)]
     #[case(
         r#"C:/tmp/repo"#,
@@ -209,5 +208,14 @@ mod tests {
     ) {
         // Check https://learn.microsoft.com/en-us/dotnet/standard/io/file-path-formats
         assert_eq!(location_to_type_and_path(url).unwrap(), expected);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn forward_slashes_after_a_drive_letter_stay_local() {
+        let (backend, location) = location_to_type_and_path("C:/tmp/repo").unwrap();
+
+        assert_eq!(backend, SupportedBackend::Local);
+        assert_eq!(location.as_str(), "C:/tmp/repo");
     }
 }
