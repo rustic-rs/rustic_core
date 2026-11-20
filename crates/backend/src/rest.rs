@@ -8,8 +8,8 @@ use bytes::Bytes;
 use futures_util::stream;
 use log::{trace, warn};
 use reqwest::{
-    Body, Client, Url,
-    header::{HeaderMap, HeaderValue},
+    Body, Client, StatusCode, Url,
+    header::{CONTENT_LENGTH, HeaderMap, HeaderValue},
 };
 use serde::Deserialize;
 use tokio::runtime::Runtime;
@@ -64,6 +64,7 @@ impl RestBackend {
     /// ## Permanent/non-permanent errors
     ///
     /// -  `client_error` are considered permanent
+    /// -  `507 Insufficient Storage` is considered permanent, as the server is full
     /// - others are not, and are subject to retry
     ///
     /// ## Returns
@@ -76,10 +77,11 @@ impl RestBackend {
     {
         op.retry(self.backoff)
             .when(|err| {
-                err.status().map_or(
-                    true,                                         // retry
-                    |status_code| !status_code.is_client_error(), // do not retry if `is_client_error`
-                )
+                // retry without a status; do not retry if `is_client_error` or if the server is full
+                err.status().is_none_or(|status_code| {
+                    !status_code.is_client_error()
+                        && status_code != StatusCode::INSUFFICIENT_STORAGE
+                })
             })
             .notify(|err, duration| warn!("Error {err} at {duration:?}, retrying"))
             .call()
@@ -427,6 +429,9 @@ impl WriteBackend for RestBackend {
         let url = self
             .url(tpe, id)
             .map_err(|err| construct_join_url_error(err, tpe, id, &self.url))?;
+        // the body is streamed, so give its length explicitly; a server can then refuse
+        // a write it has no room for before reading the body
+        let length = content.size();
 
         self.retry_notify(|| {
             let stream = stream::iter(
@@ -441,6 +446,7 @@ impl WriteBackend for RestBackend {
                 _ = self
                     .client
                     .post(url.clone())
+                    .header(CONTENT_LENGTH, length)
                     .body(body)
                     .send()
                     .await?
@@ -485,11 +491,65 @@ impl WriteBackend for RestBackend {
 
 #[cfg(test)]
 mod tests {
+    use std::io::{BufRead, BufReader, Read, Write};
     use std::net::TcpListener;
+    use std::sync::mpsc;
     use std::thread;
     use std::time::Instant;
 
     use super::*;
+
+    #[test]
+    fn write_sends_its_length_and_does_not_retry_a_full_server() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        let (requests, received) = mpsc::channel();
+        // read each request whole, record its headers and answer as a full rest-server does
+        let _server = thread::spawn(move || {
+            for stream in listener.incoming() {
+                let mut stream = stream.unwrap();
+                let mut reader = BufReader::new(stream.try_clone().unwrap());
+                let mut headers = Vec::new();
+                loop {
+                    let mut line = String::new();
+                    _ = reader.read_line(&mut line).unwrap();
+                    let line = line.trim_end().to_ascii_lowercase();
+                    if line.is_empty() {
+                        break;
+                    }
+                    headers.push(line);
+                }
+                let length = headers
+                    .iter()
+                    .find_map(|h| h.strip_prefix("content-length: "))
+                    .map_or(0, |len| len.parse().unwrap());
+                _ = std::io::copy(&mut reader.by_ref().take(length), &mut std::io::sink()).unwrap();
+                requests.send(headers).unwrap();
+                stream
+                    .write_all(
+                        b"HTTP/1.1 507 Insufficient Storage\r\ncontent-length: 0\r\nconnection: close\r\n\r\n",
+                    )
+                    .unwrap();
+            }
+        });
+
+        let options = BTreeMap::from([("retry".to_string(), "1".to_string())]);
+        let backend = RestBackend::new(format!("http://{addr}/"), options).unwrap();
+        let mut content = BytesList::from(vec![1u8; 1000]);
+        content.add(Bytes::from(vec![2u8; 24]));
+
+        let result = backend.write_bytes(FileType::Pack, &Id::default(), false, content);
+
+        assert!(result.is_err());
+        let headers: Vec<_> = received.try_iter().collect();
+        assert_eq!(headers.len(), 1, "a full server must not be retried");
+        assert!(headers[0].contains(&"content-length: 1024".to_string()));
+        assert!(
+            !headers[0]
+                .iter()
+                .any(|h| h.starts_with("transfer-encoding"))
+        );
+    }
 
     #[test]
     fn read_timeout_ends_a_request_the_server_never_answers() {
