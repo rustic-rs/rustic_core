@@ -248,7 +248,8 @@ pub struct SnapshotSummary {
     /// Total duration that the rustic command ran in seconds
     pub total_duration: f64,
 
-    /// Number of source files/directories that could not be read during this backup run.
+    /// Number of source read errors during this backup. Unreadable extended attributes
+    /// contribute one error per affected entry.
     ///
     /// Serialized only when non-zero so existing restic/rustic snapshots stay unchanged.
     #[serde(default, skip_serializing_if = "u64_is_zero")]

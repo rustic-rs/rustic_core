@@ -6,6 +6,8 @@ use std::{ffi::OsStr, path::Path};
 use derive_setters::Setters;
 use ignore::DirEntry;
 use jiff::Timestamp;
+#[cfg(all(not(windows), not(target_os = "openbsd")))]
+use log::debug;
 use log::warn;
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
@@ -77,8 +79,18 @@ impl LocalSourceSaveOptions {
     /// # Errors
     ///
     /// * If metadata could not be read.
-    /// * If the xattr of the entry could not be read.
     pub fn map_entry(self, entry: DirEntry) -> IgnoreResult<ReadSourceEntry<OpenFile>> {
+        let (entry, xattr_error) = self.map_entry_with_xattr_error(entry)?;
+        if let Some(err) = xattr_error {
+            warn!("Failed to read extended attributes: {err}");
+        }
+        Ok(entry)
+    }
+
+    pub(super) fn map_entry_with_xattr_error(
+        self,
+        entry: DirEntry,
+    ) -> IgnoreResult<(ReadSourceEntry<OpenFile>, Option<IgnoreErrorKind>)> {
         let name = entry.file_name();
         let m = entry
             .metadata()
@@ -105,12 +117,10 @@ impl LocalSourceSaveOptions {
             .set_devid
             .unwrap_or_default()
             .map_or_else(|| Self::device_id(&m), Self::hardlink(&m));
-        let xattr = || {
-            Self::xattrs(entry.path())
-                .inspect_err(|err| warn!("ignoring error obtaining xargs: {err}"))
-                .unwrap_or_default()
+        let (extended_attributes, xattr_error) = match self.set_xattrs.unwrap_or_default() {
+            XattrOption::Yes => Self::xattrs(entry.path()),
+            XattrOption::No => (Vec::new(), None),
         };
-        let extended_attributes = self.set_xattrs.unwrap_or_default().map_or_else(xattr);
         let (mode, inode, links) = Self::nix_infos(&m);
 
         let meta = Metadata {
@@ -132,7 +142,7 @@ impl LocalSourceSaveOptions {
         let node = self.to_node(&entry, &m, meta)?;
         let path = entry.into_path();
         let open = Some(OpenFile(path.clone()));
-        Ok(ReadSourceEntry { path, node, open })
+        Ok((ReadSourceEntry { path, node, open }, xattr_error))
     }
 
     fn to_node(
@@ -191,37 +201,58 @@ impl LocalSourceSaveOptions {
         (Some(mode), inode, links)
     }
 
-    /// List [`ExtendedAttribute`] for a [`Node`] located at `path`
-    ///
-    /// # Argument
-    ///
-    /// * `path` to the [`Node`] for which to list attributes
-    ///
-    /// # Errors
-    ///
-    /// * If Xattr couldn't be listed or couldn't be read
+    /// List [`ExtendedAttribute`]s for a [`Node`] located at `path`, preserving readable
+    /// attributes even if another attribute fails to read.
     #[cfg(not(target_os = "openbsd"))]
-    fn xattrs(path: &Path) -> IgnoreResult<Vec<ExtendedAttribute>> {
-        xattr::list(path)
-            .map_err(|err| IgnoreErrorKind::ErrorXattr {
-                path: path.to_path_buf(),
-                source: err,
-            })?
-            .map(|name| {
-                Ok(ExtendedAttribute {
+    fn xattrs(path: &Path) -> (Vec<ExtendedAttribute>, Option<IgnoreErrorKind>) {
+        let (attrs, error) =
+            Self::collect_xattrs(path, xattr::list(path), |p, name| xattr::get(p, name));
+        let error = error.map(|source| IgnoreErrorKind::ErrorXattr {
+            path: path.to_path_buf(),
+            source,
+        });
+        (attrs, error)
+    }
+
+    #[cfg(not(target_os = "openbsd"))]
+    fn collect_xattrs(
+        path: &Path,
+        names: std::io::Result<impl IntoIterator<Item = std::ffi::OsString>>,
+        mut get: impl FnMut(&Path, &OsStr) -> std::io::Result<Option<Vec<u8>>>,
+    ) -> (Vec<ExtendedAttribute>, Option<std::io::Error>) {
+        let names = match names {
+            Ok(names) => names,
+            Err(err) if err.kind() == std::io::ErrorKind::Unsupported => {
+                debug!(
+                    "extended attributes not supported for {}: {err}",
+                    path.display()
+                );
+                return (Vec::new(), None);
+            }
+            Err(err) => return (Vec::new(), Some(err)),
+        };
+
+        let mut attrs = Vec::new();
+        let mut first_error = None;
+        for name in names {
+            match get(path, &name) {
+                Ok(Some(value)) => attrs.push(ExtendedAttribute {
                     name: name.to_string_lossy().to_string(),
-                    value: xattr::get(path, name).map_err(|err| IgnoreErrorKind::ErrorXattr {
-                        path: path.to_path_buf(),
-                        source: err,
-                    })?,
-                })
-            })
-            .collect::<IgnoreResult<Vec<ExtendedAttribute>>>()
+                    value: Some(value),
+                }),
+                Ok(None) => {}
+                Err(err) => {
+                    // Count the affected entry once, and still read the remaining names.
+                    _ = first_error.get_or_insert(err);
+                }
+            }
+        }
+        (attrs, first_error)
     }
 
     #[cfg(target_os = "openbsd")]
-    fn xattrs(_path: &Path) -> IgnoreResult<Vec<ExtendedAttribute>> {
-        Ok(Vec::new())
+    fn xattrs(_path: &Path) -> (Vec<ExtendedAttribute>, Option<IgnoreErrorKind>) {
+        (Vec::new(), None)
     }
 
     fn to_node_other(self, name: &OsStr, m: &std::fs::Metadata, meta: Metadata) -> Node {
@@ -267,11 +298,84 @@ impl LocalSourceSaveOptions {
         (None, 0, 0)
     }
 
-    fn xattrs(_path: &Path) -> IgnoreResult<Vec<ExtendedAttribute>> {
-        Ok(Vec::new())
+    fn xattrs(_path: &Path) -> (Vec<ExtendedAttribute>, Option<IgnoreErrorKind>) {
+        (Vec::new(), None)
     }
 
     fn to_node_other(self, name: &OsStr, _m: &std::fs::Metadata, meta: Metadata) -> Node {
         Node::new_node(name, NodeType::File, meta)
+    }
+}
+
+#[cfg(all(test, not(windows), not(target_os = "openbsd")))]
+mod tests {
+    use std::{ffi::OsString, io};
+
+    use super::*;
+
+    #[test]
+    fn failed_xattr_values_report_one_error_and_preserve_readable_values() {
+        let (attrs, error) = LocalSourceSaveOptions::collect_xattrs(
+            Path::new("file.txt"),
+            Ok(["user.first", "user.unsupported", "user.denied", "user.last"].map(OsString::from)),
+            |_, name| match name.to_str().unwrap() {
+                "user.first" => Ok(Some(b"one".to_vec())),
+                "user.unsupported" => Err(io::ErrorKind::Unsupported.into()),
+                "user.denied" => Err(io::ErrorKind::PermissionDenied.into()),
+                "user.last" => Ok(Some(b"two".to_vec())),
+                _ => unreachable!(),
+            },
+        );
+
+        assert_eq!(
+            attrs,
+            vec![
+                ExtendedAttribute {
+                    name: "user.first".to_string(),
+                    value: Some(b"one".to_vec()),
+                },
+                ExtendedAttribute {
+                    name: "user.last".to_string(),
+                    value: Some(b"two".to_vec()),
+                },
+            ]
+        );
+        assert_eq!(error.unwrap().kind(), io::ErrorKind::Unsupported);
+    }
+
+    #[test]
+    fn unsupported_xattr_filesystem_does_not_report_error() {
+        let (attrs, error) = LocalSourceSaveOptions::collect_xattrs(
+            Path::new("sshfs_file.txt"),
+            Err::<Vec<OsString>, _>(io::ErrorKind::Unsupported.into()),
+            |_, _| unreachable!("listing an unsupported filesystem yields no names"),
+        );
+
+        assert_eq!(attrs, Vec::new());
+        assert!(error.is_none());
+    }
+
+    #[test]
+    fn vanished_xattr_between_list_and_get_is_skipped_without_error() {
+        let (attrs, error) = LocalSourceSaveOptions::collect_xattrs(
+            Path::new("race.txt"),
+            Ok(["user.gone", "user.present"].map(OsString::from)),
+            |_, name| {
+                if name == "user.gone" {
+                    Ok(None)
+                } else {
+                    Ok(Some(Vec::new()))
+                }
+            },
+        );
+
+        assert_eq!(
+            attrs,
+            vec![ExtendedAttribute {
+                name: "user.present".to_string(),
+                value: Some(Vec::new()),
+            }]
+        );
+        assert!(error.is_none());
     }
 }

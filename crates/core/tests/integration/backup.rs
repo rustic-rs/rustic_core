@@ -349,3 +349,150 @@ fn test_backup_unreadable_file_sets_error_count(set_up_repo: Result<RepoOpen>) -
 
     Ok(())
 }
+
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+enum XattrFixture {
+    Absent,
+    Readable,
+    Unreadable,
+}
+
+#[cfg(target_os = "linux")]
+fn make_xattrs_unreadable(file: &Path, attr: &str, value: &[u8]) -> Result<()> {
+    // On tmpfs the full list can exceed Linux's 64 KiB listxattr limit.
+    let suffix = "q".repeat(230);
+    for index in 0..270 {
+        xattr::set(file, format!("user.rustic{index:04}{suffix}"), b"v")?;
+    }
+    let Err(err) = xattr::list(file) else {
+        panic!("expected listxattr to reject the oversized name list");
+    };
+    assert_eq!(err.kind(), std::io::ErrorKind::ArgumentListTooLong);
+    assert_eq!(xattr::get(file, attr)?.as_deref(), Some(value));
+    Ok(())
+}
+
+#[cfg(target_os = "macos")]
+fn make_xattrs_unreadable(file: &Path, attr: &str, value: &[u8]) -> Result<()> {
+    use std::{io::ErrorKind, process::Command};
+
+    assert_eq!(xattr::get(file, attr)?.as_deref(), Some(value));
+    let chmod = Command::new("/bin/chmod")
+        .args(["+a", "everyone deny readextattr"])
+        .arg(file)
+        .output()?;
+    anyhow::ensure!(
+        chmod.status.success(),
+        "chmod: {}",
+        String::from_utf8_lossy(&chmod.stderr)
+    );
+    assert!(matches!(xattr::list(file), Err(err) if err.kind() == ErrorKind::PermissionDenied));
+    assert!(
+        matches!(xattr::get(file, attr), Err(err) if err.kind() == ErrorKind::PermissionDenied)
+    );
+    Ok(())
+}
+
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+#[rstest]
+#[case::no_attributes(XattrFixture::Absent, 0)]
+#[case::readable_attributes(XattrFixture::Readable, 0)]
+#[case::unreadable_attributes(XattrFixture::Unreadable, 1)]
+fn test_backup_restore_xattr_status(
+    set_up_repo: Result<RepoOpen>,
+    #[case] fixture: XattrFixture,
+    #[case] expected_errors: u64,
+) -> Result<()> {
+    use std::fs;
+
+    use rustic_core::{LocalDestination, LsOptions, RestoreOptions};
+
+    const BODY: &[u8] = b"sample document\n";
+    #[cfg(target_os = "linux")]
+    const ATTR: &str = "user.rustic_note";
+    #[cfg(target_os = "macos")]
+    const ATTR: &str = "com.example.rustic_note";
+    const VALUE: &[u8] = b"sample metadata";
+
+    #[cfg(target_os = "macos")]
+    if matches!(fixture, XattrFixture::Unreadable) && nix::unistd::geteuid().is_root() {
+        eprintln!("skipping the macOS deny-readextattr fixture as root");
+        return Ok(());
+    }
+    #[cfg(target_os = "linux")]
+    let source = match fixture {
+        XattrFixture::Unreadable => match tempfile::tempdir_in("/dev/shm") {
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
+                eprintln!("skipping the oversized xattr list fixture: /dev/shm is unavailable");
+                return Ok(());
+            }
+            result => result?,
+        },
+        _ => tempfile::tempdir()?,
+    };
+    #[cfg(target_os = "macos")]
+    let source = tempfile::tempdir()?;
+
+    let file = source.path().join("document.txt");
+    fs::write(&file, BODY)?;
+    if !matches!(fixture, XattrFixture::Absent) {
+        match xattr::set(&file, ATTR, VALUE) {
+            Ok(()) => {}
+            Err(err) if err.kind() == std::io::ErrorKind::Unsupported => {
+                eprintln!("skipping xattr fixture: {}: {err}", file.display());
+                return Ok(());
+            }
+            Err(err) => return Err(err.into()),
+        }
+    }
+
+    if matches!(fixture, XattrFixture::Unreadable) {
+        make_xattrs_unreadable(&file, ATTR, VALUE)?;
+    }
+
+    assert_eq!(fs::read(&file)?, BODY);
+
+    let repo = set_up_repo?.to_indexed_ids()?;
+    let paths = PathList::from_iter(Some(source.path().to_path_buf()));
+    let opts = BackupOptions::default().as_path(PathBuf::from("test"));
+    let snapshot = repo.backup(&opts, &paths, SnapshotFile::default())?;
+    let repo = repo.to_indexed()?;
+    let id = snapshot.id.to_string();
+    let node = repo.node_from_snapshot_path(&id, |_| true)?;
+    let ls_opts = LsOptions::default();
+    let listing = repo.ls(&node, &ls_opts)?;
+    let restored = tempfile::tempdir()?;
+    let dest = LocalDestination::new(
+        restored
+            .path()
+            .to_str()
+            .expect("restore path is valid UTF-8"),
+        true,
+        !node.is_dir(),
+    )?;
+    let restore_opts = RestoreOptions::default();
+    let plan = repo.prepare_restore(&restore_opts, listing.clone(), &dest, false)?;
+    repo.restore(plan, &restore_opts, listing, &dest)?;
+
+    let restored_file = restored.path().join("test/document.txt");
+    let restored_value = match fixture {
+        XattrFixture::Readable => Some(VALUE),
+        _ => None,
+    };
+    let restored_body = fs::read(&restored_file).expect("restore must recreate document.txt");
+    assert_eq!(restored_body, BODY);
+    assert_eq!(xattr::get(&restored_file, ATTR)?.as_deref(), restored_value);
+    let saved = repo.get_snapshot_from_str(&id, |_| true)?;
+    assert_eq!(
+        (
+            snapshot
+                .summary
+                .expect("returned backup summary")
+                .error_count,
+            saved.summary.expect("stored backup summary").error_count,
+        ),
+        (expected_errors, expected_errors)
+    );
+
+    Ok(())
+}
