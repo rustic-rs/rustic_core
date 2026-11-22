@@ -1,17 +1,21 @@
 use std::{
+    fs,
     path::{Path, PathBuf},
     str::FromStr,
+    sync::Arc,
 };
 
 use anyhow::Result;
 use insta::Settings;
 use pretty_assertions::assert_eq;
 use rstest::rstest;
+use rustic_testing::backend::in_memory_backend::InMemoryBackend;
 
 use rustic_core::{
-    BackupOptions, CommandInput, Grouped, ParentOptions, PathList, SnapshotGroupCriterion,
+    BackupOptions, CommandInput, ConfigOptions, Credentials, Grouped, KeyOptions, ParentOptions,
+    PathList, Repository, RepositoryBackends, RepositoryOptions, SnapshotGroupCriterion,
     SnapshotOptions, StringList,
-    repofile::{PackId, SnapshotFile},
+    repofile::{MasterKey, PackId, SnapshotFile},
 };
 
 use super::{
@@ -144,6 +148,55 @@ fn test_backup_with_tar_gz_passes(
     insta_snapshotfile_redaction.bind(|| {
         assert_with_win("backup-tar-matching-snaps", &snaps);
     });
+
+    Ok(())
+}
+
+#[test]
+fn test_backup_multiple_sources_preserves_files_and_rejects_as_path() -> Result<()> {
+    let tmp = tempfile::tempdir()?;
+    let source_one = tmp.path().join("source-one");
+    let source_two = tmp.path().join("source-two");
+    fs::create_dir(&source_one)?;
+    fs::create_dir(&source_two)?;
+    fs::write(source_one.join("one.txt"), "one")?;
+    fs::write(source_two.join("two.txt"), "two")?;
+
+    let backends = RepositoryBackends::new(Arc::new(InMemoryBackend::new()), None);
+    let options = RepositoryOptions::default().no_cache(true);
+    let repo = Repository::new(&options, &backends)?
+        .init(
+            &Credentials::Masterkey(MasterKey::new()),
+            &KeyOptions::default(),
+            &ConfigOptions::default(),
+        )?
+        .to_indexed_ids()?;
+    let sources = PathList::from_iter([source_one.clone(), source_two.clone()]);
+
+    let snapshot = repo.backup(&BackupOptions::default(), &sources, SnapshotFile::default())?;
+    let repo = repo.to_indexed_ids()?;
+    assert!(
+        !repo
+            .node_from_path(snapshot.tree, &source_one.join("one.txt"))?
+            .is_dir()
+    );
+    assert!(
+        !repo
+            .node_from_path(snapshot.tree, &source_two.join("two.txt"))?
+            .is_dir()
+    );
+
+    let err = repo
+        .backup(
+            &BackupOptions::default().as_path(PathBuf::from("test")),
+            &sources,
+            SnapshotFile::default(),
+        )
+        .expect_err("multiple sources with as-path must return an error");
+    assert!(
+        err.to_string()
+            .contains("as-path only works with a single source")
+    );
 
     Ok(())
 }
