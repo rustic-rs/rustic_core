@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.1](https://github.com/rustic-rs/rustic_core/compare/rustic_backend-v0.8.0...rustic_backend-v0.8.1) - 2026-11-25
+
+### Fixed
+
+- *(backend)* send Content-Length on REST writes, don't retry 507 ([#660](https://github.com/rustic-rs/rustic_core/pull/660))
+
 ## [0.8.0](https://github.com/rustic-rs/rustic_core/compare/rustic_backend-v0.7.0...rustic_backend-v0.8.0) - 2026-11-17
 
 ### Added
