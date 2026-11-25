@@ -88,12 +88,13 @@ impl IndexFile {
 
 #[derive(Clone, Copy, Debug, Display, Default, PartialEq, Eq, PartialOrd, Ord)]
 /// The possible marks set on a pack file in the index
+/// Note: The ordering here is important for prune to work safely in edge cases!
 pub enum IndexMarkType {
+    /// marked to-recover
+    Recover,
     /// no mark
     #[default]
     None,
-    /// marked to-recover
-    Recover,
     /// marked to-delete
     Delete,
 }

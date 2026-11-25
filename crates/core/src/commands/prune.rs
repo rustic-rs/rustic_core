@@ -591,8 +591,16 @@ impl PrunePlan {
             })
             .collect();
 
-        // sort packs first by id and second by earliest timestamp - so we are cautious not to take a "state" which may not have gotten fully processed.
-        index_packs.sort_unstable_by(|a, b| a.id.cmp(&b.id).then(a.time.cmp(&b.time)));
+        // sort packs first by id, second by state and third by earliest timestamp.
+        // Note: States are ordered to-recover -> none -> to-delete
+        // By this ordering we are cautious not to take a "state" which may lead  to data-loss with a parallel backup:
+        // - if we have to-recover together with other states, keep this. It is more safe as none because we could accidentally recover too early.
+        // - if we have to-delete and none, the backup may use the data, so we have to ignore the to-delete (which may potentially deleted)
+        index_packs.sort_unstable_by(|a, b| {
+            a.id.cmp(&b.id)
+                .then(a.mark.cmp(&b.mark))
+                .then(a.time.cmp(&b.time))
+        });
 
         // Deduplicate by pack id (keeping only the earliest timestamp for duplicates); potentially correcting len and modified flag of the corresponding index_file
         index_packs.dedup_by(|x, p| {
@@ -744,7 +752,7 @@ impl PrunePlan {
         // take out index files as we will process it - will be re-inserted at the end
         let mut index_packs = std::mem::take(&mut self.index_packs);
 
-        // sort packs such that marked packs come first
+        // sort packs such that delete-marked packs come first
         index_packs.sort_unstable_by_key(|pack| Reverse(pack.mark));
 
         // We first process all marked packs then the unmarked ones:
