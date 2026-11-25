@@ -173,7 +173,9 @@ impl<'a, BE: DecryptFullBackend, I: ReadGlobalIndex> Archiver<'a, BE, I> {
                     } else {
                         path
                     };
-                    Some(if node.is_dir() {
+                    // A directory given with its subtree is kept as it is, like a file:
+                    // its tree is already in the repository and is not built again.
+                    Some(if node.is_dir() && node.subtree.is_none() {
                         (snapshot_path, node, open)
                     } else {
                         (

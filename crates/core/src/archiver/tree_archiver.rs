@@ -127,6 +127,13 @@ impl<'a, BE: DecryptWriteBackend, I: ReadGlobalIndex> TreeArchiver<'a, BE, I> {
     /// * `parent` - The parent result of the file.
     fn add_file(&mut self, path: &Path, node: Node, parent: &ParentResult<()>, size: u64) {
         let filename = path.join(node.name());
+        if node.is_dir() {
+            debug!("kept      tree: {}", filename.display());
+            self.summary.dirs_unmodified += 1;
+            self.summary.total_dirs_processed += 1;
+            self.tree.add(node);
+            return;
+        }
         match parent {
             ParentResult::Matched(()) => {
                 debug!("unchanged file: {}", filename.display());
