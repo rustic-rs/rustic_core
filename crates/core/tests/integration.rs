@@ -42,7 +42,7 @@ mod integration {
     use super::*;
 }
 
-use std::{env, fs::File, path::Path, sync::Arc};
+use std::{env, fs, fs::File, path::Path, sync::Arc};
 
 use anyhow::Result;
 use flate2::read::GzDecoder;
@@ -59,9 +59,10 @@ use tempfile::{TempDir, tempdir};
 // use simplelog::{Config, SimpleLogger};
 
 use rustic_core::{
-    CommandInput, ConfigOptions, CredentialOptions, Credentials, IndexedFull, IndexedFullStatus,
-    KeyOptions, OpenStatus, PathList, Repository, RepositoryBackends, RepositoryOptions,
-    repofile::MasterKey,
+    BackupOptions, CommandInput, ConfigOptions, CredentialOptions, Credentials, IndexedFull,
+    IndexedFullStatus, KeyOptions, OpenStatus, PathList, Repository, RepositoryBackends,
+    RepositoryOptions,
+    repofile::{MasterKey, SnapshotFile},
 };
 use rustic_testing::backend::in_memory_backend::InMemoryBackend;
 
@@ -241,6 +242,97 @@ fn test_wrapping_in_new_type() -> Result<()> {
     let collection: Vec<Wrapper> = vec![Wrapper::new()?, Wrapper::new()?];
 
     collection.iter().map(|r| &r.0).for_each(use_repo);
+
+    Ok(())
+}
+
+const STALE_PACK_IDS_LOAD: &str =
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+const STALE_PACK_FULL_LOAD: &str =
+    "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+
+/// Names of cached pack files. The sweep only considers 64-character hex names.
+fn cached_pack_names(repo_cache: &Path) -> Result<Vec<String>> {
+    let mut names = Vec::new();
+    let data = repo_cache.join("data");
+    if !data.is_dir() {
+        return Ok(names);
+    }
+    for prefix in fs::read_dir(data)? {
+        let prefix = prefix?.path();
+        if !prefix.is_dir() {
+            continue;
+        }
+        for file in fs::read_dir(prefix)? {
+            let file = file?;
+            if !file.file_type()?.is_file() {
+                continue;
+            }
+            let name = file.file_name();
+            let name = name.to_string_lossy();
+            if name.len() == 64 {
+                names.push(name.into_owned());
+            }
+        }
+    }
+    names.sort();
+    Ok(names)
+}
+
+fn plant_cached_pack(repo_cache: &Path, id_hex: &str) -> Result<()> {
+    let path = repo_cache.join("data").join(&id_hex[..2]).join(id_hex);
+    fs::create_dir_all(path.parent().expect("pack path has a parent"))?;
+    fs::write(path, b"not-a-pack")?;
+    Ok(())
+}
+
+/// Loading the index drops cached packs that are no longer in it.
+///
+/// `to_indexed_ids` is the backup path. `to_indexed` is the full index path.
+#[test]
+fn index_load_drops_cached_packs_missing_from_the_index() -> Result<()> {
+    let cache_dir = tempdir()?;
+    let source = tempdir()?;
+    fs::write(source.path().join("file.txt"), b"hello")?;
+
+    let backends = RepositoryBackends::new(Arc::new(InMemoryBackend::new()), None);
+    let options = RepositoryOptions::default().cache_dir(cache_dir.path().to_path_buf());
+    let repo = Repository::new(&options, &backends)?.init(
+        &Credentials::Masterkey(MasterKey::new()),
+        &KeyOptions::default(),
+        &ConfigOptions::default(),
+    )?;
+    let repo_cache = cache_dir.path().join(repo.config().id.to_hex().as_str());
+
+    let repo = repo.to_indexed_ids()?;
+    let _snapshot = repo.backup(
+        &BackupOptions::default(),
+        &PathList::from_iter(Some(source.path().to_path_buf())),
+        SnapshotFile::default(),
+    )?;
+
+    let real_packs = cached_pack_names(&repo_cache)?;
+    assert!(
+        !real_packs.is_empty(),
+        "backup should cache the tree pack it writes"
+    );
+
+    plant_cached_pack(&repo_cache, STALE_PACK_IDS_LOAD)?;
+    let with_stale = cached_pack_names(&repo_cache)?;
+    assert!(with_stale.iter().any(|name| name == STALE_PACK_IDS_LOAD));
+
+    let repo = repo.to_indexed_ids()?;
+    assert_eq!(cached_pack_names(&repo_cache)?, real_packs);
+
+    plant_cached_pack(&repo_cache, STALE_PACK_FULL_LOAD)?;
+    assert!(
+        cached_pack_names(&repo_cache)?
+            .iter()
+            .any(|name| name == STALE_PACK_FULL_LOAD)
+    );
+
+    let _repo = repo.to_indexed()?;
+    assert_eq!(cached_pack_names(&repo_cache)?, real_packs);
 
     Ok(())
 }

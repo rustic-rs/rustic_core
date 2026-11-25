@@ -82,6 +82,11 @@ impl Index {
             }
         }))
     }
+
+    /// Pack ids of both blob types still recorded by this index.
+    pub(crate) fn pack_ids(&self) -> impl Iterator<Item = PackId> + '_ {
+        self.0.values().flat_map(|ty| ty.packs.iter().copied())
+    }
 }
 
 impl IndexCollector {
@@ -332,6 +337,9 @@ mod tests {
     fn all_index_types() -> RusticResult<()> {
         for it in [IndexType::OnlyTrees, IndexType::DataIds, IndexType::Full] {
             let index = index(it);
+            // DataIds and OnlyTrees still record every pack id. Cache cleanup
+            // depends on that, including data packs that are not cached today.
+            assert_eq!(index.pack_ids().count(), 3);
 
             let id = "0000000000000000000000000000000000000000000000000000000000000000".parse()?;
             assert!(!index.has(BlobType::Data, &id));
