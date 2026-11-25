@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.14.1](https://github.com/rustic-rs/rustic_core/compare/rustic_core-v0.14.0...rustic_core-v0.14.1) - 2026-11-25
+
+### Added
+
+- make prune more resistent in combination with pre-0.14 prunes ([#664](https://github.com/rustic-rs/rustic_core/pull/664))
+
+### Fixed
+
+- *(restore)* don't set permissions through a symlink that stands in for another node ([#650](https://github.com/rustic-rs/rustic_core/pull/650))
+
 ## [0.14.0](https://github.com/rustic-rs/rustic_core/compare/rustic_core-v0.13.0...rustic_core-v0.14.0) - 2026-11-17
 
 ### Added
