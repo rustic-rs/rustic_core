@@ -70,7 +70,7 @@ fn test_keys_with_excessive_scrypt_params_fail(
 
     let be = InMemoryBackend::new();
     add_to_be(&be, FileType::Config, "tests/fixtures/config")?;
-    add_bytes_to_be(&be, FileType::Key, serde_json::to_vec(&key)?)?;
+    _ = add_bytes_to_be(&be, FileType::Key, serde_json::to_vec(&key)?)?;
 
     let be = RepositoryBackends::new(Arc::new(be), None);
     let options = RepositoryOptions::default();
@@ -82,14 +82,66 @@ fn test_keys_with_excessive_scrypt_params_fail(
     Ok(())
 }
 
+fn truncated_key_file() -> Result<Vec<u8>> {
+    let mut key: serde_json::Value =
+        serde_json::from_slice(&std::fs::read("tests/fixtures/key1")?)?;
+    key["data"] = "AAAAAAAAAAAAAAAAAAAAAAAAAAA=".into();
+    Ok(serde_json::to_vec(&key)?)
+}
+
+#[rstest]
+#[case::correct_password("test")]
+#[case::wrong_password("wrong")]
+fn test_only_key_file_too_short_is_reported_as_damaged(#[case] password: &str) -> Result<()> {
+    let be = InMemoryBackend::new();
+    add_to_be(&be, FileType::Config, "tests/fixtures/config")?;
+    _ = add_bytes_to_be(&be, FileType::Key, truncated_key_file()?)?;
+
+    let be = RepositoryBackends::new(Arc::new(be), None);
+    let repo = Repository::new(&RepositoryOptions::default(), &be)?;
+    let err = repo.open(&Credentials::password(password)).unwrap_err();
+    assert!(err.is_code("C004"), "{err}");
+    assert!(!err.is_incorrect_password());
+    Ok(())
+}
+
+#[rstest]
+#[case::matching_key("test", true)]
+#[case::no_matching_key("wrong", false)]
+fn test_key_file_too_short_beside_a_valid_key(
+    #[case] password: &str,
+    #[case] should_open: bool,
+) -> Result<()> {
+    let be = InMemoryBackend::new();
+    add_to_be(&be, FileType::Config, "tests/fixtures/config")?;
+    add_to_be(&be, FileType::Key, "tests/fixtures/key1")?;
+    let damaged_id = add_bytes_to_be(&be, FileType::Key, truncated_key_file()?)?;
+
+    let be = RepositoryBackends::new(Arc::new(be), None);
+    let repo = Repository::new(&RepositoryOptions::default(), &be)?;
+    match repo.open(&Credentials::password(password)) {
+        Ok(_) => assert!(should_open),
+        Err(err) => {
+            assert!(!should_open, "{err}");
+            assert!(err.is_incorrect_password());
+            assert_eq!(
+                err.context_value("damaged_key_files"),
+                Some(damaged_id.to_string().as_str())
+            );
+        }
+    }
+    Ok(())
+}
+
 fn add_to_be(be: &impl WriteBackend, tpe: FileType, file: &str) -> Result<()> {
     let mut bytes = Vec::new();
     _ = File::open(file)?.read_to_end(&mut bytes)?;
-    add_bytes_to_be(be, tpe, bytes)
+    _ = add_bytes_to_be(be, tpe, bytes)?;
+    Ok(())
 }
 
-fn add_bytes_to_be(be: &impl WriteBackend, tpe: FileType, bytes: Vec<u8>) -> Result<()> {
+fn add_bytes_to_be(be: &impl WriteBackend, tpe: FileType, bytes: Vec<u8>) -> Result<Id> {
     let id = Id::new(Sha256::digest(&bytes).into());
     be.write_bytes(tpe, &id, true, bytes.into())?;
-    Ok(())
+    Ok(id)
 }
