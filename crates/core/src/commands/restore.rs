@@ -6,7 +6,7 @@ use log::{debug, error, info, trace, warn};
 use serde::{Deserialize, Serialize};
 use smallvec::SmallVec;
 
-use std::{cmp::Ordering, collections::BTreeMap, path::PathBuf, sync::Mutex};
+use std::{cmp::Ordering, collections::BTreeMap, num::NonZeroUsize, path::PathBuf, sync::Mutex};
 
 use itertools::Itertools;
 use rayon::ThreadPoolBuilder;
@@ -26,8 +26,8 @@ use crate::{
 };
 
 pub(crate) mod constants {
-    /// The maximum number of reader threads to use for restoring.
-    pub(crate) const MAX_READER_THREADS_NUM: usize = 20;
+    /// The default number of reader threads to use for restoring.
+    pub(crate) const DEFAULT_READER_THREADS_NUM: usize = 20;
 }
 
 type Filenames = Vec<PathBuf>;
@@ -63,6 +63,10 @@ pub struct RestoreOptions {
     /// Restore sparse files
     #[cfg_attr(feature = "clap", clap(long))]
     pub sparse: Option<SparseRestore>,
+
+    /// Number of threads reading packs from the backend at once (default: 20)
+    #[cfg_attr(feature = "clap", clap(long, value_name = "NUM"))]
+    pub reader_threads: Option<NonZeroUsize>,
 }
 
 #[derive(Serialize, Default, Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
@@ -138,7 +142,7 @@ pub(crate) fn restore_repository<S: IndexedTree>(
         file_infos.file_lengths,
         file_infos.r,
         file_infos.restore_size,
-        opts.sparse.unwrap_or_default(),
+        opts,
     )?;
 
     let p = repo.progress_spinner("setting metadata...");
@@ -548,8 +552,12 @@ fn restore_contents<S: Open>(
     file_lengths: Vec<u64>,
     restore_info: RestoreInfo,
     restore_size: u64,
-    sparse: SparseRestore,
+    opts: RestoreOptions,
 ) -> RusticResult<()> {
+    let sparse = opts.sparse.unwrap_or_default();
+    let threads = opts
+        .reader_threads
+        .map_or(constants::DEFAULT_READER_THREADS_NUM, NonZeroUsize::get);
     let be = repo.dbe();
 
     // first create needed empty files, as they are not created later.
@@ -595,8 +603,6 @@ fn restore_contents<S: Open>(
         // optimize reading from backend by reading many blobs in a row
         .coalesce(PackInfo::coalesce)
         .collect();
-
-    let threads = constants::MAX_READER_THREADS_NUM;
 
     let pool = ThreadPoolBuilder::new()
         .num_threads(threads)
