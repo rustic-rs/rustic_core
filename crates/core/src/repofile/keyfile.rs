@@ -44,6 +44,8 @@ pub(super) mod constants {
     /// Maximum work for `scrypt` for a key file, i.e. `128 * r * N * p`. The runtime grows linearly
     /// with it; keys created by rustic or restic need about `2^27`, i.e. less than a second.
     pub(super) const MAX_SCRYPT_WORK: u128 = 1 << 32;
+
+    pub(super) const NONCE_AND_MAC_LEN: usize = 32;
 }
 
 impl_repoid!(KeyId, FileType::Key);
@@ -171,6 +173,7 @@ impl KeyFile {
     ///
     /// The extracted key
     pub fn key_from_data(&self, key: &Key) -> RusticResult<Key> {
+        self.ensure_data_holds_nonce_and_mac()?;
         let dec_data = key.decrypt_data(&self.data)?;
 
         let key = serde_json::from_slice::<MasterKey>(&dec_data)
@@ -201,7 +204,21 @@ impl KeyFile {
     ///
     /// The extracted key
     pub fn key_from_password(&self, passwd: &impl AsRef<[u8]>) -> RusticResult<Key> {
+        self.ensure_data_holds_nonce_and_mac()?;
         self.key_from_data(&self.kdf_key(passwd)?)
+    }
+
+    fn ensure_data_holds_nonce_and_mac(&self) -> RusticResult<()> {
+        if self.data.len() < constants::NONCE_AND_MAC_LEN {
+            return Err(RusticError::new(
+                ErrorKind::Key,
+                "The key file is damaged: its encrypted key has `{length}` bytes, fewer than the `{minimum}` bytes of nonce and MAC alone.",
+            )
+            .attach_context("length", self.data.len().to_string())
+            .attach_context("minimum", constants::NONCE_AND_MAC_LEN.to_string())
+            .attach_error_code("C004"));
+        }
+        Ok(())
     }
 
     /// Generate a new [`KeyFile`] from a given key and password.
@@ -435,17 +452,39 @@ pub(crate) fn find_key_in_backend<B: ReadBackend>(
     if let Some(id) = hint {
         Ok((key_from_backend(be, id, passwd)?, *id))
     } else {
+        let mut password_rejected = false;
+        let mut damaged_key_files = Vec::new();
         for id in be.list(FileType::Key)? {
             match key_from_backend(be, &id.into(), passwd) {
                 Ok(key) => return Ok((key, KeyId(id))),
-                Err(err) if err.is_code("C001") => {}
+                Err(err) if err.is_code("C001") => password_rejected = true,
+                Err(err) if err.is_code("C004") => damaged_key_files.push((id, err)),
                 Err(err) => return Err(err),
             }
         }
 
-        Err(RusticError::new(
+        let damaged_ids = damaged_key_files
+            .iter()
+            .map(|(id, _)| id.to_string())
+            .collect::<Vec<_>>()
+            .join(", ");
+
+        if !password_rejected && let Some((id, err)) = damaged_key_files.into_iter().next() {
+            return Err(err
+                .attach_context("key_id", id.to_string())
+                .attach_context("damaged_key_files", damaged_ids));
+        }
+
+        let no_suitable_key = RusticError::new(
             ErrorKind::Credentials,
             "The password that has been entered, seems to be incorrect. No suitable key found for the given password. Please check your password and try again.",
-        ).attach_error_code("C002"))
+        )
+        .attach_error_code("C002");
+
+        if damaged_ids.is_empty() {
+            Err(no_suitable_key)
+        } else {
+            Err(no_suitable_key.attach_context("damaged_key_files", damaged_ids))
+        }
     }
 }
