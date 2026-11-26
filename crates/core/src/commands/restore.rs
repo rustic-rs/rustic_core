@@ -6,7 +6,15 @@ use log::{debug, error, info, trace, warn};
 use serde::{Deserialize, Serialize};
 use smallvec::SmallVec;
 
-use std::{cmp::Ordering, collections::BTreeMap, path::PathBuf, sync::Mutex};
+use std::{
+    cmp::Ordering,
+    collections::BTreeMap,
+    path::PathBuf,
+    sync::{
+        Mutex,
+        atomic::{AtomicUsize, Ordering as AtomicOrdering},
+    },
+};
 
 use itertools::Itertools;
 use rayon::ThreadPoolBuilder;
@@ -28,6 +36,10 @@ use crate::{
 pub(crate) mod constants {
     /// The maximum number of reader threads to use for restoring.
     pub(crate) const MAX_READER_THREADS_NUM: usize = 20;
+    /// The maximum number of blob writes queued at once. Beyond it, the task
+    /// that decoded a blob writes it itself, so decoding cannot run ahead of
+    /// writing and hold the whole restore's data in memory.
+    pub(crate) const MAX_PENDING_WRITES: usize = 20;
 }
 
 type Filenames = Vec<PathBuf>;
@@ -597,6 +609,7 @@ fn restore_contents<S: Open>(
         .collect();
 
     let threads = constants::MAX_READER_THREADS_NUM;
+    let pending = &AtomicUsize::new(0);
 
     let pool = ThreadPoolBuilder::new()
         .num_threads(threads)
@@ -663,7 +676,7 @@ fn restore_contents<S: Open>(
 
                         for (file_idx, start) in name_dests {
                             let data = data.clone();
-                            s1.spawn(move |_| {
+                            let write = move || {
                                 let path = &filenames[file_idx];
                                 // Allocate file if it is not yet allocated
                                 let mut sizes_guard = sizes.lock().unwrap();
@@ -677,7 +690,23 @@ fn restore_contents<S: Open>(
                                     dest.write_at(path, start, &data).unwrap();
                                 }
                                 p.inc(size);
-                            });
+                            };
+                            // Queued while fewer than `MAX_PENDING_WRITES` are,
+                            // otherwise written here. Unbounded, decoding runs
+                            // far ahead of writing; on macOS the memory that
+                            // ties up made writes lose the first partial block
+                            // of a blob written beside its neighbour.
+                            if pending.fetch_add(1, AtomicOrdering::AcqRel)
+                                < constants::MAX_PENDING_WRITES
+                            {
+                                s1.spawn(move |_| {
+                                    write();
+                                    _ = pending.fetch_sub(1, AtomicOrdering::AcqRel);
+                                });
+                            } else {
+                                _ = pending.fetch_sub(1, AtomicOrdering::AcqRel);
+                                write();
+                            }
                         }
                     }
                 });
