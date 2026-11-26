@@ -279,6 +279,7 @@ impl ReadSource for LocalSource {
         LocalSourceWalker {
             walker: self.builder.build(),
             save_opts: self.save_opts,
+            pending_error: None,
         }
     }
 }
@@ -301,12 +302,17 @@ pub struct LocalSourceWalker {
     walker: Walk,
     /// The save options to use.
     save_opts: LocalSourceSaveOptions,
+    /// A metadata error to report after yielding the readable entry.
+    pending_error: Option<Box<RusticError>>,
 }
 
 impl Iterator for LocalSourceWalker {
     type Item = RusticResult<ReadSourceEntry<OpenFile>>;
 
     fn next(&mut self) -> Option<Self::Item> {
+        if let Some(err) = self.pending_error.take() {
+            return Some(Err(err));
+        }
         match self.walker.next() {
             // ignore root dir, i.e. an entry with depth 0 of type dir
             Some(Ok(entry)) if entry.depth() == 0 && entry.file_type().unwrap().is_dir() => {
@@ -336,14 +342,26 @@ impl Iterator for LocalSourceWalker {
                 }
             })?;
             let path = entry.path().display().to_string();
-            self.save_opts.map_entry(entry).map_err(|err| {
+            let (entry, xattr_error) =
+                self.save_opts
+                    .map_entry_with_xattr_error(entry)
+                    .map_err(|err| {
+                        RusticError::with_source(
+                            ErrorKind::InputOutput,
+                            "Failed to map directory entry `{path}` to a backup source entry.",
+                            err,
+                        )
+                        .attach_context("path", path)
+                    })?;
+            self.pending_error = xattr_error.map(|err| {
                 RusticError::with_source(
                     ErrorKind::InputOutput,
-                    "Failed to map directory entry `{path}` to a backup source entry.",
+                    "Failed to read extended attributes for `{path}`.",
                     err,
                 )
-                .attach_context("path", path)
-            })
+                .attach_context("path", entry.path.display().to_string())
+            });
+            Ok(entry)
         })
     }
 }
