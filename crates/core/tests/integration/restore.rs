@@ -1,4 +1,4 @@
-use std::{fs, path::PathBuf, str::FromStr};
+use std::{fs, num::NonZeroUsize, path::Path, path::PathBuf, str::FromStr};
 
 #[cfg(not(windows))]
 use std::os::unix::fs::MetadataExt;
@@ -69,4 +69,52 @@ fn test_restore_preserves_hardlinks(
     assert_eq!(fs::metadata(&hardlink)?.ino(), linked_meta.ino());
 
     Ok(())
+}
+
+fn assert_same_regular_files(expected: &Path, actual: &Path) -> Result<()> {
+    for entry in fs::read_dir(expected)? {
+        let entry = entry?;
+        let file_type = entry.file_type()?;
+        let restored = actual.join(entry.file_name());
+        if file_type.is_dir() {
+            assert_same_regular_files(&entry.path(), &restored)?;
+        } else if file_type.is_file() {
+            assert_eq!(
+                fs::read(entry.path())?,
+                fs::read(&restored)?,
+                "{restored:?}"
+            );
+        }
+    }
+    Ok(())
+}
+
+#[rstest]
+fn test_restore_with_a_single_reader_thread(
+    tar_gz_testdata: Result<TestSource>,
+    set_up_repo: Result<RepoOpen>,
+) -> Result<()> {
+    let (source, repo) = (tar_gz_testdata?, set_up_repo?.to_indexed_ids()?);
+
+    let opts = BackupOptions::default().as_path(PathBuf::from_str("test")?);
+    let _snapshot = repo.backup(&opts, &source.path_list(), SnapshotFile::default())?;
+
+    let repo = repo.to_indexed()?;
+    let node = repo.node_from_snapshot_path("latest", |_| true)?;
+    let ls = repo.ls(&node, &LsOptions::default())?;
+
+    let restore_dir = tempdir()?;
+    let dest = LocalDestination::new(
+        restore_dir
+            .path()
+            .to_str()
+            .expect("restore path is valid utf-8"),
+        true,
+        !node.is_dir(),
+    )?;
+    let restore_opts = RestoreOptions::default().reader_threads(NonZeroUsize::MIN);
+    let plan = repo.prepare_restore(&restore_opts, ls.clone(), &dest, false)?;
+    repo.restore(plan, &restore_opts, ls, &dest)?;
+
+    assert_same_regular_files(source.path(), &restore_dir.path().join("test"))
 }
