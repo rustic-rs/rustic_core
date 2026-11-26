@@ -1,13 +1,16 @@
+use std::{fs, path::PathBuf};
+
 use anyhow::Result;
 use bytesize::ByteSize;
 use jiff::Span;
 use rstest::rstest;
 
 use rustic_core::{
-    BackupOptions, CheckOptions, ConfigOptions, LimitOption, PathList, PruneOptions,
-    RepairIndexOptions,
+    BackupOptions, CheckOptions, ConfigOptions, LimitOption, LocalDestination, LsOptions, PathList,
+    PruneOptions, RepairIndexOptions, RestoreOptions,
     repofile::{Chunker, SnapshotFile},
 };
+use tempfile::tempdir;
 
 use super::{RepoOpen, TestSource, set_up_repo, tar_gz_testdata};
 
@@ -237,5 +240,48 @@ fn test_prune_parallel_and_backup(
 
     // repo should be still ok
     dbg!(repo.check(check_opts))?.is_ok()?;
+    Ok(())
+}
+
+#[rstest]
+fn test_restore_snapshot_reusing_blobs_of_packs_marked_in_parallel(
+    tar_gz_testdata: Result<TestSource>,
+    set_up_repo: Result<RepoOpen>,
+) -> Result<()> {
+    let (source, repo) = (tar_gz_testdata?, set_up_repo?.to_indexed_ids()?);
+    let opts = BackupOptions::default();
+    let prune_opts = PruneOptions::default().max_unused(LimitOption::Percentage(0));
+
+    let paths = PathList::from_iter(Some(source.0.path().join("0/0/9")));
+    let snapshot1 = repo.backup(&opts, &paths, SnapshotFile::default())?;
+    repo.delete_snapshots(&[snapshot1.id])?;
+    let plan = repo.prune_plan(&prune_opts)?;
+
+    let repo = repo.to_indexed_ids()?;
+    let paths = PathList::from_iter(Some(source.0.path().join("0/0/9/3")));
+    let opts_with_fixed_path = opts.as_path(PathBuf::from("file"));
+    let _ = repo.backup(&opts_with_fixed_path, &paths, SnapshotFile::default())?;
+    let repo = repo.drop_index();
+    repo.prune(&prune_opts, plan)?;
+
+    let repo = repo.to_indexed()?;
+    let node = repo.node_from_snapshot_path("latest:3", |_| true)?;
+    let ls = repo.ls(&node, &LsOptions::default())?;
+    assert!(!node.is_dir());
+    let restore_dir = tempdir()?;
+    let restored = restore_dir.path().join("restored");
+    let dest = LocalDestination::new(
+        restored.to_str().expect("restore path is valid utf-8"),
+        true,
+        true,
+    )?;
+    let restore_opts = RestoreOptions::default();
+    let plan = repo.prepare_restore(&restore_opts, ls.clone(), &dest, false)?;
+    repo.restore(plan, &restore_opts, ls, &dest)?;
+
+    assert_eq!(
+        fs::read(restored)?,
+        fs::read(source.0.path().join("0/0/9/3"))?
+    );
     Ok(())
 }

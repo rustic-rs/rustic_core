@@ -192,6 +192,7 @@ pub trait ReadGlobalIndex: ReadIndex + Clone + Sync + Send + 'static {}
 pub struct GlobalIndex {
     /// The atomic reference counted, sharable index.
     index: Arc<Index>,
+    marked_for_deletion: Option<Arc<Index>>,
 }
 
 impl ReadIndex for GlobalIndex {
@@ -206,7 +207,11 @@ impl ReadIndex for GlobalIndex {
     ///
     /// The [`IndexEntry`] - If it exists otherwise `None`
     fn get_id(&self, tpe: BlobType, id: &BlobId) -> Option<IndexEntry> {
-        self.index.get_id(tpe, id)
+        self.index.get_id(tpe, id).or_else(|| {
+            self.marked_for_deletion
+                .as_ref()
+                .and_then(|marked| marked.get_id(tpe, id))
+        })
     }
 
     /// Get the total size of all blobs of the given type
@@ -247,6 +252,7 @@ impl GlobalIndex {
     pub fn new_from_index(index: Index) -> Self {
         Self {
             index: Arc::new(index),
+            marked_for_deletion: None,
         }
     }
 
@@ -264,16 +270,26 @@ impl GlobalIndex {
     fn new_from_collector(
         be: &impl DecryptReadBackend,
         p: &Progress,
-        mut collector: IndexCollector,
+        index_type: IndexType,
     ) -> RusticResult<Self> {
+        let mut collector = IndexCollector::new(index_type);
+        let mut marked_collector = IndexCollector::new(index_type);
+        let mut any_marked = false;
+
         p.set_title("reading index...");
         for index in be.stream_all::<IndexFile>(p)? {
-            collector.extend(index?.1.packs);
+            let index = index?.1;
+            collector.extend(index.packs);
+            any_marked |= !index.packs_to_delete.is_empty();
+            marked_collector.extend(index.packs_to_delete);
         }
 
         p.finish();
 
-        Ok(Self::new_from_index(collector.into_index()))
+        Ok(Self {
+            index: Arc::new(collector.into_index()),
+            marked_for_deletion: any_marked.then(|| Arc::new(marked_collector.into_index())),
+        })
     }
 
     /// Create a new [`GlobalIndex`]
@@ -283,7 +299,7 @@ impl GlobalIndex {
     /// * `be` - The backend to read from
     /// * `p` - The progress tracker
     pub fn new(be: &impl DecryptReadBackend, p: &Progress) -> RusticResult<Self> {
-        Self::new_from_collector(be, p, IndexCollector::new(IndexType::Full))
+        Self::new_from_collector(be, p, IndexType::Full)
     }
 
     /// Create a new [`GlobalIndex`] with only full trees
@@ -297,12 +313,16 @@ impl GlobalIndex {
     ///
     /// * If the index could not be read
     pub fn only_full_trees(be: &impl DecryptReadBackend, p: &Progress) -> RusticResult<Self> {
-        Self::new_from_collector(be, p, IndexCollector::new(IndexType::DataIds))
+        Self::new_from_collector(be, p, IndexType::DataIds)
     }
 
     /// Convert the `Arc<Index>` to an Index
     pub fn into_index(self) -> Index {
-        match Arc::try_unwrap(self.index) {
+        Self::unwrap_index(self.index)
+    }
+
+    fn unwrap_index(index: Arc<Index>) -> Index {
+        match Arc::try_unwrap(index) {
             Ok(index) => index,
             Err(arc) => {
                 // Seems index is still in use; this could be due to some threads using it which didn't yet completely shut down.
@@ -314,8 +334,14 @@ impl GlobalIndex {
     }
 
     pub(crate) fn drop_data(self) -> Self {
+        let Self {
+            index,
+            marked_for_deletion,
+        } = self;
         Self {
-            index: Arc::new(self.into_index().drop_data()),
+            index: Arc::new(Self::unwrap_index(index).drop_data()),
+            marked_for_deletion: marked_for_deletion
+                .map(|marked| Arc::new(Self::unwrap_index(marked).drop_data())),
         }
     }
 }
