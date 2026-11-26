@@ -1134,6 +1134,7 @@ pub(crate) fn prune_repository<S: Open>(
     }
 
     if prune_plan.index_files.is_empty() {
+        indexer.finalize()?;
         info!("nothing to do!");
         return Ok(());
     }

@@ -1,13 +1,17 @@
+use std::{collections::BTreeSet, sync::Arc};
+
 use anyhow::Result;
 use bytesize::ByteSize;
 use jiff::Span;
 use rstest::rstest;
 
 use rustic_core::{
-    BackupOptions, CheckOptions, ConfigOptions, LimitOption, PathList, PruneOptions,
-    RepairIndexOptions,
-    repofile::{Chunker, SnapshotFile},
+    BackupOptions, CheckOptions, ConfigOptions, Credentials, FileType, Id, KeyOptions, LimitOption,
+    PathList, PruneOptions, ReadBackend, RepairIndexOptions, Repository, RepositoryBackends,
+    RepositoryOptions, WriteBackend,
+    repofile::{Chunker, MasterKey, SnapshotFile},
 };
+use rustic_testing::backend::in_memory_backend::InMemoryBackend;
 
 use super::{RepoOpen, TestSource, set_up_repo, tar_gz_testdata};
 
@@ -83,6 +87,56 @@ fn test_prune(
         repo.check(check_opts)?.is_ok()?;
     }
 
+    Ok(())
+}
+
+fn ids_of(be: &InMemoryBackend, tpe: FileType) -> Result<BTreeSet<Id>> {
+    Ok(be.list(tpe)?.into_iter().collect())
+}
+
+#[rstest]
+fn test_prune_marks_unindexed_packs_beside_a_single_small_index(
+    tar_gz_testdata: Result<TestSource>,
+) -> Result<()> {
+    let source = tar_gz_testdata?;
+    let be = Arc::new(InMemoryBackend::new());
+    let backends = RepositoryBackends::new(be.clone(), None);
+    let repo = Repository::new(&RepositoryOptions::default(), &backends)?
+        .init(
+            &Credentials::Masterkey(MasterKey::new()),
+            &KeyOptions::default(),
+            &ConfigOptions::default(),
+        )?
+        .to_indexed_ids()?;
+    let opts = BackupOptions::default();
+
+    let paths = PathList::from_iter(Some(source.0.path().join("0/0/9/2")));
+    let _ = repo.backup(&opts, &paths, SnapshotFile::default())?;
+    let packs_of_first_backup = ids_of(&be, FileType::Pack)?;
+    let index_of_first_backup = ids_of(&be, FileType::Index)?;
+
+    let repo = repo.to_indexed_ids()?;
+    let paths = PathList::from_iter(Some(source.0.path().join("0/0/9/3")));
+    let second = repo.backup(&opts, &paths, SnapshotFile::default())?;
+    let repo = repo.drop_index();
+
+    repo.delete_snapshots(&[second.id])?;
+    for id in ids_of(&be, FileType::Index)?.difference(&index_of_first_backup) {
+        be.remove(FileType::Index, id, false)?;
+    }
+    assert_ne!(ids_of(&be, FileType::Pack)?, packs_of_first_backup);
+
+    let prune_opts = PruneOptions::default();
+    let plan = repo.prune_plan(&prune_opts)?;
+    repo.prune(&prune_opts, plan)?;
+
+    let prune_opts = prune_opts.keep_marked(Span::default());
+    let plan = repo.prune_plan(&prune_opts)?;
+    repo.prune(&prune_opts, plan)?;
+
+    assert_eq!(ids_of(&be, FileType::Pack)?, packs_of_first_backup);
+    repo.check(CheckOptions::default().read_data(true))?
+        .is_ok()?;
     Ok(())
 }
 
