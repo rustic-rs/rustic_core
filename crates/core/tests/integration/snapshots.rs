@@ -11,7 +11,13 @@ use jiff::Timestamp;
 use jiff::tz::TimeZone;
 use rstest::{fixture, rstest};
 use rustic_core::repofile::SnapshotFile;
-use rustic_core::{BackupOptions, Grouped, IndexedIdsStatus, Repository, SnapshotGroupCriterion};
+use rustic_core::{
+    BackupOptions, BytesList, CheckOptions, ConfigOptions, Credentials, FileType, Grouped,
+    IndexedIdsStatus, KeyOptions, Repository, RepositoryBackends, RepositoryOptions,
+    SnapshotGroupCriterion, WriteBackend,
+};
+use rustic_testing::backend::in_memory_backend::InMemoryBackend;
+use std::sync::Arc;
 
 #[fixture]
 #[once]
@@ -149,5 +155,89 @@ fn test_get_snapshots_from_strs_latest(
     let snap_latest = repo.get_snapshots_from_strs(&["latest", "latest~1"], |_| true)?;
     assert_eq!(snap_latest[0], snapshots[2]);
     assert_eq!(snap_latest[1], snapshots[1]);
+    Ok(())
+}
+
+fn repo_with_one_unreadable_snapshot()
+-> Result<(Repository<IndexedIdsStatus>, SnapshotFile, String)> {
+    let be = Arc::new(InMemoryBackend::new());
+    let backends = RepositoryBackends::new(be.clone(), None);
+    let repo = Repository::new(&RepositoryOptions::default().no_cache(true), &backends)?
+        .init(
+            &Credentials::password("test"),
+            &KeyOptions::default(),
+            &ConfigOptions::default(),
+        )?
+        .to_indexed_ids()?;
+    let source = tar_gz_testdata()?;
+    let backup_options = BackupOptions::default().as_path(PathBuf::from_str("test")?);
+    let readable = repo.backup(
+        &backup_options,
+        &source.path_list(),
+        SnapshotFile::default(),
+    )?;
+    let unreadable = repo.backup(
+        &backup_options,
+        &source.path_list(),
+        SnapshotFile::default(),
+    )?;
+    be.remove(FileType::Snapshot, &unreadable.id, false)?;
+    be.write_bytes(
+        FileType::Snapshot,
+        &unreadable.id,
+        false,
+        BytesList::from(vec![0; 64]),
+    )?;
+    Ok((repo, readable, unreadable.id.to_string()))
+}
+
+#[test]
+fn listing_all_snapshots_skips_an_unreadable_snapshot_file() -> Result<()> {
+    let (repo, readable, _) = repo_with_one_unreadable_snapshot()?;
+
+    assert_eq!(repo.get_all_snapshots()?, [readable]);
+    Ok(())
+}
+
+#[test]
+fn requesting_an_unreadable_snapshot_by_id_fails() -> Result<()> {
+    let (repo, _, unreadable) = repo_with_one_unreadable_snapshot()?;
+
+    assert!(repo.get_snapshots(&[unreadable]).is_err());
+    Ok(())
+}
+
+#[test]
+fn check_reports_an_unreadable_snapshot_file() -> Result<()> {
+    let (repo, _, unreadable) = repo_with_one_unreadable_snapshot()?;
+
+    let results = repo.check(CheckOptions::default())?;
+
+    let findings = format!("{:?}", results.0);
+    assert!(
+        findings.contains("ErrorReadingFile") && findings.contains(&unreadable),
+        "{findings}"
+    );
+    assert!(results.is_ok().is_err());
+    Ok(())
+}
+
+#[test]
+fn check_with_trees_reports_an_unreadable_snapshot_file() -> Result<()> {
+    let (repo, _, unreadable) = repo_with_one_unreadable_snapshot()?;
+    let trees = repo
+        .get_all_snapshots()?
+        .into_iter()
+        .map(|snap| snap.tree)
+        .collect();
+
+    let results = repo.check_with_trees(CheckOptions::default(), trees)?;
+
+    let findings = format!("{:?}", results.0);
+    assert!(
+        findings.contains("ErrorReadingFile") && findings.contains(&unreadable),
+        "{findings}"
+    );
+    assert!(results.is_ok().is_err());
     Ok(())
 }

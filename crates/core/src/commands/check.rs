@@ -32,7 +32,7 @@ use crate::{
     },
     progress::Progress,
     repofile::{
-        IndexFile, IndexPack, PackHeader, PackHeaderLength, PackHeaderRef,
+        IndexFile, IndexPack, PackHeader, PackHeaderLength, PackHeaderRef, SnapshotFile,
         indexfile::IndexMarkType, packfile::PackId,
     },
     repository::{Open, Repository},
@@ -255,6 +255,16 @@ pub(crate) fn check_repository<S: Open>(
             check_hot_files(raw_be, hot_be, file_type, &p, &collector)?;
         }
     }
+
+    let p = repo.progress_counter("reading snapshots...");
+    for (id, source) in SnapshotFile::unreadable_from_backend(be, &p)? {
+        collector.add_error(CheckError::ErrorReadingFile {
+            id: *id,
+            file_type: FileType::Snapshot,
+            source,
+        });
+    }
+    p.finish();
 
     let (index_collector, missing_packs) = check_packs(repo, be, hot_be.as_ref(), &collector)?;
 
