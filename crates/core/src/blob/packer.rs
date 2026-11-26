@@ -1,7 +1,7 @@
 use std::{
     num::NonZeroU32,
     sync::{Arc, RwLock},
-    thread::scope,
+    thread::{JoinHandle, scope},
     time::{Duration, SystemTime},
 };
 
@@ -212,6 +212,17 @@ pub struct Packer<BE: DecryptWriteBackend> {
     sender: Sender<(Bytes, BlobId)>,
     /// The receiver to receive the status from the raw packer.
     finish: Receiver<RusticResult<PackerStats>>,
+    thread: Arc<JoinedOnDrop>,
+}
+
+struct JoinedOnDrop(Option<JoinHandle<()>>);
+
+impl Drop for JoinedOnDrop {
+    fn drop(&mut self) {
+        if let Some(handle) = self.0.take() {
+            _ = handle.join();
+        }
+    }
 }
 
 impl<BE: DecryptWriteBackend> Packer<BE> {
@@ -249,14 +260,10 @@ impl<BE: DecryptWriteBackend> Packer<BE> {
 
         let (tx, rx) = bounded(0);
         let (finish_tx, finish_rx) = bounded::<RusticResult<PackerStats>>(0);
-        let packer = Self {
-            raw_packer: raw_packer.clone(),
-            indexer: indexer.clone(),
-            sender: tx,
-            finish: finish_rx,
-        };
+        let raw_packer_handle = raw_packer.clone();
+        let indexer_handle = indexer.clone();
 
-        let _join_handle = std::thread::spawn(move || {
+        let thread = std::thread::spawn(move || {
             scope(|scope| {
                 let status = rx
                     .into_iter()
@@ -288,7 +295,13 @@ impl<BE: DecryptWriteBackend> Packer<BE> {
             });
         });
 
-        Ok(packer)
+        Ok(Self {
+            raw_packer: raw_packer_handle,
+            indexer: indexer_handle,
+            sender: tx,
+            finish: finish_rx,
+            thread: Arc::new(JoinedOnDrop(Some(thread))),
+        })
     }
 
     /// Adds the blob to the packfile
@@ -355,9 +368,12 @@ impl<BE: DecryptWriteBackend> Packer<BE> {
         // cancel channel
         drop(self.sender);
         // wait for items in channel to be processed
-        self.finish
+        let status = self
+            .finish
             .recv()
-            .expect("Should be able to receive from channel to finalize packer.")
+            .expect("Should be able to receive from channel to finalize packer.");
+        drop(self.thread);
+        status
     }
 }
 
@@ -802,6 +818,7 @@ pub(crate) struct Actor {
     sender: Sender<(BytesList, IndexPack)>,
     /// The receiver to receive the status from the raw packer.
     finish: Receiver<RusticResult<()>>,
+    thread: JoinedOnDrop,
 }
 
 impl Actor {
@@ -824,7 +841,7 @@ impl Actor {
         let (tx, rx) = bounded(queue_len);
         let (finish_tx, finish_rx) = bounded::<RusticResult<()>>(0);
 
-        let _join_handle = std::thread::spawn(move || {
+        let thread = std::thread::spawn(move || {
             scope(|scope| {
                 let status = rx
                     .into_iter()
@@ -845,6 +862,7 @@ impl Actor {
         Self {
             sender: tx,
             finish: finish_rx,
+            thread: JoinedOnDrop(Some(thread)),
         }
     }
 
@@ -873,7 +891,9 @@ impl Actor {
         // cancel channel
         drop(self.sender);
         // wait for items in channel to be processed
-        self.finish.recv().unwrap()
+        let status = self.finish.recv().unwrap();
+        drop(self.thread);
+        status
     }
 }
 
@@ -1176,5 +1196,132 @@ mod tests {
             uncompressed_length: None,
         };
         assert!(get_blob_slice(&dummy_data, 0, &blob, &blob_id, &pack_id).is_err());
+    }
+
+    mod writer_threads {
+        use std::{
+            sync::atomic::{AtomicUsize, Ordering},
+            thread::sleep,
+        };
+
+        use super::*;
+        use crate::{
+            Id,
+            backend::{ReadBackend, WriteBackend, decrypt::DecryptBackend},
+            crypto::{aespoly1305::Key, hasher::hash},
+            index::indexer::Indexer,
+        };
+
+        const SLOW_WRITE: Duration = Duration::from_millis(300);
+
+        #[derive(Debug, Default)]
+        struct SlowPackBackend {
+            fail_first_pack: bool,
+            pack_writes_started: AtomicUsize,
+            pack_writes_done: AtomicUsize,
+        }
+
+        impl ReadBackend for SlowPackBackend {
+            fn location(&self) -> String {
+                "slow".to_string()
+            }
+
+            fn list_with_size(&self, _tpe: FileType) -> RusticResult<Vec<(Id, u32)>> {
+                Ok(Vec::new())
+            }
+
+            fn read_full(&self, _tpe: FileType, _id: &Id) -> RusticResult<Bytes> {
+                Ok(Bytes::new())
+            }
+
+            fn read_partial(
+                &self,
+                _tpe: FileType,
+                _id: &Id,
+                _cacheable: bool,
+                _offset: u32,
+                _length: u32,
+            ) -> RusticResult<Bytes> {
+                Ok(Bytes::new())
+            }
+
+            fn warmup_path(&self, _tpe: FileType, id: &Id) -> String {
+                id.to_hex().to_string()
+            }
+        }
+
+        impl WriteBackend for SlowPackBackend {
+            fn write_bytes(
+                &self,
+                tpe: FileType,
+                _id: &Id,
+                _cacheable: bool,
+                _content: BytesList,
+            ) -> RusticResult<()> {
+                if tpe != FileType::Pack {
+                    return Ok(());
+                }
+                let started = self.pack_writes_started.fetch_add(1, Ordering::SeqCst);
+                if self.fail_first_pack && started == 0 {
+                    return Err(RusticError::new(
+                        ErrorKind::Backend,
+                        "first pack write fails",
+                    ));
+                }
+                sleep(SLOW_WRITE);
+                _ = self.pack_writes_done.fetch_add(1, Ordering::SeqCst);
+                Ok(())
+            }
+
+            fn remove(&self, _tpe: FileType, _id: &Id, _cacheable: bool) -> RusticResult<()> {
+                Ok(())
+            }
+        }
+
+        fn packer_on(backend: &Arc<SlowPackBackend>) -> Packer<DecryptBackend<Key>> {
+            let be = DecryptBackend::new(backend.clone(), Key::new());
+            let indexer = Indexer::new(be.clone()).into_shared();
+            Packer::new(be, BlobType::Data, indexer, PackSizer::fixed(1000)).unwrap()
+        }
+
+        fn add_blob_filling_a_pack(packer: &Packer<DecryptBackend<Key>>, seed: u8) {
+            let data = Bytes::from(vec![seed; 2000]);
+            let id = BlobId::from(hash(&data));
+            _ = packer.add(data, id);
+        }
+
+        #[test]
+        fn finalize_after_a_failed_write_returns_once_no_write_is_left() {
+            let backend = Arc::new(SlowPackBackend {
+                fail_first_pack: true,
+                ..Default::default()
+            });
+            let packer = packer_on(&backend);
+            for seed in 0..4 {
+                add_blob_filling_a_pack(&packer, seed);
+            }
+
+            assert!(packer.finalize().is_err());
+            let done_at_return = backend.pack_writes_done.load(Ordering::SeqCst);
+            sleep(3 * SLOW_WRITE);
+            assert_eq!(
+                backend.pack_writes_done.load(Ordering::SeqCst),
+                done_at_return
+            );
+        }
+
+        #[test]
+        fn dropping_a_packer_waits_for_its_pack_writes() {
+            let backend = Arc::new(SlowPackBackend::default());
+            let packer = packer_on(&backend);
+            add_blob_filling_a_pack(&packer, 0);
+
+            drop(packer);
+            assert_eq!(
+                backend.pack_writes_done.load(Ordering::SeqCst),
+                backend.pack_writes_started.load(Ordering::SeqCst)
+            );
+            assert_eq!(backend.pack_writes_done.load(Ordering::SeqCst), 1);
+        }
     }
 }
